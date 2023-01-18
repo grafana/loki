@@ -624,7 +624,7 @@ func (s *SpecValidator) validateParameters() *Result {
 	// - path param must be required
 	res := new(Result)
 	rexGarbledPathSegment := mustCompileRegexp(`.*[{}\s]+.*`)
-	for method, pi := range s.analyzer.Operations() {
+	for method, pi := range s.expandedAnalyzer().Operations() {
 		methodPaths := make(map[string]map[string]string)
 		for path, op := range pi {
 			pathToAdd := pathHelp.stripParametersInPath(path)
@@ -792,4 +792,13 @@ func (s *SpecValidator) checkUniqueParams(path, method string, op *spec.Operatio
 // SetContinueOnErrors sets the ContinueOnErrors option for this validator.
 func (s *SpecValidator) SetContinueOnErrors(c bool) {
 	s.Options.ContinueOnErrors = c
+}
+
+// expandedAnalyzer returns expanded.Analyzer when it is available.
+// otherwise just analyzer.
+func (s *SpecValidator) expandedAnalyzer() *analysis.Spec {
+	if s.expanded != nil && s.expanded.Analyzer != nil {
+		return s.expanded.Analyzer
+	}
+	return s.analyzer
 }

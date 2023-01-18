@@ -3,8 +3,8 @@ package swift
 import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/swift"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/providers/swift"
 	yaml "gopkg.in/yaml.v2"
 )
 

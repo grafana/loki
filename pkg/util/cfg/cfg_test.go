@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"flag"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	yamlSource := dYAML([]byte(`
+	yamlSource := dYAMLStrict([]byte(`
 server:
   port: 2000
   timeout: 60h
@@ -46,7 +45,7 @@ tls:
 }
 
 func TestParseWithInvalidYAML(t *testing.T) {
-	yamlSource := dYAML([]byte(`
+	yamlSource := dYAMLStrict([]byte(`
 servers:
   ports: 2000
   timeoutz: 60h
@@ -69,7 +68,7 @@ tls:
 
 func TestDefaultUnmarshal(t *testing.T) {
 	testContext := func(yamlString string, args []string) TestConfigWrapper {
-		file, err := ioutil.TempFile("", "config.yaml")
+		file, err := os.CreateTemp("", "config.yaml")
 		defer func() {
 			os.Remove(file.Name())
 		}()

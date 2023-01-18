@@ -1,0 +1,22 @@
+{{/*
+tokengen fullname
+*/}}
+{{- define "enterprise-logs.tokengenFullname" -}}
+{{ include "loki.name" . }}-tokengen
+{{- end }}
+
+{{/*
+tokengen common labels
+*/}}
+{{- define "enterprise-logs.tokengenLabels" -}}
+{{ include "loki.labels" . }}
+app.kubernetes.io/component: tokengen
+{{- end }}
+
+{{/*
+tokengen selector labels
+*/}}
+{{- define "enterprise-logs.tokengenSelectorLabels" -}}
+{{ include "loki.selectorLabels" . }}
+app.kubernetes.io/component: tokengen
+{{- end }}

@@ -24,34 +24,37 @@ import "github.com/go-openapi/spec"
 // due to zero values being omitted upon re-serializing (omitempty) we
 // lose them unless we stick some chars in there.
 func FixEmptyResponseDescriptions(s *spec.Swagger) {
-	if s.Paths != nil {
-		for _, v := range s.Paths.Paths {
-			if v.Get != nil {
-				FixEmptyDescs(v.Get.Responses)
-			}
-			if v.Put != nil {
-				FixEmptyDescs(v.Put.Responses)
-			}
-			if v.Post != nil {
-				FixEmptyDescs(v.Post.Responses)
-			}
-			if v.Delete != nil {
-				FixEmptyDescs(v.Delete.Responses)
-			}
-			if v.Options != nil {
-				FixEmptyDescs(v.Options.Responses)
-			}
-			if v.Head != nil {
-				FixEmptyDescs(v.Head.Responses)
-			}
-			if v.Patch != nil {
-				FixEmptyDescs(v.Patch.Responses)
-			}
-		}
-	}
 	for k, v := range s.Responses {
 		FixEmptyDesc(&v) //#nosec
 		s.Responses[k] = v
+	}
+
+	if s.Paths == nil {
+		return
+	}
+
+	for _, v := range s.Paths.Paths {
+		if v.Get != nil {
+			FixEmptyDescs(v.Get.Responses)
+		}
+		if v.Put != nil {
+			FixEmptyDescs(v.Put.Responses)
+		}
+		if v.Post != nil {
+			FixEmptyDescs(v.Post.Responses)
+		}
+		if v.Delete != nil {
+			FixEmptyDescs(v.Delete.Responses)
+		}
+		if v.Options != nil {
+			FixEmptyDescs(v.Options.Responses)
+		}
+		if v.Head != nil {
+			FixEmptyDescs(v.Head.Responses)
+		}
+		if v.Patch != nil {
+			FixEmptyDescs(v.Patch.Responses)
+		}
 	}
 }
 

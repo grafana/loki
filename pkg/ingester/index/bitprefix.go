@@ -107,10 +107,7 @@ func (ii *BitPrefixInvertedIndex) validateShard(shard *astmapper.ShardAnnotation
 		return nil
 	}
 
-	if 1<<(shard.TSDB().RequiredBits()) != shard.Of {
-		return fmt.Errorf("Shard factor must be a power of two, got %d", shard.Of)
-	}
-	return nil
+	return shard.TSDB().Validate()
 }
 
 // Add a fingerprint under the specified labels.

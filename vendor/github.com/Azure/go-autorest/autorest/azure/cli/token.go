@@ -124,6 +124,83 @@ func LoadTokens(path string) ([]Token, error) {
 
 // GetTokenFromCLI gets a token using Azure CLI 2.0 for local development scenarios.
 func GetTokenFromCLI(resource string) (*Token, error) {
+	return GetTokenFromCLIWithParams(GetAccessTokenParams{Resource: resource})
+}
+
+// GetAccessTokenParams is the parameter struct of GetTokenFromCLIWithParams
+type GetAccessTokenParams struct {
+	Resource     string
+	ResourceType string
+	Subscription string
+	Tenant       string
+}
+
+// GetTokenFromCLIWithParams gets a token using Azure CLI 2.0 for local development scenarios.
+func GetTokenFromCLIWithParams(params GetAccessTokenParams) (*Token, error) {
+	cliCmd := GetAzureCLICommand()
+
+	cliCmd.Args = append(cliCmd.Args, "account", "get-access-token", "-o", "json")
+	if params.Resource != "" {
+		if err := validateParameter(params.Resource); err != nil {
+			return nil, err
+		}
+		cliCmd.Args = append(cliCmd.Args, "--resource", params.Resource)
+	}
+	if params.ResourceType != "" {
+		if err := validateParameter(params.ResourceType); err != nil {
+			return nil, err
+		}
+		cliCmd.Args = append(cliCmd.Args, "--resource-type", params.ResourceType)
+	}
+	if params.Subscription != "" {
+		if err := validateParameter(params.Subscription); err != nil {
+			return nil, err
+		}
+		cliCmd.Args = append(cliCmd.Args, "--subscription", params.Subscription)
+	}
+	if params.Tenant != "" {
+		if err := validateParameter(params.Tenant); err != nil {
+			return nil, err
+		}
+		cliCmd.Args = append(cliCmd.Args, "--tenant", params.Tenant)
+	}
+
+	var stderr bytes.Buffer
+	cliCmd.Stderr = &stderr
+
+	output, err := cliCmd.Output()
+	if err != nil {
+		if stderr.Len() > 0 {
+			return nil, fmt.Errorf("Invoking Azure CLI failed with the following error: %s", stderr.String())
+		}
+
+		return nil, fmt.Errorf("Invoking Azure CLI failed with the following error: %s", err.Error())
+	}
+
+	tokenResponse := Token{}
+	err = json.Unmarshal(output, &tokenResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tokenResponse, err
+}
+
+func validateParameter(param string) error {
+	// Validate parameters, since it gets sent as a command line argument to Azure CLI
+	const invalidResourceErrorTemplate = "Parameter %s is not in expected format. Only alphanumeric characters, [dot], [colon], [hyphen], and [forward slash] are allowed."
+	match, err := regexp.MatchString("^[0-9a-zA-Z-.:/]+$", param)
+	if err != nil {
+		return err
+	}
+	if !match {
+		return fmt.Errorf(invalidResourceErrorTemplate, param)
+	}
+	return nil
+}
+
+// GetAzureCLICommand can be used to run arbitrary Azure CLI command
+func GetAzureCLICommand() *exec.Cmd {
 	// This is the path that a developer can set to tell this class what the install path for Azure CLI is.
 	const azureCLIPath = "AzureCLIPath"
 
@@ -132,16 +209,6 @@ func GetTokenFromCLI(resource string) (*Token, error) {
 
 	// Default path for non-Windows.
 	const azureCLIDefaultPath = "/bin:/sbin:/usr/bin:/usr/local/bin"
-
-	// Validate resource, since it gets sent as a command line argument to Azure CLI
-	const invalidResourceErrorTemplate = "Resource %s is not in expected format. Only alphanumeric characters, [dot], [colon], [hyphen], and [forward slash] are allowed."
-	match, err := regexp.MatchString("^[0-9a-zA-Z-.:/]+$", resource)
-	if err != nil {
-		return nil, err
-	}
-	if !match {
-		return nil, fmt.Errorf(invalidResourceErrorTemplate, resource)
-	}
 
 	// Execute Azure CLI to get token
 	var cliCmd *exec.Cmd
@@ -155,21 +222,6 @@ func GetTokenFromCLI(resource string) (*Token, error) {
 		cliCmd.Env = os.Environ()
 		cliCmd.Env = append(cliCmd.Env, fmt.Sprintf("PATH=%s:%s", os.Getenv(azureCLIPath), azureCLIDefaultPath))
 	}
-	cliCmd.Args = append(cliCmd.Args, "account", "get-access-token", "-o", "json", "--resource", resource)
 
-	var stderr bytes.Buffer
-	cliCmd.Stderr = &stderr
-
-	output, err := cliCmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("Invoking Azure CLI failed with the following error: %s", stderr.String())
-	}
-
-	tokenResponse := Token{}
-	err = json.Unmarshal(output, &tokenResponse)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tokenResponse, err
+	return cliCmd
 }

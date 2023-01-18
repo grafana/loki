@@ -1,20 +1,49 @@
-Contributing to Loki Operator
+---
+title: Contributing
+description: How can I contribute to the Loki Operator?
+lead: ""
+lastmod: "2021-03-08T08:48:57+00:00"
+draft: false
+images: []
+menu:
+  docs:
+    parent: prologue
+weight: 200
+toc: true
+---
 
-## Ideology
+This project is licensed under the [AGPLv3 license](../../../../../LICENSE) and accept
+contributions via GitHub pull requests. This document outlines some of the
+conventions on development workflow, contact points
+and other resources to make it easier to get your contribution accepted.
 
-OpenShift has proven to be a powerful and successful platform for running containers in production. Our primary goal is to bring Loki Operator to our customers. That being said, it is a very large platform intended for large-scale production use. It is not intended to be ephemeral.  
+To maintain a safe and welcoming community, all participants must adhere to the
+project's [Code of Conduct](../../../../../CODE_OF_CONDUCT.md).
 
-The tools required to run and test an OCP cluster are complex and cumbersome. The current processes to build an OCP cluster include the slack cluster-bot, openshift-install script, and CRC. The fastest route to create a working OCP cluster is 45 minutes. CRC *may* be faster, but it requires over [half of your local machine's resources](https://coreos.slack.com/archives/GGUR75P60/p1591803889037800) and doesn’t handle sleeping/suspending very well. Using openshift-install comes with its own [headaches](https://coreos.slack.com/archives/GGUR75P60/p1615458361119300). These blockers cause a significant amount of [wasted time](https://coreos.slack.com/archives/GGUR75P60/p1599242159479000?thread_ts=1599241354.478700&cid=GGUR75P60) that could be spent on more valuable things. 
+# Contributor License Agreement
 
-Nevertheless, I argue that none of this is necessary. The problems are caused when we bastardize a large, complex, production platform for testing and tooling. OpenShift is a superset of Kubernetes. Operators are now Kubernetes native. Given this reality, we have called the Loki Operator a Kubernetes operator rather than an OpenShift operator. This may seem like a trivial delineation, but it isn’t. The operator has been designed from the beginning using Kubernetes tools and APIs. This has allowed us to build, test, and deploy in very little time with very little effort. It is not uncommon to create a pull request and have it [reviewed and merged](https://github.com/grafana/loki/pulls?q=is%3Apr+is%3Aclosed) within 15 minutes. 
+By contributing to this project you agree to the Contributor License Agreement.
 
-There are certainly OCP exclusives that we want to program into the Loki Operator, but this shouldn’t block or break the primary objectives. In other words, the Loki Operator should be Kubernetes first and OpenShift second. The Loki Operator should be open to using the OpenShift APIs without requiring them. All tools, automation, scripts, make targets, etc, should work naturally with Kubernetes and Kubernetes compatible APIs. <u>OCP exclusives should be opt-in</u>. It might be natural for you to think this causes obstruction for deploying to OCP, but that is far from true. Packaging for OCP should be a scripted process that, once opted in, should build all of the necessary components. So far, it has proven to be successful. 
+# Email and Chat
 
-## Tooling
+The project currently uses the [Grafana Slack](https://grafana.slack.com):
+- [#loki-operator-dev](https://grafana.slack.com/archives/C02RFD9CWVA)
 
-We use [KinD](https://github.com/kubernetes-sigs/kind) to deploy and test the Loki Operator. We have had no compatibility issues, no wasted time on a learning curve, no failed clusters, no token expirations, no cluster expirations, no spinning laptop fans from gluttonous virtual machines, etc. It takes approximately 20 seconds to create a local KinD cluster and your machine won’t even notice it’s running. The cluster is fully compatible with all Kubernetes APIs and the operator runs on KinD perfectly. After your KinD cluster is created your kubeconfig is updated and the Makefile will work. The Makefiles and scripts are written to work with kubectl. This abstraction prevents any unnecessary complications caused by magic processes like deploying images to internal clusters, etc. 
+## Getting Started
 
+- Fork the repository on GitHub
+- Read the [README](README.md) for build and test instructions
+- Play with the project, submit bugs, submit patches!
 
-## Testing
+## Contribution Flow
 
-Tests should be succinct and without dependencies. This means that unit tests are the de-facto form of testing the Loki Operator. Unit tests are written with the standard Go library using [testify](https://github.com/stretchr/testify) for assertions. [Counterfeiter](https://github.com/maxbrunsfeld/counterfeiter) is included for generating test fakes and stubs for all dependencies. This library provides an API for generating fake implementations of interfaces for injecting them into testable units of code. Unit tests should implement or stub *only the parts required to test*. Large, all-inclusive structs should be avoided in favor of concise, single responsibility functions. This encourages small tests with minimal assertions to keep them hyper-focused, making tests easy to create *and* maintain. 
+This is a rough outline of what a contributor's workflow looks like:
+
+- Create a topic branch from where you want to base your work (usually `main`).
+- Make commits of logical units.
+- Make sure your commit messages are in the proper format (see below).
+- Push your changes to a topic branch in your fork of the repository.
+- Make sure the tests pass, and add any new tests as appropriate.
+- Submit a pull request to the original repository.
+
+Thanks for your contributions!

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
@@ -526,4 +526,71 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 
 	ftm.Stop()
 	ps.Stop()
+}
+
+func TestLabelSetUpdate(t *testing.T) {
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	targetEventHandler := make(chan fileTargetEvent)
+	defer func() {
+		close(targetEventHandler)
+	}()
+
+	syncer := &targetSyncer{
+		metrics:           NewMetrics(nil),
+		log:               log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
+		positions:         nil,
+		entryHandler:      client,
+		hostname:          "localhost",
+		fileEventWatchers: make(map[string]chan fsnotify.Event),
+		targets:           make(map[string]*FileTarget),
+		targetConfig: &Config{
+			SyncPeriod: time.Hour,
+		},
+	}
+
+	var target = model.LabelSet{
+		hostLabel: "localhost",
+		pathLabel: "baz",
+		"job":     "foo",
+	}
+
+	var target2 = model.LabelSet{
+		hostLabel: "localhost",
+		pathLabel: "baz",
+		"job":     "foo2",
+	}
+
+	// two separate targets with same path
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{target, target2},
+		},
+	}, targetEventHandler)
+	syncer.sendFileCreateEvent(fsnotify.Event{Name: "baz"})
+
+	require.Equal(t, 2, len(syncer.targets))
+	require.Equal(t, 1, len(syncer.fileEventWatchers))
+
+	// remove second target and modify the first
+	target["job"] = "bar"
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{target},
+		},
+	}, targetEventHandler)
+
+	require.Equal(t, 1, len(syncer.targets))
+	require.Equal(t, 1, len(syncer.fileEventWatchers))
+
+	// cleanup all targets
+	syncer.sync([]*targetgroup.Group{
+		{
+			Targets: []model.LabelSet{},
+		},
+	}, targetEventHandler)
+	require.Equal(t, 0, len(syncer.targets))
+	require.Equal(t, 0, len(syncer.fileEventWatchers))
+
 }

@@ -4,7 +4,8 @@ import (
 	"context"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ func TestList_AlertingRulesMatchSelector_WithDefaultStackNamespaceRules(t *testi
 	const stackNs = "some-ns"
 
 	k := &k8sfakes.FakeClient{}
-	rs := &lokiv1beta1.RulesSpec{
+	rs := &lokiv1.RulesSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
 				"labelname": "labelvalue",
@@ -29,7 +30,7 @@ func TestList_AlertingRulesMatchSelector_WithDefaultStackNamespaceRules(t *testi
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == stackNs {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -93,7 +94,7 @@ func TestList_AlertingRulesMatchSelector_FilteredByNamespaceSelector(t *testing.
 	const stackNs = "some-ns"
 
 	k := &k8sfakes.FakeClient{}
-	rs := &lokiv1beta1.RulesSpec{
+	rs := &lokiv1.RulesSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
 				"labelname": "labelvalue",
@@ -106,7 +107,7 @@ func TestList_AlertingRulesMatchSelector_FilteredByNamespaceSelector(t *testing.
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "some-ns" {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -195,7 +196,7 @@ func TestList_RecordingRulesMatchSelector_WithDefaultStackNamespaceRules(t *test
 	const stackNs = "some-ns"
 
 	k := &k8sfakes.FakeClient{}
-	rs := &lokiv1beta1.RulesSpec{
+	rs := &lokiv1.RulesSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
 				"labelname": "labelvalue",
@@ -203,7 +204,7 @@ func TestList_RecordingRulesMatchSelector_WithDefaultStackNamespaceRules(t *test
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == stackNs {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -267,7 +268,7 @@ func TestList_RecordingRulesMatchSelector_FilteredByNamespaceSelector(t *testing
 	const stackNs = "some-ns"
 
 	k := &k8sfakes.FakeClient{}
-	rs := &lokiv1beta1.RulesSpec{
+	rs := &lokiv1.RulesSpec{
 		Selector: &metav1.LabelSelector{
 			MatchLabels: map[string]string{
 				"labelname": "labelvalue",
@@ -280,7 +281,7 @@ func TestList_RecordingRulesMatchSelector_FilteredByNamespaceSelector(t *testing
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "some-ns" {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{

@@ -15,7 +15,7 @@ import (
 type StartingFn func(serviceContext context.Context) error
 
 // RunningFn function is called when service enters Running state. When it returns, service will move to Stopping state.
-// If RunningFn or Stopping return error, Service will end in Failed state, otherwise if both functions return without
+// If RunningFn or StoppingFn return error, Service will end in Failed state, otherwise if both functions return without
 // error, service will end in Terminated state.
 type RunningFn func(serviceContext context.Context) error
 

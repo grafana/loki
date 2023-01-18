@@ -65,7 +65,17 @@ Regex log stream examples:
 - `{name !~ "mysql.+"}`
 - `` {name !~ `mysql-\d+`} ``
 
-**Note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+**Note:** Unlike the [line filter regex expressions](#line-filter-expression), the `=~` and `!~` regex operators are fully anchored.
+This means that the regex expression must match against the *entire* string, **including newlines**. 
+The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+Alternatively, you can use the `\s` (match whitespaces, including newline) in combination with `\S` (match not whitespace characters) to match all characters, including newlines.
+Refer to [Google's RE2 syntax](https://github.com/google/re2/wiki/Syntax) for more information.
+
+Regex log stream newlines:
+
+- `{name =~ ".*mysql.*"}`: does not match log label values with newline character
+- `{name =~ "(?s).*mysql.*}`: match log label values with newline character
+- `{name =~ "[\S\s]*mysql[\S\s]*}`: match log label values with newline character
 
 ## Log pipeline
 
@@ -95,7 +105,7 @@ and
 The line filter expression does a distributed `grep`
 over the aggregated logs from the matching log streams.
 It searches the contents of the log line,
-discarding those lines that do not match the case sensitive expression.
+discarding those lines that do not match the case-sensitive expression.
 
 Each line filter expression has a **filter operator**
 followed by text or a regular expression.
@@ -105,6 +115,9 @@ These filter operators are supported:
 - `!=`: Log line does not contain string
 - `|~`: Log line contains a match to the regular expression
 - `!~`: Log line does not contain a match to the regular expression
+
+**Note:** Unlike the [label matcher regex operators](#log-stream-selector), the `|~` and `!~` regex operators are not fully anchored.
+This means that the `.` regex character matches all characters, **including newlines**.
 
 Line filter expression examples:
 
@@ -183,13 +196,23 @@ log stream selectors have been applied.
 
 Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
+
+### Removing color codes
+
+Line filter expressions support stripping ANSI sequences (color codes) from
+the line:
+
+```
+{job="example"} | decolorize
+```
+
 ### Label filter expression
 
 Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
-For example with `cluster="namespace"` the cluster is the label identifier, the operation is `=` and the value is "namespace". The label identifier is always on the right side of the operation.
+For example with `cluster="namespace"` the cluster is the label identifier, the operation is `=` and the value is "namespace". The label identifier is always on the left side of the operation.
 
 We support multiple **value** types which are automatically inferred from the query input.
 
@@ -225,16 +248,16 @@ This means that all the following expressions are equivalent:
 
 ```
 
-By default the precedence of multiple predicates is right to left. You can wrap predicates with parenthesis to force a different precedence left to right.
+The precedence for evaluation of multiple predicates is left to right. You can wrap predicates with parenthesis to force a different precedence.
 
-For example the following are equivalent.
+These examples are equivalent:
 
 ```logql
 | duration >= 20ms or method="GET" and size <= 20KB
 | ((duration >= 20ms or method="GET") and size <= 20KB)
 ```
 
-It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `method="GET" and size <= 20KB`, make sure to use proper parenthesis as shown below.
+To evaluate the logical `and` first, use parenthesis, as in this example:
 
 ```logql
 | duration >= 20ms or (method="GET" and size <= 20KB)
@@ -534,57 +557,54 @@ The renaming form `dst=src` will _drop_ the `src` label after remapping it to th
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
 
-## Log queries examples
+### Drop Labels expression
 
-### Multiple filtering
+**Syntax**:  `|drop name, other_name, some_name="some_value"`
 
-Filtering should be done first using label matchers, then line filters (when possible) and finally using label filters. The following query demonstrate this.
+The `=` operator after the label name is a **label matching operator**.
+The following label matching operators are supported:
 
-```logql
-{cluster="ops-tools1", namespace="loki-dev", job="loki-dev/query-frontend"} |= "metrics.go" !="out of order" | logfmt | duration > 30s or status_code!="200"
+- `=`: exactly equal
+- `!=`: not equal
+- `=~`: regex matches
+- `!~`: regex does not match
+
+The `| drop` expression will drop the given labels in the pipeline. For example, for the query `{job="varlogs"}|json|drop level, method="GET"`, with below log line
+
+```
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
-### Multiple parsers
+the result will be
 
-To extract the method and the path of the following logfmt log line:
-
-```log
-level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"
+```
+{host="grafana.net", path="status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
-You can use multiple parsers (logfmt and regexp) like this.
+Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
 
-```logql
-{job="loki-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
+```
+INFO GET / loki.net 200
 ```
 
-This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
+the result will be
 
-### Formatting
-
-The following query shows how you can reformat a log line to make it easier to read on screen.
-
-```logql
-{cluster="ops-tools1", name="querier", namespace="loki-dev"}
-  |= "metrics.go" != "loki-canary"
-  | logfmt
-  | query != ""
-  | label_format query="{{ Replace .query \"\\n\" \"\" -1 }}"
-  | line_format "{{ .ts}}\t{{.duration}}\ttraceID = {{.traceID}}\t{{ printf \"%-100.100s\" .query }} "
+```
+{} INFO GET / loki.net 200
 ```
 
-Label formatting is used to sanitize the query while the line format reduce the amount of information and creates a tabular output.
+Example with regex and multiple names
 
-For these given log lines:
+For the query `{job="varlogs"}|json|drop level, path, app=~"some-api.*"`, with below log lines
 
-```log
-level=info ts=2020-10-23T20:32:18.094668233Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"loki-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=650.22401ms status=200 throughput_mb=1.529717 total_bytes_mb=0.994659
-level=info ts=2020-10-23T20:32:18.068866235Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"loki-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=624.008132ms status=200 throughput_mb=0.693449 total_bytes_mb=0.432718
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
+{"app: "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200}
 ```
 
-The result would be:
+the result will be
 
-```log
-2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="loki-ops/query-frontend"} |= "query_range"
-2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="loki-ops/query-frontend"} |= "query_range"
+```
+{host="grafana.net", job="varlogs", method="GET", status="200"} {""app": "some-api-service",", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service",, "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -77,7 +76,7 @@ func getTemplate(name string) (string, error) {
 		defer func() {
 			_ = f.Close()
 		}()
-		b, err := ioutil.ReadAll(f)
+		b, err := io.ReadAll(f)
 		if err != nil {
 			return err
 		}

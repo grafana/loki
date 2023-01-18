@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -82,7 +81,7 @@ var pipeline = PipelineConfig{
 }
 
 func Test_parsePipeline(t *testing.T) {
-	f, err := ioutil.TempFile("/tmp", "Test_parsePipeline")
+	f, err := os.CreateTemp("/tmp", "Test_parsePipeline")
 	if err != nil {
 		t.Fatal(err)
 	}

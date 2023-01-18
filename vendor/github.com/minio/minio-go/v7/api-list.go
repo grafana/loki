@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
@@ -239,6 +240,7 @@ func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefi
 		if err != nil {
 			return listBucketResult, err
 		}
+		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {
@@ -384,7 +386,7 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 				info := ObjectInfo{
 					ETag:           trimEtag(version.ETag),
 					Key:            version.Key,
-					LastModified:   version.LastModified,
+					LastModified:   version.LastModified.Truncate(time.Millisecond),
 					Size:           version.Size,
 					Owner:          version.Owner,
 					StorageClass:   version.StorageClass,
@@ -600,6 +602,7 @@ func (c *Client) listObjectsQuery(ctx context.Context, bucketName, objectPrefix,
 		if err != nil {
 			return listBucketResult, err
 		}
+		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {

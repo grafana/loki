@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -63,6 +64,18 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	require.Equal(t, true, data.recorded)
 	require.Equal(t, now, data.params.Start())
 	require.Equal(t, int32(10), data.statistics.Ingester.TotalReached)
+
+	// Do not collect stats if the `next` handler returns error.
+	// Rationale being, in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
+	data = &queryData{}
+	ctx = context.WithValue(context.Background(), ctxKey, data)
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return nil, errors.New("request timedout")
+	})).Do(ctx, &LokiRequest{
+		Query:   "foo",
+		StartTs: now,
+	})
+	require.Equal(t, false, data.recorded)
 }
 
 func Test_StatsHTTP(t *testing.T) {

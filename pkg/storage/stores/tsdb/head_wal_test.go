@@ -28,6 +28,23 @@ func Test_Encoding_Series(t *testing.T) {
 	require.Equal(t, record, decoded)
 }
 
+func Test_Encoding_SeriesWithFingerprint(t *testing.T) {
+	record := &WALRecord{
+		UserID:      "foo",
+		Fingerprint: mustParseLabels(`{foo="bar"}`).Hash(),
+		Series: record.RefSeries{
+			Ref:    chunks.HeadSeriesRef(1),
+			Labels: mustParseLabels(`{foo="bar"}`),
+		},
+	}
+	buf := record.encodeSeriesWithFingerprint(nil)
+	decoded := &WALRecord{}
+
+	err := decodeWALRecord(buf, decoded)
+	require.Nil(t, err)
+	require.Equal(t, record, decoded)
+}
+
 func Test_Encoding_Chunks(t *testing.T) {
 	record := &WALRecord{
 		UserID: "foo",

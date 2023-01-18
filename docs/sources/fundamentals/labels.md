@@ -8,13 +8,22 @@ aliases:
 
 Labels are key value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and I will use those in the coming examples.
 
-The scrape configs we provide with Grafana Loki define these labels, too. If you are using Prometheus, having consistent labels between Loki and Prometheus is one of Loki's superpowers, making it incredibly [easy to correlate your application metrics with your log data](https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs-and-saves-you-money/).
+The scrape configs we provide with Grafana Loki define these labels, too. If you are using Prometheus, having consistent labels between Loki and Prometheus is one of Loki's superpowers, making it incredibly [easy to correlate your application metrics with your log data](https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/).
 
 ## How Loki uses labels
 
 Labels in Loki perform a very important task: They define a stream. More specifically, the combination of every label key and value defines the stream. If just one label value changes, this creates a new stream.
 
 If you are familiar with Prometheus, the term used there is series; however, Prometheus has an additional dimension: metric name. Loki simplifies this in that there are no metric names, just labels, and we decided to use streams instead of series.
+
+## Format
+
+Loki places the same restrictions on label naming as [Prometheus](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels):
+
+> It may contain ASCII letters and digits, as well as underscores and colons. It must match the regex `[a-zA-Z_:][a-zA-Z0-9_:]*`.
+>
+> Note: The colons are reserved for user defined recording rules. They should not be used by exporters or direct instrumentation.
+
 
 ## Loki labels demo
 

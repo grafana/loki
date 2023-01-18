@@ -5,16 +5,20 @@ import (
 	"math"
 	"strings"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // Options is used to render the loki-config.yaml file template
 type Options struct {
-	Stack lokiv1beta1.LokiStackSpec
+	Stack lokiv1.LokiStackSpec
+	Gates configv1.FeatureGates
+	TLS   TLSOptions
 
 	Namespace             string
 	Name                  string
+	Compactor             Address
 	FrontendWorker        Address
 	GossipRing            Address
 	Querier               Address
@@ -26,10 +30,25 @@ type Options struct {
 	EnableRemoteReporting bool
 
 	ObjectStorage storage.Options
+
+	Retention RetentionOptions
+
+	Overrides map[string]LokiOverrides
+}
+
+type LokiOverrides struct {
+	Limits lokiv1.LimitsTemplateSpec
+	Ruler  RulerOverrides
+}
+
+type RulerOverrides struct {
+	AlertManager *AlertManagerConfig
 }
 
 // Address FQDN and port for a k8s service.
 type Address struct {
+	// Protocol is optional
+	Protocol string
 	// FQDN is required
 	FQDN string
 	// Port is required
@@ -63,6 +82,37 @@ type AlertManagerConfig struct {
 	ForOutageTolerance string
 	ForGracePeriod     string
 	ResendDelay        string
+
+	Notifier *NotifierConfig
+
+	RelabelConfigs []RelabelConfig
+}
+
+type NotifierConfig struct {
+	TLS        TLSConfig
+	BasicAuth  BasicAuth
+	HeaderAuth HeaderAuth
+}
+
+type BasicAuth struct {
+	Username *string
+	Password *string
+}
+
+type HeaderAuth struct {
+	Type            *string
+	Credentials     *string
+	CredentialsFile *string
+}
+
+type TLSConfig struct {
+	CertPath           *string
+	KeyPath            *string
+	CAPath             *string
+	ServerName         *string
+	InsecureSkipVerify *bool
+	CipherSuites       *string
+	MinVersion         *string
 }
 
 // RemoteWriteConfig for ruler remote write config
@@ -71,7 +121,7 @@ type RemoteWriteConfig struct {
 	RefreshPeriod  string
 	Client         *RemoteWriteClientConfig
 	Queue          *RemoteWriteQueueConfig
-	RelabelConfigs []RemoteWriteRelabelConfig
+	RelabelConfigs []RelabelConfig
 }
 
 // RemoteWriteClientConfig for ruler remote write client config
@@ -100,8 +150,8 @@ type RemoteWriteQueueConfig struct {
 	MaxBackOffPeriod  string
 }
 
-// RemoteWriteRelabelConfig for ruler remote write relabel configs.
-type RemoteWriteRelabelConfig struct {
+// RelabelConfig for ruler remote write relabel configs.
+type RelabelConfig struct {
 	SourceLabels []string
 	Separator    string
 	TargetLabel  string
@@ -112,7 +162,7 @@ type RemoteWriteRelabelConfig struct {
 }
 
 // SourceLabelsString returns a string array of source labels.
-func (r RemoteWriteRelabelConfig) SourceLabelsString() string {
+func (r RelabelConfig) SourceLabelsString() string {
 	var sb strings.Builder
 	sb.WriteString("[")
 	for i, labelname := range r.SourceLabels {
@@ -128,7 +178,7 @@ func (r RemoteWriteRelabelConfig) SourceLabelsString() string {
 }
 
 // SeparatorString returns the user-defined separator or per default semicolon.
-func (r RemoteWriteRelabelConfig) SeparatorString() string {
+func (r RelabelConfig) SeparatorString() string {
 	if r.Separator == "" {
 		return `""`
 	}
@@ -152,4 +202,49 @@ type WriteAheadLog struct {
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
 	value := int64(math.Ceil(float64(w.IngesterMemoryRequest) * float64(0.5)))
 	return fmt.Sprintf("%d", value)
+}
+
+// RetentionOptions configures global retention options on the compactor.
+type RetentionOptions struct {
+	Enabled           bool
+	DeleteWorkerCount uint
+}
+
+type TLSOptions struct {
+	Ciphers       []string
+	MinTLSVersion string
+	Paths         TLSFilePaths
+	ServerNames   TLSServerNames
+}
+
+func (o TLSOptions) CipherSuitesString() string {
+	return strings.Join(o.Ciphers, ",")
+}
+
+type TLSFilePaths struct {
+	CA   string
+	GRPC TLSCertPath
+	HTTP TLSCertPath
+}
+
+type TLSCertPath struct {
+	Certificate string
+	Key         string
+}
+
+type TLSServerNames struct {
+	GRPC GRPCServerNames
+	HTTP HTTPServerNames
+}
+
+type GRPCServerNames struct {
+	Compactor     string
+	IndexGateway  string
+	Ingester      string
+	QueryFrontend string
+	Ruler         string
+}
+
+type HTTPServerNames struct {
+	Querier string
 }

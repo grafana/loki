@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package indexgatewaypb;
+
+import "gogoproto/gogo.proto";
+import "pkg/logproto/logproto.proto";
+
+option go_package = "github.com/grafana/loki/pkg/logproto";
+
+// This exists in a different file to retain proto namespacing compatibility with it's prior definition, but has been relocated to the logproto go pkg.
+service IndexGateway {
+  /// QueryIndex reads the indexes required for given query & sends back the batch of rows
+  /// in rpc streams
+  rpc QueryIndex(logproto.QueryIndexRequest) returns (stream logproto.QueryIndexResponse);
+  /// GetChunkRef returns chunk reference that match the provided label matchers
+  rpc GetChunkRef(logproto.GetChunkRefRequest) returns (logproto.GetChunkRefResponse) {}
+  rpc GetSeries(logproto.GetSeriesRequest) returns (logproto.GetSeriesResponse) {}
+  rpc LabelNamesForMetricName(logproto.LabelNamesForMetricNameRequest) returns (logproto.LabelResponse) {}
+
+  rpc LabelValuesForMetricName(logproto.LabelValuesForMetricNameRequest) returns (logproto.LabelResponse) {}
+
+  // Note: this MUST be the same as the variant defined in
+  // logproto.proto on the Querier service.
+  rpc GetStats(logproto.IndexStatsRequest) returns (logproto.IndexStatsResponse) {}
+}

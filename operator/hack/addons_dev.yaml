@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: logcli
-          image: docker.io/grafana/logcli:2.4.2-amd64
+          image: docker.io/grafana/logcli:2.6.1-amd64
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -42,8 +42,18 @@ spec:
               value: /var/run/secrets/kubernetes.io/serviceaccount/token
           args:
             - -c
-            - while true; do logcli query '{job="systemd-journal"}'; sleep 30; done
+            - while true; do logcli query '{namespace="default"}'; sleep 30; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
       serviceAccountName: lokistack-dev-addons-logcli
+      securityContext:
+        runAsUser: 10002
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -63,16 +73,21 @@ spec:
     spec:
       containers:
         - name: promtail
-          image: docker.io/grafana/promtail:2.4.2
+          image: docker.io/grafana/promtail:2.6.1
           args:
             - -config.file=/etc/promtail/promtail.yaml
             - -log.level=info
+          env:
+            - name: 'HOSTNAME'
+              valueFrom:
+                fieldRef:
+                  fieldPath: 'spec.nodeName'
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
           volumeMounts:
             - mountPath: /etc/promtail
               name: config
-            - mountPath: /run/promtail
+            - mountPath: /tmp/promtail
               name: run
             - mountPath: /var/lib/docker/containers
               name: docker
@@ -85,31 +100,38 @@ spec:
               readOnly: true
           securityContext:
             privileged: true
+            runAsNonRoot: false
             readOnlyRootFilesystem: true
-            runAsGroup: 0
-            runAsUser: 0
+            capabilities:
+              drop:
+              - ALL
       serviceAccountName: lokistack-dev-addons-promtail
+      securityContext:
+        runAsUser: 10002
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
-        - configMap:
+        - name: config
+          configMap:
             defaultMode: 420
             name: lokistack-dev-addons-promtail
-          name: config
-        - hostPath:
-            path: /run/promtail
-            type: ""
-          name: run
-        - hostPath:
+        - name: run
+          emptyDir:
+            medium: ""
+            sizeLimit: 5Gi
+        - name: docker
+          hostPath:
             path: /var/lib/docker/containers
             type: ""
-          name: docker
-        - hostPath:
+        - name: pods
+          hostPath:
             path: /var/log/pods
             type: ""
-          name: pods
-        - hostPath:
+        - name: journal
+          hostPath:
             path: /var/log/journal
             type: ""
-          name: journal
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -129,7 +151,7 @@ data:
         batchwait: 10s
         timeout: 10s
     positions:
-      filename: /run/promtail/positions.yaml
+      filename: /tmp/promtail/positions.yaml
     server:
       http_listen_port: 3100
       grpc_listen_port: 9095
@@ -396,61 +418,6 @@ data:
               - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
               - __meta_kubernetes_pod_container_name
             target_label: __path__
----
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: lokistack-dev-addons-policy
-spec:
-  allowPrivilegeEscalation: false
-  fsGroup:
-    rule: RunAsAny
-  hostIPC: false
-  hostNetwork: false
-  hostPID: false
-  privileged: false
-  readOnlyRootFilesystem: true
-  requiredDropCapabilities:
-  - ALL
-  runAsUser:
-    rule: RunAsAny
-  seLinux:
-    rule: RunAsAny
-  supplementalGroups:
-    rule: RunAsAny
-  volumes:
-  - secret
-  - configMap
-  - hostPath
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: lokistack-dev-addons-writer
-rules:
-- apiGroups:
-  - extensions
-  resourceNames:
-  - lokistack-dev-addons-policy
-  resources:
-  - podsecuritypolicies
-  verbs:
-  - use
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: lokistack-dev-addons-writer
-  labels:
-    app.kubernetes.io/name: promtail
-    app.kubernetes.io/instance: developer-addons
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: lokistack-dev-addons-writer
-subjects:
-- kind: ServiceAccount
-  name: lokistack-dev-addons-promtail
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

@@ -1,0 +1,13 @@
+.envrc
+.bin
+
+/vendor/
+
+/.idea
+/*.iml
+
+tmp/bin
+examples/tmp/
+
+# Ignore the MacOS Trash (DS-Store)
+.DS_Store

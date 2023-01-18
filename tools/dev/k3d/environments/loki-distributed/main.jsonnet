@@ -14,7 +14,7 @@ local helm = tanka.helm.new(std.thisFile) {
 local clusterName = 'loki-distributed';
 local normalizedClusterName = std.strReplace(clusterName, '-', '_');
 
-grafana + prometheus + promtail + jaeger {
+prometheus + promtail + jaeger {
   local gatewayName = self.loki.service_loki_distributed_gateway.metadata.name,
   local gatewayHost = '%s' % gatewayName,
   local gatewayUrl = 'http://%s' % gatewayHost,
@@ -33,6 +33,7 @@ grafana + prometheus + promtail + jaeger {
     gelUrl: gatewayUrl,
     jaegerAgentName: jaegerAgentName,
     jaegerAgentPort: 6831,
+    provisioningDir: '/etc/grafana/provisioning',
     namespace: namespace,
     adminToken: 'gel-admin-token',
 
@@ -70,6 +71,53 @@ grafana + prometheus + promtail + jaeger {
       ],
     },
   },
+
+  _images+:: {
+    grafana: {
+      repository: 'grafana/grafana',
+      tag: 'latest',
+      pullPolicy: 'IfNotPresent',
+    },
+  },
+
+  grafana: helm.template('grafana', '../../charts/grafana', {
+    namespace: $._config.namespace,
+    values: {
+      image: $._images.grafana,
+      testFramework: {
+        enabled: false,
+      },
+      env: {
+        GF_AUTH_ANONYMOUS_ENABLED: true,
+        GF_AUTH_ANONYMOUS_ORG_ROLE: 'Admin',
+        GF_FEATURE_TOGGLES_ENABLE: 'ngalert',
+        JAEGER_AGENT_PORT: 6831,
+        JAEGER_AGENT_HOST: $._config.jaegerAgentName,
+      },
+      podAnnotations: {
+        'prometheus.io/scrape': 'true',
+        'prometheus.io/port': '3000',
+      },
+      datasources: {
+        'datasources.yaml': {
+          apiVersion: 1,
+          datasources: $._config.grafana.datasources,
+        },
+      },
+      'grafana.ini': {
+        'tracing.jaeger': {
+          always_included_tag: 'app=grafana',
+          sampler_type: 'const',
+          sampler_param: 1,
+        },
+        paths: {
+          provisioning: $._config.provisioningDir,
+        },
+      },
+    },
+    kubeVersion: 'v1.18.0',
+    noHooks: false,
+  }),
 
   minio: helm.template('minio', '../../charts/minio', {
     namespace: $._config.namespace,

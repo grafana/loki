@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +20,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		return err
 	}
 
-	var s lokiv1beta1.LokiStack
+	var s lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil

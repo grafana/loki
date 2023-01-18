@@ -17,10 +17,11 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"golang.org/x/oauth2"
+	"golang.org/x/time/rate"
 )
 
 const (
-	libraryVersion = "1.75.0"
+	libraryVersion = "1.88.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -64,6 +65,8 @@ type Client struct {
 	Sizes             SizesService
 	FloatingIPs       FloatingIPsService
 	FloatingIPActions FloatingIPActionsService
+	ReservedIPs       ReservedIPsService
+	ReservedIPActions ReservedIPActionsService
 	Snapshots         SnapshotsService
 	Storage           StorageService
 	StorageActions    StorageActionsService
@@ -84,6 +87,9 @@ type Client struct {
 
 	// Optional extra HTTP headers to set on every request to the API.
 	headers map[string]string
+
+	// Optional rate limiter to ensure QoS.
+	rateLimiter *rate.Limiter
 }
 
 // RequestCompletionCallback defines the type of the request callback function
@@ -219,6 +225,8 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Firewalls = &FirewallsServiceOp{client: c}
 	c.FloatingIPs = &FloatingIPsServiceOp{client: c}
 	c.FloatingIPActions = &FloatingIPActionsServiceOp{client: c}
+	c.ReservedIPs = &ReservedIPsServiceOp{client: c}
+	c.ReservedIPActions = &ReservedIPActionsServiceOp{client: c}
 	c.Images = &ImagesServiceOp{client: c}
 	c.ImageActions = &ImageActionsServiceOp{client: c}
 	c.Invoices = &InvoicesServiceOp{client: c}
@@ -286,6 +294,15 @@ func SetRequestHeaders(headers map[string]string) ClientOpt {
 		for k, v := range headers {
 			c.headers[k] = v
 		}
+		return nil
+	}
+}
+
+// SetStaticRateLimit sets an optional client-side rate limiter that restricts
+// the number of queries per second that the client can send to enforce QoS.
+func SetStaticRateLimit(rps float64) ClientOpt {
+	return func(c *Client) error {
+		c.rateLimiter = rate.NewLimiter(rate.Limit(rps), 1)
 		return nil
 	}
 }
@@ -373,6 +390,13 @@ func (r *Response) populateRate() {
 // pointed to by v, or returned as an error if an API error has occurred. If v implements the io.Writer interface,
 // the raw response will be written to v, without attempting to decode it.
 func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*Response, error) {
+	if c.rateLimiter != nil {
+		err := c.rateLimiter.Wait(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	resp, err := DoRequestWithClient(ctx, c.client, req)
 	if err != nil {
 		return nil, err

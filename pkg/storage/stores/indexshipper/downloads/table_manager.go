@@ -3,7 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -43,6 +43,7 @@ type IndexGatewayOwnsTenant func(tenant string) bool
 type TableManager interface {
 	Stop()
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 }
 
 type Config struct {
@@ -155,6 +156,15 @@ func (tm *tableManager) Stop() {
 	}
 }
 
+// Only used by TSDB. boltdb-shipper manages concurrency elsewhere
+func (tm *tableManager) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	table, err := tm.getOrCreateTable(tableName)
+	if err != nil {
+		return err
+	}
+	return table.ForEachConcurrent(ctx, userID, callback)
+}
+
 func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 	table, err := tm.getOrCreateTable(tableName)
 	if err != nil {
@@ -246,8 +256,10 @@ func (tm *tableManager) cleanupCache() error {
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
+	distinctUsers := make(map[string]struct{})
+
 	defer func() {
-		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start))
+		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -284,7 +296,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			return err
 		}
 
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableNumberInRange(tableNumber) {
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, tableName) {
 			continue
 		}
 
@@ -294,10 +306,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		// list the users that have dedicated index files for this table
+		operationStart := time.Now()
 		_, usersWithIndex, err := tm.indexStorageClient.ListFiles(ctx, tableName, false)
 		if err != nil {
 			return err
 		}
+		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
 		usersToBeQueryReadyFor := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
@@ -307,16 +321,31 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			continue
 		}
 
+		operationStart = time.Now()
 		table, err := tm.getOrCreateTable(tableName)
 		if err != nil {
 			return err
 		}
+		createTableDuration := time.Since(operationStart)
 
-		perTableStart := time.Now()
+		for _, u := range usersToBeQueryReadyFor {
+			distinctUsers[u] = struct{}{}
+		}
+
+		operationStart = time.Now()
 		if err := table.EnsureQueryReadiness(ctx, usersToBeQueryReadyFor); err != nil {
 			return err
 		}
-		level.Info(util_log.Logger).Log("msg", "index pre-download for query readiness completed", "users_len", len(usersToBeQueryReadyFor), "duration", time.Since(perTableStart), "table", tableName)
+		ensureQueryReadinessDuration := time.Since(operationStart)
+
+		level.Info(util_log.Logger).Log(
+			"msg", "index pre-download for query readiness completed",
+			"users_len", len(usersToBeQueryReadyFor),
+			"query_readiness_duration", ensureQueryReadinessDuration,
+			"table", tableName,
+			"create_table_duration", createTableDuration,
+			"list_files_duration", listFilesDuration,
+		)
 	}
 
 	return nil
@@ -354,33 +383,33 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 
 // loadLocalTables loads tables present locally.
 func (tm *tableManager) loadLocalTables() error {
-	filesInfo, err := ioutil.ReadDir(tm.cfg.CacheDir)
+	dirEntries, err := os.ReadDir(tm.cfg.CacheDir)
 	if err != nil {
 		return err
 	}
 
-	for _, fileInfo := range filesInfo {
-		if !fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		tableNumber, err := extractTableNumberFromName(fileInfo.Name())
+		tableNumber, err := extractTableNumberFromName(entry.Name())
 		if err != nil {
 			return err
 		}
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableNumberInRange(tableNumber) {
+		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, entry.Name()) {
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
-		table, err := LoadTable(fileInfo.Name(), filepath.Join(tm.cfg.CacheDir, fileInfo.Name()),
+		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
 			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
 		if err != nil {
 			return err
 		}
 
-		tm.tables[fileInfo.Name()] = table
+		tm.tables[entry.Name()] = table
 	}
 
 	return nil

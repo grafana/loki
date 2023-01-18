@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_SplitRangeInterval(t *testing.T) {
@@ -128,6 +130,14 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+			) / 180)`,
+		},
+		{
+			`rate({app="foo"} | unwrap bar[3m])`,
+			`(sum without(
+				   downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
 			) / 180)`,
 		},
 		{
@@ -1371,15 +1381,36 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 
 		// Binary operations
 		{
-			`bytes_over_time({app="foo"}[3m]) + count_over_time({app="foo"}[5m])`,
+			`2 * bytes_over_time({app="foo"}[3m])`,
+			`(
+				2 *
+				sum without (
+				   downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+					++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+					++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
+				)
+			)`,
+		},
+		{
+			`count_over_time({app="foo"}[3m]) * 2`,
+			`(
+				sum without (
+				   downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
+					++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
+					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
+				)
+				* 2
+			)`,
+		},
+		{
+			`bytes_over_time({app="foo"}[3m]) + count_over_time({app="foo"}[4m])`,
 			`(sum without (
 				   downstream<bytes_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<bytes_over_time({app="foo"}[1m]), shard=<nil>>
 			) +
 			sum without (
-				   downstream<count_over_time({app="foo"}[1m] offset 4m0s), shard=<nil>>
-				++ downstream<count_over_time({app="foo"}[1m] offset 3m0s), shard=<nil>>
+				downstream<count_over_time({app="foo"}[1m] offset 3m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 				++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
@@ -1387,7 +1418,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			`,
 		},
 		{
-			`sum(count_over_time({app="foo"}[3m]) * count(sum_over_time({app="foo"} | unwrap bar [5m])))`,
+			`sum(count_over_time({app="foo"}[3m]) * count(sum_over_time({app="foo"} | unwrap bar [4m])))`,
 			`sum(
 				(sum without(
 					   downstream<count_over_time({app="foo"}[1m] offset 2m0s), shard=<nil>>
@@ -1396,8 +1427,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 				) *
 				count (
 					sum without(
-						   downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 4m0s), shard=<nil>>
-						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 3m0s), shard=<nil>>
+						downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 3m0s), shard=<nil>>
 						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 2m0s), shard=<nil>>
 						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m] offset 1m0s), shard=<nil>>
 						++ downstream<sum_over_time({app="foo"} | unwrap bar [1m]), shard=<nil>>
@@ -1469,6 +1499,51 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 					++ downstream<count_over_time({app="foo"}[1m] offset 1m0s), shard=<nil>>
 					++ downstream<count_over_time({app="foo"}[1m]), shard=<nil>>
 				)
+			)`,
+		},
+
+		// regression test queries
+		{
+			`topk(10,sum by (org_id) (rate({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [3m])))`,
+			`topk(10,
+			  sum by (org_id) (
+					(
+						sum without(
+							   downstream<sum by(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [1m] offset 2m0s)),shard=<nil>>
+              ++ downstream<sum by(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [1m] offset 1m0s)),shard=<nil>>
+							++ downstream<sum by(org_id)(sum_over_time({container="query-frontend",namespace="loki"} |= "metrics.go" | logfmt | unwrap bytes(total_bytes) | __error__="" [1m])),shard=<nil>>
+				    )
+					/ 180
+				  )
+				)
+			)`,
+		},
+
+		// label_replace
+		{
+			`label_replace(sum by (baz) (count_over_time({app="foo"}[3m])), "x", "$1", "a", "(.*)")`,
+			`label_replace(
+				sum by (baz) (
+					sum without (
+						downstream<sum by (baz) (count_over_time({app="foo"} [1m] offset 2m0s)), shard=<nil>>
+						++ downstream<sum by (baz) (count_over_time({app="foo"} [1m] offset 1m0s)), shard=<nil>>
+						++ downstream<sum by (baz) (count_over_time({app="foo"} [1m])), shard=<nil>>
+					)
+				), 
+				"x", "$1", "a", "(.*)"
+			)`,
+		},
+		{
+			`label_replace(rate({job="api-server", service="a:c"} |= "err" [3m]), "foo", "$1", "service", "(.*):.*")`,
+			`label_replace(
+				(
+					sum without (
+						downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m] offset 2m0s), shard=<nil>>
+						++ downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m] offset 1m0s), shard=<nil>>
+						++ downstream<count_over_time({job="api-server",service="a:c"} |= "err" [1m]), shard=<nil>>
+					)
+				/ 180), 
+				"foo", "$1", "service", "(.*):.*"
 			)`,
 		},
 	} {
@@ -1635,6 +1710,29 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m])`,
 			`(sum by (foo) (sum_over_time({app="foo"} | json | unwrap bar [3m])) / sum_over_time({app="foo"} | json | unwrap bar [6m]))`,
 		},
+		{
+			`count_over_time({app="foo"}[3m]) or vector(0)`,
+			`(count_over_time({app="foo"}[3m]) or vector(0.000000))`,
+		},
+		{
+			`sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0)`,
+			`(sum(last_over_time({app="foo"} | logfmt | unwrap total_count [1d]) by (foo)) or vector(0.000000))`,
+		},
+
+		// should be noop if literal expression
+		{
+			`5`,
+			`5`,
+		},
+		{
+			`5 * 5`,
+			`25`,
+		},
+		// should be noop if VectorExpr
+		{
+			`vector(0)`,
+			`vector(0.000000)`,
+		},
 	} {
 		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
@@ -1652,4 +1750,19 @@ func Test_FailQuery(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = rvm.Parse(`{app="foo"} |= "err"`)
 	require.Error(t, err)
+	_, _, err = rvm.Parse(`topk(0, sum(count_over_time({app="foo"} | json |  __error__="" [15m])))`)
+	require.Error(t, err)
+	// Check fixes for bug where missing or empty parameters for regexp and pattern parsers threw a panic
+	// Missing parameter to regexp parser
+	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp [1d])))`)
+	require.ErrorIs(t, err, logqlmodel.ErrParse)
+	// Empty parameter to regexp parser
+	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp ` + "``" + ` [1d])))`)
+	require.ErrorIs(t, err, logqlmodel.ErrParse)
+	// Empty parameter to pattern parser
+	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | pattern ` + `""` + ` [1d])))`)
+	require.ErrorIs(t, err, logqlmodel.ErrParse)
+	// Empty parameter to json parser
+	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`)
+	require.NoError(t, err)
 }

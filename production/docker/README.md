@@ -1,37 +1,85 @@
-# Loki cluster using docker-compose
+# Loki with docker-compose
 
-To deploy a cluster of loki nodes on a local machine (as shown below), you could use the `docker-compose-ha-member.yaml` file.
+You can use this `docker-compose` setup to run Docker for development or in production.
 
-<img src="./docker-compose-ha-diagram.png" width="850">
+## Features
 
-Some features of the deployment:
+- Running in [Simple Scalable Deployment](https://grafana.com/docs/loki/latest/fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode) mode with 3 replicas for `read` and `write` targets
+- Memberlist for [consistent hash](https://grafana.com/docs/loki/latest/fundamentals/architecture/rings/) ring
+- [Minio](https://min.io/) for S3-compatible storage for chunks & indexes
+- nginx gateway which acts as a reverse-proxy to the read/write paths
+- Promtail for logs
+  - An optional log-generator
+- Multi-tenancy enabled (`docker` as the tenant ID)
+- Configuration for interactive debugging (see [Debugging](#debugging) section below)
+- Prometheus for metric collection
 
-- Backend: 3 Loki servers enabled with distributor, ingester, querier module
-- Together they form a cluster ring based on memberlist mechanism (if using consul/etcd, modules can be separate for further separate read/write workloads)
-- Index data are stored and replicated through botldb-shipper
-- Replication_factor=2: the receiving distributor sends log data to 2 ingesters based on consistent hashing
-- Chunk storage is a shared directory mounted from the same host directory (to simulate S3 or gcs)
-- Query are performed through the two query frontend servers
-- An nginx gateway to route the write and read workloads from clients (Grafana, promtail)
+## Diagram
 
-1. Ensure you have the most up-to-date Docker container images:
+The below diagram describes the various components of this deployment, and how data flows between them.
 
-   ```bash
-   docker-compose pull
-   ```
+```mermaid
+graph LR
+    Grafana --> |Query logs| nginx["nginx (port: 8080)"]
+    Promtail -->|Send logs| nginx
 
-1. Run the stack on your local Docker:
+    nginx -.-> |read path| QueryFrontend
+    nginx -.-> |write path| Distributor
 
-   ```bash
-   docker-compose -f ./docker-compose-ha-memberlist.yaml up
-   ```
+    subgraph LokiRead["loki -target=read"]
+        QueryFrontend["query-frontend"]
+        Querier["querier"]
 
-1. When adding data source in the grafana dashboard, using `http://loki-gateway:3100` for the URL field.
+        QueryFrontend -.-> Querier
+    end
 
-1. To clean up
+    subgraph Minio["Minio Storage"]
+        Chunks
+        Indexes
+    end
 
-   ```bash
-   docker-compose -f ./docker-compose-ha-memberlist.yaml down
-   ```
+    subgraph LokiWrite["loki -target=write"]
+        Distributor["distributor"] -.-> Ingester["ingester"]
+        Ingester
+    end
 
-   Remove the data under `./loki`.
+    Querier --> |reads| Chunks & Indexes
+    Ingester --> |writes| Chunks & Indexes
+```
+
+## Getting Started
+
+Simply run `docker-compose up` and all the components will start.
+
+It'll take a few seconds for all the components to start up and register in the [ring](http://localhost:8080/ring). Once all instances are `ACTIVE`, Loki will start accepting reads and writes. All logs will be stored with the tenant ID `docker`.
+
+All data will be stored in the `.data` directory.
+
+The nginx gateway runs on port `8080` and you can access Loki through it.
+
+Prometheus runs on port `9090`, and you can access all metrics from Loki & Promtail here.
+
+Grafana runs on port `3000`, and there are Loki & Prometheus datasources enabled by default.
+
+## Endpoints
+
+- [`/ring`](http://localhost:8080/ring) - view all components registered in the hash ring
+- [`/config`](http://localhost:8080/config) - view the configuration used by Loki
+- [`/memberlist`](http://localhost:8080/memberlist) - view all components in the memberlist cluster
+- [all other Loki API endpoints](https://grafana.com/docs/loki/latest/api/)
+
+## Debugging
+
+First, you'll need to build a Loki image that includes and runs [delve](https://github.com/go-delve/delve).
+
+Run `make loki-debug-image` from the root of this project. Grab the image name from the output (it'll look like `grafana/loki:...-debug`) and replace the Loki images in `docker-compose.yaml`.
+
+Next, view the `docker-compose.yaml` file and uncomment the sections related to debugging.
+
+You can follow [this guide](https://blog.jetbrains.com/go/2020/05/06/debugging-a-go-application-inside-a-docker-container/) to enable debugging in GoLand, but the basic steps are:
+
+1. Bind a host port to one of the Loki services
+2. Add a _Go Remote_ debug configuration in GoLand and use that port
+3. Run `docker-compose up`
+4. Set a breakpoint and start the debug configuration
+5. Build/debug something awesome :)

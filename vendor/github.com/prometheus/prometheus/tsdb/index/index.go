@@ -22,7 +22,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -30,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -527,7 +527,7 @@ func (w *Writer) finishSymbols() error {
 	symbolTableSize := w.f.pos - w.toc.Symbols - 4
 	// The symbol table's <len> part is 4 bytes. So the total symbol table size must be less than or equal to 2^32-1
 	if symbolTableSize > math.MaxUint32 {
-		return errors.Errorf("symbol table size exceeds 4 bytes: %d", symbolTableSize)
+		return errors.Errorf("symbol table size exceeds %d bytes: %d", uint32(math.MaxUint32), symbolTableSize)
 	}
 
 	// Write out the length and symbol count.
@@ -820,7 +820,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 	for n := range w.labelNames {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	if err := w.f.Flush(); err != nil {
 		return err
@@ -1109,7 +1109,7 @@ func (b realByteSlice) Sub(start, end int) ByteSlice {
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
-	return newReader(b, ioutil.NopCloser(nil))
+	return newReader(b, io.NopCloser(nil))
 }
 
 // NewFileReader returns a new index reader against the given index file.
@@ -1470,7 +1470,7 @@ func (r *Reader) SymbolTableSize() uint64 {
 func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	values, err := r.LabelValues(name, matchers...)
 	if err == nil && r.version == FormatV1 {
-		sort.Strings(values)
+		slices.Sort(values)
 	}
 	return values, err
 }
@@ -1572,7 +1572,7 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 		names = append(names, name)
 	}
 
-	sort.Strings(names)
+	slices.Sort(names)
 
 	return names, nil
 }
@@ -1744,7 +1744,7 @@ func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
 		}
 		labelNames = append(labelNames, name)
 	}
-	sort.Strings(labelNames)
+	slices.Sort(labelNames)
 	return labelNames, nil
 }
 

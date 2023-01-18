@@ -43,7 +43,7 @@ func (n notFilter) Filter(line []byte) bool {
 
 func (n notFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, n.Filter(line)
 		},
 	}
@@ -87,7 +87,7 @@ func (a andFilter) Filter(line []byte) bool {
 
 func (a andFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
 	}
@@ -164,7 +164,7 @@ func (a andFilters) Filter(line []byte) bool {
 
 func (a andFilters) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
 	}
@@ -205,7 +205,7 @@ func (a orFilter) Filter(line []byte) bool {
 
 func (a orFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
 	}
@@ -235,7 +235,7 @@ func (r regexpFilter) Filter(line []byte) bool {
 
 func (r regexpFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, r.Filter(line)
 		},
 	}
@@ -299,7 +299,7 @@ func containsLower(line, substr []byte) bool {
 
 func (l containsFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, l.Filter(line)
 		},
 	}
@@ -346,7 +346,7 @@ func (f containsAllFilter) Filter(line []byte) bool {
 
 func (f containsAllFilter) ToStage() Stage {
 	return StageFunc{
-		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, f.Filter(line)
 		},
 	}
@@ -490,6 +490,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 	var curr Filterer
 	var ok bool
 	literals := 0
+	var baseLiteralIsCaseInsensitive bool
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal is allowed.
@@ -498,11 +499,12 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 			}
 			literals++
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
+			baseLiteralIsCaseInsensitive = isCaseInsensitive(sub)
 			continue
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
 		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
-			if curr, ok = simplifyConcatAlternate(sub, baseLiteral, curr); !ok {
+			if curr, ok = simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
 				return nil, false
 			}
 			continue
@@ -520,7 +522,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
-		return newContainsFilter(baseLiteral, isCaseInsensitive(reg)), true
+		return newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
 	}
 
 	return nil, false
@@ -530,18 +532,26 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 // A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
 // For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
 // (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
-func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer) (Filterer, bool) {
+func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, baseLiteralIsCaseInsensitive bool) (Filterer, bool) {
 	for _, alt := range reg.Sub {
+		// we should not consider the case where baseLiteral is not marked as case insensitive
+		// and alternate expression is marked as case insensitive. For example, for the original expression
+		// f|f(?i)oo the extracted expression would be "f (?:)|(?i:OO)" i.e. f with empty match
+		// and fOO. For fOO, we can't initialize containsFilter with caseInsensitve variable as either true or false
+		isAltCaseInsensitive := isCaseInsensitive(alt)
+		if !baseLiteralIsCaseInsensitive && isAltCaseInsensitive {
+			return nil, false
+		}
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = chainOrFilter(curr, newContainsFilter(literal, isCaseInsensitive(reg)))
+			curr = chainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = chainOrFilter(curr, newContainsFilter(altLiteral, isCaseInsensitive(reg)))
+			curr = chainOrFilter(curr, newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
 		case syntax.OpConcat:
 			f, ok := simplifyConcat(alt, literal)
 			if !ok {
@@ -552,7 +562,7 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer) 
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 				return nil, false
 			}
-			curr = chainOrFilter(curr, newContainsFilter(literal, isCaseInsensitive(reg)))
+			curr = chainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		default:
 			return nil, false
 		}

@@ -87,6 +87,52 @@ func Equals(tb testing.TB, exp, act interface{}, v ...interface{}) {
 	tb.Fatal(sprintfWithLimit("\033[31m%s:%d:"+msg+"\n\n\texp: %#v\n\n\tgot: %#v%s\033[39m\n\n", filepath.Base(file), line, exp, act, diff(exp, act)))
 }
 
+// Contains fails the test if needle is not contained within haystack, if haystack or needle is
+// an empty slice, or if needle is longer than haystack.
+func Contains(tb testing.TB, haystack, needle []string) {
+	_, file, line, _ := runtime.Caller(1)
+
+	if !contains(haystack, needle) {
+		tb.Fatalf(sprintfWithLimit("\033[31m%s:%d: %#v does not contain %#v\033[39m\n\n", filepath.Base(file), line, haystack, needle))
+	}
+}
+
+func contains(haystack, needle []string) bool {
+	if len(haystack) == 0 || len(needle) == 0 {
+		return false
+	}
+
+	if len(haystack) < len(needle) {
+		return false
+	}
+
+	for i := 0; i < len(haystack); i++ {
+		outer := i
+
+		for j := 0; j < len(needle); j++ {
+			// End of the haystack but not the end of the needle, end
+			if outer == len(haystack) {
+				return false
+			}
+
+			// No match, try the next index of the haystack
+			if haystack[outer] != needle[j] {
+				break
+			}
+
+			// End of the needle and it still matches, end
+			if j == len(needle)-1 {
+				return true
+			}
+
+			// This element matches between the two slices, try the next one
+			outer++
+		}
+	}
+
+	return false
+}
+
 func sprintfWithLimit(act string, v ...interface{}) string {
 	s := fmt.Sprintf(act, v...)
 	if len(s) > 10000 {

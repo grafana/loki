@@ -76,6 +76,6 @@
   else {},
 
   compactor_service: if $._config.using_boltdb_shipper then
-    k.util.serviceFor($.compactor_statefulset)
+    k.util.serviceFor($.compactor_statefulset, $._config.service_ignored_labels)
   else {},
 }

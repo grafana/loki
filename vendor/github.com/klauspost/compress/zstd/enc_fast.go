@@ -85,7 +85,7 @@ func (e *fastEncoder) Encode(blk *blockEnc, src []byte) {
 	// TEMPLATE
 	const hashLog = tableBits
 	// seems global, but would be nice to tweak.
-	const kSearchStrength = 7
+	const kSearchStrength = 6
 
 	// nextEmit is where in src the next emitLiteral should start from.
 	nextEmit := s
@@ -334,7 +334,7 @@ func (e *fastEncoder) EncodeNoHist(blk *blockEnc, src []byte) {
 	// TEMPLATE
 	const hashLog = tableBits
 	// seems global, but would be nice to tweak.
-	const kSearchStrength = 8
+	const kSearchStrength = 6
 
 	// nextEmit is where in src the next emitLiteral should start from.
 	nextEmit := s
@@ -871,7 +871,8 @@ func (e *fastEncoderDict) Reset(d *dict, singleBlock bool) {
 	const shardCnt = tableShardCnt
 	const shardSize = tableShardSize
 	if e.allDirty || dirtyShardCnt > shardCnt*4/6 {
-		copy(e.table[:], e.dictTable)
+		//copy(e.table[:], e.dictTable)
+		e.table = *(*[tableSize]tableEntry)(e.dictTable)
 		for i := range e.tableShardDirty {
 			e.tableShardDirty[i] = false
 		}
@@ -883,7 +884,8 @@ func (e *fastEncoderDict) Reset(d *dict, singleBlock bool) {
 			continue
 		}
 
-		copy(e.table[i*shardSize:(i+1)*shardSize], e.dictTable[i*shardSize:(i+1)*shardSize])
+		//copy(e.table[i*shardSize:(i+1)*shardSize], e.dictTable[i*shardSize:(i+1)*shardSize])
+		*(*[shardSize]tableEntry)(e.table[i*shardSize:]) = *(*[shardSize]tableEntry)(e.dictTable[i*shardSize:])
 		e.tableShardDirty[i] = false
 	}
 	e.allDirty = false

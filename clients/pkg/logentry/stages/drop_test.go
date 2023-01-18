@@ -40,7 +40,7 @@ func Test_dropStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil)
+	util_log.InitLogger(cfg, nil, true, false)
 	Debug = true
 
 	tests := []struct {
@@ -145,6 +145,54 @@ func Test_dropStage_Process(t *testing.T) {
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
 				"key": "VALRUE1",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Matched Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 50,
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Matched Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "50",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Did not match Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 100,
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Did not match Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: ptrFromString("level"),
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "100",
 			},
 			shouldDrop: false,
 		},

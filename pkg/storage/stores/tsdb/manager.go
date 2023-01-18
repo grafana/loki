@@ -3,8 +3,9 @@ package tsdb
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // nolint:revive
@@ -27,22 +29,24 @@ type TSDBManager interface {
 	Start() error
 	// Builds a new TSDB file from a set of WALs
 	BuildFromWALs(time.Time, []WALIdentifier) error
+	// Builds a new TSDB file from tenantHeads
+	BuildFromHead(*tenantHeads) error
 }
 
 /*
 tsdbManager is used for managing active index and is responsible for:
- * Turning WALs into optimized multi-tenant TSDBs when requested
- * Serving reads from these TSDBs
- * Shipping them to remote storage
- * Keeping them available for querying
- * Removing old TSDBs which are no longer needed
+  - Turning WALs into optimized multi-tenant TSDBs when requested
+  - Serving reads from these TSDBs
+  - Shipping them to remote storage
+  - Keeping them available for querying
+  - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
-	indexPeriod time.Duration
 	nodeName    string // node name
 	log         log.Logger
 	dir         string
 	metrics     *Metrics
+	tableRanges config.TableRanges
 
 	sync.RWMutex
 
@@ -53,16 +57,16 @@ func NewTSDBManager(
 	nodeName,
 	dir string,
 	shipper indexshipper.IndexShipper,
-	indexPeriod time.Duration,
+	tableRanges config.TableRanges,
 	logger log.Logger,
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
-		indexPeriod: indexPeriod,
 		nodeName:    nodeName,
 		log:         log.With(logger, "component", "tsdb-manager"),
 		dir:         dir,
 		metrics:     metrics,
+		tableRanges: tableRanges,
 		shipper:     shipper,
 	}
 }
@@ -83,9 +87,15 @@ func (m *tsdbManager) Start() (err error) {
 		)
 	}()
 
+	// regexp for finding the trailing index bucket number at the end of table name
+	extractBucketNumberRegex, err := regexp.Compile(`[0-9]+$`)
+	if err != nil {
+		return err
+	}
+
 	// load list of multitenant tsdbs
 	mulitenantDir := managerMultitenantDir(m.dir)
-	files, err := ioutil.ReadDir(mulitenantDir)
+	files, err := os.ReadDir(mulitenantDir)
 	if err != nil {
 		return err
 	}
@@ -95,17 +105,18 @@ func (m *tsdbManager) Start() (err error) {
 			continue
 		}
 
-		bucket, err := strconv.Atoi(f.Name())
-		if err != nil {
+		bucket := f.Name()
+		if !extractBucketNumberRegex.MatchString(f.Name()) {
 			level.Warn(m.log).Log(
-				"msg", "failed to parse bucket in multitenant dir ",
+				"msg", "directory name does not match expected bucket name pattern",
+				"name", bucket,
 				"err", err.Error(),
 			)
 			continue
 		}
 		buckets++
 
-		tsdbs, err := ioutil.ReadDir(filepath.Join(mulitenantDir, f.Name()))
+		tsdbs, err := os.ReadDir(filepath.Join(mulitenantDir, bucket))
 		if err != nil {
 			level.Warn(m.log).Log(
 				"msg", "failed to open period bucket dir",
@@ -122,11 +133,8 @@ func (m *tsdbManager) Start() (err error) {
 			}
 			indices++
 
-			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, f.Name()), "")
-			loaded, err := NewShippableTSDBFile(
-				prefixed,
-				false,
-			)
+			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
+			loaded, err := NewShippableTSDBFile(prefixed)
 
 			if err != nil {
 				level.Warn(m.log).Log(
@@ -137,7 +145,7 @@ func (m *tsdbManager) Start() (err error) {
 				loadingErrors++
 			}
 
-			if err := m.shipper.AddIndex(f.Name(), "", loaded); err != nil {
+			if err := m.shipper.AddIndex(bucket, "", loaded); err != nil {
 				loadingErrors++
 				return err
 			}
@@ -148,31 +156,17 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
-func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
-	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
-	// get relevant wals
-	// iterate them, build tsdb in scratch dir
-	defer func() {
-		m.metrics.tsdbCreationsTotal.Inc()
-		if err != nil {
-			m.metrics.tsdbCreationFailures.Inc()
-		}
-	}()
+func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
+	periods := make(map[string]*Builder)
 
-	level.Debug(m.log).Log("msg", "recovering tenant heads")
-	tmp := newTenantHeads(t, defaultHeadManagerStripeSize, m.metrics, m.log)
-	if err = recoverHead(m.dir, tmp, ids); err != nil {
-		return errors.Wrap(err, "building TSDB from WALs")
-	}
-
-	periods := make(map[int]*Builder)
-
-	if err := tmp.forAll(func(user string, ls labels.Labels, chks index.ChunkMetas) {
+	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
-		pds := make(map[int]index.ChunkMetas)
+		pds := make(map[string]index.ChunkMetas)
 		for _, chk := range chks {
-			for _, bucket := range indexBuckets(chk.From(), chk.Through()) {
+			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
+
+			for _, bucket := range idxBuckets {
 				pds[bucket] = append(pds[bucket], chk)
 			}
 		}
@@ -180,7 +174,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		// Embed the tenant label into TSDB
 		lb := labels.NewBuilder(ls)
 		lb.Set(TenantLabel, user)
-		withTenant := lb.Labels()
+		withTenant := lb.Labels(nil)
 
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {
@@ -194,23 +188,23 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 				withTenant,
 				// use the fingerprint without the added tenant label
 				// so queries route to the chunks which actually exist.
-				model.Fingerprint(ls.Hash()),
+				model.Fingerprint(fp),
 				matchingChks,
 			)
 		}
 
+		return nil
 	}); err != nil {
-		level.Error(m.log).Log("err", err.Error(), "msg", "building TSDB from WALs")
+		level.Error(m.log).Log("err", err.Error(), "msg", "building TSDB")
 		return err
 	}
 
 	for p, b := range periods {
-
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
 		dst := newPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
-				ts:       t,
+				ts:       heads.start,
 			},
 			dstDir,
 			"",
@@ -232,12 +226,54 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 
 		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dst.Path(), "duration", time.Since(start))
 
-		loaded, err := NewShippableTSDBFile(dst, false)
+		loaded, err := NewShippableTSDBFile(dst)
 		if err != nil {
 			return err
 		}
 
-		if err := m.shipper.AddIndex(fmt.Sprintf("%d", p), "", loaded); err != nil {
+		if err := m.shipper.AddIndex(p, "", loaded); err != nil {
+			return err
+		}
+	}
+
+	m.metrics.tsdbBuildLastSuccess.SetToCurrentTime()
+	return nil
+}
+
+func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
+	level.Debug(m.log).Log("msg", "building heads")
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+
+		m.metrics.tsdbBuilds.WithLabelValues(status, "head").Inc()
+	}()
+
+	return m.buildFromHead(heads)
+}
+
+func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
+	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+
+		m.metrics.tsdbBuilds.WithLabelValues(status, "wal").Inc()
+	}()
+
+	level.Debug(m.log).Log("msg", "recovering tenant heads")
+	for _, id := range ids {
+		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, m.log)
+		if err = recoverHead(m.dir, tmp, []WALIdentifier{id}); err != nil {
+			return errors.Wrap(err, "building TSDB from WALs")
+		}
+
+		err := m.buildFromHead(tmp)
+		if err != nil {
 			return err
 		}
 	}
@@ -245,11 +281,17 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func indexBuckets(from, through model.Time) (res []int) {
+func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
-		res = append(res, int(cur))
+		cfg := tableRanges.ConfigForTableNumber(cur)
+		if cfg != nil {
+			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
+		}
+	}
+	if len(res) == 0 {
+		level.Warn(util_log.Logger).Log("err", "could not find config for table(s) from: %d, through %d", start, end)
 	}
 	return
 }

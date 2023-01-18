@@ -1,7 +1,9 @@
 package syntax
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -70,6 +72,9 @@ func Test_SampleExpr_String(t *testing.T) {
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
+		`vector(123)`,
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -150,6 +155,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		)
 		`,
 		`10 / (5/2)`,
+		`(count_over_time({job="postgres"}[5m])/2) or vector(2)`,
 		`10 / (count_over_time({job="postgres"}[5m])/2)`,
 		`{app="foo"} | json response_status="response.status.code", first_param="request.params[0]"`,
 		`label_replace(
@@ -174,6 +180,77 @@ func Test_SampleExpr_String(t *testing.T) {
 			expr2, err := ParseExpr(expr.String())
 			require.Nil(t, err)
 			require.Equal(t, expr, expr2)
+		})
+	}
+}
+
+func Test_SampleExpr_String_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`topk(0, sum(rate({region="us-east1"}[5m])) by (name))`,
+		`topk by (name)(0,sum(rate({region="us-east1"}[5m])))`,
+		`bottomk(0, sum(rate({region="us-east1"}[5m])) by (name))`,
+		`bottomk by (name)(0,sum(rate({region="us-east1"}[5m])))`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "parse error : invalid parameter (must be greater than 0)")
+		})
+	}
+}
+
+func Test_SampleExpr_Sort_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "sort and sort_desc doesn't allow grouping by")
+		})
+	}
+}
+
+func TestMatcherGroups(t *testing.T) {
+	for i, tc := range []struct {
+		query string
+		exp   []MatcherRange
+	}{
+		{
+			query: `{job="foo"}`,
+			exp: []MatcherRange{
+				{
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
+			},
+		},
+		{
+			query: `count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m] offset 10m)`,
+			exp: []MatcherRange{
+				{
+					Interval: 5 * time.Minute,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "foo"),
+					},
+				},
+				{
+					Interval: 5 * time.Minute,
+					Offset:   10 * time.Minute,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "job", "bar"),
+					},
+				},
+			},
+		},
+	} {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			expr, err := ParseExpr(tc.query)
+			require.Nil(t, err)
+			out := MatcherGroups(expr)
+			require.Equal(t, tc.exp, out)
 		})
 	}
 }
@@ -401,26 +478,30 @@ func BenchmarkContainsFilter(b *testing.B) {
 
 func Test_parserExpr_Parser(t *testing.T) {
 	tests := []struct {
-		name    string
-		op      string
-		param   string
-		want    log.Stage
-		wantErr bool
+		name      string
+		op        string
+		param     string
+		want      log.Stage
+		wantErr   bool
+		wantPanic bool
 	}{
-		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
-		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false},
-		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
-		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false},
-		{"pattern err", OpParserTypePattern, "bar", nil, true},
-		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
-		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},
+		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
+		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
+		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false, false},
+		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
+		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
+		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false, false},
+		{"regexp err ", OpParserTypeRegexp, "foo", nil, true, true},
+		{"unknown op", "DummyOp", "", nil, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := &LabelParserExpr{
-				Op:    tt.op,
-				Param: tt.param,
+			var e *LabelParserExpr
+			if tt.wantPanic {
+				require.Panics(t, func() { e = newLabelParserExpr(tt.op, tt.param) })
+				return
 			}
+			e = newLabelParserExpr(tt.op, tt.param)
 			got, err := e.Stage()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parserExpr.Parser() error = %v, wantErr %v", err, tt.wantErr)
@@ -431,6 +512,32 @@ func Test_parserExpr_Parser(t *testing.T) {
 			} else {
 				require.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+func Test_parserExpr_String(t *testing.T) {
+	tests := []struct {
+		name  string
+		op    string
+		param string
+		want  string
+	}{
+		{"valid regexp", OpParserTypeRegexp, "foo", `| regexp "foo"`},
+		{"empty regexp", OpParserTypeRegexp, "", `| regexp ""`},
+		{"valid pattern", OpParserTypePattern, "buzz", `| pattern "buzz"`},
+		{"empty pattern", OpParserTypePattern, "", `| pattern ""`},
+		{"valid logfmt", OpParserTypeLogfmt, "", `| logfmt`},
+		{"valid json", OpParserTypeJSON, "", `| json`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := LabelParserExpr{
+				Op:    tt.op,
+				Param: tt.param,
+			}
+			require.Equal(t, tt.want, l.String())
 		})
 	}
 }

@@ -3,11 +3,12 @@ package storage_test
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestConfigureDeploymentForStorageType(t *testing.T) {
@@ -23,7 +24,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			desc: "object storage other than GCS",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+				SharedStore: lokiv1.ObjectStorageSecretS3,
 			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
@@ -56,7 +57,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			desc: "object storage GCS",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretGCS,
+				SharedStore: lokiv1.ObjectStorageSecretGCS,
 			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
@@ -79,7 +80,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 								{
 									Name: "loki-ingester",
 									VolumeMounts: []corev1.VolumeMount{
-
 										{
 											Name:      "test",
 											ReadOnly:  false,
@@ -135,7 +135,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			desc: "object storage other than GCS",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+				SharedStore: lokiv1.ObjectStorageSecretS3,
 			},
 			sts: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
@@ -168,7 +168,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			desc: "object storage GCS",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretGCS,
+				SharedStore: lokiv1.ObjectStorageSecretGCS,
 			},
 			sts: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
@@ -246,7 +246,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 			desc: "object storage other than S3",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretAzure,
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
 			},
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
@@ -279,9 +279,10 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 			desc: "object storage S3",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+				SharedStore: lokiv1.ObjectStorageSecretS3,
 				TLS: &storage.TLSConfig{
-					CA: "test",
+					CA:  "test",
+					Key: "service-ca.crt",
 				},
 			},
 			dpl: &appsv1.Deployment{
@@ -306,7 +307,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 									Name: "loki-querier",
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      "test",
+											Name:      "storage-tls",
 											ReadOnly:  false,
 											MountPath: "/etc/storage/ca",
 										},
@@ -318,7 +319,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: "test",
+									Name: "storage-tls",
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
 											LocalObjectReference: corev1.LocalObjectReference{
@@ -359,7 +360,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 			desc: "object storage other than S3",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretAzure,
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
 				TLS: &storage.TLSConfig{
 					CA: "test",
 				},
@@ -395,9 +396,10 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 			desc: "object storage S3",
 			opts: storage.Options{
 				SecretName:  "test",
-				SharedStore: lokiv1beta1.ObjectStorageSecretS3,
+				SharedStore: lokiv1.ObjectStorageSecretS3,
 				TLS: &storage.TLSConfig{
-					CA: "test",
+					CA:  "test",
+					Key: "service-ca.crt",
 				},
 			},
 			sts: &appsv1.StatefulSet{
@@ -422,7 +424,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 									Name: "loki-ingester",
 									VolumeMounts: []corev1.VolumeMount{
 										{
-											Name:      "test",
+											Name:      "storage-tls",
 											ReadOnly:  false,
 											MountPath: "/etc/storage/ca",
 										},
@@ -434,7 +436,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: "test",
+									Name: "storage-tls",
 									VolumeSource: corev1.VolumeSource{
 										ConfigMap: &corev1.ConfigMapVolumeSource{
 											LocalObjectReference: corev1.LocalObjectReference{

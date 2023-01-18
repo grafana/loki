@@ -1,4 +1,4 @@
-{{- /*gotype: github.com/grafana/dskit/kv/memberlist.statusPageData */ -}}
+{{- /*gotype: github.com/grafana/dskit/kv/memberlist.StatusPageData */ -}}
 <!DOCTYPE html>
 <html>
 <head>
@@ -20,7 +20,8 @@
     <thead>
     <tr>
         <th>Key</th>
-        <th>Value Details</th>
+        <th>Codec</th>
+        <th>Version</th>
         <th>Actions</th>
     </tr>
     </thead>
@@ -29,7 +30,8 @@
     {{ range $k, $v := .Store }}
         <tr>
             <td>{{ $k }}</td>
-            <td>{{ $v }}</td>
+            <td>{{ $v.CodecID }}</td>
+            <td>{{ $v.Version }}</td>
             <td>
                 <a href="?viewKey={{ $k }}&format=json">json</a>
                 | <a href="?viewKey={{ $k }}&format=json-pretty">json-pretty</a>
@@ -68,76 +70,83 @@
 
 <p>State: 0 = Alive, 1 = Suspect, 2 = Dead, 3 = Left</p>
 
-<h2>Received Messages</h2>
+<h2>Message History</h2>
 
-<a href="?deleteMessages=true">Delete All Messages (received and sent)</a>
+{{ if .MessageHistoryBufferBytes }}
 
-<table width="100%" border="1">
-    <thead>
-    <tr>
-        <th>ID</th>
-        <th>Time</th>
-        <th>Key</th>
-        <th>Value in the Message</th>
-        <th>Version After Update (0 = no change)</th>
-        <th>Changes</th>
-        <th>Actions</th>
-    </tr>
-    </thead>
+    <h3>Received Messages</h3>
 
-    <tbody>
-    {{ range .ReceivedMessages }}
+    <a href="?deleteMessages=true">Delete All Messages (received and sent)</a>
+
+    <table width="100%" border="1">
+        <thead>
         <tr>
-            <td>{{ .ID }}</td>
-            <td>{{ .Time.Format "15:04:05.000" }}</td>
-            <td>{{ .Pair.Key }}</td>
-            <td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
-            <td>{{ .Version }}</td>
-            <td>{{ StringsJoin .Changes ", " }}</td>
-            <td>
-                <a href="?viewMsg={{ .ID }}&format=json">json</a>
-                | <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
-                | <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
-            </td>
+            <th>ID</th>
+            <th>Time</th>
+            <th>Key</th>
+            <th>Value in the Message</th>
+            <th>Version After Update (0 = no change)</th>
+            <th>Changes</th>
+            <th>Actions</th>
         </tr>
-    {{ end }}
-    </tbody>
-</table>
+        </thead>
 
-<h2>Sent Messages</h2>
+        <tbody>
+        {{ range .ReceivedMessages }}
+            <tr>
+                <td>{{ .ID }}</td>
+                <td>{{ .Time.Format "15:04:05.000" }}</td>
+                <td>{{ .Pair.Key }}</td>
+                <td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
+                <td>{{ .Version }}</td>
+                <td>{{ StringsJoin .Changes ", " }}</td>
+                <td>
+                    <a href="?viewMsg={{ .ID }}&format=json">json</a>
+                    | <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
+                    | <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
+                </td>
+            </tr>
+        {{ end }}
+        </tbody>
+    </table>
 
-<a href="?deleteMessages=true">Delete All Messages (received and sent)</a>
+    <h3>Sent Messages</h3>
 
-<table width="100%" border="1">
-    <thead>
-    <tr>
-        <th>ID</th>
-        <th>Time</th>
-        <th>Key</th>
-        <th>Value</th>
-        <th>Version</th>
-        <th>Changes</th>
-        <th>Actions</th>
-    </tr>
-    </thead>
+    <a href="?deleteMessages=true">Delete All Messages (received and sent)</a>
 
-    <tbody>
-    {{ range .SentMessages }}
+    <table width="100%" border="1">
+        <thead>
         <tr>
-            <td>{{ .ID }}</td>
-            <td>{{ .Time.Format "15:04:05.000" }}</td>
-            <td>{{ .Pair.Key }}</td>
-            <td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
-            <td>{{ .Version }}</td>
-            <td>{{ StringsJoin .Changes ", " }}</td>
-            <td>
-                <a href="?viewMsg={{ .ID }}&format=json">json</a>
-                | <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
-                | <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
-            </td>
+            <th>ID</th>
+            <th>Time</th>
+            <th>Key</th>
+            <th>Value</th>
+            <th>Version</th>
+            <th>Changes</th>
+            <th>Actions</th>
         </tr>
-    {{ end }}
-    </tbody>
-</table>
+        </thead>
+
+        <tbody>
+        {{ range .SentMessages }}
+            <tr>
+                <td>{{ .ID }}</td>
+                <td>{{ .Time.Format "15:04:05.000" }}</td>
+                <td>{{ .Pair.Key }}</td>
+                <td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
+                <td>{{ .Version }}</td>
+                <td>{{ StringsJoin .Changes ", " }}</td>
+                <td>
+                    <a href="?viewMsg={{ .ID }}&format=json">json</a>
+                    | <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
+                    | <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
+                </td>
+            </tr>
+        {{ end }}
+        </tbody>
+    </table>
+{{ else }}
+    <p><i>Message history buffer is disabled, refer to the configuration to enable it in order to troubleshoot the message history.</i></p>
+{{ end }}
 </body>
 </html>

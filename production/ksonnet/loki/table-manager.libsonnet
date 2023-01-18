@@ -37,5 +37,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     k.util.configVolumeMount('loki', '/etc/loki/config'),
 
   table_manager_service:
-    k.util.serviceFor($.table_manager_deployment),
+    k.util.serviceFor($.table_manager_deployment, $._config.service_ignored_labels),
 }

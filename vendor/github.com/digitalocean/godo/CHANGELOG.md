@@ -1,5 +1,81 @@
 # Change Log
 
+## [v1.88.0] - 2022-10-31
+
+- #573 - @kamaln7 - apps: add ListBuildpacks, UpgradeBuildpack
+- #572 - @ghostlandr - Apps: add project id as a parameter to CreateApp and to the App struct
+- #570 - @kraai - Fix copy-and-paste error in comment
+- #568 - @StephenVarela - LBAAS-2321 Add project_id to load balancers structs
+
+## [v1.87.0] - 2022-10-12
+
+- #564 - @DWizGuy58 - Add public monitoring alert policies for dbaas
+- #565 - @dylanrhysscott - CON-5657 (Re-)expose public HA enablement flags in godo
+- #563 - @andrewsomething - Add option to configure a rate.Limiter for the client.
+
+## [v1.86.0] - 2022-09-23
+
+- #561 - @jonfriesen - apps: add docr image deploy on push
+
+## [v1.85.0] - 2022-09-21
+
+- #560 - @andrewsomething - Bump golang.org/x/net (fixes: #557).
+- #559 - @kamaln7 - apps: update component spec interfaces
+- #555 - @kamaln7 - apps: add accessor methods and spec helpers
+- #556 - @kamaln7 - update CI for go 1.18 & 1.19
+
+## [v1.84.1] - 2022-09-16
+
+- #554 - @andrewsomething - reserved IPs: project_id should have omitempty in create req.
+
+## [v1.84.0] - 2022-09-16
+
+- #552 - @andrewsomething - reserved IPs: Expose project_id and locked attributes.
+- #549 - @rpmoore - adding the replica id to the database replica model
+
+## [v1.83.0] - 2022-08-10
+
+- #546 - @DWizGuy58 - Add support for database options
+
+## [v1.82.0] - 2022-08-04
+
+- #544 - @andrewsomething - apps: Add URN() method.
+- #542 - @andrewsomething - databases: Support advanced config endpoints.
+- #543 - @nicktate - Ntate/detection models
+- #541 - @andrewsomething - droplets: Support listing Droplets filtered by name.
+- #540 - @bentranter - Update links to API documentation
+
+## [v1.81.0] - 2022-06-15
+
+- #532 - @senorprogrammer - Add support for Reserved IP addresses
+- #538 - @bentranter - util: update droplet create example
+- #537 - @rpmoore - Adding project_id to databases
+- #536 - @andrewsomething - account: Now may include info on current team.
+- #535 - @ElanHasson - APPS-5636 Update App Platform for functions and Starter Tier App Proposals.
+
+## [v1.80.0] - 2022-05-23
+
+- #533 - @ElanHasson - APPS-5636 - App Platform updates
+
+## [v1.79.0] - 2022-04-29
+
+- #530 - @anitgandhi - monitoring: alerts for Load Balancers TLS conns/s utilization
+- #529 - @ChiefMateStarbuck - Test against Go 1.18
+- #528 - @senorprogrammer - Remove DisablePublicNetworking option from the Create path
+- #527 - @senorprogrammer - Remove the WithFloatingIPAddress create option
+
+## [v1.78.0] - 2022-03-31
+
+- #522 - @jcodybaker - app platform: add support for features field
+
+## [v1.77.0] - 2022-03-16
+
+- #518 - @rcj4747 - apps: Update apps protos
+
+## [v1.76.0] - 2022-03-09
+
+- #516 - @CollinShoop - Add registry region support
+
 ## [v1.75.0] - 2022-01-27
 
 - #508 - @ElanHasson - Synchronize public protos and add multiple specs

@@ -101,3 +101,56 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 	return res
 
 }
+
+// Add adds ChunkMeta at the right place in order. It assumes existing ChunkMetas have already been sorted by using Finalize.
+// There is no chance of a data loss even if the chunks are not sorted because the chunk would anyways be added so the assumption is relatively safe.
+func (c ChunkMetas) Add(chk ChunkMeta) ChunkMetas {
+	j := sort.Search(len(c), func(i int) bool {
+		ichk := c[i]
+		if ichk.MinTime != chk.MinTime {
+			return ichk.MinTime > chk.MinTime
+		}
+
+		if ichk.MaxTime != chk.MaxTime {
+			return ichk.MaxTime > chk.MaxTime
+		}
+
+		return ichk.Checksum >= chk.Checksum
+	})
+
+	if j < len(c) && c[j].MinTime == chk.MinTime && c[j].MaxTime == chk.MaxTime && c[j].Checksum == chk.Checksum {
+		return c
+	}
+
+	res := append(c, chk)
+	copy(res[j+1:], res[j:])
+	res[j] = chk
+
+	return res
+}
+
+// Drop drops ChunkMeta. It assumes existing ChunkMetas have already been sorted by using Finalize.
+// Calling Drop on non-sorted result can result in not dropping the chunk even if it exists.
+// It returns a boolean indicating if the chunk was found and dropped or not so the caller can take appropriate actions if not.
+// ToDo(Sandeep): See if we can do something about the assumption on sorted chunks.
+// Maybe always build ChunkMetas using Add method which should always keep the ChunkMetas deduped and sorted.
+func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
+	j := sort.Search(len(c), func(i int) bool {
+		ichk := c[i]
+		if ichk.MinTime != chk.MinTime {
+			return ichk.MinTime >= chk.MinTime
+		}
+
+		if ichk.MaxTime != chk.MaxTime {
+			return ichk.MaxTime >= chk.MaxTime
+		}
+
+		return ichk.Checksum >= chk.Checksum
+	})
+
+	if j >= len(c) || c[j] != chk {
+		return c, false
+	}
+
+	return c[:j+copy(c[j:], c[j+1:])], true
+}

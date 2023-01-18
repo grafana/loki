@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"strings"
 	"sync"
@@ -435,11 +434,11 @@ func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 		return nil, 0, errStorageObjectNotFound
 	}
 
-	return ioutil.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
+	return io.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
 func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	buf, err := ioutil.ReadAll(object)
+	buf, err := io.ReadAll(object)
 	if err != nil {
 		return err
 	}

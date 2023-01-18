@@ -109,5 +109,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
   gateway_service:
-    k.util.serviceFor($.gateway_deployment),
+    k.util.serviceFor($.gateway_deployment, $._config.service_ignored_labels),
 }

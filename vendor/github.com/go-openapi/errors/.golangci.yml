@@ -41,3 +41,8 @@ linters:
     - errorlint
     - paralleltest
     - tparallel
+    - cyclop
+    - errname
+    - varnamelen
+    - exhaustruct
+    - maintidx

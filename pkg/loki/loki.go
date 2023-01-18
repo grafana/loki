@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -27,11 +28,13 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
+	ingester_client "github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
@@ -39,10 +42,13 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
+	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/usagestats"
@@ -57,31 +63,43 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix   string                 `yaml:"http_prefix"`
+	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
-	Common           common.Config            `yaml:"common,omitempty"`
-	Server           server.Config            `yaml:"server,omitempty"`
-	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
-	Querier          querier.Config           `yaml:"querier,omitempty"`
-	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
-	IndexGateway     indexgateway.Config      `yaml:"index_gateway"`
-	ChunkStoreConfig config.ChunkStoreConfig  `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     config.SchemaConfig      `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
-	TableManager     index.TableManagerConfig `yaml:"table_manager,omitempty"`
-	Worker           worker.Config            `yaml:"frontend_worker,omitempty"`
-	Frontend         lokifrontend.Config      `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config             `yaml:"ruler,omitempty"`
-	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
-	RuntimeConfig    runtimeconfig.Config     `yaml:"runtime_config,omitempty"`
-	MemberlistKV     memberlist.KVConfig      `yaml:"memberlist"`
-	Tracing          tracing.Config           `yaml:"tracing"`
-	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
-	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
-	UsageReport      usagestats.Config        `yaml:"analytics"`
+	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
+	//				 These are only here to allow us to test the new functionality.
+	UseBufferedLogger bool `yaml:"use_buffered_logger" doc:"hidden"`
+	UseSyncLogger     bool `yaml:"use_sync_logger" doc:"hidden"`
+
+	Server              server.Config               `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty" doc:"hidden"`
+	Distributor         distributor.Config          `yaml:"distributor,omitempty"`
+	Querier             querier.Config              `yaml:"querier,omitempty"`
+	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
+	IngesterClient      ingester_client.Config      `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
+	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
+	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
+	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
+	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist" doc:"hidden"`
+
+	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
+	Tracing       tracing.Config       `yaml:"tracing"`
+	UsageReport   usagestats.Config    `yaml:"analytics"`
+
+	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
+
+	Common common.Config `yaml:"common,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -91,17 +109,37 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Set the default module list to 'all'
 	c.Target = []string{All}
-	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
-		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
-		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
-	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
-	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0, "The amount of virtual memory to reserve as a ballast in order to optimise "+
-		"garbage collection. Larger ballasts result in fewer garbage collection passes, reducing compute overhead at the cost of memory usage.")
+	f.Var(&c.Target, "target",
+		"A comma-separated list of components to run. "+
+			"The default value 'all' runs Loki in single binary mode. "+
+			"The value 'read' is an alias to run only read-path related components such as the querier and query-frontend, but all in the same process. "+
+			"The value 'write' is an alias to run only write-path related components such as the distributor and compactor, but all in the same process. "+
+			"Supported values: all, compactor, distributor, ingester, querier, query-scheduler, ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write. "+
+			"A full list of available targets can be printed when running Loki with the '-list-targets' command line flag. ",
+	)
+	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
+		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
+			"If false, the OrgID will always be set to 'fake'.",
+	)
+	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
+		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
+			"Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size. "+
+			"The ballast will not consume physical memory, because it is never read from. "+
+			"It will, however, distort metrics, because it is counted as live memory. ",
+	)
+	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
+	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
+
+	//TODO(trevorwhitney): flip this to false with Loki 3.0
+	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
+		"The default will be flipped to false in the next Loki release.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
+	c.CompactorHTTPClient.RegisterFlags(f)
+	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
@@ -128,6 +166,7 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
 	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
 	c.Server.RegisterFlags(throwaway)
+	c.InternalServer.RegisterFlags(throwaway)
 
 	throwaway.VisitAll(func(f *flag.Flag) {
 		// Ignore errors when setting new values. We have a test to verify that it works.
@@ -137,6 +176,9 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
 			_ = f.Value.Set("true")
+
+		case "server.http-listen-port":
+			_ = f.Value.Set("3100")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
@@ -203,6 +245,71 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := AdjustForTimeoutsMigration(c); err != nil {
+		return err
+	}
+
+	// Honor the legacy scalable deployment topology
+	if c.LegacyReadTarget {
+		if c.isModuleEnabled(Backend) {
+			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
+		}
+	}
+
+	return nil
+}
+
+// AdjustForTimeoutsMigration will adjust Loki timeouts configuration to be in accordance with the next major release.
+//
+// We're preparing to unify the querier:engine:timeout and querier:query_timeout into a single timeout named limits_config:query_timeout.
+// The migration encompasses of:
+// - If limits_config:query_timeout is explicitly configured, use it everywhere as it is a new configuration and by
+// configuring it, users are expressing that they're willing of using it.
+// - If none are explicitly configured, use the default engine:timeout everywhere as it is longer than the default limits_config:query_timeout
+// and otherwise users would start to experience shorter timeouts without expecting it.
+// - If only the querier:engine:timeout was explicitly configured, warn the user and use it everywhere.
+func AdjustForTimeoutsMigration(c *Config) error {
+	engineTimeoutIsDefault := c.Querier.Engine.Timeout == logql.DefaultEngineTimeout
+	perTenantTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
+	if engineTimeoutIsDefault && perTenantTimeoutIsDefault {
+		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
+			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+		}
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"per-tenant timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default per-tenant timeout (%q).",
+				c.Querier.Engine.Timeout.String(),
+				c.LimitsConfig.QueryTimeout.String(),
+			),
+		)
+		return nil
+	}
+
+	if !perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"using configured per-tenant timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
+				c.LimitsConfig.QueryTimeout.String(),
+				c.Querier.Engine.Timeout.String(),
+			),
+		)
+		return nil
+	}
+
+	if perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
+			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+		}
+		level.Warn(util_log.Logger).Log("msg",
+			fmt.Sprintf(
+				"using configured engine timeout (%q) as the default (can be overridden per-tenant in the limits_config). Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
+				c.Querier.Engine.Timeout.String(),
+				c.LimitsConfig.QueryTimeout.String(),
+			),
+		)
+		return nil
+	}
+
 	return nil
 }
 
@@ -226,6 +333,7 @@ type Loki struct {
 	SignalHandler *signals.Handler
 
 	Server                   *server.Server
+	InternalServer           *server.Server
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
@@ -233,6 +341,7 @@ type Loki struct {
 	distributor              *distributor.Distributor
 	Ingester                 ingester.Interface
 	Querier                  querier.Querier
+	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
 	querierAPI               *querier.QuerierAPI
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
@@ -250,7 +359,8 @@ type Loki struct {
 	usageReport              *usagestats.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
 
-	clientMetrics storage.ClientMetrics
+	clientMetrics       storage.ClientMetrics
+	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -258,8 +368,9 @@ type Loki struct {
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		Cfg:           cfg,
-		clientMetrics: storage.NewClientMetrics(),
+		Cfg:                 cfg,
+		clientMetrics:       storage.NewClientMetrics(),
+		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 	}
 	usagestats.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -279,6 +390,7 @@ func (t *Loki) setupAuthMiddleware() {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/logproto.Ingester/TransferChunks",
+			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
@@ -354,6 +466,9 @@ func (t *Loki) Run(opts RunOpts) error {
 	}
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
+	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
@@ -362,9 +477,13 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.bindConfigEndpoint(opts)
 
 	// Each component serves its version.
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
+	}
 	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
 
 	t.Server.HTTP.Path("/debug/fgprof").Methods("GET", "POST").Handler(fgprof.Handler())
+	t.Server.HTTP.Path("/loki/api/v1/format_query").Methods("GET", "POST").HandlerFunc(formatQueryHandler())
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
@@ -464,6 +583,11 @@ func (t *Loki) setupModuleManager() error {
 	mm := modules.NewManager(util_log.Logger)
 
 	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
+
+	if t.Cfg.InternalServer.Enable {
+		mm.RegisterModule(InternalServer, t.initInternalServer, modules.UserInvisibleModule)
+	}
+
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
@@ -485,10 +609,12 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
+	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
 	mm.RegisterModule(Write, nil)
+	mm.RegisterModule(Backend, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
@@ -500,9 +626,9 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
@@ -511,25 +637,52 @@ func (t *Loki) setupModuleManager() error {
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
-		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
+		Read:                     {QueryFrontend, Querier},
 		Write:                    {Ingester, Distributor},
+		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
+		MemberlistKV:             {Server},
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
+	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
+	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the querier
-	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[Querier] = append(deps[Querier], QueryScheduler)
 	}
 
 	// If the query scheduler and query frontend are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the query frontend
-	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	if t.Cfg.LegacyReadTarget {
+		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway)
+	}
+
+	if t.Cfg.InternalServer.Enable {
+		for key, ds := range deps {
+			idx := -1
+			for i, v := range ds {
+				if v == Server {
+					idx = i
+					break
+				}
+			}
+
+			if idx == -1 {
+				continue
+			}
+
+			a := append(ds[:idx+1], ds[idx:]...)
+			a[idx] = InternalServer
+			deps[key] = a
+		}
+
 	}
 
 	for mod, targets := range deps {

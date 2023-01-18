@@ -118,7 +118,7 @@ func (s *dnsSD) Resolve(ctx context.Context, name string, qtype QType) ([]string
 					return nil, errors.Wrapf(err, "lookup IP addresses %q", host)
 				}
 				if len(resIPs) == 0 {
-					level.Error(s.logger).Log("msg", "failed to lookup IP addresses", "host", host, "err", err)
+					level.Error(s.logger).Log("msg", "failed to lookup IP addresses", "srv", host, "a", rec.Target, "err", err)
 				}
 			}
 			for _, resIP := range resIPs {

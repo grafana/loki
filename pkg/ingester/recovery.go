@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -41,11 +41,11 @@ func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 		return reader, reader, nil
 	}
 
-	r, err := wal.NewSegmentsReader(lastCheckpointDir)
+	r, err := wlog.NewSegmentsReader(lastCheckpointDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	return wal.NewReader(r), r, nil
+	return wlog.NewReader(r), r, nil
 }
 
 type Recoverer interface {
@@ -165,7 +165,7 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false)
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))

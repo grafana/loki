@@ -3,7 +3,6 @@ package index
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -351,18 +350,18 @@ func (lt *Table) buildFileName(dbName string) string {
 
 func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
 	dbs := map[string]*bbolt.DB{}
-	filesInfo, err := ioutil.ReadDir(dir)
+	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
 			continue
 		}
-		fullPath := filepath.Join(dir, fileInfo.Name())
+		fullPath := filepath.Join(dir, entry.Name())
 
-		if strings.HasSuffix(fileInfo.Name(), indexfile.TempFileSuffix) || strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
+		if strings.HasSuffix(entry.Name(), indexfile.TempFileSuffix) || strings.HasSuffix(entry.Name(), snapshotFileSuffix) {
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
 			if err := os.Remove(fullPath); err != nil {
@@ -395,7 +394,7 @@ func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, err
 			continue
 		}
 
-		dbs[fileInfo.Name()] = db
+		dbs[entry.Name()] = db
 	}
 
 	return dbs, nil

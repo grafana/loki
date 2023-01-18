@@ -8,12 +8,11 @@ fgprof is a sampling [Go](https://golang.org/) profiler that allows you to analy
 
 Go's builtin sampling CPU profiler can only show On-CPU time, but it's better than fgprof at that. Go also includes tracing profilers that can analyze I/O, but they can't be combined with the CPU profiler.
 
-fgprof is designed for analyzing applications with mixed I/O and CPU workloads.
+fgprof is designed for analyzing applications with mixed I/O and CPU workloads. This kind of profiling is also known as wall-clock profiling.
 
 ## Quick Start
 
-If this is the first time you hear about fgprof, you should start by reading
-about [The Problem](#the-problem) & [How it Works](#how-it-works).
+If this is the first time you hear about fgprof, you should start by reading about [The Problem](#the-problem) & [How it Works](#how-it-works).
 
 There is no need to choose between fgprof and the builtin profiler. Here is how to add both to your application:
 
@@ -176,7 +175,7 @@ fgprof is implemented as a background goroutine that wakes up 99 times per secon
 
 This data is used to maintain an in-memory stack counter which can be converted to the pprof or folded output format. The meat of the implementation is super simple and < 100 lines of code, you should [check it out](./fgprof.go).
 
-Generally speaking, fgprof should not have a big impact on the performance of your program. However `runtime.GoroutineProfile` calls `stopTheWorld()` and could be slow if you have a lot of goroutines. For now the advise is to test the impact of the profiler on a development environment before running it against production instances. In the future this README will try to provide a more detailed analysis of the performance impact.
+The overhead of fgprof increases with the number of active goroutines (including those waiting on I/O, Channels, Locks, etc.) executed by your program. If your program typically has less than 1000 active goroutines, you shouldn't have much to worry about. However, at 10k or more goroutines fgprof is likely to become unable to maintain its sampling rate and to significantly degrade the performance of your application, see [BenchmarkProfilerGoroutines.txt](./BenchmarkProfilerGoroutines.txt). The latter is due to `runtime.GoroutineProfile()` calling `stopTheWorld()`. For now the advise is to test the impact of the profiler on a development environment before running it against production instances. There are ideas for making fgprof more scalable and safe for programs with a high number of goroutines, but they will likely need improved APIs from the Go core.
 
 ### Go's builtin CPU Profiler
 

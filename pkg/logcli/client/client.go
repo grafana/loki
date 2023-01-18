@@ -1,12 +1,14 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -14,6 +16,8 @@ import (
 	"github.com/gorilla/websocket"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
+
+	"github.com/grafana/dskit/backoff"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -46,6 +50,10 @@ type Client interface {
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
+type BackoffConfig struct {
+	MaxBackoff int
+	MinBackoff int
+}
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
@@ -60,6 +68,8 @@ type DefaultClient struct {
 	Retries         int
 	QueryTags       string
 	AuthHeader      string
+	ProxyURL        string
+	BackoffConfig   BackoffConfig
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -191,6 +201,14 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
+	if c.ProxyURL != "" {
+		prox, err := url.Parse(c.ProxyURL)
+		if err != nil {
+			return err
+		}
+		clientConfig.ProxyURL = config.URL{URL: prox}
+	}
+
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return err
@@ -200,30 +218,43 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	var resp *http.Response
-	attempts := c.Retries + 1
+
 	success := false
 
-	for attempts > 0 {
-		attempts--
+	bkcfg := backoff.Config{
+		MinBackoff: time.Duration(c.BackoffConfig.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.BackoffConfig.MaxBackoff) * time.Second,
+		// 0 max-retries for backoff means infinite number of retries.
+		MaxRetries: c.Retries + 1,
+	}
+	backoff := backoff.New(context.Background(), bkcfg)
 
+	for {
+		if !backoff.Ongoing() {
+			break
+		}
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
+			backoff.Wait()
 			continue
 		}
 		if resp.StatusCode/100 != 2 {
-			buf, _ := ioutil.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
+			buf, _ := io.ReadAll(resp.Body) // nolint
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
+			backoff.Wait()
 			continue
 		}
 		success = true
+
 		break
+
 	}
 	if !success {
-		return fmt.Errorf("Run out of attempts while querying the server")
+		return fmt.Errorf("run out of attempts while querying the server")
 	}
 
 	defer func() {
@@ -274,7 +305,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	}
 
 	if c.BearerTokenFile != "" {
-		b, err := ioutil.ReadFile(c.BearerTokenFile)
+		b, err := os.ReadFile(c.BearerTokenFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
 		}
@@ -315,12 +346,18 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		TLSClientConfig: tlsConfig,
 	}
 
+	if c.ProxyURL != "" {
+		ws.Proxy = func(req *http.Request) (*url.URL, error) {
+			return url.Parse(c.ProxyURL)
+		}
+	}
+
 	conn, resp, err := ws.Dial(us, h)
 	if err != nil {
 		if resp == nil {
 			return nil, err
 		}
-		buf, _ := ioutil.ReadAll(resp.Body) // nolint
+		buf, _ := io.ReadAll(resp.Body) // nolint
 		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
 	}
 

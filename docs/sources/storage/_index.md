@@ -36,6 +36,11 @@ The file system is the simplest backend for chunks, although it's also susceptib
 
 S3 is AWS's hosted object store. It is a good candidate for a managed object store, especially when you're already running on AWS, and is production safe.
 
+### Azure Blob Storage
+
+Blob Storage is Microsoft Azure's hosted object store. It is a good candidate for a managed object store, especially when you're already running on Azure, and is production safe.
+You can authenticate Blob Storage access by using a storage account name and key or by using a Service Principal.
+
 ### Notable Mentions
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
@@ -233,6 +238,64 @@ storage_config:
       dynamodb_url: dynamodb://region
 ```
 
+The role should have a policy with the following permissions attached.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "LokiStorage",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::<account_ID>"
+                ]
+            },
+            "Action": [
+                "s3:ListBucket",
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::<bucket_name>",
+                "arn:aws:s3:::<bucket_name>/*"
+            ]
+        }
+    ]
+}
+```
+
+**To setup an S3 bucket and an IAM role and policy:** 
+
+This guide assumes a provisioned EKS cluster.
+
+1. Checkout the Loki repository and navigate to [production/terraform/modules/s3](https://github.com/grafana/loki/tree/main/production/terraform/modules/s3).
+
+2. Initialize Terraform `terraform init`.
+
+3. Export the AWS profile and region if not done so:
+
+   ```
+   export AWS_PROFILE=<profile in ~/.aws/config>
+   export AWS_REGION=<region of EKS cluster>
+   ```
+
+4. Save the OIDC provider in an enviroment variable:
+
+   ```
+   oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+   ```
+
+   See the [IAM OIDC provider guide](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) for a guide for creating a provider.
+
+5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS cluster> -var oidc_id="$oidc_provider"`
+
+   Note, the bucket name defaults to `loki-data` but can be changed via the
+   `bucket_name` variable.
+
+
 ### On prem deployment (Cassandra+Cassandra)
 
 **Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
@@ -291,6 +354,8 @@ schema_config:
 
 ### Azure Storage Account
 
+#### Using account name and key
+
 ```yaml
 schema_config:
   configs:
@@ -312,7 +377,42 @@ storage_config:
     use_managed_identity: <true|false>
     # Providing a user assigned ID will override use_managed_identity
     user_assigned_id: <user-assigned-identity-id>
-    request_timeout: 0    
+    request_timeout: 0
+    # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container & blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
+    endpoint_suffix: <endpoint-suffix>
+  boltdb_shipper:
+    active_index_directory: /data/loki/boltdb-shipper-active
+    cache_location: /data/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: azure
+  filesystem:
+    directory: /data/loki/chunks
+```
+
+#### Using a service principal
+
+```yaml
+schema_config:
+  configs:
+  - from: "2020-12-11"
+    index:
+      period: 24h
+      prefix: index_
+    object_store: azure
+    schema: v11
+    store: boltdb-shipper
+storage_config:
+  azure:
+    use_service_principal: true
+    # Azure tenant ID used to authenticate through Azure OAuth
+    tenant_id : <tenant-id>
+    # Azure Service Principal ID
+    client_id: <client-id>
+    # Azure Service Principal secret key
+    client_secret: <client-secret>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <container-name>
+    request_timeout: 0
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache

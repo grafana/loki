@@ -38,7 +38,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
+		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
 		ctx := context.Background()
 
 		// Check put / get works
@@ -55,9 +55,11 @@ func TestFifoCacheEviction(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
+		reason := fullReason
+
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -98,7 +100,7 @@ func TestFifoCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
-		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -119,7 +121,7 @@ func TestFifoCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
-		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -149,7 +151,7 @@ func TestFifoCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(3))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
-		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -193,7 +195,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
+			c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
 			ctx := context.Background()
 
 			err := c.Store(ctx, []string{key1, key2, key3, key4}, [][]byte{data1, data2, data3, data4})
@@ -208,7 +210,8 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 			assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesAdded))
 			assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesAddedNew))
-			assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted))
+			assert.Equal(t, float64(0), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(expiredReason)))
+			assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(fullReason)))
 			assert.Equal(t, float64(3), testutil.ToFloat64(c.entriesCurrent))
 			assert.Equal(t, float64(len(c.entries)), testutil.ToFloat64(c.entriesCurrent))
 			assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
@@ -223,7 +226,8 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 			assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesAdded))
 			assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesAddedNew))
-			assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesEvicted))
+			assert.Equal(t, float64(3), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(expiredReason)))
+			assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(fullReason)))
 			assert.Equal(t, float64(0), testutil.ToFloat64(c.entriesCurrent))
 			assert.Equal(t, float64(len(c.entries)), testutil.ToFloat64(c.entriesCurrent))
 			assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))

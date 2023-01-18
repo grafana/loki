@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -19,13 +20,30 @@ import (
 // BuildIngester builds the k8s objects required to run Loki Ingester
 func BuildIngester(opts Options) ([]client.Object, error) {
 	statefulSet := NewIngesterStatefulSet(opts)
-	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureIngesterServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+	if opts.Gates.HTTPEncryption {
+		if err := configureIngesterHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if err := storage.ConfigureStatefulSet(statefulSet, opts.ObjectStorage); err != nil {
+		return nil, err
+	}
+
+	if opts.Gates.GRPCEncryption {
+		if err := configureIngesterGRPCServicePKI(statefulSet, opts); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&statefulSet.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
@@ -39,6 +57,7 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -104,8 +123,10 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
+				SecurityContext:          containerSecurityContext(),
 			},
 		},
+		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
@@ -114,7 +135,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
@@ -185,7 +206,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 
 // NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
 func NewIngesterGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -194,7 +215,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   serviceNameIngesterGRPC(opts.Name),
-			Labels: l,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -206,7 +227,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
@@ -214,8 +235,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 // NewIngesterHTTPService creates a k8s service for the ingester HTTP endpoint
 func NewIngesterHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameIngesterHTTP(opts.Name)
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+	labels := ComponentLabels(LabelIngesterComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -223,9 +243,8 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      l,
-			Annotations: a,
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -236,12 +255,17 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
-			Selector: l,
+			Selector: labels,
 		},
 	}
 }
 
-func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIngesterHTTP(stackName)
-	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+func configureIngesterHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIngesterHTTP(opts.Name)
+	return configureHTTPServicePKI(&statefulSet.Spec.Template.Spec, serviceName)
+}
+
+func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
+	serviceName := serviceNameIngesterGRPC(opts.Name)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }

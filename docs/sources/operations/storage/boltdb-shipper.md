@@ -73,14 +73,17 @@ Let us talk about more in depth about how both Ingesters and Queriers work when 
 
 ### Ingesters
 
-Ingesters keep writing the index to BoltDB files in `active_index_directory` and BoltDB Shipper keeps looking for new and updated files in that directory every 1 Minutes to upload them to the shared object store.
-When running Loki in clustered mode there could be multiple ingesters serving write requests hence each of them generating BoltDB files locally.
+Ingesters write the index to BoltDB files in `active_index_directory`,
+and the BoltDB Shipper looks for new and updated files in that directory at 1 minute intervals, to upload them to the shared object store.
+When running Loki in microservices mode, there could be multiple ingesters serving write requests.
+Each ingester generates BoltDB files locally.
 
-**Note:** To avoid any loss of index when Ingester crashes it is recommended to run Ingesters as statefulset(when using k8s) with a persistent storage for storing index files.
+**Note:** To avoid any loss of index when an ingester crashes, we recommend running ingesters as a statefulset (when using Kubernetes) with a persistent storage for storing index files.
 
-Another important detail to note is when chunks are flushed they are available for reads in object store instantly while index is not since we only upload them every 15 Minutes with BoltDB shipper.
-Ingesters expose a new RPC for letting Queriers query the Ingester's local index for chunks which were recently flushed but its index might not be available yet with Queriers.
-For all the queries which require chunks to be read from the store, Queriers also query Ingesters over RPC for IDs of chunks which were recently flushed which is to avoid missing any logs from queries.
+When chunks are flushed, they are available for reads in the object store instantly. The index is not available instantly, since we upload every 15 minutes with the BoltDB shipper.
+Ingesters expose a new RPC for letting queriers query the ingester's local index for chunks which were recently flushed, but its index might not be available yet with queriers.
+For all the queries which require chunks to be read from the store, queriers also query ingesters over RPC for IDs of chunks which were recently flushed.
+This avoids missing any logs from queries.
 
 ### Queriers
 

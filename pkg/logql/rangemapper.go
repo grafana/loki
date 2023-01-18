@@ -13,12 +13,14 @@ import (
 )
 
 var splittableVectorOp = map[string]struct{}{
-	syntax.OpTypeSum:   {},
-	syntax.OpTypeCount: {},
-	syntax.OpTypeMax:   {},
-	syntax.OpTypeMin:   {},
-	syntax.OpTypeAvg:   {},
-	syntax.OpTypeTopK:  {},
+	syntax.OpTypeSum:      {},
+	syntax.OpTypeCount:    {},
+	syntax.OpTypeMax:      {},
+	syntax.OpTypeMin:      {},
+	syntax.OpTypeAvg:      {},
+	syntax.OpTypeTopK:     {},
+	syntax.OpTypeSort:     {},
+	syntax.OpTypeSortDesc: {},
 }
 
 var splittableRangeVectorOp = map[string]struct{}{
@@ -36,20 +38,20 @@ var splittableRangeVectorOp = map[string]struct{}{
 // using the downstream engine.
 //
 // A rewrite is performed using the following rules:
-// 1) Check if query is splittable based on the range.
-// 2) Check if the query is splittable based on the query AST
-// 3) Range aggregations are split into multiple downstream range aggregation expressions
-//    that are concatenated with an appropriate vector aggregator with a grouping operator.
-//    If the range aggregation has a grouping, the grouping is also applied to
-//    the resultant vector aggregator expression.
-//    If the range aggregation has no grouping, a grouping operator using "without" is applied
-//    to the resultant vector aggregator expression to preserve the stream labels.
-// 4) Vector aggregations are split into multiple downstream vector aggregations
-//    that are merged with vector aggregation using "without" and then aggregated
-//    using the vector aggregation with the same operator,
-//    either with or without grouping.
-// 5) Left and right-hand side of binary operations are split individually
-//    using the same rules as above.
+//  1. Check if query is splittable based on the range.
+//  2. Check if the query is splittable based on the query AST
+//  3. Range aggregations are split into multiple downstream range aggregation expressions
+//     that are concatenated with an appropriate vector aggregator with a grouping operator.
+//     If the range aggregation has a grouping, the grouping is also applied to
+//     the resultant vector aggregator expression.
+//     If the range aggregation has no grouping, a grouping operator using "without" is applied
+//     to the resultant vector aggregator expression to preserve the stream labels.
+//  4. Vector aggregations are split into multiple downstream vector aggregations
+//     that are merged with vector aggregation using "without" and then aggregated
+//     using the vector aggregation with the same operator,
+//     either with or without grouping.
+//  5. Left and right-hand side of binary operations are split individually
+//     using the same rules as above.
 type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
@@ -113,11 +115,7 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 // is pushed down to the downstream expression.
 func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, recorder *downstreamRecorder) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr, err := clone(expr)
-	if err != nil {
-		return nil, err
-	}
-
+	expr = clone(expr)
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, recorder)
@@ -128,26 +126,42 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		if err != nil {
 			return nil, err
 		}
-		// if left hand side is a noop, we need to return the original expression
+		// if left-hand side is a noop, we need to return the original expression
 		// so the whole expression is a noop and thus not executed using the
-		// downstream engine
-		if e.SampleExpr.String() == lhsMapped.String() {
+		// downstream engine.
+		// Note: literal expressions are identical to their mapped expression,
+		// map binary expression if left-hand size is a literal
+		if _, ok := e.SampleExpr.(*syntax.LiteralExpr); e.SampleExpr.String() == lhsMapped.String() && !ok {
 			return e, nil
 		}
 		rhsMapped, err := m.Map(e.RHS, vectorAggrPushdown, recorder)
 		if err != nil {
 			return nil, err
 		}
-		// if right hand side is a noop, we need to return the original expression
+		// if right-hand side is a noop, we need to return the original expression
 		// so the whole expression is a noop and thus not executed using the
 		// downstream engine
-		if e.RHS.String() == rhsMapped.String() {
+		// Note: literal expressions are identical to their mapped expression,
+		// map binary expression if right-hand size is a literal
+		if _, ok := e.RHS.(*syntax.LiteralExpr); e.RHS.String() == rhsMapped.String() && !ok {
 			return e, nil
 		}
 		e.SampleExpr = lhsMapped
 		e.RHS = rhsMapped
 		return e, nil
+	case *syntax.LabelReplaceExpr:
+		lhsMapped, err := m.Map(e.Left, vectorAggrPushdown, recorder)
+		if err != nil {
+			return nil, err
+		}
+		e.Left = lhsMapped
+		return e, nil
+	case *syntax.LiteralExpr:
+		return e, nil
+	case *syntax.VectorExpr:
+		return e, nil
 	default:
+		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 	}
 }
@@ -187,9 +201,11 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 // sumOverFullRange returns an expression that sums up individual downstream queries (with preserving labels)
 // and dividing it by the full range in seconds to calculate a rate value.
 // The operation defines the range aggregation operation of the downstream queries.
-// Example:
+// Examples:
 // rate({app="foo"}[2m])
 // => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+// rate({app="foo"} | unwrap bar [2m])
+// => (sum without (sum_over_time({app="foo"}[1m]) ++ sum_over_time({app="foo"}[1m]) offset 1m) / 120)
 func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrideDownstream *syntax.VectorAggregationExpr, operation string, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
 	var downstreamExpr syntax.SampleExpr = &syntax.RangeAggregationExpr{
 		Left:      expr.Left,
@@ -203,7 +219,12 @@ func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrid
 			Grouping:  overrideDownstream.Grouping,
 			Operation: overrideDownstream.Operation,
 		}
+		// Ensure our modified expression is still valid.
+		if downstreamExpr.(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr).Validate() != nil {
+			return expr
+		}
 	}
+
 	return &syntax.BinOpExpr{
 		SampleExpr: &syntax.VectorAggregationExpr{
 			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval, recorder),
@@ -247,7 +268,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // appendDownstream adds expression expr with a range interval 'interval' and offset 'offset' to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
-	sampleExpr, _ := clone(expr)
+	sampleExpr := clone(expr)
 	sampleExpr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
@@ -307,7 +328,7 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	// This does not work for `count()` and `topk()`, though.
 	// We also do not want to push down, if the inner expression is a binary operation.
 	var vectorAggrPushdown *syntax.VectorAggregationExpr
-	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK {
+	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK && expr.Operation != syntax.OpTypeSort && expr.Operation != syntax.OpTypeSortDesc {
 		vectorAggrPushdown = expr
 	}
 
@@ -372,7 +393,15 @@ func (m RangeMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
 			return expr
 		}
-		return m.sumOverFullRange(expr, vectorAggrPushdown, syntax.OpRangeTypeCount, rangeInterval, recorder)
+		// rate({app="foo"}[2m]) =>
+		// => (sum without (count_over_time({app="foo"}[1m]) ++ count_over_time({app="foo"}[1m]) offset 1m) / 120)
+		op := syntax.OpRangeTypeCount
+		if expr.Left.Unwrap != nil {
+			// rate({app="foo"} | unwrap bar [2m])
+			// => (sum without (sum_over_time({app="foo"}[1m]) ++ sum_over_time({app="foo"}[1m]) offset 1m) / 120)
+			op = syntax.OpRangeTypeSum
+		}
+		return m.sumOverFullRange(expr, vectorAggrPushdown, op, rangeInterval, recorder)
 	case syntax.OpRangeTypeBytesRate:
 		if labelExtractor && vectorAggrPushdown.Operation != syntax.OpTypeSum {
 			return expr
@@ -402,13 +431,19 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 	case *syntax.VectorAggregationExpr:
 		_, ok := splittableVectorOp[e.Operation]
 		return ok && isSplittableByRange(e.Left)
-	case *syntax.BinOpExpr:
-		return isSplittableByRange(e.SampleExpr) && isSplittableByRange(e.RHS)
-	case *syntax.LabelReplaceExpr:
-		return isSplittableByRange(e.Left)
 	case *syntax.RangeAggregationExpr:
 		_, ok := splittableRangeVectorOp[e.Operation]
 		return ok
+	case *syntax.BinOpExpr:
+		_, literalLHS := e.SampleExpr.(*syntax.LiteralExpr)
+		_, literalRHS := e.RHS.(*syntax.LiteralExpr)
+		// Note: if both left-hand side and right-hand side are literal expressions,
+		// the syntax.ParseSampleExpr returns a literal expression
+		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
+	case *syntax.LabelReplaceExpr:
+		return isSplittableByRange(e.Left)
+	case *syntax.VectorExpr:
+		return false
 	default:
 		return false
 	}
@@ -418,6 +453,12 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 // This is needed whenever we want to modify the existing query tree.
 // clone is identical to syntax.Expr.Clone() but with the additional type
 // casting for syntax.SampleExpr.
-func clone(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
-	return syntax.ParseSampleExpr(expr.String())
+func clone(expr syntax.SampleExpr) syntax.SampleExpr {
+	e, err := syntax.ParseSampleExpr(expr.String())
+	if err != nil {
+		panic(
+			errors.Wrapf(err, "error cloning query: %s", expr.String()),
+		)
+	}
+	return e
 }

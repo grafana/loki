@@ -132,6 +132,12 @@ var Functions = map[string]*Function{
 		Variadic:   1,
 		ReturnType: ValueTypeVector,
 	},
+	"day_of_year": {
+		Name:       "day_of_year",
+		ArgTypes:   []ValueType{ValueTypeVector},
+		Variadic:   1,
+		ReturnType: ValueTypeVector,
+	},
 	"deg": {
 		Name:       "deg",
 		ArgTypes:   []ValueType{ValueTypeVector},
@@ -155,6 +161,21 @@ var Functions = map[string]*Function{
 	"floor": {
 		Name:       "floor",
 		ArgTypes:   []ValueType{ValueTypeVector},
+		ReturnType: ValueTypeVector,
+	},
+	"histogram_count": {
+		Name:       "histogram_count",
+		ArgTypes:   []ValueType{ValueTypeVector},
+		ReturnType: ValueTypeVector,
+	},
+	"histogram_sum": {
+		Name:       "histogram_sum",
+		ArgTypes:   []ValueType{ValueTypeVector},
+		ReturnType: ValueTypeVector,
+	},
+	"histogram_fraction": {
+		Name:       "histogram_fraction",
+		ArgTypes:   []ValueType{ValueTypeScalar, ValueTypeScalar, ValueTypeVector},
 		ReturnType: ValueTypeVector,
 	},
 	"histogram_quantile": {

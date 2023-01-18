@@ -188,7 +188,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 func TestMemcache(t *testing.T) {
 	t.Run("Unbatched", func(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache(),
-			"test", nil, log.NewNopLogger())
+			"test", nil, log.NewNopLogger(), "test")
 		testCache(t, cache)
 	})
 
@@ -196,14 +196,14 @@ func TestMemcache(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 3,
-		}, newMockMemcache(), "test", nil, log.NewNopLogger())
+		}, newMockMemcache(), "test", nil, log.NewNopLogger(), "test")
 		testCache(t, cache)
 	})
 }
 
 func TestFifoCache(t *testing.T) {
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 1e3, TTL: 1 * time.Hour},
-		nil, log.NewNopLogger())
+		nil, log.NewNopLogger(), "test")
 	testCache(t, cache)
 }
 

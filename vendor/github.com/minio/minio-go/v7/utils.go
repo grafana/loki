@@ -510,11 +510,11 @@ var (
 )
 
 func newMd5Hasher() md5simd.Hasher {
-	return hashWrapper{Hash: md5Pool.Get().(hash.Hash), isMD5: true}
+	return &hashWrapper{Hash: md5Pool.Get().(hash.Hash), isMD5: true}
 }
 
 func newSHA256Hasher() md5simd.Hasher {
-	return hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
+	return &hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
 }
 
 // hashWrapper implements the md5simd.Hasher interface.
@@ -525,7 +525,7 @@ type hashWrapper struct {
 }
 
 // Close will put the hasher back into the pool.
-func (m hashWrapper) Close() {
+func (m *hashWrapper) Close() {
 	if m.isMD5 && m.Hash != nil {
 		m.Reset()
 		md5Pool.Put(m.Hash)

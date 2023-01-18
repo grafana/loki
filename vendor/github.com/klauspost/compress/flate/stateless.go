@@ -59,9 +59,9 @@ var bitWriterPool = sync.Pool{
 	},
 }
 
-// StatelessDeflate allows to compress directly to a Writer without retaining state.
+// StatelessDeflate allows compressing directly to a Writer without retaining state.
 // When returning everything will be flushed.
-// Up to 8KB of an optional dictionary can be given which is presumed to presumed to precede the block.
+// Up to 8KB of an optional dictionary can be given which is presumed to precede the block.
 // Longer dictionaries will be truncated and will still produce valid output.
 // Sending nil dictionary is perfectly fine.
 func StatelessDeflate(out io.Writer, in []byte, eof bool, dict []byte) error {
@@ -249,7 +249,15 @@ func statelessEnc(dst *tokens, src []byte, startAt int16) {
 				l++
 			}
 			if nextEmit < s {
-				emitLiteral(dst, src[nextEmit:s])
+				if false {
+					emitLiteral(dst, src[nextEmit:s])
+				} else {
+					for _, v := range src[nextEmit:s] {
+						dst.tokens[dst.n] = token(v)
+						dst.litHist[v]++
+						dst.n++
+					}
+				}
 			}
 
 			// Save the match found

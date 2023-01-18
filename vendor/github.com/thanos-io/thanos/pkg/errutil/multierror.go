@@ -6,6 +6,7 @@ package errutil
 import (
 	"bytes"
 	"fmt"
+	"sync"
 )
 
 // The MultiError type implements the error interface, and contains the
@@ -30,6 +31,31 @@ func (es MultiError) Err() error {
 		return nil
 	}
 	return NonNilMultiError(es)
+}
+
+// SyncMultiError is a thread-safe implementation of MultiError.
+type SyncMultiError struct {
+	mtx sync.Mutex
+	es  MultiError
+}
+
+// Add adds the error to the error list if it is not nil.
+func (es *SyncMultiError) Add(err error) {
+	if err == nil {
+		return
+	}
+	es.mtx.Lock()
+	defer es.mtx.Unlock()
+
+	es.Add(err)
+}
+
+// Err returns the error list as an error or nil if it is empty.
+func (es *SyncMultiError) Err() error {
+	es.mtx.Lock()
+	defer es.mtx.Unlock()
+
+	return es.es.Err()
 }
 
 type NonNilMultiError MultiError

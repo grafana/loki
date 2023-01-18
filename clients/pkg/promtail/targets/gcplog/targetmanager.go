@@ -15,7 +15,7 @@ import (
 // nolint:revive
 type GcplogTargetManager struct {
 	logger  log.Logger
-	targets map[string]*GcplogTarget
+	targets map[string]Target
 }
 
 func NewGcplogTargetManager(
@@ -26,7 +26,7 @@ func NewGcplogTargetManager(
 ) (*GcplogTargetManager, error) {
 	tm := &GcplogTargetManager{
 		logger:  logger,
-		targets: make(map[string]*GcplogTarget),
+		targets: make(map[string]Target),
 	}
 
 	for _, cf := range scrape {
@@ -38,7 +38,7 @@ func NewGcplogTargetManager(
 			return nil, err
 		}
 
-		t, err := NewGcplogTarget(metrics, logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.GcplogConfig)
+		t, err := NewGCPLogTarget(metrics, logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.GcplogConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create pubsub target: %w", err)
 		}
@@ -60,7 +60,7 @@ func (tm *GcplogTargetManager) Ready() bool {
 func (tm *GcplogTargetManager) Stop() {
 	for name, t := range tm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("event", "failed to stop pubsub target", "name", name, "cause", err)
+			level.Error(tm.logger).Log("event", "failed to stop pubsub target", "name", name, "cause", err)
 		}
 	}
 }

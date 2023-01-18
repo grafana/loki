@@ -135,7 +135,7 @@ func Create(c *gophercloud.ServiceClient, opts AuthOptionsBuilder) (r CreateResu
 	}
 
 	resp, err := c.Post(tokenURL(c), b, &r.Body, &gophercloud.RequestOpts{
-		MoreHeaders: map[string]string{"X-Auth-Token": ""},
+		OmitHeaders: []string{"X-Auth-Token"},
 	})
 	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
 	return

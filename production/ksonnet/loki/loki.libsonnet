@@ -31,4 +31,7 @@
 (import 'boltdb_shipper.libsonnet') +
 
 // Memberlist related deployment configuration, mostly migration related
-(import 'memberlist.libsonnet')
+(import 'memberlist.libsonnet') +
+
+// Prometheus ServiceMonitor
+(import 'servicemonitor.libsonnet')

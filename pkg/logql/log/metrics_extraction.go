@@ -80,13 +80,13 @@ type streamLineSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (l *streamLineSampleExtractor) Process(_ int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
 	// short circuit.
 	if l.Stage == NoopStage {
 		return l.LineExtractor(line), l.builder.GroupedLabels(), true
 	}
 	l.builder.Reset()
-	line, ok := l.Stage.Process(line, l.builder)
+	line, ok := l.Stage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
 	}
@@ -168,10 +168,10 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(_ int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
-	line, ok := l.preStage.Process(line, l.builder)
+	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
 	}
@@ -179,16 +179,20 @@ func (l *streamLabelSampleExtractor) Process(_ int64, line []byte) (float64, Lab
 	var v float64
 	stringValue, _ := l.builder.Get(l.labelName)
 	if stringValue == "" {
-		l.builder.SetErr(errSampleExtraction)
-	} else {
-		var err error
-		v, err = l.conversionFn(stringValue)
-		if err != nil {
-			l.builder.SetErr(errSampleExtraction)
-		}
+		// NOTE: It's totally fine for log line to not have this particular label.
+		// See Issue: https://github.com/grafana/loki/issues/6713
+		return 0, nil, false
 	}
+
+	var err error
+	v, err = l.conversionFn(stringValue)
+	if err != nil {
+		l.builder.SetErr(errSampleExtraction)
+		l.builder.SetErrorDetails(err.Error())
+	}
+
 	// post filters
-	if _, ok = l.postFilter.Process(line, l.builder); !ok {
+	if _, ok = l.postFilter.Process(ts, line, l.builder); !ok {
 		return 0, nil, false
 	}
 	return v, l.builder.GroupedLabels(), true

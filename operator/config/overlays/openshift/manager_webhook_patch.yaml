@@ -11,12 +11,3 @@ spec:
         - containerPort: 9443
           name: webhook-server
           protocol: TCP
-        volumeMounts:
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: webhook-cert
-          readOnly: true
-      volumes:
-      - name: webhook-cert
-        secret:
-          defaultMode: 420
-          secretName: loki-operator-webhook-service

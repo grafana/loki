@@ -6,7 +6,7 @@ import (
 	"github.com/google/pprof/profile"
 )
 
-func toProfile(s stackCounter, hz int) *profile.Profile {
+func toProfile(s map[string]int, hz int) *profile.Profile {
 	functionID := uint64(1)
 	locationID := uint64(1)
 

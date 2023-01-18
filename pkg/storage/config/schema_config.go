@@ -63,32 +63,41 @@ var (
 // TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
 // Both Start and End are inclusive.
 type TableRange struct {
-	Start, End int64
+	Start, End   int64
+	PeriodConfig *PeriodConfig
 }
 
 // TableRanges represents a list of table ranges for multiple schemas.
 type TableRanges []TableRange
 
-// TableNumberInRange tells whether given table number falls in any of the ranges.
-func (t TableRanges) TableNumberInRange(tableNumber int64) bool {
+// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
+func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+}
+
+func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	for _, r := range t {
 		if r.Start <= tableNumber && tableNumber <= r.End {
-			return true
+			return r.PeriodConfig
 		}
 	}
 
-	return false
+	return nil
 }
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        DayTime             `yaml:"from"`         // used when working with config
-	IndexType   string              `yaml:"store"`        // type of index client to use.
-	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
-	Schema      string              `yaml:"schema"`
-	IndexTables PeriodicTableConfig `yaml:"index"`
-	ChunkTables PeriodicTableConfig `yaml:"chunks"`
-	RowShards   uint32              `yaml:"row_shards"`
+	// used when working with config
+	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
+	// type of index client to use.
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used.\nWhich store to use for the index. Either aws, aws-dynamo, gcp, bigtable, bigtable-hashed, cassandra, boltdb or boltdb-shipper. "`
+	// type of object client to use; if omitted, defaults to store.
+	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs, cassandra, swift, filesystem or a named_store (refer to named_stores_config). If omitted, defaults to the same value as store."`
+	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v11."`
+	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
+	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
+	RowShards   uint32              `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -111,8 +120,9 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // the configured schema start date, index table period and the given schemaEndDate
 func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
 	return TableRange{
-		Start: cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
-		End:   schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
+		PeriodConfig: cfg,
 	}
 }
 
@@ -246,23 +256,6 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 	return usingForPeriodConfigs(configs, fn)
 }
 
-// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == BoltDBShipperType
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
-func UsingTSDB(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		return cfg.IndexType == TSDBType
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
 func defaultRowShards(schema string) uint32 {
 	switch schema {
 	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
@@ -376,9 +369,9 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
-	Prefix string
-	Period time.Duration
-	Tags   Tags
+	Prefix string        `yaml:"prefix" doc:"description=Table prefix for all period tables."`
+	Period time.Duration `yaml:"period" doc:"description=Table period."`
+	Tags   Tags          `yaml:"tags" doc:"description=A map to be added to all managed tables."`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

@@ -28,8 +28,9 @@ import (
 // A pullStream supports the methods of a StreamingPullClient, but re-opens
 // the stream on a retryable error.
 type pullStream struct {
-	ctx  context.Context
-	open func() (pb.Subscriber_StreamingPullClient, error)
+	ctx    context.Context
+	open   func() (pb.Subscriber_StreamingPullClient, error)
+	cancel context.CancelFunc
 
 	mu  sync.Mutex
 	spc *pb.Subscriber_StreamingPullClient
@@ -39,18 +40,27 @@ type pullStream struct {
 // for testing
 type streamingPullFunc func(context.Context, ...gax.CallOption) (pb.Subscriber_StreamingPullClient, error)
 
-func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName string) *pullStream {
+func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName string, maxOutstandingMessages, maxOutstandingBytes int, maxDurationPerLeaseExtension time.Duration) *pullStream {
 	ctx = withSubscriptionKey(ctx, subName)
+	ctx, cancel := context.WithCancel(ctx)
 	return &pullStream{
-		ctx: ctx,
+		ctx:    ctx,
+		cancel: cancel,
 		open: func() (pb.Subscriber_StreamingPullClient, error) {
 			spc, err := streamingPull(ctx, gax.WithGRPCOptions(grpc.MaxCallRecvMsgSize(maxSendRecvBytes)))
 			if err == nil {
 				recordStat(ctx, StreamRequestCount, 1)
+				streamAckDeadline := int32(maxDurationPerLeaseExtension / time.Second)
+				// By default, maxDurationPerLeaseExtension, aka MaxExtensionPeriod, is disabled,
+				// so in these cases, use a healthy default of 60 seconds.
+				if streamAckDeadline <= 0 {
+					streamAckDeadline = 60
+				}
 				err = spc.Send(&pb.StreamingPullRequest{
-					Subscription: subName,
-					// We modack messages when we receive them, so this value doesn't matter too much.
-					StreamAckDeadlineSeconds: 60,
+					Subscription:             subName,
+					StreamAckDeadlineSeconds: streamAckDeadline,
+					MaxOutstandingMessages:   int64(maxOutstandingMessages),
+					MaxOutstandingBytes:      int64(maxOutstandingBytes),
 				})
 			}
 			if err != nil {

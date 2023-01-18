@@ -6,6 +6,7 @@ import (
 	"strings"
 	"text/template"
 	"text/template/parse"
+	"time"
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
@@ -14,7 +15,8 @@ import (
 )
 
 const (
-	functionLineName = "__line__"
+	functionLineName      = "__line__"
+	functionTimestampName = "__timestamp__"
 )
 
 var (
@@ -33,13 +35,27 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
-		"regexReplaceAll": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllString(s, repl)
+		"regexReplaceAll": func(regex string, s string, repl string) (string, error) {
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return "", err
+			}
+			return r.ReplaceAllString(s, repl), nil
 		},
-		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllLiteralString(s, repl)
+		"regexReplaceAllLiteral": func(regex string, s string, repl string) (string, error) {
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return "", err
+			}
+			return r.ReplaceAllLiteralString(s, repl), nil
+		},
+		"count": func(regexsubstr string, s string) (int, error) {
+			r, err := regexp.Compile(regexsubstr)
+			if err != nil {
+				return 0, err
+			}
+			matches := r.FindAllStringIndex(s, -1)
+			return len(matches), nil
 		},
 	}
 
@@ -88,6 +104,20 @@ var (
 	}
 )
 
+func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
+	functions := make(map[string]interface{}, len(functionMap)+2)
+	for k, v := range functionMap {
+		functions[k] = v
+	}
+	functions[functionLineName] = func() string {
+		return currLine()
+	}
+	functions[functionTimestampName] = func() time.Time {
+		return time.Unix(0, currTimestamp())
+	}
+	return functions
+}
+
 func init() {
 	sprigFuncMap := sprig.GenericFuncMap()
 	for _, v := range templateFunctions {
@@ -102,6 +132,7 @@ type LineFormatter struct {
 	buf *bytes.Buffer
 
 	currentLine []byte
+	currentTs   int64
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
@@ -109,13 +140,13 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	lf := &LineFormatter{
 		buf: bytes.NewBuffer(make([]byte, 4096)),
 	}
-	functions := make(map[string]interface{}, len(functionMap)+1)
-	for k, v := range functionMap {
-		functions[k] = v
-	}
-	functions[functionLineName] = func() string {
+
+	functions := addLineAndTimestampFunctions(func() string {
 		return unsafeGetString(lf.currentLine)
-	}
+	}, func() int64 {
+		return lf.currentTs
+	})
+
 	t, err := template.New("line").Option("missingkey=zero").Funcs(functions).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %w", err)
@@ -124,12 +155,14 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
-func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
 	lf.currentLine = line
+	lf.currentTs = ts
 
 	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
+		lbs.SetErrorDetails(err.Error())
 		return line, true
 	}
 	return lf.buf.Bytes(), true
@@ -227,6 +260,9 @@ type labelFormatter struct {
 type LabelsFormatter struct {
 	formats []labelFormatter
 	buf     *bytes.Buffer
+
+	currentLine []byte
+	currentTs   int64
 }
 
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
@@ -238,10 +274,20 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 	}
 	formats := make([]labelFormatter, 0, len(fmts))
 
+	lf := &LabelsFormatter{
+		buf: bytes.NewBuffer(make([]byte, 1024)),
+	}
+
+	functions := addLineAndTimestampFunctions(func() string {
+		return unsafeGetString(lf.currentLine)
+	}, func() int64 {
+		return lf.currentTs
+	})
+
 	for _, fm := range fmts {
 		toAdd := labelFormatter{LabelFmt: fm}
 		if !fm.Rename {
-			t, err := template.New("label").Option("missingkey=zero").Funcs(functionMap).Parse(fm.Value)
+			t, err := template.New("label").Option("missingkey=zero").Funcs(functions).Parse(fm.Value)
 			if err != nil {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
@@ -249,10 +295,8 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		}
 		formats = append(formats, toAdd)
 	}
-	return &LabelsFormatter{
-		formats: formats,
-		buf:     bytes.NewBuffer(make([]byte, 1024)),
-	}, nil
+	lf.formats = formats
+	return lf, nil
 }
 
 func validate(fmts []LabelFmt) error {
@@ -271,7 +315,10 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	lf.currentLine = l
+	lf.currentTs = ts
+
 	var data interface{}
 	for _, f := range lf.formats {
 		if f.Rename {
@@ -288,6 +335,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		}
 		if err := f.tmpl.Execute(lf.buf, data); err != nil {
 			lbs.SetErr(errTemplateFormat)
+			lbs.SetErrorDetails(err.Error())
 			continue
 		}
 		lbs.Set(f.Name, lf.buf.String())
@@ -318,6 +366,22 @@ func trunc(c int, s string) string {
 	}
 	return s
 }
+
+type Decolorizer struct{}
+
+// RegExp to select ANSI characters courtesy of https://github.com/acarl005/stripansi
+const ansiPattern = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+
+var ansiRegex = regexp.MustCompile(ansiPattern)
+
+func NewDecolorizer() (*Decolorizer, error) {
+	return &Decolorizer{}, nil
+}
+
+func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return ansiRegex.ReplaceAll(line, []byte{}), true
+}
+func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 
 // substring creates a substring of the given string.
 //

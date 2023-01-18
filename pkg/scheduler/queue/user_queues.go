@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Provenance-includes-location: https://github.com/cortexproject/cortex/blob/master/pkg/scheduler/queue/user_queues.go
+// Provenance-includes-license: Apache-2.0
+// Provenance-includes-copyright: The Cortex Authors.
+
 package queue
 
 import (
@@ -142,6 +147,12 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 // last user index, use -1.
 func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (chan Request, string, int) {
 	uid := lastUserIndex
+
+	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
+	// any more queries to it.
+	if info := q.queriers[querierID]; info == nil || info.shuttingDown {
+		return nil, "", uid
+	}
 
 	for iters := 0; iters < len(q.users); iters++ {
 		uid = uid + 1
