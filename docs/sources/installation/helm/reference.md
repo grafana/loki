@@ -1586,6 +1586,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.enableServiceLinks</td>
+			<td>bool</td>
+			<td>Should enableServiceLinks be enabled. Default to enable</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.existingSecretForConfig</td>
 			<td>string</td>
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
