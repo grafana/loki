@@ -136,4 +136,3 @@ If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrot
 Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this topic, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
 Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{<relref "./configuration.md">}}/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
-r
