@@ -40,7 +40,6 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
@@ -104,11 +103,12 @@ type Config struct {
 	ResendDelay time.Duration `yaml:"resend_delay"`
 
 	// Enable sharding rule groups.
-	EnableSharding   bool          `yaml:"enable_sharding"`
-	ShardingStrategy string        `yaml:"sharding_strategy"`
-	SearchPendingFor time.Duration `yaml:"search_pending_for"`
-	Ring             RingConfig    `yaml:"ring" doc:"description=Ring used by Loki ruler. The CLI flags prefix for this block configuration is 'ruler.ring'."`
-	FlushCheckPeriod time.Duration `yaml:"flush_period"`
+	EnableSharding        bool          `yaml:"enable_sharding"`
+	EnableShuffleSharding bool          `yaml:"enable_shuffle_sharding"`
+	ShardingStrategy      string        `yaml:"sharding_strategy"`
+	SearchPendingFor      time.Duration `yaml:"search_pending_for"`
+	Ring                  RingConfig    `yaml:"ring" doc:"description=Ring used by Loki ruler. The CLI flags prefix for this block configuration is 'ruler.ring'."`
+	FlushCheckPeriod      time.Duration `yaml:"flush_period"`
 
 	EnableAPI bool `yaml:"enable_api"`
 
@@ -122,21 +122,30 @@ type Config struct {
 }
 
 // Validate config and returns error on failure
-func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
+func (cfg *Config) Validate(log log.Logger) error {
+	// support for deprecated sharding configuration
+	level.Warn(log).Log("msg", fmt.Sprintf("use of deprecated ruler sharding strategy %s, instead use enable_shuffle_sharding", util.ShardingStrategyShuffle))
+
+	if cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		cfg.EnableShuffleSharding = true
+
+		// TODO(v3.0): replace with util.ShardingStrategyByRule
+		cfg.ShardingStrategy = util.ShardingStrategyDefault
+	}
+
+	// if shuffle-sharding is enabled, this implies that sharding in general is enabled
+	if cfg.EnableShuffleSharding {
+		cfg.EnableSharding = true
+	}
+
+	if cfg.ShardingStrategy == "" {
+		cfg.ShardingStrategy = util.ShardingStrategyDefault
+	}
+
 	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
-		return errInvalidShardingStrategy
+		return fmt.Errorf("invalid sharding strategy %q, supported strategies are %v", cfg.ShardingStrategy, supportedShardingStrategies)
 	}
 
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.RulerTenantShardSize <= 0 {
-		return errInvalidTenantShardSize
-	}
-
-	if err := cfg.StoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
-	if err := cfg.ClientTLSConfig.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid ruler gRPC client config")
-	}
 	return nil
 }
 
@@ -170,6 +179,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend.")
+	f.BoolVar(&cfg.EnableShuffleSharding, "ruler.enable-shuffle-sharding", false, "Distribute rule groups across rulers for tenants using a shuffle-sharding algorithm. Implies -ruler.enable-sharding=true.")
 	f.StringVar(&cfg.ShardingStrategy, "ruler.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "File path to store temporary rule files.")
@@ -258,6 +268,10 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 }
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
+	if err := cfg.Validate(logger); err != nil {
+		return nil, fmt.Errorf("invalid ruler config: %w", err)
+	}
+
 	ruler := &Ruler{
 		cfg:            cfg,
 		store:          ruleStore,
@@ -544,21 +558,10 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 }
 
 func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGroupList, err error) {
-	switch {
-	case !r.cfg.EnableSharding:
+	if r.cfg.EnableSharding {
+		result, err = r.listRulesSharding(ctx)
+	} else {
 		result, err = r.listRulesNoSharding(ctx)
-
-	case r.cfg.ShardingStrategy == util.ShardingStrategyDefault:
-		result, err = r.listRulesShardingDefault(ctx)
-
-	case r.cfg.ShardingStrategy == util.ShardingStrategyByRule:
-		result, err = r.listRulesShardingByRule(ctx)
-
-	case r.cfg.ShardingStrategy == util.ShardingStrategyShuffle:
-		result, err = r.listRulesShuffleSharding(ctx)
-
-	default:
-		return nil, errors.New("invalid sharding configuration")
 	}
 
 	if err != nil {
@@ -578,6 +581,14 @@ func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.Rul
 	return r.store.ListAllRuleGroups(ctx)
 }
 
+func (r *Ruler) listRulesSharding(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	if r.cfg.EnableShuffleSharding {
+		return r.listRulesShuffleSharding(ctx)
+	}
+
+	return r.listRulesShardingDefault(ctx)
+}
+
 func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
@@ -586,23 +597,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
-		if len(filtered) > 0 {
-			filteredConfigs[userID] = filtered
-		}
-	}
-	return filteredConfigs, nil
-}
-
-func (r *Ruler) listRulesShardingByRule(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
-	configs, err := r.store.ListAllRuleGroups(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	filteredConfigs := make(map[string]rulespb.RuleGroupList, len(configs))
-	for userID, groups := range configs {
-		filtered := filterRules(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := filterRules(r.cfg.ShardingStrategy, userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -660,7 +655,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := filterRules(r.cfg.ShardingStrategy, userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
@@ -705,7 +700,8 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 }
 
 // filterRules returns a list of rule groups, each with a single rule, ONLY for rules that are "owned" by the given ring instance.
-func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, logger log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+// the reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring, but only ring passed as parameter.
+func filterRules(shardingStrategy string, userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, logger log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Return one rule group per rule that is owned by this ring instance.
 	// One rule group is returned per rule because Prometheus executed rule groups concurrently but rules within a group sequentially;
 	// we are sharding by rule here to explicitly *avoid* sequential execution since Loki does not need this.
@@ -713,6 +709,25 @@ func filterRules(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.R
 
 	for _, g := range ruleGroups {
 		logger = log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
+
+		// if we are sharding by rule group, we can just add the entire group
+		if shardingStrategy == util.ShardingStrategyDefault {
+			owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
+			if err != nil {
+				ringCheckErrors.Inc()
+				level.Error(logger).Log("msg", "failed to check if the ruler replica owns the rule group", "err", err)
+				continue
+			}
+
+			if owned {
+				level.Debug(logger).Log("msg", "rule group owned")
+				result = append(result, g)
+			} else {
+				level.Debug(logger).Log("msg", "rule group not owned, ignoring")
+			}
+
+			continue
+		}
 
 		for _, r := range g.Rules {
 			logger = log.With(logger, "rule", getRuleIdentifier(r))
@@ -880,7 +895,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
 	ring := ring.ReadRing(r.ring)
 
-	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.EnableShuffleSharding {
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 
