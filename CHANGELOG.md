@@ -12,6 +12,8 @@
 
 ##### Fixes
 
+* [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
+
 ##### Changes
 
 #### Promtail
