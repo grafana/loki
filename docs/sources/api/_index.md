@@ -594,7 +594,7 @@ In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
 ### Examples
 
-```bash
+```console
 $ curl -v -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw \
   '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
@@ -1254,7 +1254,7 @@ See [statistics](#statistics) for information about the statistics returned by L
 
 #### Examples
 
-```bash
+```console
 $ curl -G -s "http://localhost:3100/api/prom/query" --data-urlencode 'query={foo="bar"}' | jq
 {
   "streams": [
@@ -1305,7 +1305,7 @@ Response:
 
 #### Examples
 
-```bash
+```console
 $ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
 {
   "values": [
@@ -1342,7 +1342,7 @@ Response:
 
 #### Examples
 
-```bash
+```console
 $ curl -G -s  "http://localhost:3100/api/prom/label" | jq
 {
   "values": [
@@ -1387,7 +1387,7 @@ In microservices mode, `/api/prom/push` is exposed by the distributor.
 
 #### Examples
 
-```bash
+```console
 $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
   '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
 ```
