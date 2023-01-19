@@ -2,8 +2,6 @@
 title: Helm Chart Values
 menuTitle: Helm Chart Values
 description: Reference for Helm Chart values.
-aliases:
-  - /docs/writers-toolkit/latest/templates/reference-template
 weight: 100
 keywords: []
 ---
