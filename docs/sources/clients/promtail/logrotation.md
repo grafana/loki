@@ -1,5 +1,5 @@
 ---
-title: Promtail and LogRotation
+title: Promtail and Log Rotation
 ---
 # Promtail and Log Rotation
 
