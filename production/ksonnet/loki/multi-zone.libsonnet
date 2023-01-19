@@ -79,34 +79,34 @@
     $.util.serviceFor(sts, $._config.service_ignored_labels) +
     service.mixin.spec.withClusterIp('None'),  // Headless.
 
-  ingester_zone_a_container:: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_a_container:: if !$._config.multi_zone_ingester_enabled then {} else
     self.newIngesterZoneContainer('a', $.ingester_zone_a_args),
 
-  ingester_zone_a_statefulset: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_a_statefulset: if !$._config.multi_zone_ingester_enabled then {} else
     self.newIngesterZoneStatefulSet('a', $.ingester_zone_a_container),
 
-  ingester_zone_a_service: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_a_service: if !$._config.multi_zone_ingester_enabled then {} else
     $.newIngesterZoneService($.ingester_zone_a_statefulset),
 
-  ingester_zone_b_container:: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_b_container:: if !$._config.multi_zone_ingester_enabled then {} else
     self.newIngesterZoneContainer('b', $.ingester_zone_b_args),
 
-  ingester_zone_b_statefulset: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_b_statefulset: if !$._config.multi_zone_ingester_enabled then {} else
     self.newIngesterZoneStatefulSet('b', $.ingester_zone_b_container),
 
-  ingester_zone_b_service: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_b_service: if !$._config.multi_zone_ingester_enabled then {} else
     $.newIngesterZoneService($.ingester_zone_b_statefulset),
 
-  ingester_zone_c_container:: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_c_container:: if !$._config.multi_zone_ingester_enabled then {} else
     self.newIngesterZoneContainer('c', $.ingester_zone_c_args),
 
-  ingester_zone_c_statefulset: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_c_statefulset: if !$._config.multi_zone_ingester_enabled then {} else
     self.newIngesterZoneStatefulSet('c', $.ingester_zone_c_container),
 
-  ingester_zone_c_service: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_zone_c_service: if !$._config.multi_zone_ingester_enabled then {} else
     $.newIngesterZoneService($.ingester_zone_c_statefulset),
 
-  ingester_rollout_pdb: if !$._config.multi_zone_ingester_enabled then null else
+  ingester_rollout_pdb: if !$._config.multi_zone_ingester_enabled then {} else
     podDisruptionBudget.new('ingester-rollout-pdb') +
     podDisruptionBudget.mixin.metadata.withLabels({ name: 'ingester-rollout-pdb' }) +
     podDisruptionBudget.mixin.spec.selector.withMatchLabels({ 'rollout-group': 'ingester' }) +
@@ -119,13 +119,13 @@
   ingester_statefulset:
     // Remove the default "ingester" StatefulSet if multi-zone is enabled and no migration is in progress.
     if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled
-    then null
+    then {}
     else super.ingester_statefulset,
 
   ingester_service:
     // Remove the default "ingester" service if multi-zone is enabled and no migration is in progress.
     if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled
-    then null
+    then {}
     else super.ingester_service,
 
   ingester_pdb:
@@ -136,7 +136,7 @@
     else if $._config.multi_zone_ingester_migration_enabled
     then super.ingester_pdb + podDisruptionBudget.mixin.spec.withMaxUnavailable(0)
     // Remove it if multi-zone is enabled and no migration is in progress.
-    else null,
+    else {},
 
   //
   // Rollout operator.
@@ -161,7 +161,7 @@
     container.mixin.readinessProbe.withInitialDelaySeconds(5) +
     container.mixin.readinessProbe.withTimeoutSeconds(1),
 
-  rollout_operator_deployment: if !rollout_operator_enabled then null else
+  rollout_operator_deployment: if !rollout_operator_enabled then {} else
     deployment.new('rollout-operator', 1, [$.rollout_operator_container]) +
     deployment.mixin.metadata.withName('rollout-operator') +
     deployment.mixin.spec.template.spec.withServiceAccountName('rollout-operator') +
@@ -169,7 +169,7 @@
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
-  rollout_operator_role: if !rollout_operator_enabled then null else
+  rollout_operator_role: if !rollout_operator_enabled then {} else
     role.new('rollout-operator-role') +
     role.mixin.metadata.withNamespace($._config.namespace) +
     role.withRulesMixin([
@@ -184,7 +184,7 @@
       policyRule.withVerbs(['update']),
     ]),
 
-  rollout_operator_rolebinding: if !rollout_operator_enabled then null else
+  rollout_operator_rolebinding: if !rollout_operator_enabled then {} else
     roleBinding.new('rollout-operator-rolebinding') +
     roleBinding.mixin.metadata.withNamespace($._config.namespace) +
     roleBinding.mixin.roleRef.withApiGroup('rbac.authorization.k8s.io') +
@@ -196,6 +196,6 @@
       namespace: $._config.namespace,
     }),
 
-  rollout_operator_service_account: if !rollout_operator_enabled then null else
+  rollout_operator_service_account: if !rollout_operator_enabled then {} else
     serviceAccount.new('rollout-operator'),
 }
