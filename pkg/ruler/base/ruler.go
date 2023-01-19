@@ -730,26 +730,26 @@ func filterRules(shardingStrategy string, userID string, ruleGroups []*rulespb.R
 		}
 
 		for _, r := range g.Rules {
-			logger = log.With(logger, "rule", getRuleIdentifier(r))
+			rlog := log.With(logger, "rule", getRuleIdentifier(r))
 
 			owned, err := instanceOwnsRule(ring, g, r, instanceAddr)
 			if err != nil {
 				ringCheckErrors.Inc()
-				level.Error(logger).Log("msg", "failed to check if the ruler replica owns the rule", "err", err)
+				level.Error(rlog).Log("msg", "failed to check if the ruler replica owns the rule", "err", err)
 				continue
 			}
 
 			if !owned {
-				level.Debug(logger).Log("msg", "rule not owned, ignoring")
+				level.Debug(rlog).Log("msg", "rule not owned, ignoring")
 				continue
 			}
 
-			level.Debug(logger).Log("msg", "rule owned")
+			level.Debug(rlog).Log("msg", "rule owned")
 
 			// clone the group and replace the rules
 			clone := cloneGroupWithRule(g, r)
 			if clone == nil {
-				level.Error(logger).Log("msg", "failed to filter rules", "err", "failed to clone rule group; type coercion failed")
+				level.Error(rlog).Log("msg", "failed to filter rules", "err", "failed to clone rule group; type coercion failed")
 				continue
 			}
 
