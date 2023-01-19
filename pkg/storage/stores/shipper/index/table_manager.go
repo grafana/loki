@@ -279,6 +279,10 @@ func migrateTables(dir string, tableRange config.TableRange) error {
 	}
 
 	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
 		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
 		if err != nil {
 			continue

@@ -295,7 +295,7 @@ func migrateMultitenantDir(dir string, tableRange config.TableRange) error {
 			return err
 		}
 
-		// no files to migrate as multitenant dir does not exist
+		// nothing to migrate as multitenant dir does not exist
 		return nil
 	}
 

@@ -4,9 +4,11 @@ import (
 	"context"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
@@ -206,4 +208,46 @@ func TestTableManager_ForEach(t *testing.T) {
 		},
 		0, 30)
 
+}
+
+func TestMigrateTables(t *testing.T) {
+	parentDir := t.TempDir()
+	dir := path.Join(parentDir, "fs_1234")
+	for _, name := range []string{
+		"index_9", "index_24", // outside of table range
+		"index_12", "index_16", // within table range
+		"table_16", // prefix mismatch
+		"foobar",   // invalid table name
+	} {
+		assert.NoError(t, os.MkdirAll(path.Join(parentDir, name), 0755))
+	}
+
+	// files should be ignored during migration
+	_, err := os.Create(path.Join(parentDir, "index_13"))
+	assert.NoError(t, err)
+
+	tableRange := config.TableRange{
+		Start: 10,
+		End:   20,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_",
+		}},
+	}
+
+	assert.NoError(t, util.EnsureDirectory(dir))
+	assert.NoError(t, migrateTables(dir, tableRange))
+
+	files, err := os.ReadDir(dir)
+	assert.NoError(t, err)
+
+	var got []string
+	for _, f := range files {
+		if !f.IsDir() {
+			t.Error("migrateDir should not migrate files")
+		}
+
+		got = append(got, f.Name())
+	}
+
+	assert.ElementsMatch(t, got, []string{"index_12", "index_16"})
 }

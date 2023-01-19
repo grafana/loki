@@ -260,12 +260,6 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	// as we are running multiple instances of HeadManager - one for each period
-	// existing wal files should be migrated to period specific directory
-	if err := migrateWALDir(m.dir, m.period, m.tableRange); err != nil {
-		return errors.Wrap(err, "migrating wal dir")
-	}
-
 	walsByPeriod, err := walsByPeriod(m.dir, m.period)
 	if err != nil {
 		return err
@@ -304,37 +298,6 @@ func (m *HeadManager) Start() error {
 
 	m.wg.Add(1)
 	go m.loop()
-
-	return nil
-}
-
-func migrateWALDir(dir string, period period, tableRange config.TableRange) error {
-	parentDir := filepath.Dir(filepath.Clean(dir))
-	if _, err := os.Stat(managerWalDir(parentDir)); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-
-		// no files to migrate as wal dir does not exist
-		return nil
-	}
-
-	grps, err := walGroups(parentDir, period)
-	if err != nil {
-		return err
-	}
-
-	for p, grp := range grps {
-		if cfg := tableRange.ConfigForTableNumber(int64(p)); cfg == nil {
-			continue
-		}
-
-		for _, wal := range grp.wals {
-			if err := os.Rename(walPath(parentDir, wal.ts), walPath(dir, wal.ts)); err != nil {
-				return err
-			}
-		}
-	}
 
 	return nil
 }
