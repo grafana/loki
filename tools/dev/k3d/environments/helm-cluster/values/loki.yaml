@@ -1,5 +1,7 @@
 ---
 monitoring:
+  dashboards:
+    namespace: k3d-helm-cluster
   selfMonitoring:
     tenant:
       name: loki

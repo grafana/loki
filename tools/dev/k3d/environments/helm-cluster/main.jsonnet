@@ -1,6 +1,7 @@
 local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet';
 local tanka = import 'github.com/grafana/jsonnet-libs/tanka-util/main.libsonnet';
 local container = k.core.v1.container;
+local configMap = k.core.v1.configMap;
 
 local grafana = import 'grafana/grafana.libsonnet';
 local envVar = if std.objectHasAll(k.core.v1, 'envVar') then k.core.v1.envVar else k.core.v1.container.envType;
@@ -58,6 +59,7 @@ local tenant = 'loki';
 
   grafanaNamespace: k.core.v1.namespace.new('grafana'),
 
+  local dashboardsPrefix = if enterprise then "enterprise-logs" else "loki",
   local grafanaImage = if enterprise then
     grafana.withImage('grafana/grafana-enterprise:8.2.5') else
     grafana.withImage('grafana/grafana:8.2.5'),
@@ -81,7 +83,41 @@ local tenant = 'loki';
             + grafana.addDatasource('loki', $.loki_datasource) + {
     grafana_deployment+:
       k.apps.v1.deployment.emptyVolumeMount('grafana-var', '/var/lib/grafana')
-      + k.apps.v1.deployment.emptyVolumeMount('grafana-plugins', '/etc/grafana/provisioning/plugins'),
+      + k.apps.v1.deployment.emptyVolumeMount('grafana-plugins', '/etc/grafana/provisioning/plugins')
+      + k.apps.v1.deployment.configVolumeMount('%s-dashboards-1' % dashboardsPrefix, '/var/lib/grafana/dashboards/loki-1')
+      + k.apps.v1.deployment.configVolumeMount('%s-dashboards-2' % dashboardsPrefix, '/var/lib/grafana/dashboards/loki-2'),
+
+    dashboard_provisioning_config_map:
+      configMap.new('grafana-dashboard-provisioning') +
+      configMap.withData({
+        'dashboards.yml': k.util.manifestYaml({
+          apiVersion: 1,
+          providers: [
+            {
+              name: 'loki-1',
+              orgId: 1,
+              folder: 'Loki',
+              type: 'file',
+              disableDeletion: true,
+              editable: false,
+              options: {
+                path: '/var/lib/grafana/dashboards/loki-1',
+              },
+            },
+            {
+              name: 'loki-2',
+              orgId: 1,
+              folder: 'Loki',
+              type: 'file',
+              disableDeletion: true,
+              editable: false,
+              options: {
+                path: '/var/lib/grafana/dashboards/loki-2',
+              },
+            },
+          ],
+        }),
+      }),
   },
 } + if enterprise then
   {
