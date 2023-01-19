@@ -1,9 +1,12 @@
+---
+title: Promtail and LogRotation
+---
 # Promtail and Log Rotation
 
 ## Why does log rotation matters?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.
-![block_diagram](./logrotation-components.png)
+![block_diagram](../logrotation-components.png)
 
 1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, Docker log driver or Kubelet, etc.
 2. Tailer - A reader that reads log lines as they are appended, for example, agents like Promtail.
@@ -25,10 +28,10 @@ In both cases, after log rotation, all new log lines are written to the original
 These two methods of log rotation are shown in the following images.
 
 ### Copy and Truncate
-![block_diagram](./logrotation-copy-and-truncate.png)
+![block_diagram](../logrotation-copy-and-truncate.png)
 
 ### Rename and Create
-![block_diagram](./logrotation-rename-and-create.png)
+![block_diagram](../logrotation-rename-and-create.png)
 
 Both types of log rotation seem to give the same result. However, there are some subtle differences.
 
