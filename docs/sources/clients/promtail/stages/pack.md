@@ -1,7 +1,8 @@
 ---
 title: pack
+description: pack stage
 ---
-# `pack` stage
+# pack
 
 The `pack` stage is a transform stage which lets you embed extracted values and labels into the log line by packing the log line and labels inside a JSON object.
 

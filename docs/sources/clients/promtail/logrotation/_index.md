@@ -1,12 +1,13 @@
 ---
 title: Promtail and Log Rotation
+description: Promtail and Log Rotation
 ---
 # Promtail and Log Rotation
 
 ## Why does log rotation matters?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.
-![block_diagram](../logrotation-components.png)
+![block_diagram](./logrotation-components.png)
 
 1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, Docker log driver or Kubelet, etc.
 2. Tailer - A reader that reads log lines as they are appended, for example, agents like Promtail.
@@ -28,10 +29,10 @@ In both cases, after log rotation, all new log lines are written to the original
 These two methods of log rotation are shown in the following images.
 
 ### Copy and Truncate
-![block_diagram](../logrotation-copy-and-truncate.png)
+![block_diagram](./logrotation-copy-and-truncate.png)
 
 ### Rename and Create
-![block_diagram](../logrotation-rename-and-create.png)
+![block_diagram](./logrotation-rename-and-create.png)
 
 Both types of log rotation seem to give the same result. However, there are some subtle differences.
 
@@ -81,7 +82,7 @@ Here `create` mode works like (2) explained above. The `create` mode is optional
 
 ### Kubernetes
 
-[Kubernetes Service Discovery in Promtail]({{<relref "./scraping.md">}}#kubernetes-discovery) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes the pod logs from the node files.
+[Kubernetes Service Discovery in Promtail]({{<relref "../scraping#kubernetes-discovery">}}) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes the pod logs from the node files.
 
 You can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) the `kubelet` process running on each node to manage log rotation via two configuration settings.
 
@@ -138,4 +139,4 @@ If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrot
 
 Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this topic, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
-Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{<relref "./configuration.md">}}/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
+Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{<relref "../configuration#clients">}}) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
