@@ -5,6 +5,7 @@
 #### Loki
 
 ##### Enhancements
+* [8206](https://github.com/grafana/loki/pull/8206) **yashsoni369**: Updating doc removing `querier.query_timeout` to `limits_requests.query_timeout`.
 * [7951](https://github.com/grafana/loki/pull/7951) **MichelHollands**: Add a count template function to line_format and label_format.
 * [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap.
 * [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
