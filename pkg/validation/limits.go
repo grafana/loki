@@ -104,6 +104,7 @@ type Limits struct {
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
+	RulerTenantShardSize        int                              `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 
 	// TODO(dannyk): add HTTP client overrides (basic auth / tls config, etc)
 	// Ruler remote-write limits.
@@ -226,6 +227,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
+	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when shuffle-sharding is enabled in the ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).")
 	_ = l.RetentionPeriod.Set("744h")
@@ -504,9 +506,8 @@ func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
-// Not used in Loki.
 func (o *Overrides) RulerTenantShardSize(userID string) int {
-	return 0
+	return o.getOverridesForUser(userID).RulerTenantShardSize
 }
 
 // RulerMaxRulesPerRuleGroup returns the maximum number of rules per rule group for a given user.
