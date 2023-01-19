@@ -26,7 +26,7 @@
 * [8047](https://github.com/grafana/loki/pull/8047) **bboreham**: Dashboards: add k8s resource requests to CPU and memory panels.
 * [8061](https://github.com/grafana/loki/pull/8061) **kavirajk**: Remove circle from Loki OSS
 * [8131](https://github.com/grafana/loki/pull/8131) **jeschkies**: Compile Promtail ARM and ARM64 with journald support.
-* [8212](https://github.com/grafana/loki/pull/8212) **kavirajk**: ingester: Add `ingester_memory_streams_labels_size metric` for more visibility of size of metadata of in-memory streams.
+* [8212](https://github.com/grafana/loki/pull/8212) **kavirajk**: ingester: Add `ingester_memory_streams_labels_bytes metric` for more visibility of size of metadata of in-memory streams.
 
 ##### Fixes
 
