@@ -9,6 +9,9 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,6 +61,7 @@ func WithRegisterer(reg prometheus.Registerer) Option {
 // Promtail is the root struct for Promtail.
 type Promtail struct {
 	client         client.Client
+	walWriter      api.EntryHandler
 	targetManagers *targets.TargetManagers
 	server         server.Server
 	logger         log.Logger
@@ -124,6 +128,9 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
+	if p.walWriter != nil {
+		p.walWriter.Stop()
+	}
 	if p.client != nil {
 		p.client.Stop()
 	}
@@ -146,7 +153,22 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 	}
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	// targetsSink represents the sink that all scraping targets will end up writing to. If WAL disabled, this will be
+	// a chanel each client exposes. Otherwise, the WAL writer
+	var targetsSink api.EntryHandler = p.client
+
+	if cfg.WAL.Enabled {
+		pWAL, err := wal.New(cfg.WAL, p.logger, p.reg)
+		if err != nil {
+			return err
+		}
+		p.walWriter = wal.NewWriter(pWAL, p.logger)
+		targetsSink = p.walWriter
+	} else {
+		p.walWriter = wal.NewNoopWriter()
+	}
+
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, targetsSink, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return err
 	}
@@ -195,6 +217,10 @@ func (p *Promtail) Shutdown() {
 	}
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
+	}
+	// once targets have been closed, close the component that ties targets and clients together
+	if p.walWriter != nil {
+		p.walWriter.Stop()
 	}
 	// todo work out the stop.
 	p.client.Stop()

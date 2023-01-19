@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
@@ -39,6 +41,7 @@ type Config struct {
 	LimitsConfig    limit.Config          `yaml:"limits_config,omitempty"`
 	Options         Options               `yaml:"options,omitempty"`
 	Tracing         tracing.Config        `yaml:"tracing"`
+	WAL             wal.Config            `yaml:"wal"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
