@@ -911,7 +911,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 	var (
 		mergedMx sync.Mutex
-		merged   []*GroupStateDesc
+		merged   = make(map[string]*GroupStateDesc)
 	)
 
 	// Concurrently fetch rules from all rulers. Since rules are not replicated,
@@ -926,18 +926,41 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 		}
 
 		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
-		if err != nil {
-			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
+		if err != nil || newGrps == nil {
+			return fmt.Errorf("unable to retrieve rules from ruler %s: %w", addr, err)
 		}
 
 		mergedMx.Lock()
-		merged = append(merged, newGrps.Groups...)
+
+		for _, grp := range newGrps.Groups {
+			if grp == nil {
+				continue
+			}
+
+			name := RemoveRuleTokenFromGroupName(grp.Group.Name)
+			grp.Group.Name = name
+
+			_, found := merged[name]
+			if found {
+				merged[name].ActiveRules = append(merged[name].ActiveRules, grp.ActiveRules...)
+			} else {
+				merged[name] = grp
+			}
+		}
+
 		mergedMx.Unlock()
 
 		return nil
 	})
 
-	return merged, err
+	mergedMx.Lock()
+	descs := make([]*GroupStateDesc, 0, len(merged))
+	for _, desc := range merged {
+		descs = append(descs, desc)
+	}
+	mergedMx.Unlock()
+
+	return descs, err
 }
 
 // Rules implements the rules service
