@@ -1,5 +1,6 @@
 ---
 title: Loki Canary
+description: Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster. 
 weight: 60
 ---
 # Loki Canary
@@ -15,7 +16,7 @@ such that Loki Canary forms information about the performance of the
 Loki cluster.
 The information is available as Prometheus time series metrics.
 
-![block_diagram](../loki-canary-block.png)
+![block_diagram](./loki-canary-block.png)
 
 Loki Canary writes a log to a file and stores the timestamp in an internal
 array. The contents look something like this:
