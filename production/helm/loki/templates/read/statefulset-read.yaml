@@ -101,6 +101,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
             - name: tmp
               mountPath: /tmp
             - name: data
@@ -137,6 +139,9 @@ spec:
           configMap:
             name: {{ include "loki.name" . }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         {{- if .Values.enterprise.enabled }}
         - name: license
           secret:
