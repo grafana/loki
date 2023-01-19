@@ -591,7 +591,7 @@ github.com/gogo/protobuf/types
 # github.com/gogo/status v1.1.1
 ## explicit; go 1.12
 github.com/gogo/status
-# github.com/golang-jwt/jwt/v4 v4.4.1
+# github.com/golang-jwt/jwt/v4 v4.4.2
 ## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
@@ -774,7 +774,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.7
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
-# github.com/heroku/x v0.0.50
+# github.com/heroku/x v0.0.55
 ## explicit; go 1.12
 github.com/heroku/x/logplex/encoding
 # github.com/huandu/xstrings v1.3.3
