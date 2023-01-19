@@ -1,5 +1,6 @@
-.PHONY: loki enterprise-logs down add-repos update-repos prepare prepare-gel build-latest-image
+.PHONY: loki enterprise-logs helm-cluster down add-repos update-repos prepare prepare-gel build-latest-image
 .PHONY: helm-cluster helm-install-enterprise-logs helm-upgrade-enterprise-logs helm-uninstall-enterprise-logs
+.PHONY: helm-install-loki helm-upgrade-loki helm-uninstall-loki
 
 IMAGE_TAG := $(shell ../../../tools/image-tag)
 EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
@@ -7,15 +8,20 @@ REGISTRY_PORT ?= $(or $(EXISTING_REGISTRY_PORT),46453)
 
 enterprise-logs: prepare-gel helm-cluster
 	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
+	echo "Waiting 5s for cluster to be ready for helm installation."
+	echo "The helm install will take a while. It's useful to monitor progress using a tool like k9s."
 	# wait 5s for tk apply to finish and cluster is ready for helm install
 	sleep 5
 	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs
+	echo "Helm installation finished. You can tear down this cluster with make down."
 
 loki: prepare helm-cluster
-	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
+	$(MAKE) -C $(CURDIR) apply-loki-helm-cluster
+	echo "Waiting 5s for cluster to be ready for helm installation."
 	# wait 5s for tk apply to finish and cluster is ready for helm install
 	sleep 5
-	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs
+	$(MAKE) -C $(CURDIR) helm-install-loki
+	echo "Helm installation finished. You can tear down this cluster with make down."
 
 helm-cluster: prepare
 	$(CURDIR)/scripts/create_cluster.sh helm-cluster $(REGISTRY_PORT)
@@ -95,3 +101,12 @@ helm-upgrade-enterprise-logs:
 
 helm-uninstall-enterprise-logs:
 	helm uninstall enterprise-logs-test-fixture -n loki
+
+helm-install-loki:
+	helm install loki "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
+
+helm-upgrade-loki:
+	helm upgrade loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
+
+helm-uninstall-loki:
+	helm uninstall loki -n loki
