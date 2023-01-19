@@ -51,7 +51,7 @@ can have many possible causes.
 
 - Review Loki configuration
 
-    - Loki configuration `querier.query_timeout`
+    - Loki configuration `limits_config.query_timeout`
     - `server.http_server_read_timeout`
     - `server.http_server_write_timeout`
     - `server.http_server_idle_timeout`
