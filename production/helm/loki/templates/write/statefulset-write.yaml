@@ -45,6 +45,7 @@ spec:
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{ include "loki.enableServiceLinks" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -92,6 +93,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
             - name: data
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
@@ -124,6 +127,9 @@ spec:
           configMap:
             name: {{ include "loki.name" . }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         {{- if .Values.enterprise.enabled }}
         - name: license
           secret:

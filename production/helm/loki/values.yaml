@@ -69,6 +69,8 @@ loki:
       drop:
         - ALL
     allowPrivilegeEscalation: false
+  # -- Should enableServiceLinks be enabled. Default to enable
+  enableServiceLinks: true
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
   # -- Config file contents for Loki
@@ -94,6 +96,11 @@ loki:
         {{- end }}
         {{- end }}
 
+    {{- with .Values.loki.ingester }}
+    ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -105,6 +112,9 @@ loki:
     limits_config:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    runtime_config:
+      file: /etc/loki/runtime-config/runtime-config.yaml
 
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled (or .host .addresses) }}
@@ -206,6 +216,9 @@ loki:
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
 
+  # -- Provides a reloadable runtime configuration file for some specific configuration
+  runtimeConfig: {}
+
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
@@ -285,6 +298,9 @@ loki:
 
   # --  Optional querier configuration
   querier: {}
+
+  # --  Optional ingester configuration
+  ingester: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
@@ -1140,7 +1156,6 @@ gateway:
     # high CPU load.
     htpasswd: >-
       {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }}
-
 
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null

@@ -17,6 +17,11 @@ keywords: []
 
 This is the generated reference for the Loki Helm Chart values.
 
+> **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
+> If you are using the `grafana/loki-stack` Helm chart from the community repo,
+> please refer to the `values.yaml` of the respective Github repository
+> [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts/loki-stack).
+
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
 <table>
@@ -1586,6 +1591,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.enableServiceLinks</td>
+			<td>bool</td>
+			<td>Should enableServiceLinks be enabled. Default to enable</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.existingSecretForConfig</td>
 			<td>string</td>
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
@@ -1627,6 +1641,15 @@ See values.yaml
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
 "main-5e53303"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester</td>
+			<td>object</td>
+			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1768,6 +1791,15 @@ See values.yaml
 			<td>loki.rulerConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.runtimeConfig</td>
+			<td>object</td>
+			<td>Provides a reloadable runtime configuration file for some specific configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
