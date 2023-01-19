@@ -1,30 +1,34 @@
-.PHONY: loki-distributed enterprise-logs helm-cluster down add-repos update-repos prepare prepare-gel
-.PHONY: build-latest-image helm-install-enterprise-logs helm-upgrade-enterprise-logs helm-uninstall-enterprise-logs
+.PHONY: loki enterprise-logs down add-repos update-repos prepare prepare-gel build-latest-image
+.PHONY: helm-cluster helm-install-enterprise-logs helm-upgrade-enterprise-logs helm-uninstall-enterprise-logs
 
 IMAGE_TAG := $(shell ../../../tools/image-tag)
 EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
 REGISTRY_PORT ?= $(or $(EXISTING_REGISTRY_PORT),46453)
 
-loki-distributed: prepare build-latest-image
-	$(CURDIR)/scripts/create_cluster.sh loki-distributed $(REGISTRY_PORT)
-	# wait 5s for the cluster to be ready
-	sleep 5
-	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/loki-distributed
-
 enterprise-logs: prepare-gel helm-cluster
+	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
+	# wait 5s for tk apply to finish and cluster is ready for helm install
+	sleep 5
+	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs
+
+loki: prepare helm-cluster
+	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
+	# wait 5s for tk apply to finish and cluster is ready for helm install
+	sleep 5
 	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs
 
 helm-cluster: prepare
 	$(CURDIR)/scripts/create_cluster.sh helm-cluster $(REGISTRY_PORT)
 	# wait 5s for the cluster to be ready
 	sleep 5
-	$(MAKE) -C $(CURDIR) apply-helm-cluster
 
-apply-helm-cluster:
-	tk apply --ext-str registry="k3d-grafana:$(REGISTRY_PORT)" environments/helm-cluster
+apply-enterprise-helm-cluster:
+	tk apply --ext-code enterprise=true environments/helm-cluster
+
+apply-loki-helm-cluster:
+	tk apply --ext-code enterprise=false environments/helm-cluster
 
 down:
-	k3d cluster delete loki-distributed
 	k3d cluster delete helm-cluster
 
 add-repos:
