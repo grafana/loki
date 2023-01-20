@@ -1,5 +1,6 @@
-// Copyright (c) The Thanos Authors.
-// Licensed under the Apache License 2.0.
+// Provenance-includes-location: https://github.com/thanos-io/thanos/blob/main/pkg/discovery/dns/miekgdns/resolver.go
+// Provenance-includes-license: Apache-2.0
+// Provenance-includes-copyright: The Thanos Authors.
 
 package miekgdns
 
