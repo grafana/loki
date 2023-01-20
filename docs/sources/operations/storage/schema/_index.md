@@ -1,11 +1,12 @@
 ---
 title: Storage schema
+description: Storage schema
 ---
-# Loki storage schema
+# Storage schema
 
 To support iterations over the storage layer contents, Loki has a configurable storage schema. The schema is defined to apply over periods of time. A `from` value marks the starting point of that schema. The schema is active until another entry defines a new schema with a new `from` date.
 
-![schema_example](../schema.png)
+![schema_example](./schema.png)
 
 Loki uses the defined schemas to determine which format to use when storing and querying the data.
 
