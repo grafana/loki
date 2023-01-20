@@ -57,7 +57,7 @@ local spec = (import './spec.json').spec;
   grafanaNamespace: k.core.v1.namespace.new('grafana'),
   grafana: grafana
            + grafana.withAnonymous()
-           + grafana.withImage('grafana/grafana-enterprise:8.2.5')
+           + grafana.withImage('grafana/grafana-enterprise:9.1.0')
            + grafana.withGrafanaIniConfig({
              sections+: {
                server+: {
