@@ -53,11 +53,11 @@ var (
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
-	memoryStreamsLabels = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki",
 		Name:      "ingester_memory_streams_labels_bytes",
-		Help:      "Total bytes of labels of the streams in memory per tenant.",
-	}, []string{"tenant"})
+		Help:      "Total bytes of labels of the streams in memory.",
+	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -284,7 +284,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	}
 
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabels.WithLabelValues(i.instanceID).Add(float64(len(s.labels.String())))
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
@@ -306,7 +306,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabels.WithLabelValues(i.instanceID).Add(float64(len(s.labels.String())))
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.addTailersToNewStream(s)
 
 	return s
@@ -329,7 +329,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
-		memoryStreamsLabels.WithLabelValues(i.instanceID).Sub(float64(len(s.labels.String())))
+		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
 	}
 }
