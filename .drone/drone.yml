@@ -516,7 +516,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -531,7 +531,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
@@ -546,7 +546,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -561,7 +561,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -577,7 +577,7 @@ steps:
     - tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
@@ -593,7 +593,7 @@ steps:
     - tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -734,7 +734,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
@@ -749,7 +749,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
@@ -894,7 +894,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-operator-image
   settings:
     context: operator
@@ -910,7 +910,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-operator-image
   settings:
     context: operator
@@ -1336,6 +1336,8 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+depends_on:
+- check
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
@@ -1665,6 +1667,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 9b93dca0a196074b7125892e9df0c5e6eed5bdabaa98f3c64277f836cf188171
+hmac: 58239f4ad12c6f5089ab3582f4086a6be2c3131778b71ddba9721b21fa03ce00
 
 ...

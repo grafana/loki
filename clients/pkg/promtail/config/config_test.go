@@ -74,9 +74,6 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
 					},
 				},
-				Options: Options{
-					StreamLagLabels: []string{},
-				},
 			},
 			Config{
 				ClientConfig: client.Config{
@@ -89,9 +86,6 @@ func TestConfig_Setup(t *testing.T) {
 					{
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2", "foo": "bar"}},
 					},
-				},
-				Options: Options{
-					StreamLagLabels: []string{},
 				},
 			},
 		},
@@ -108,9 +102,6 @@ func TestConfig_Setup(t *testing.T) {
 					{
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
 					},
-				},
-				Options: Options{
-					StreamLagLabels: []string{},
 				},
 			},
 			Config{
@@ -129,9 +120,6 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
 						URL:            dskitflagext.URLValue{URL: mustURL("http://foo")},
 					},
-				},
-				Options: Options{
-					StreamLagLabels: []string{},
 				},
 			},
 		},
