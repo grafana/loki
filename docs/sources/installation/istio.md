@@ -1,3 +1,8 @@
+---
+title: Installation instructions for Istio
+description: Installation instructions for Istio
+weight: 50
+---
 # Installation instructions for Istio
 
 The ingestor, querier, etc. might start, but if those changes are not made, you will see logs like

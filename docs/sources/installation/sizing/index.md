@@ -16,7 +16,7 @@ keywords: []
 
 This tool helps to generate a Helm Charts `values.yaml` file based on specified
  expected ingestion, retention rate and node type. It will always configure a
- [scalable](../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode) deployment. The storage needs to be configured after generation.
+ [scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment. The storage needs to be configured after generation.
 
 <div id="app">
 
