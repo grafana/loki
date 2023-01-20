@@ -95,7 +95,11 @@ func main() {
 	}
 
 	if *addr == "" {
-		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr\n")
+		*addr = os.Getenv("LOKI_ADDRESS")
+	}
+
+	if *addr == "" {
+		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr or set the environemnt variable LOKI_ADDRESS\n")
 		os.Exit(1)
 	}
 
