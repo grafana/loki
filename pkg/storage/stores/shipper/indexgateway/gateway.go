@@ -226,7 +226,7 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 
 		matcherExpr, ok := expr.(*syntax.MatchersExpr)
 		if !ok {
-			return nil, errors.New("invalid label matchers found")
+			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
 		}
 		matchers = matcherExpr.Mts
 	}
