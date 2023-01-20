@@ -931,6 +931,11 @@ alertmanager_client:
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]
 
+# Distribute rule groups across rulers for tenants using a shuffle-sharding
+# algorithm. Implies -ruler.enable-sharding=true.
+# CLI flag: -ruler.enable-shuffle-sharding
+[enable_shuffle_sharding: <boolean> | default = false]
+
 # The sharding strategy to use. Supported values are: default, shuffle-sharding,
 # by-rule.
 # CLI flag: -ruler.sharding-strategy
@@ -2231,9 +2236,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
-# The default tenant's shard size when the shuffle-sharding strategy is used by
-# ruler. When this setting is specified in the per-tenant overrides, a value of
-# 0 disables shuffle sharding for the tenant.
+# The default tenant's shard size when shuffle-sharding is enabled in the ruler.
+# When this setting is specified in the per-tenant overrides, a value of 0
+# disables shuffle sharding for the tenant.
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
 
