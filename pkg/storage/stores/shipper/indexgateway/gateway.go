@@ -2,7 +2,7 @@ package indexgateway
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/go-kit/log"

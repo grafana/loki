@@ -1,8 +1,9 @@
 package log
 
 import (
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 type DropLabels struct {
