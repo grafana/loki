@@ -421,6 +421,8 @@ github.com/eapache/queue
 # github.com/edsrzf/mmap-go v1.1.0
 ## explicit; go 1.17
 github.com/edsrzf/mmap-go
+# github.com/efficientgo/e2e v0.12.2-0.20220714084440-2f5240d8c363
+## explicit; go 1.15
 # github.com/efficientgo/tools/core v0.0.0-20220225185207-fe763185946b
 ## explicit; go 1.15
 github.com/efficientgo/tools/core/pkg/errcapture
@@ -683,6 +685,9 @@ github.com/grafana/cloudflare-go
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency
 github.com/grafana/dskit/crypto/tls
+github.com/grafana/dskit/dns
+github.com/grafana/dskit/dns/godns
+github.com/grafana/dskit/dns/miekgdns
 github.com/grafana/dskit/flagext
 github.com/grafana/dskit/grpcclient
 github.com/grafana/dskit/grpcencoding/snappy
@@ -702,6 +707,7 @@ github.com/grafana/dskit/ring
 github.com/grafana/dskit/ring/client
 github.com/grafana/dskit/ring/shard
 github.com/grafana/dskit/runtimeconfig
+github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services
 github.com/grafana/dskit/spanlogger
 github.com/grafana/dskit/tenant
@@ -1162,16 +1168,6 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.28.0
-## explicit; go 1.17
-github.com/thanos-io/thanos/pkg/block/metadata
-github.com/thanos-io/thanos/pkg/discovery/dns
-github.com/thanos-io/thanos/pkg/discovery/dns/godns
-github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
-github.com/thanos-io/thanos/pkg/errutil
-github.com/thanos-io/thanos/pkg/extprom
-github.com/thanos-io/thanos/pkg/runutil
-github.com/thanos-io/thanos/pkg/testutil
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 ## explicit
 github.com/tonistiigi/fifo
