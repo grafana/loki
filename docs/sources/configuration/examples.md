@@ -1,8 +1,7 @@
 ---
 title: Examples
-description: Loki Configuration Examples
 ---
- # Examples
+ # Loki Configuration Examples
 
 ## almost-zero-dependency.yaml
 
