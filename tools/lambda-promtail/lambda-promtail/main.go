@@ -135,11 +135,12 @@ func applyExtraLabels(labels model.LabelSet) model.LabelSet {
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var s3Event events.S3Event
+	var s3TestEvent events.S3TestEvent
 	var cwEvent events.CloudwatchLogsEvent
 	var kinesisEvent events.KinesisEvent
 	var sqsEvent events.SQSEvent
 
-	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent, &sqsEvent}
+	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
