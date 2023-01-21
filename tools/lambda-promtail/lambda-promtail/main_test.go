@@ -1,9 +1,10 @@
 package main
 
 import (
+	"testing"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestLambdaPromtail_ExtraLabelsValid(t *testing.T) {

@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -51,7 +52,7 @@ func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, 
 		s3Client = s3.NewFromConfig(cfg)
 		s3Clients[labels["bucket_region"]] = s3Client
 	}
-
+	fmt.Println("fetching", labels["key"])
 	obj, err := s3Client.GetObject(ctx,
 		&s3.GetObjectInput{
 			Bucket:              aws.String(labels["bucket"]),
@@ -72,9 +73,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	if err != nil {
 		return err
 	}
-
 	scanner := bufio.NewScanner(gzreader)
-
 	skipHeader := false
 	logType := labels["type"]
 	if labels["type"] == FLOW_LOG_TYPE {
@@ -119,7 +118,6 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			return err
 		}
 	}
-
 	return nil
 }
 

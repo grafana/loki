@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -23,7 +25,7 @@ const (
 
 	maxErrMsgLen = 1024
 
-	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
+	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
 )
 
 var (
@@ -35,6 +37,7 @@ var (
 	extraLabels                                               model.LabelSet
 	skipTlsVerify                                             bool
 	printLogLine                                              bool
+	promtailClient                                            *http.Client
 )
 
 func setupArguments() {
@@ -98,6 +101,10 @@ func setupArguments() {
 	}
 
 	s3Clients = make(map[string]*s3.Client)
+	promtailClient = &http.Client{}
+	if skipTlsVerify == true {
+		promtailClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	}
 }
 
 func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
@@ -130,8 +137,9 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var s3Event events.S3Event
 	var cwEvent events.CloudwatchLogsEvent
 	var kinesisEvent events.KinesisEvent
+	var sqsEvent events.SQSEvent
 
-	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent}
+	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent, &sqsEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -165,6 +173,11 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 		return processCWEvent(ctx, evt)
 	case *events.KinesisEvent:
 		return processKinesisEvent(ctx, evt)
+	case *events.SQSEvent:
+		return processSQSEvent(ctx, evt)
+	//When setting up S3Notification to SQS, an test event is first sent to the queue
+	case *events.S3TestEvent:
+		return nil
 	}
 
 	return err

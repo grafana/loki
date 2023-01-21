@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,9 +13,11 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/dskit/backoff"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -74,7 +75,6 @@ func (b *batch) add(ctx context.Context, e entry) error {
 
 	stream.Entries = append(stream.Entries, e.entry)
 	b.size += len(e.entry.Line)
-
 	if b.size > batchSize {
 		return b.flushBatch(ctx)
 	}
@@ -129,7 +129,7 @@ func (b *batch) flushBatch(ctx context.Context) error {
 	}
 
 	b.streams = make(map[string]*logproto.Stream)
-
+	b.size = 0
 	return nil
 }
 
@@ -144,7 +144,6 @@ func sendToPromtail(ctx context.Context, b *batch) error {
 	for {
 		// send uses `timeout` internally, so `context.Background` is good enough.
 		status, err = send(context.Background(), buf)
-
 		// Only retry 429s, 500s and connection-level errors.
 		if status > 0 && status != 429 && status/100 != 5 {
 			break
@@ -163,7 +162,6 @@ func sendToPromtail(ctx context.Context, b *batch) error {
 		fmt.Printf("Failed to send logs! %s\n", err)
 		return err
 	}
-
 	return nil
 }
 
@@ -190,17 +188,11 @@ func send(ctx context.Context, buf []byte) (int, error) {
 		req.Header.Set("Authorization", "Bearer "+bearerToken)
 	}
 
-	promtailClient := &http.Client{}
-
-	if skipTlsVerify == true {
-		promtailClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
-	}
-
 	resp, err := promtailClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err
 	}
-
+	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
 		line := ""
