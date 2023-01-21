@@ -176,7 +176,7 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 		return processKinesisEvent(ctx, evt)
 	case *events.SQSEvent:
 		return processSQSEvent(ctx, evt)
-	//When setting up S3Notification to SQS, an test event is first sent to the queue
+	//When setting up S3Notification to SQS, a test event is first sent to the queue
 	case *events.S3TestEvent:
 		return nil
 	}
