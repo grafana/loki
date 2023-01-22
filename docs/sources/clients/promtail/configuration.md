@@ -1944,6 +1944,8 @@ The optional `limits_config` block configures global limits for this instance of
 
 Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
 [max_line_size: <int> | default = 0]
+# Truncate log lines when they exceed max_line_size.
+[max_line_size_truncate: <bool> | default = false]
 ```
 
 ## target_config
