@@ -212,7 +212,6 @@ This value now defaults to `loki`, it was previously set to `cortex`. If you are
 
 #### Drop stage configuration changed
 
-The configuration option `source` is renamed to `sources`.  It now accepts a list of strings. 
 The configuration option `value` has been removed. Use the option `expression` instead, which takes a regular expression. 
 
 ## 2.5.0

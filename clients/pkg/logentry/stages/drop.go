@@ -22,6 +22,7 @@ const (
 	ErrDropStageInvalidConfig   = "drop stage config error, `value` and `expression` cannot both be defined at the same time."
 	ErrDropStageInvalidRegex    = "drop stage regex compilation error: %v"
 	ErrDropStageInvalidByteSize = "drop stage failed to parse longer_than to bytes: %v"
+	ErrDropStageInvalidSource   = "drop stage source invalid type should be string or list of strings"
 )
 
 var (
@@ -31,10 +32,11 @@ var (
 
 // DropConfig contains the configuration for a dropStage
 type DropConfig struct {
-	DropReason *string   `mapstructure:"drop_counter_reason"`
-	Sources    *[]string `mapstructure:"sources"`
-	Separator  *string   `mapstructure:"separator"`
-	Expression *string   `mapstructure:"expression"`
+	DropReason *string     `mapstructure:"drop_counter_reason"`
+	Source     interface{} `mapstructure:"source"`
+	source     *[]string
+	Separator  *string `mapstructure:"separator"`
+	Expression *string `mapstructure:"expression"`
 	regex      *regexp.Regexp
 	OlderThan  *string `mapstructure:"older_than"`
 	olderThan  time.Duration
@@ -45,8 +47,15 @@ type DropConfig struct {
 // validateDropConfig validates the DropConfig for the dropStage
 func validateDropConfig(cfg *DropConfig) error {
 	if cfg == nil ||
-		(cfg.Sources == nil && cfg.Expression == nil && cfg.OlderThan == nil && cfg.LongerThan == nil) {
+		(cfg.Source == nil && cfg.Expression == nil && cfg.OlderThan == nil && cfg.LongerThan == nil) {
 		return errors.New(ErrDropStageEmptyConfig)
+	}
+	if cfg.Source != nil {
+		src, err := unifySourceField(cfg.Source)
+		if err != nil {
+			return err
+		}
+		cfg.source = &src
 	}
 	if cfg.DropReason == nil || *cfg.DropReason == "" {
 		cfg.DropReason = &defaultDropReason
@@ -75,6 +84,17 @@ func validateDropConfig(cfg *DropConfig) error {
 		}
 	}
 	return nil
+}
+
+// unifySourceField unify Source into a slice of strings
+func unifySourceField(s interface{}) ([]string, error) {
+	switch s := s.(type) {
+	case []string:
+		return s, nil
+	case string:
+		return []string{s}, nil
+	}
+	return nil, errors.New(ErrDropStageInvalidSource)
 }
 
 // newDropStage creates a DropStage from config
@@ -152,10 +172,10 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 			return false
 		}
 	}
-	if m.cfg.Sources != nil && m.cfg.Expression == nil {
+	if m.cfg.Source != nil && m.cfg.Expression == nil {
 		var match bool
 		match = true
-		for _, src := range *m.cfg.Sources {
+		for _, src := range *m.cfg.source {
 			if _, ok := e.Extracted[src]; !ok {
 				match = false
 			}
@@ -173,7 +193,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		}
 	}
 
-	if m.cfg.Sources == nil && m.cfg.Expression != nil {
+	if m.cfg.Source == nil && m.cfg.Expression != nil {
 		if !m.cfg.regex.MatchString(e.Line) {
 			// Not a match to the regex, don't drop
 			if Debug {
@@ -186,9 +206,9 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		}
 	}
 
-	if m.cfg.Sources != nil && m.cfg.Expression != nil {
+	if m.cfg.Source != nil && m.cfg.Expression != nil {
 		var extractedData []string
-		for _, src := range *m.cfg.Sources {
+		for _, src := range *m.cfg.source {
 			if e, ok := e.Extracted[src]; ok {
 				s, err := getString(e)
 				if err != nil {

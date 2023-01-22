@@ -107,7 +107,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Matched Source",
 			config: &DropConfig{
-				Sources: &[]string{"key"},
+				Source: "key",
 			},
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
@@ -118,7 +118,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Did not match Source",
 			config: &DropConfig{
-				Sources: &[]string{"key1"},
+				Source: "key1",
 			},
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
@@ -127,21 +127,33 @@ func Test_dropStage_Process(t *testing.T) {
 			shouldDrop: false,
 		},
 		{
-			name: "Regex Matched Source and Expression",
+			name: "Regex Matched Source(int) and Expression",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
-				Expression: ptrFromString(".*val.*"),
+				Source:     "key",
+				Expression: ptrFromString("50"),
 			},
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
-				"key": "val1",
+				"key": 50,
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Regex Matched Source(string) and Expression",
+			config: &DropConfig{
+				Source:     "key",
+				Expression: ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key": "50",
 			},
 			shouldDrop: true,
 		},
 		{
 			name: "Regex Matched Source and Expression with multiple sources",
 			config: &DropConfig{
-				Sources:    &[]string{"key1", "key2"},
+				Source:     []string{"key1", "key2"},
 				Expression: ptrFromString(`val\d{1};val\d{3}$`),
 			},
 			labels: model.LabelSet{},
@@ -154,7 +166,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Regex Matched Source and Expression with multiple sources and custom separator",
 			config: &DropConfig{
-				Sources:    &[]string{"key1", "key2"},
+				Source:     []string{"key1", "key2"},
 				Separator:  ptrFromString("#"),
 				Expression: ptrFromString(`val\d{1}#val\d{3}$`),
 			},
@@ -168,7 +180,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Regex Did not match Source and Expression",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
+				Source:     "key",
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels: model.LabelSet{},
@@ -180,7 +192,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Regex Did not match Source and Expression with multiple sources",
 			config: &DropConfig{
-				Sources:    &[]string{"key1", "key2"},
+				Source:     []string{"key1", "key2"},
 				Expression: ptrFromString(`match\d+;match\d+`),
 			},
 			labels: model.LabelSet{},
@@ -193,7 +205,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Regex Did not match Source and Expression with multiple sources and custom separator",
 			config: &DropConfig{
-				Sources:    &[]string{"key1", "key2"},
+				Source:     []string{"key1", "key2"},
 				Separator:  ptrFromString("#"),
 				Expression: ptrFromString(`match\d;match\d`),
 			},
@@ -207,7 +219,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Regex No Matching Source",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
+				Source:     "key",
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels: model.LabelSet{},
@@ -239,7 +251,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Match Source and Length Both Match",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
+				Source:     "key",
 				LongerThan: ptrFromString("10b"),
 			},
 			labels: model.LabelSet{},
@@ -252,7 +264,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Match Source and Length Only First Matches",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
+				Source:     "key",
 				LongerThan: ptrFromString("10b"),
 			},
 			labels: model.LabelSet{},
@@ -265,7 +277,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Match Source and Length Only Second Matches",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
+				Source:     "key",
 				LongerThan: ptrFromString("10b"),
 			},
 			labels: model.LabelSet{},
@@ -278,7 +290,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Everything Must Match",
 			config: &DropConfig{
-				Sources:    &[]string{"key"},
+				Source:     "key",
 				Expression: ptrFromString(".*val.*"),
 				OlderThan:  ptrFromString("1h"),
 				LongerThan: ptrFromString("10b"),
@@ -371,6 +383,13 @@ func Test_validateDropConfig(t *testing.T) {
 				LongerThan: &dropInvalidByteSize,
 			},
 			wantErr: fmt.Errorf(ErrDropStageInvalidByteSize, "strconv.UnmarshalText: parsing \"23QB\": invalid syntax"),
+		},
+		{
+			name: "Invalid Source Field Type",
+			config: &DropConfig{
+				Source: 1,
+			},
+			wantErr: errors.New(ErrDropStageInvalidSource),
 		},
 	}
 	for _, tt := range tests {

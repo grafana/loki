@@ -17,16 +17,16 @@ There are examples below to help explain.
 
 ```yaml
 drop:
-  # Names list of extracted data. If empty, uses the log message.
-  [sources: [<string>]]
+  # Single name or names list of extracted data. If empty, uses the log message.
+  [source: [<string>] | <string>]
 
   # Separator placed between concatenated extracted data names. The default separator is a semicolon.
   [separator: <string> | default = ";"]
   
-  # RE2 regular expression. If `sources` are provided, the regex will attempt to match
+  # RE2 regular expression. If `source` is provided and it's a list, the regex will attempt to match
   # the concatenated sources. If no source is provided, then the regex attempts 
   # to match the log line.
-  # If the provided regex matches the log line or the concatenated sources, the line will be dropped.
+  # If the provided regex matches the log line or the source, the line will be dropped.
   [expression: <string>]
 
   # older_than will be parsed as a Go duration: https://golang.org/pkg/time/#ParseDuration
@@ -51,13 +51,13 @@ The following are examples showing the use of the `drop` stage.
 
 ### Simple drops
 
-Simple `drop` stage configurations only specify one of the options, or two options when using the `sources` option.
+Simple `drop` stage configurations only specify one of the options, or two options when using the `source` option.
 
 Given the pipeline:
 
 ```yaml
 - drop:
-    sources: ["level","msg"]
+    source: ["level","msg"]
 ```
 
 Drops any log line that has an extracted data field of at least `level` or `msg`.
@@ -82,7 +82,7 @@ Given the pipeline:
      level:
      msg:
 - drop:
-    sources:     ["level","msg"]
+    source:     ["level","msg"]
     separator:   "#"
     expression:  "(error|ERROR)#.*\/loki\/api\/push.*"
 ```
@@ -176,7 +176,7 @@ Given the pipeline:
 - drop:
     longer_than: 8kb
 - drop:
-    sources: ["msg"]
+    source: "msg"
     expression: ".*trace.*"
 ```
 
