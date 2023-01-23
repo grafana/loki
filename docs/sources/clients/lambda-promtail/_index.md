@@ -109,6 +109,12 @@ This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
 
 Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
 
+### Triggering Lambda-Promtail via SQS
+For AWS services supporting sending messages to SQS (ex: S3 with an S3 Notification to SQS), events can be processed through an `SQS queue with lambda trigger` instead of directly configuring the source service to trigger lambda. Lambda-promtail will retrieve the nested events from the SQS messages' body and process them as if them came directly from the source service.
+
+### On-Failure log recovery using SQS
+Triggering lambda-promtail through SQS allows handling on-failure recovery of the logs using a secondary SQS queue as a dead-letter-queue. Lambda can be set up such as unsuccessfully processed messages will be sent to the DLQ. After fixing the issue, operators will be able to reprocess the messages by sending back messages from the DLQ to the source queue using the SQS `DLQ redrive` feature.
+
 ## Propagated Labels
 
 Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{<relref "../promtail/configuration#relabel_configs">}}) or later stages in a Promtail [pipeline]({{<relref "../promtail/pipelines/">}}):
@@ -120,12 +126,6 @@ Incoming logs can have seven special labels assigned to them which can be used i
 - `__aws_kinesis_event_source_arn`: The Kinesis event source ARN.
 - `__aws_s3_log_lb`: The name of the loadbalancer.
 - `__aws_s3_log_lb_owner`: The Account ID of the loadbalancer owner.
-
-## Triggering Lambda-Promtail via SQS
-For AWS services supporting sending messages to SQS (ex: S3 with an S3 Notification to SQS), events can be processed through an `SQS queue with lambda trigger` instead of directly configuring the source service to trigger lambda. Lambda-promtail will retrieve the nested events from the SQS messages' body and process them as if them came directly from the source service.
-
-# On-Failure log recovery using SQS
-Triggering lambda-promtail through SQS allows handling on-failure recovery of the logs using a secondary SQS queue as a dead-letter-queue. Lambda can be set up such as unsuccessfully processed messages will be sent to the DLQ. After fixing the issue, operators will be able to reprocess the messages by sending back messages from the DLQ to the source queue using the SQS `DLQ redrive` feature.
 
 ## Limitations
 
