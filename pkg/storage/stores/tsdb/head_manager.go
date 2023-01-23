@@ -22,7 +22,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/wal"
 )
@@ -87,10 +86,9 @@ tsdb/
 */
 
 type HeadManager struct {
-	log        log.Logger
-	dir        string
-	metrics    *Metrics
-	tableRange config.TableRange
+	log     log.Logger
+	dir     string
+	metrics *Metrics
 
 	// RLocked for all writes/reads,
 	// Locked before rotating heads/wal
@@ -111,13 +109,12 @@ type HeadManager struct {
 	cancel chan struct{}
 }
 
-func NewHeadManager(logger log.Logger, dir string, tableRange config.TableRange, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
+func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
 	shards := defaultHeadManagerStripeSize
 	m := &HeadManager{
 		log:         log.With(logger, "component", "tsdb-head-manager"),
 		dir:         dir,
 		metrics:     metrics,
-		tableRange:  tableRange,
 		tsdbManager: tsdbManager,
 
 		period: defaultRotationPeriod,

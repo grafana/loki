@@ -53,7 +53,7 @@ type newStoreFactoryFunc func(
 
 var tsdbMetrics *Metrics
 
-// NewStore creates a new tsdb index readerwriter.
+// NewStore creates a new tsdb index ReaderWriter.
 var NewStore = func() newStoreFactoryFunc {
 	return func(
 		name string,
@@ -140,7 +140,6 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 		headManager := NewHeadManager(
 			util_log.Logger,
 			dir,
-			tableRange,
 			tsdbMetrics,
 			tsdbManager,
 		)

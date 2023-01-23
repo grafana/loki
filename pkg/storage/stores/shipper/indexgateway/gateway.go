@@ -92,11 +92,11 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 	for _, query := range request.Queries {
 		tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
 		if err != nil {
-			level.Warn(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
+			level.Info(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
 			continue
 		}
 		if tableNumber == -1 {
-			level.Warn(log).Log("msg", "skip querying table", "table", query.TableName, "err", "invalid table number")
+			level.Info(log).Log("msg", "skip querying table", "table", query.TableName, "err", "invalid table number")
 			continue
 		}
 

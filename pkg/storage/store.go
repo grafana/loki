@@ -164,14 +164,14 @@ func (s *store) init() error {
 
 		if p.IndexType == config.BoltDBShipperType && s.cfg.BoltDBShipperConfig.SharedStoreType != "" &&
 			s.cfg.BoltDBShipperConfig.SharedStoreType != p.ObjectType {
-			level.Info(s.logger).Log("skipping store init for this period as object store does not match -boltdb.shipper.shared-store",
+			level.Warn(s.logger).Log("skipping store init for this period as object-type does not match -boltdb.shipper.shared-store",
 				"from", p.From.String(), "object-type", p.ObjectType)
 			continue
 		}
 
 		if p.IndexType == config.TSDBType && s.cfg.TSDBShipperConfig.SharedStoreType != "" &&
 			s.cfg.TSDBShipperConfig.SharedStoreType != p.ObjectType {
-			level.Info(s.logger).Log("skipping store init for this period as object store does not match -tsdb.shipper.shared-store",
+			level.Warn(s.logger).Log("skipping store init for this period as object-type does not match -tsdb.shipper.shared-store",
 				"from", p.From.String(), "object-type", p.ObjectType)
 			continue
 		}
@@ -192,6 +192,10 @@ func (s *store) init() error {
 		}
 
 		s.composite.AddStore(p.From.Time, f, idx, w, stop)
+	}
+
+	if len(s.composite.Stores()) == 0 {
+		return errors.New("found no stores to initialise")
 	}
 
 	if s.cfg.EnableAsyncStore {
