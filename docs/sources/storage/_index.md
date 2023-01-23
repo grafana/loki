@@ -50,9 +50,17 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 ### Single-Store
 
+Single-Store refers to the using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
+
+#### tsdb (recommended)
+
+Starting in Loki v2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+
+#### BoltDB (deprecated)
+
 Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki.
 
-As of 2.0, this is the recommended index storage type, performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
+Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
 
 ### Cassandra
 
