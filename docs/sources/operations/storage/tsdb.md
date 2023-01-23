@@ -73,18 +73,6 @@ querier:
 
 We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `512` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
 
-### Fine-Tuning
-
-This section shouldn't be necessary for the vast majority of users, but if you're tuning performance on larger loki deployments, this may be for you.
-
-1) Frontend `scheduler_worker_concurrency`
-Loki frontends create a number of goroutines per `query-scheduler` responsible for enqueueing incoming queries to the schedulers. These are "subqueries" post query planning splits, resulting in potentially many subqueries per user query. By default there are `5` goroutines per frontend+scheduler pair. Under very high load, you may want to increase this:
-
-```yaml
-frontend:
-  scheduler_worker_concurrency: 60
-```
-
 ### Dynamic Query Sharding
 
 Previously we would statically shard queries based on the index row shards configured [here]({{< relref "../../configuration/_index#period_config" >}}).
