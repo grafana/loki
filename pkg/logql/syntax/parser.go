@@ -65,7 +65,7 @@ func (p *parser) Parse() (Expr, error) {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
@@ -192,7 +192,7 @@ func validateSortGrouping(grouping *Grouping) error {
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}

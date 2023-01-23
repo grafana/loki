@@ -1,6 +1,6 @@
 ---
 title: Loki Canary
-description: Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster. 
+description: Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.
 weight: 60
 ---
 # Loki Canary
@@ -272,9 +272,10 @@ $ make loki-canary-image
 
 ## Configuration
 
-The address of Loki must be passed in with the `-addr` flag, and if your Loki
-server uses TLS, `-tls=true` must also be provided. Note that using TLS will
-cause the WebSocket connection to use `wss://` instead of `ws://`.
+The address of Loki must be passed in with the `-addr` flag or by setting the
+environment variable `LOKI_ADDRESS`, and if your Loki server uses TLS, `-tls=true`
+must also be provided. Note that using TLS will cause the WebSocket connection
+to use `wss://` instead of `ws://`.
 
 The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
@@ -302,7 +303,7 @@ All options:
 
 ```
   -addr string
-    	The Loki server URL:Port, e.g. loki:3100
+    	The Loki server URL:Port, e.g. loki:3100. Loki address can also be set using the environment variable LOKI_ADDRESS.
   -buckets int
     	Number of buckets in the response_latency histogram (default 10)
   -ca-file string

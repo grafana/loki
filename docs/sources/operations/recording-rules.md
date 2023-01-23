@@ -70,8 +70,8 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here]({{< relref "../configuration/#ruler" >}})
-have [override options]({{< relref "../configuration/#limits_config" >}}) (which can be also applied at runtime!).
+a per-tenant basis. Most of the configuration options [defined here]({{<relref "../configuration/#ruler">}})
+have [override options]({{<relref "../configuration/#limits_config">}}) (which can be also applied at runtime!).
 
 ### Tuning
 
@@ -130,7 +130,7 @@ aware that if the remote storage is down for longer than `ruler.wal.max-age`, da
 
 In cases 2 & 3, you should consider [tuning](#tuning) remote-write appropriately.
 
-Further reading: see [this blog post](/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus)
+Further reading: see [this blog post](/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus/)
 by Prometheus maintainer Callum Styan.
 
 ### Appender Not Ready

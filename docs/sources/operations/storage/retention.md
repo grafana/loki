@@ -1,19 +1,20 @@
 ---
 title: Retention
+description: Grafana Loki Storage Retention
 ---
-# Grafana Loki Storage Retention
+# Retention
 
 Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#compactor).
 
 By default, when `table_manager.retention_deletes_enabled` or `compactor.retention_enabled` flags are not set, then logs sent to Loki live forever.
 
-Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
+Retention through the [Table Manager]({{<relref "table-manager">}}) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper]({{<relref "boltdb-shipper">}}) store and chunk/index store. However retention through the [Compactor]({{<relref "boltdb-shipper#compactor">}}) is supported only with the [boltdb-shipper]({{<relref "boltdb-shipper">}}) store.
 
 The Compactor retention will become the default and have long term support. It supports more granular retention policies on per tenant and per stream use cases.
 
 ## Compactor
 
-The [Compactor](../boltdb-shipper#compactor) can deduplicate index entries. It can also apply granular retention. When applying retention with the Compactor, the [Table Manager](../table-manager/) is unnecessary.
+The [Compactor]({{<relref "boltdb-shipper#compactor">}}) can deduplicate index entries. It can also apply granular retention. When applying retention with the Compactor, the [Table Manager]({{<relref "table-manager">}}) is unnecessary.
 
 > Run the compactor as a singleton (a single instance).
 
@@ -87,7 +88,7 @@ The index period must be 24h.
 
 #### Configuring the retention period
 
-Retention period is configured within the [`limits_config`](./../../../configuration/#limits_config) configuration section.
+Retention period is configured within the [`limits_config`]({{<relref "../../configuration/#limits_config">}}) configuration section.
 
 There are two ways of setting retention policies:
 
@@ -161,7 +162,7 @@ The example configurations will set these rules:
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
-[`table_manager`](../../../configuration#table_manager)
+[`table_manager`]({{<relref "../../configuration#table_manager">}})
 section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
@@ -169,12 +170,12 @@ provided retention period needs to be a duration represented as a string that
 can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
 
 > **WARNING**: The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`](../../../configuration#period_config)
-block. See the [Table Manager](../table-manager#retention) documentation for
+`period`, configured in the [`period_config`]({{<relref "../../configuration#period_config">}})
+block. See the [Table Manager]({{<relref "table-manager#retention">}}) documentation for
 more information.
 
 > **NOTE**: To avoid querying of data beyond the retention period,
-`max_look_back_period` config in [`chunk_store_config`](../../../configuration#chunk_store_config) must be set to a value less than or equal to
+`max_look_back_period` config in [`chunk_store_config`]({{<relref "../../configuration#chunk_store_config">}}) must be set to a value less than or equal to
 what is set in `table_manager.retention_period`.
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
@@ -194,7 +195,7 @@ intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
 
 For further details on the Table Manager internals, refer to the
-[Table Manager](../table-manager/) documentation.
+[Table Manager]({{<relref "table-manager">}}) documentation.
 
 
 ## Example Configuration

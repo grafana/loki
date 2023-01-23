@@ -1,5 +1,6 @@
 ---
 title: Matching IP addresses
+description: Matching IP addresses
 weight: 40
 ---
 

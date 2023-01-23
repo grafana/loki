@@ -1,5 +1,6 @@
 ---
 title: Template functions
+description: Template functions
 weight: 30
 ---
 
