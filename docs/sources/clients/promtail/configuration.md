@@ -1960,6 +1960,7 @@ sync_period: "10s"
 ## options_config
 
 ```yaml
+# Deprecated.
 # A comma-separated list of labels to include in the stream lag metric
 # `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
 # always included. The stream lag metric indicates which streams are falling behind

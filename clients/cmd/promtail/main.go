@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"sync"
-
 	// embed time zone data
 	_ "time/tzdata"
 
@@ -153,8 +152,7 @@ func main() {
 
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
 	if config.Options.StreamLagLabels.String() != "" {
-		level.Error(util_log.Logger).Log("msg", "client config stream_lag_labels is deprecated and the associated metric has been removed", "stream_lag_labels", config.Options.StreamLagLabels.String())
-		os.Exit(1)
+		level.Warn(util_log.Logger).Log("msg", "the stream_lag_labels setting is deprecated and the associated metric has been removed", "stream_lag_labels", config.Options.StreamLagLabels.String())
 	}
 	newConfigFunc := func() (*promtail_config.Config, error) {
 		mtx.Lock()
