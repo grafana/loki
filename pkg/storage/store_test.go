@@ -96,7 +96,6 @@ func Benchmark_store_SelectLogsBackward(b *testing.B) {
 // go run  -mod=vendor ./pkg/storage/hack/main.go
 // go test -benchmem -run=^$ -mod=vendor  ./pkg/storage -bench=Benchmark_store_SelectSample   -memprofile memprofile.out -cpuprofile cpuprofile.out
 func Benchmark_store_SelectSample(b *testing.B) {
-	var sampleRes []logproto.Sample
 	for _, test := range []string{
 		`count_over_time({foo="bar"}[5m])`,
 		`rate({foo="bar"}[5m])`,
@@ -104,6 +103,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		`bytes_over_time({foo="bar"}[5m])`,
 	} {
 		b.Run(test, func(b *testing.B) {
+			sampleCount := 0
 			for i := 0; i < b.N; i++ {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
 					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
@@ -113,13 +113,14 @@ func Benchmark_store_SelectSample(b *testing.B) {
 				}
 
 				for iter.Next() {
-					sampleRes = append(sampleRes, iter.Sample())
+					_ = iter.Sample()
+					sampleCount++
 				}
 				iter.Close()
 			}
+			b.ReportMetric(float64(sampleCount)/float64(b.N), "samples/op")
 		})
 	}
-	log.Print("sample processed ", len(sampleRes))
 }
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
