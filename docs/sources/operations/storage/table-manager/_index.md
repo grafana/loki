@@ -1,7 +1,8 @@
 ---
 title: Table manager
+description: Table manager
 ---
-# Table Manager
+# Table manager
 
 Grafana Loki supports storing indexes and chunks in table-based data storages. When
 such a storage type is used, multiple tables are created over the time: each
@@ -22,7 +23,7 @@ time range exceeds the retention period.
 The Table Manager supports the following backends:
 
 - **Index store**
-  - [Single Store (boltdb-shipper)](../boltdb-shipper/)
+  - [Single Store (boltdb-shipper)]({{<relref "../boltdb-shipper">}})
   - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
   - [Google Bigtable](https://cloud.google.com/bigtable)
   - [Apache Cassandra](https://cassandra.apache.org)
@@ -38,7 +39,7 @@ to store chunks, are not managed by the Table Manager, and a custom bucket polic
 should be set to delete old data.
 
 For detailed information on configuring the Table Manager, refer to the
-[`table_manager`](../../../configuration#table_manager)
+[`table_manager`]({{<relref "../../../configuration#table_manager">}})
 section in the Loki configuration document.
 
 
@@ -47,10 +48,10 @@ section in the Loki configuration document.
 A periodic table stores the index or chunk data relative to a specific period
 of time. The duration of the time range of the data stored in a single table and
 its storage type is configured in the
-[`schema_config`](../../../configuration#schema_config) configuration
+[`schema_config`]({{<relref "../../../configuration#schema_config">}}) configuration
 block.
 
-The [`schema_config`](../../../configuration#schema_config) can contain
+The [`schema_config`]({{<relref "../../../configuration#schema_config">}}) can contain
 one or more `configs`. Each config, defines the storage used between the day
 set in `from` (in the format `yyyy-mm-dd`) and the next config, or "now"
 in the case of the last schema config entry.
@@ -59,7 +60,7 @@ This allows to have multiple non-overlapping schema configs over the time, in
 order to perform schema version upgrades or change storage settings (including
 changing the storage type).
 
-![periodic_tables](../table-manager-periodic-tables.png)
+![periodic_tables](./table-manager-periodic-tables.png)
 
 The write path hits the table where the log entry timestamp falls into (usually
 the last table, except short periods close to the end of a table and the
@@ -104,7 +105,7 @@ order to make sure that the new table is ready once the current table end
 period is reached.
 
 The `creation_grace_period` property - in the
-[`table_manager`](../../../configuration#table_manager)
+[`table_manager`]({{<relref "../../../configuration#table_manager">}})
 configuration block - defines how long before a table should be created.
 
 
@@ -132,14 +133,14 @@ is deleted, the Table Manager keeps the last tables alive using this formula:
 number_of_tables_to_keep = floor(retention_period / table_period) + 1
 ```
 
-![retention](../table-manager-retention.png)
+![retention](./table-manager-retention.png)
 
 It's important to note that - due to the internal implementation - the table
 `period` and `retention_period` **must** be multiples of `24h` in order to get
 the expected behavior.
 
 For detailed information on configuring the retention, refer to the
-[Loki Storage Retention](../retention/)
+[Loki Storage Retention]({{<relref "../retention">}})
 documentation.
 
 
@@ -148,10 +149,10 @@ documentation.
 A table can be active or inactive.
 
 A table is considered **active** if the current time is within the range:
-- Table start period - [`creation_grace_period`](../../../configuration#table_manager)
+- Table start period - [`creation_grace_period`]({{<relref "../../../configuration#table_manager">}})
 - Table end period + max chunk age (hardcoded to `12h`)
 
-![active_vs_inactive_tables](../table-manager-active-vs-inactive-tables.png)
+![active_vs_inactive_tables](./table-manager-active-vs-inactive-tables.png)
 
 Currently, the difference between an active and inactive table **only applies
 to the DynamoDB storage** settings: capacity mode (on-demand or provisioned),
@@ -199,13 +200,13 @@ The Table Manager can be executed in two ways:
 
 ### Monolithic mode
 
-When Loki runs in [monolithic mode](../../../fundamentals/architecture#modes-of-operation),
+When Loki runs in [monolithic mode]({{<relref "../../../fundamentals/architecture/deployment-modes">}}),
 the Table Manager is also started as component of the entire stack.
 
 
 ### Microservices mode
 
-When Loki runs in [microservices mode](../../../fundamentals/architecture#modes-of-operation),
+When Loki runs in [microservices mode]({{<relref "../../../fundamentals/architecture/deployment-modes">}}),
 the Table Manager should be started as separate service named `table-manager`.
 
 You can check out a production grade deployment example at

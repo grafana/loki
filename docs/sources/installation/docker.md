@@ -1,5 +1,6 @@
 ---
-title: Docker
+title: Install Grafana Loki with Docker or Docker Compose
+description: Docker
 weight: 30
 ---
 # Install Grafana Loki with Docker or Docker Compose

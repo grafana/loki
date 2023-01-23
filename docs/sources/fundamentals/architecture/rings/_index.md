@@ -1,5 +1,6 @@
 ---
 title: Consistent Hash Rings
+description: Consistent Hash Rings
 weight: 40
 ---
 # Consistent Hash Rings
@@ -34,7 +35,7 @@ These components can optionally be connected into a hash ring:
 In an architecture that has three distributors and three ingestors defined,
 the hash rings for these components connect the instances of same-type components.
 
-![distributor and ingester rings](../ring-overview.png)
+![distributor and ingester rings](./ring-overview.png)
 
 Each node in the ring represents an instance of a component.
 Each node has a key-value store that holds communication information
@@ -49,7 +50,7 @@ For each node, the key-value store holds:
 
 ## Configuring rings
 
-Define [ring configuration](../../../configuration/#ring_config) within the `common.ring_config` block.
+Define [ring configuration]({{<relref "../../../configuration/#common">}}) within the `common.ring_config` block.
 
 Use the default `memberlist` key-value store type unless there is
 a compelling reason to use a different key-value store type.

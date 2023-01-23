@@ -1,8 +1,9 @@
 ---
 title: "XXXX: Template"
+description: "Template"
 ---
 
-# Title
+# XXXX: Template
 
 > _NOTE: the file should be named `_DRAFT_<your-title>.md` and be placed in the `docs/sources/lids` directory.
 Once accepted, it will be assigned a LID number and the file will be renamed by the sponsor.<br>

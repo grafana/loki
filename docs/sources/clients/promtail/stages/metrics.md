@@ -1,7 +1,8 @@
 ---
 title: metrics
+description: metrics stage
 ---
-# `metrics` stage
+# metrics
 
 The `metrics` stage is an action stage that allows for defining and updating
 metrics based on data from the extracted map. Note that created metrics are not
