@@ -54,7 +54,7 @@ Single-Store refers to the using object storage as the storage medium for both L
 
 #### tsdb (recommended)
 
-The [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+Starting in Loki v2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
 
 #### Deprecated (2.0+): boltdb-shipper
 
