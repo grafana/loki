@@ -75,6 +75,10 @@
 
 #### Jsonnet
 
+##### Fixes
+
+* [8247](https://github.com/grafana/loki/pull/8247) **Whyeasy** fix usage of cluster label within Mixin.
+
 #### Build
 
 * [7938](https://github.com/grafana/loki/pull/7938) **ssncferreira**: Add DroneCI pipeline step to validate configuration flags documentation generation.
