@@ -125,7 +125,7 @@ schema_config:
 	additionalBoltDBShipperSchemaConfigTemplate = `
     - from: {{.additionalPeriodStart}}
       store: boltdb-shipper
-      object_store: filesystem.store-1
+      object_store: store-1
       schema: v11
       index:
         prefix: index_
@@ -144,7 +144,7 @@ schema_config:
 	additionalTSDBShipperSchemaConfigTemplate = `
     - from: {{.additionalPeriodStart}}
       store: tsdb
-      object_store: filesystem.store-1
+      object_store: store-1
       schema: v11
       index:
         prefix: index_
