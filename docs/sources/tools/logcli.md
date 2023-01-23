@@ -1,10 +1,11 @@
 ---
 title: LogCLI
+description: LogCLI, Grafana Loki's command-line interface
 weight: 20
 aliases:
     - /docs/loki/latest/getting-started/logcli/
 ---
-# LogCLI, Grafana Loki's command-line interface
+# LogCLI
 
 LogCLI is the command-line interface to Grafana Loki.
 It facilitates running [LogQL]({{< relref "../logql/_index.md" >}})

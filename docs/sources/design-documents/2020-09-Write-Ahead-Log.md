@@ -1,10 +1,11 @@
 ---
 title: Write-Ahead Logs
+description: Write-Ahead Logs
 weight: 30
 ---
 ## Write-Ahead Logs
 
-Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
+Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](/))
 
 Date: 30/09/2020
 

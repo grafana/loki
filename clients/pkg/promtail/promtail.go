@@ -134,13 +134,13 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	}
 	var err error
 	if p.dryRun {
-		p.client, err = client.NewLogger(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.ClientConfigs...)
+		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		p.client, err = client.NewMulti(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
+		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}

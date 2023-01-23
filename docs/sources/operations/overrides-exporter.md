@@ -1,5 +1,6 @@
 ---
-title: "Overrides Exporter"
+title: "Overrides exporter"
+description: "Overrides Exporter"
 weight: 20
 ---
 

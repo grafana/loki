@@ -1,13 +1,17 @@
 package docker
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,10 +25,23 @@ import (
 
 func Test_DockerTarget(t *testing.T) {
 	h := func(w http.ResponseWriter, r *http.Request) {
-		dat, err := os.ReadFile("testdata/flog.log")
-		require.NoError(t, err)
-		_, err = w.Write(dat)
-		require.NoError(t, err)
+		switch path := r.URL.Path; {
+		case strings.HasSuffix(path, "/logs"):
+			dat, err := os.ReadFile("testdata/flog.log")
+			require.NoError(t, err)
+			_, err = w.Write(dat)
+			require.NoError(t, err)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			info := types.ContainerJSON{
+				ContainerJSONBase: &types.ContainerJSONBase{},
+				Mounts:            []types.MountPoint{},
+				Config:            &container.Config{Tty: false},
+				NetworkSettings:   &types.NetworkSettings{},
+			}
+			err := json.NewEncoder(w).Encode(info)
+			require.NoError(t, err)
+		}
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(h))

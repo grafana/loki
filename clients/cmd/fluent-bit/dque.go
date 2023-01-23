@@ -51,7 +51,7 @@ type dqueClient struct {
 }
 
 // New makes a new dque loki client
-func newDque(cfg *config, logger log.Logger, metrics *client.Metrics, streamLagLabels []string) (client.Client, error) {
+func newDque(cfg *config, logger log.Logger, metrics *client.Metrics) (client.Client, error) {
 	var err error
 
 	q := &dqueClient{
@@ -72,7 +72,7 @@ func newDque(cfg *config, logger log.Logger, metrics *client.Metrics, streamLagL
 		_ = q.queue.TurboOn()
 	}
 
-	q.loki, err = client.New(metrics, cfg.clientConfig, streamLagLabels, 0, logger)
+	q.loki, err = client.New(metrics, cfg.clientConfig, 0, 0, logger)
 	if err != nil {
 		return nil, err
 	}

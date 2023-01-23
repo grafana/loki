@@ -1491,9 +1491,6 @@ spec:
                     drop:
                     - ALL
                 volumeMounts:
-                - mountPath: /tmp/k8s-webhook-server/serving-certs
-                  name: webhook-cert
-                  readOnly: true
                 - mountPath: /controller_manager_config.yaml
                   name: manager-config
                   subPath: controller_manager_config.yaml
@@ -1526,10 +1523,6 @@ spec:
                 runAsNonRoot: true
               terminationGracePeriodSeconds: 10
               volumes:
-              - name: webhook-cert
-                secret:
-                  defaultMode: 420
-                  secretName: loki-operator-webhook-service
               - configMap:
                   name: loki-operator-manager-config
                 name: manager-config

@@ -79,8 +79,8 @@ Common labels
 {{- define "loki.labels" -}}
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
+app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -215,6 +215,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -281,6 +282,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -473,12 +475,17 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
-{{- .Values.enterprise.adminTokenSecret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
+
+{{/* Prefix for provisioned secrets created for each provisioned tenant */}}
+{{- define "enterprise-logs.provisionedSecretPrefix" }}
+{{- .Values.enterprise.provisioner.provisionedSecretPrefix | default (printf "%s-provisioned" (include "loki.name" . )) -}}
 {{- end -}}
 
 {{/* Name of kubernetes secret to persist canary credentials in */}}
-{{- define "enterprise-logs.canarySecret" }}
-{{- .Values.enterprise.canarySecret | default (printf "%s-canary-secret" (include "loki.name" . )) -}}
+{{- define "enterprise-logs.selfMonitoringTenantSecret" }}
+{{- .Values.enterprise.canarySecret | default (printf "%s-%s" (include "enterprise-logs.provisionedSecretPrefix" . ) .Values.monitoring.selfMonitoring.tenant.name) -}}
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
@@ -644,3 +651,14 @@ http {
   }
 }
 {{- end }}
+
+{{/* Configure enableServiceLinks in pod */}}
+{{- define "loki.enableServiceLinks" -}}
+{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.Version -}}
+{{- if or (.Values.loki.enableServiceLinks) (ne .Values.loki.enableServiceLinks false) -}}
+enableServiceLinks: true
+{{- else -}}
+enableServiceLinks: false
+{{- end -}}
+{{- end -}}
+{{- end -}}
