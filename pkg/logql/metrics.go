@@ -109,7 +109,7 @@ func RecordRangeAndInstantQueryMetrics(
 
 	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 
-	logValues := make([]interface{}, 0, 21)
+	logValues := make([]interface{}, 0, 30)
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
