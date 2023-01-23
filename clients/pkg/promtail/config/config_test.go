@@ -37,8 +37,6 @@ scrape_configs:
 limits_config:
   readline_rate: 100
   readline_burst: 200
-options:
-  stream_lag_labels: foo
 `
 
 func Test_Load(t *testing.T) {
