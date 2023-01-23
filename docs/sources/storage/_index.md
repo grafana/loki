@@ -54,7 +54,7 @@ Single-Store refers to the using object storage as the storage medium for both L
 
 #### Suggested (2.8+): tsdb
 
-The [TSDB index store](../operations/storage/tsdb) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+The [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
 
 #### Deprecated (2.0+): boltdb-shipper
 
