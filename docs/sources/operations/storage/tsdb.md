@@ -83,3 +83,15 @@ Loki frontends create a number of goroutines per `query-scheduler` responsible f
 frontend:
   scheduler_worker_concurrency: 60
 ```
+
+### Dynamic Query Sharding
+
+Previously we would statically shard queries based on the index row shards configured [here](../../configuration/_index#periodconfig).
+TSDB does Dynamic Query Sharding based on how much data a query is going to be processing.
+We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend](../../fundamentals/architecture/components#query-frontend) for planning the query.
+Based on our experience from operating many Loki clusters, we have configured TSDB to aim for processing 300-600 MBs of data per query shard.
+This means with TSDB we will be running more, smaller queries.
+
+### Index Caching not required
+
+TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention](./retention) or your configured `max_query_lookback` under [limits_config](../../configuration/_index#limitsconfig). After that, we suggest running without an index cache (it isn't used in TSDB).
