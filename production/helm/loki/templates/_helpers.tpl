@@ -449,7 +449,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Configure the correct name for the memberlist service */}}
 {{- define "loki.memberlist" -}}
-{{ include "loki.name" . }}-memberlist
+{{ include "loki.fullname" . }}-memberlist
 {{- end -}}
 
 {{/* Determine the public host for the Loki cluster */}}

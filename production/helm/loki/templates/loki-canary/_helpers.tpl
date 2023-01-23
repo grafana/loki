@@ -2,7 +2,7 @@
 canary fullname
 */}}
 {{- define "loki-canary.fullname" -}}
-{{ include "loki.name" . }}-canary
+{{ include "loki.fullname" . }}-canary
 {{- end }}
 
 {{/*

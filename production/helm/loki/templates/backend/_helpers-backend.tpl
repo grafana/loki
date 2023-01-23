@@ -2,7 +2,7 @@
 backend fullname
 */}}
 {{- define "loki.backendFullname" -}}
-{{ include "loki.name" . }}-backend
+{{ include "loki.fullname" . }}-backend
 {{- end }}
 
 {{/*
