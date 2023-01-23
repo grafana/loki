@@ -10,7 +10,7 @@ Starting with Loki v2.8, TSDB is the Loki index. It is heavily inspired by the P
 
 ## Example Configuration
 
-To get started using TSDB, add the following configurations:
+To get started using TSDB, add the following configurations to your `config.yaml`:
 
 ```yaml
 schema_config:
