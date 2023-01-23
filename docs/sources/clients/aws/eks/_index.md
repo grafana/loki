@@ -1,6 +1,6 @@
 ---
 title: EKS
-description: ending logs from EKS with Promtail
+description: Sending logs from EKS with Promtail
 ---
 # EKS
 
