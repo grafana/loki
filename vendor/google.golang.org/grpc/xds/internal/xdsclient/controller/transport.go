@@ -59,26 +59,21 @@ func (t *Controller) run(ctx context.Context) {
 	// report error (and log) when stats is transient failure.
 
 	retries := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if retries != 0 {
-			timer := time.NewTimer(t.backoff(retries))
+	lastStreamStartTime := time.Time{}
+	for ctx.Err() == nil {
+		dur := time.Until(lastStreamStartTime.Add(t.backoff(retries)))
+		if dur > 0 {
+			timer := time.NewTimer(dur)
 			select {
 			case <-timer.C:
 			case <-ctx.Done():
-				if !timer.Stop() {
-					<-timer.C
-				}
+				timer.Stop()
 				return
 			}
 		}
 
 		retries++
+		lastStreamStartTime = time.Now()
 		stream, err := t.vClient.NewStream(ctx, t.cc)
 		if err != nil {
 			t.updateHandler.NewConnectionError(err)
@@ -104,10 +99,10 @@ func (t *Controller) run(ctx context.Context) {
 // new requests to send on the stream.
 //
 // For each new request (watchAction), it's
-//  - processed and added to the watch map
-//    - so resend will pick them up when there are new streams
-//  - sent on the current stream if there's one
-//    - the current stream is cleared when any send on it fails
+//   - processed and added to the watch map
+//     so, resend will pick them up when there are new streams
+//   - sent on the current stream if there's one
+//     the current stream is cleared when any send on it fails
 //
 // For each new stream, all the existing requests will be resent.
 //
@@ -171,12 +166,20 @@ func (t *Controller) sendExisting(stream grpc.ClientStream) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// Reset the ack versions when the stream restarts.
-	t.versionMap = make(map[xdsresource.ResourceType]string)
+	// Reset only the nonce when the stream restarts.
+	//
+	// xDS spec says the following. See section:
+	// https://www.envoyproxy.io/docs/envoy/latest/api-docs/xds_protocol#ack-nack-and-resource-type-instance-version
+	//
+	// Note that the version for a resource type is not a property of an
+	// individual xDS stream but rather a property of the resources themselves. If
+	// the stream becomes broken and the client creates a new stream, the client’s
+	// initial request on the new stream should indicate the most recent version
+	// seen by the client on the previous stream
 	t.nonceMap = make(map[xdsresource.ResourceType]string)
 
 	for rType, s := range t.watchMap {
-		if err := t.vClient.SendRequest(stream, mapToSlice(s), rType, "", "", ""); err != nil {
+		if err := t.vClient.SendRequest(stream, mapToSlice(s), rType, t.versionMap[rType], "", ""); err != nil {
 			t.logger.Warningf("ADS request failed: %v", err)
 			return false
 		}
@@ -188,17 +191,17 @@ func (t *Controller) sendExisting(stream grpc.ClientStream) bool {
 // recv receives xDS responses on the provided ADS stream and branches out to
 // message specific handlers.
 func (t *Controller) recv(stream grpc.ClientStream) bool {
-	success := false
+	msgReceived := false
 	for {
 		resp, err := t.vClient.RecvResponse(stream)
 		if err != nil {
 			t.updateHandler.NewConnectionError(err)
 			t.logger.Warningf("ADS stream is closed with error: %v", err)
-			return success
+			return msgReceived
 		}
+		msgReceived = true
 
 		rType, version, nonce, err := t.handleResponse(resp)
-
 		if e, ok := err.(xdsresourceversion.ErrResourceTypeUnsupported); ok {
 			t.logger.Warningf("%s", e.ErrStr)
 			continue
@@ -221,7 +224,6 @@ func (t *Controller) recv(stream grpc.ClientStream) bool {
 			stream:  stream,
 		})
 		t.logger.Infof("Sending ACK for response type: %v, version: %v, nonce: %v", rType, version, nonce)
-		success = true
 	}
 }
 
@@ -302,8 +304,8 @@ func (t *Controller) processWatchInfo(w *watchAction) (target []string, rType xd
 	rType = w.rType
 	target = mapToSlice(current)
 	// We don't reset version or nonce when a new watch is started. The version
-	// and nonce from previous response are carried by the request unless the
-	// stream is recreated.
+	// and nonce from previous response are carried by the request. Only the nonce
+	// is reset when the stream is recreated.
 	ver = t.versionMap[rType]
 	nonce = t.nonceMap[rType]
 	return target, rType, ver, nonce
@@ -371,44 +373,48 @@ func (t *Controller) processAckInfo(ack *ackAction, stream grpc.ClientStream) (t
 // It blocks until the context is cancelled.
 func (t *Controller) reportLoad(ctx context.Context, cc *grpc.ClientConn, opts controllerversion.LoadReportingOptions) {
 	retries := 0
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-
-		if retries != 0 {
-			timer := time.NewTimer(t.backoff(retries))
+	lastStreamStartTime := time.Time{}
+	for ctx.Err() == nil {
+		dur := time.Until(lastStreamStartTime.Add(t.backoff(retries)))
+		if dur > 0 {
+			timer := time.NewTimer(dur)
 			select {
 			case <-timer.C:
 			case <-ctx.Done():
-				if !timer.Stop() {
-					<-timer.C
-				}
+				timer.Stop()
 				return
 			}
 		}
 
 		retries++
-		stream, err := t.vClient.NewLoadStatsStream(ctx, cc)
-		if err != nil {
-			t.logger.Warningf("lrs: failed to create stream: %v", err)
-			continue
-		}
-		t.logger.Infof("lrs: created LRS stream")
+		lastStreamStartTime = time.Now()
+		func() {
+			// streamCtx is created and canceled in case we terminate the stream
+			// early for any reason, to avoid gRPC-Go leaking the RPC's monitoring
+			// goroutine.
+			streamCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			stream, err := t.vClient.NewLoadStatsStream(streamCtx, cc)
+			if err != nil {
+				t.logger.Warningf("lrs: failed to create stream: %v", err)
+				return
+			}
+			t.logger.Infof("lrs: created LRS stream")
 
-		if err := t.vClient.SendFirstLoadStatsRequest(stream); err != nil {
-			t.logger.Warningf("lrs: failed to send first request: %v", err)
-			continue
-		}
+			if err := t.vClient.SendFirstLoadStatsRequest(stream); err != nil {
+				t.logger.Warningf("lrs: failed to send first request: %v", err)
+				return
+			}
 
-		clusters, interval, err := t.vClient.HandleLoadStatsResponse(stream)
-		if err != nil {
-			t.logger.Warningf("%v", err)
-			continue
-		}
+			clusters, interval, err := t.vClient.HandleLoadStatsResponse(stream)
+			if err != nil {
+				t.logger.Warningf("lrs: error from stream: %v", err)
+				return
+			}
 
-		retries = 0
-		t.sendLoads(ctx, stream, opts.LoadStore, clusters, interval)
+			retries = 0
+			t.sendLoads(streamCtx, stream, opts.LoadStore, clusters, interval)
+		}()
 	}
 }
 
@@ -422,7 +428,7 @@ func (t *Controller) sendLoads(ctx context.Context, stream grpc.ClientStream, st
 			return
 		}
 		if err := t.vClient.SendLoadStatsRequest(stream, store.Stats(clusterNames)); err != nil {
-			t.logger.Warningf("%v", err)
+			t.logger.Warningf("lrs: error from stream: %v", err)
 			return
 		}
 	}

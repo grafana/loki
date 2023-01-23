@@ -1,5 +1,6 @@
 ---
-title: LogQL
+title: "LogQL: Log query language"
+description: "LogQL: Log query language"
 weight: 700
 ---
 # LogQL: Log query language
@@ -10,8 +11,8 @@ LogQL uses labels and operators for filtering.
 
 There are two types of LogQL queries:
 
-- [Log queries](log_queries/) return the contents of log lines.
-- [Metric queries](metric_queries/) extend log queries to calculate values
+- [Log queries]({{<relref "log_queries">}}) return the contents of log lines.
+- [Metric queries]({{<relref "metric_queries">}}) extend log queries to calculate values
 based on query results.
 
 ## Binary operators

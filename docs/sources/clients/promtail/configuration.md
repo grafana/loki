@@ -1,7 +1,8 @@
 ---
 title: Configuration
+description: Configuring Promtaim
 ---
-# Configuring Promtail
+# Configuration
 
 Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
@@ -34,8 +35,8 @@ defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
 For more detailed information on configuring how to discover and scrape logs from
-targets, see [Scraping](../scraping/). For more information on transforming logs
-from scraped targets, see [Pipelines](../pipelines/).
+targets, see [Scraping]({{<relref "scraping">}}). For more information on transforming logs
+from scraped targets, see [Pipelines]({{<relref "pipelines">}}).
 
 ### Use environment variables in the configuration
 
@@ -65,7 +66,7 @@ Where default_value is the value to use if the environment variable is undefined
 slashes with single slashes. Because of this every use of a slash `\` needs to
 be replaced with a double slash `\\`
 
-### Generic placeholders:
+### Generic placeholders
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
 - `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
@@ -277,6 +278,10 @@ backoff_config:
   # Maximum number of retries to do
   [max_retries: <int> | default = 10]
 
+# Disable retries of batches that Loki responds to with a 429 status code (TooManyRequests). This reduces
+# impacts on batches from other tenants, which could end up being delayed or dropped due to exponential backoff.
+[drop_rate_limited_batches: <boolean> | default = false]
+
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
 # value bar.
@@ -390,7 +395,7 @@ docker_sd_configs:
 
 ### pipeline_stages
 
-[Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
+[Pipeline]({{<relref "pipelines">}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
 In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
@@ -536,7 +541,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL](../../../logql/) stream selector.
+a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
 
 ```yaml
 match:
@@ -802,8 +807,8 @@ Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
-[syslog-ng](../scraping#syslog-ng-output-configuration) and
-[rsyslog](../scraping#rsyslog-output-configuration). Both configurations enable
+[syslog-ng]({{<relref "scraping#syslog-ng-output-configuration">}}) and
+[rsyslog]({{<relref "scraping#rsyslog-output-configuration">}}). Both configurations enable
 IETF Syslog with octet-counting.
 
 You may need to increase the open files limit for the Promtail process
@@ -857,7 +862,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../api#push-log-entries-to-loki">}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -986,7 +991,7 @@ labels:
 
 ### Available Labels
 
-When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling). This depends on the subscription type chosen.
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
 
 **Internal labels available for pull**
 
@@ -1116,7 +1121,7 @@ Each GELF message received will be encoded in JSON as the log line. For example:
 {"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
 ```
 
-You can leverage [pipeline stages](pipeline_stages) with the GELF target,
+You can leverage [pipeline stages]({{<relref "./stages">}}) with the GELF target,
 if for example, you want to parse the log line and extract more labels or change the log line format.
 
 ```yaml
@@ -1272,7 +1277,7 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You can leverage [pipeline stages]({{<relref "./stages">}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### heroku_drain
 
@@ -1451,7 +1456,7 @@ As a fallback, the file contents are also re-read periodically at the specified
 refresh interval.
 
 Each target has a meta label `__meta_filepath` during the
-[relabeling phase](#relabel_config). Its value is set to the
+[relabeling phase](#relabel_configs). Its value is set to the
 filepath from which the target was extracted.
 
 ```yaml
@@ -1936,6 +1941,9 @@ The optional `limits_config` block configures global limits for this instance of
 # to avoid OOM scenarios.
 # 0 means it is disabled.
 [max_streams: <int> | default = 0]
+
+Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+[max_line_size: <int> | default = 0]
 ```
 
 ## target_config
@@ -1952,6 +1960,7 @@ sync_period: "10s"
 ## options_config
 
 ```yaml
+# Deprecated.
 # A comma-separated list of labels to include in the stream lag metric
 # `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
 # always included. The stream lag metric indicates which streams are falling behind
@@ -1965,13 +1974,13 @@ sync_period: "10s"
 The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
 
 ```yaml
-# When true, 
+# When true,
 [enabled: <boolean> | default = false]
 ```
 
 ## Example Docker Config
 
-It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
 If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 

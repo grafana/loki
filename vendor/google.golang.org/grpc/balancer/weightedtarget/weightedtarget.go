@@ -90,6 +90,9 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 
 	var rebuildStateAndPicker bool
 
+	b.stateAggregator.PauseStateUpdates()
+	defer b.stateAggregator.ResumeStateUpdates()
+
 	// Remove sub-pickers and sub-balancers that are not in the new config.
 	for name := range b.targets {
 		if _, ok := newConfig.Targets[name]; !ok {

@@ -62,7 +62,7 @@ local make(target, container=true, args=[]) = run(target, [
 
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
@@ -74,7 +74,7 @@ local docker(arch, app) = {
 
 local clients_docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
@@ -86,7 +86,7 @@ local clients_docker(arch, app) = {
 
 local docker_operator(arch, operator) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % operator,
     context: 'operator',
@@ -446,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.25.0',
+    local build_image_tag = '0.27.0',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -618,7 +618,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
@@ -669,6 +669,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: {
       event: ['pull_request', 'tag'],
     },
+    depends_on+: ['check'],
     image_pull_secrets: [pull_secret.name],
     volumes+: [
       {
@@ -756,6 +757,38 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
           }) { when: { event: ['tag'] } },
+    ],
+  },
+  pipeline('docker-driver') {
+    trigger+: onTagOrMain,
+    steps: [
+      {
+        name: 'build and push',
+        image: 'grafana/loki-build-image:%s' % build_image_version,
+        depends_on: ['clone'],
+        environment: {
+          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
+          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
+        },
+        commands: [
+          'make docker-driver-push',
+        ],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    volumes: [
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
     ],
   },
 ]

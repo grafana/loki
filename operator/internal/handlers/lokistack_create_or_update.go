@@ -202,6 +202,7 @@ func CreateOrUpdateLokiStack(
 		rulerConfig    *lokiv1beta1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
 		ocpAmEnabled   bool
+		ocpUWAmEnabled bool
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
@@ -243,6 +244,12 @@ func CreateOrUpdateLokiStack(
 			ll.Error(err, "failed to check OCP AlertManager")
 			return err
 		}
+
+		ocpUWAmEnabled, err = openshift.UserWorkloadAlertManagerSVCExists(ctx, stack.Spec, k)
+		if err != nil {
+			ll.Error(err, "failed to check OCP User Workload AlertManager")
+			return err
+		}
 	}
 
 	certRotationRequiredAt := ""
@@ -273,7 +280,8 @@ func CreateOrUpdateLokiStack(
 		},
 		OpenShiftOptions: manifests_openshift.Options{
 			BuildOpts: manifests_openshift.BuildOptions{
-				AlertManagerEnabled: ocpAmEnabled,
+				AlertManagerEnabled:             ocpAmEnabled,
+				UserWorkloadAlertManagerEnabled: ocpUWAmEnabled,
 			},
 		},
 	}

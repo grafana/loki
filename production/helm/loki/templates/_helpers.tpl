@@ -79,8 +79,8 @@ Common labels
 {{- define "loki.labels" -}}
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
+app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -215,6 +215,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -273,6 +274,7 @@ gcs:
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "azure" -}}
 {{- with .Values.loki.storage.azure }}
+type: "azure"
 azure:
   account_name: {{ .accountName }}
   {{- with .accountKey }}
@@ -280,6 +282,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -287,24 +290,18 @@ azure:
   request_timeout: {{ . }}
   {{- end }}
 {{- end -}}
+{{- else }}
+type: "local"
 {{- end -}}
 {{- end -}}
-
-{{/* Predicate function to determin if custom ruler config should be included */}}
-{{- define "loki.shouldIncludeRulerConfig" }}
-{{- or (not (empty .Values.loki.rulerConfig)) (.Values.minio.enabled) (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "gcs") }}
-{{- end }}
 
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
-{{- if eq (include "loki.shouldIncludeRulerConfig" .) "true" }}
 ruler:
+  storage:
+    {{- include "loki.rulerStorageConfig" . | nindent 4}}
 {{- if (not (empty .Values.loki.rulerConfig)) }}
 {{- toYaml .Values.loki.rulerConfig | nindent 2}}
-{{- else }}
-  storage:
-  {{- include "loki.rulerStorageConfig" . | nindent 4}}
-{{- end }}
 {{- end }}
 {{- end }}
 
@@ -478,10 +475,190 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
-{{- .Values.enterprise.adminTokenSecret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
+
+{{/* Prefix for provisioned secrets created for each provisioned tenant */}}
+{{- define "enterprise-logs.provisionedSecretPrefix" }}
+{{- .Values.enterprise.provisioner.provisionedSecretPrefix | default (printf "%s-provisioned" (include "loki.name" . )) -}}
 {{- end -}}
 
 {{/* Name of kubernetes secret to persist canary credentials in */}}
-{{- define "enterprise-logs.canarySecret" }}
-{{- .Values.enterprise.canarySecret | default (printf "%s-canary-secret" (include "loki.name" . )) -}}
+{{- define "enterprise-logs.selfMonitoringTenantSecret" }}
+{{- .Values.enterprise.canarySecret | default (printf "%s-%s" (include "enterprise-logs.provisionedSecretPrefix" . ) .Values.monitoring.selfMonitoring.tenant.name) -}}
+{{- end -}}
+
+{{/* Snippet for the nginx file used by gateway */}}
+{{- define "loki.nginxFile" }}
+worker_processes  5;  ## Default: 1
+error_log  /dev/stderr;
+pid        /tmp/nginx.pid;
+worker_rlimit_nofile 8192;
+
+events {
+  worker_connections  4096;  ## Default: 1024
+}
+
+http {
+  client_body_temp_path /tmp/client_temp;
+  proxy_temp_path       /tmp/proxy_temp_path;
+  fastcgi_temp_path     /tmp/fastcgi_temp;
+  uwsgi_temp_path       /tmp/uwsgi_temp;
+  scgi_temp_path        /tmp/scgi_temp;
+
+  proxy_http_version    1.1;
+
+  default_type application/octet-stream;
+  log_format   {{ .Values.gateway.nginxConfig.logFormat }}
+
+  {{- if .Values.gateway.verboseLogging }}
+  access_log   /dev/stderr  main;
+  {{- else }}
+
+  map $status $loggable {
+    ~^[23]  0;
+    default 1;
+  }
+  access_log   /dev/stderr  main  if=$loggable;
+  {{- end }}
+
+  sendfile     on;
+  tcp_nopush   on;
+  resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
+
+  {{- with .Values.gateway.nginxConfig.httpSnippet }}
+  {{ . | nindent 2 }}
+  {{- end }}
+
+  server {
+    listen             8080;
+
+    {{- if .Values.gateway.basicAuth.enabled }}
+    auth_basic           "Loki";
+    auth_basic_user_file /etc/nginx/secrets/.htpasswd;
+    {{- end }}
+
+    location = / {
+      return 200 'OK';
+      auth_basic off;
+    }
+
+    location = /api/prom/push {
+      proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    location = /api/prom/tail {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    }
+
+    location ~ /api/prom/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    
+    {{- if .Values.read.legacyReadTarget }}
+    location ~ /prometheus/api/v1/alerts.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    location ~ /prometheus/api/v1/rules.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    location ~ /ruler/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- else }}
+    location ~ /prometheus/api/v1/alerts.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    location ~ /prometheus/api/v1/rules.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    location ~ /ruler/.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- end }}
+
+    location = /loki/api/v1/push {
+      proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    location = /loki/api/v1/tail {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    }
+
+    {{- if .Values.read.legacyReadTarget }}
+    location ~ /compactor/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- else }}
+    location ~ /compactor/.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- end }}
+
+    location ~ /distributor/.* {
+      proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    location ~ /ring {
+      proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    location ~ /ingester/.* {
+      proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    {{- if .Values.read.legacyReadTarget }}
+    location ~ /store-gateway/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- else }}
+    location ~ /store-gateway/.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- end }}
+
+    {{- if .Values.read.legacyReadTarget }}
+    location ~ /query-scheduler/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    location ~ /scheduler/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- else }}
+    location ~ /query-scheduler/.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    location ~ /scheduler/.* {
+      proxy_pass       http://{{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+    {{- end }}
+
+    location ~ /loki/api/.* {
+      proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    location ~ /admin/api/.* {
+      proxy_pass       http://{{ include "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
+    {{- with .Values.gateway.nginxConfig.serverSnippet }}
+    {{ . | nindent 4 }}
+    {{- end }}
+  }
+}
+{{- end }}
+
+{{/* Configure enableServiceLinks in pod */}}
+{{- define "loki.enableServiceLinks" -}}
+{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.Version -}}
+{{- if or (.Values.loki.enableServiceLinks) (ne .Values.loki.enableServiceLinks false) -}}
+enableServiceLinks: true
+{{- else -}}
+enableServiceLinks: false
+{{- end -}}
+{{- end -}}
 {{- end -}}

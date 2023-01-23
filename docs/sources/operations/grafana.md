@@ -1,14 +1,15 @@
 ---
 title: Loki in Grafana
+description: Loki in Grafana
 weight: 15
 aliases:
     - /docs/loki/latest/getting-started/grafana/
 ---
 # Loki in Grafana
 
-[Grafana 6.0](https://grafana.com/grafana/download/6.0.0) and more recent
+[Grafana 6.0](/grafana/download/6.0.0) and more recent
 versions have built-in support for Grafana Loki.
-Use [Grafana 6.3](https://grafana.com/grafana/download/6.3.0) or a more
+Use [Grafana 6.3](/grafana/download/6.3.0) or a more
 recent version to take advantage of [LogQL]({{< relref "../logql/_index.md" >}}) functionality.
 
 1. Log into your Grafana instance. If this is your first time running

@@ -14,7 +14,7 @@ type Pod struct {
 }
 
 type Loki struct {
-	AuthEnabled bool `json:"authEnabled"`
+	AuthEnabled bool `json:"auth_enabled"`
 }
 
 type Read struct {
@@ -50,7 +50,7 @@ func constructHelmValues(cluster ClusterSize, nodeType NodeType) Values {
 			AuthEnabled: false,
 		},
 		Read: Read{
-			Replicas: cluster.totalReadReplicas,
+			Replicas: cluster.TotalReadReplicas,
 			Resources: Resources{
 				Requests: struct {
 					CPU    float64 `json:"cpu"`
@@ -69,7 +69,7 @@ func constructHelmValues(cluster ClusterSize, nodeType NodeType) Values {
 			},
 		},
 		Write: Write{
-			Replicas: cluster.totalWriteReplicas,
+			Replicas: cluster.TotalWriteReplicas,
 			Resources: Resources{
 				Requests: struct {
 					CPU    float64 `json:"cpu"`
