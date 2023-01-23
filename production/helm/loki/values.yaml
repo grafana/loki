@@ -674,6 +674,8 @@ write:
   extraEnvFrom: []
   # -- Lifecycle for the write container
   lifecycle: {}
+  # -- Init containers to add to the write pods
+  initContainers: []
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
@@ -875,6 +877,8 @@ backend:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the backend pods
   extraEnvFrom: []
+  # -- Init containers to add to the backend pods
+  initContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods
@@ -950,6 +954,8 @@ singleBinary:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the single binary pods
   extraEnvFrom: []
+  # -- Init containers to add to the single binary pods
+  initContainers: []
   # -- Volume mounts to add to the single binary pods
   extraVolumeMounts: []
   # -- Volumes to add to the single binary pods

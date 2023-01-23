@@ -112,6 +112,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
@@ -3052,6 +3061,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
@@ -3551,6 +3569,15 @@ null
 			<td>Docker image tag for the write image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
