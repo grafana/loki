@@ -1,4 +1,8 @@
 ---
+loki:
+  querier:
+    multi_tenant_queries_enabled: true
+
 enterprise:
   enabled: true
   adminToken:
