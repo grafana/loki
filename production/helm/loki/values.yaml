@@ -662,7 +662,7 @@ write:
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
@@ -682,7 +682,7 @@ write:
   extraVolumes: []
   # -- Resource requests and limits for the write
   resources: {}
-  # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingestor,
+  # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
@@ -867,7 +867,7 @@ backend:
   podAnnotations: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "backend"
@@ -885,7 +885,7 @@ backend:
   extraVolumes: []
   # -- Resource requests and limits for the backend
   resources: {}
-  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor,
+  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
