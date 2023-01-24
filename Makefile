@@ -775,11 +775,11 @@ check-example-config-doc: generate-example-config-doc
 		exit 1; \
 	fi
 
-k3d-loki:
+dev-k3d-loki:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d loki
 
-k3d-enterprise-logs:
+dev-k3d-enterprise-logs:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d enterprise-logs
 
-k3d-down:
+dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
