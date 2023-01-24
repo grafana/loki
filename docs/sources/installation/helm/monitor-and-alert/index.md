@@ -30,7 +30,7 @@ Rules and alerts are automatically deployed.
 
 **Prometheus Operator Prequisites**
 
-The included dashboards require certain metric relabelings be applied to Kubernetes metrics. The best was to accomplish this is to install the `kube-prometheus-stack` helm chart with the following values file, replacing `CLUSTER_NAME` with the name of your cluster. The cluster name is what you specify during the helm installation, so a cluster installed with the command `helm install loki-cluster grafana/loki` would be called `loki-cluster`.
+The included dashboards require certain metric relabelings be applied to Kubernetes metrics. The best way to accomplish this is to install the `kube-prometheus-stack` Helm chart with the following values file, replacing `CLUSTER_NAME` with the name of your cluster. The cluster name is what you specify during the helm installation, so a cluster installed with the command `helm install loki-cluster grafana/loki` would be called `loki-cluster`.
 
 ```yaml
 kubelet:
