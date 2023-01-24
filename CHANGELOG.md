@@ -46,6 +46,7 @@
 
 #### Promtail
 
+* [8254](https://github.com/grafana/loki/pull/8254) **mmisiewicz-g**: Lambda-promtail: add support for AWS WAF S3 logs
 * [7619](https://github.com/grafana/loki/pull/7619) **cadrake**: Add ability to pass query params to heroku drain targets for relabelling.
 * [7973](https://github.com/grafana/loki/pull/7973) **chodges15**: Add configuration to drop rate limited batches in Loki client and new metric label for drop reason.
 * [8153](https://github.com/grafana/loki/pull/8153) **kavirajk**: promtail: Add `max-line-size` limit to drop on client side
