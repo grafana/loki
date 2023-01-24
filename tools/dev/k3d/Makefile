@@ -70,6 +70,7 @@ secrets/gel.jwt:
 	op document get "loki/gel.jwt" --output=$(CURDIR)/secrets/gel.jwt || rm -f $(CURDIR)/secrets/gel.jwt
 	@if ! test -s "$(CURDIR)/secrets/gel.jwt"; then \
 		echo "Failed to fetch GEL license from 1Password, are you logged in?"; \
+		rm -f $(CURDIR)/secrets/gel.jwt; \
 		exit 1; \
 	fi
 
