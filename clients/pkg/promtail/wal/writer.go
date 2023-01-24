@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+// Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
+// writes incoming entries to a WAL
 type Writer struct {
 	entries     chan api.Entry
 	log         log.Logger
@@ -25,6 +27,7 @@ type Writer struct {
 	entryWriter *entryWriter
 }
 
+// NewWriter creates a new Writer
 func NewWriter(wal WAL, logger log.Logger) *Writer {
 	return &Writer{
 		entries:     make(chan api.Entry),
@@ -53,10 +56,13 @@ func (wrt *Writer) Stop() {
 	wrt.once.Do(func() {
 		close(wrt.entries)
 	})
+	// Wait for routine to write to wal all pending entries
 	wrt.wg.Wait()
+	// Close WAL to finalize all pending writes
+	wrt.wal.Close()
 }
 
-// entryWriter creates a new entry writer, which keeps in memory a single ingester.WALRecord object that's reused
+// entryWriter writes api.Entry to a WAL, keeping in memory a single ingester.WALRecord object that's reused
 // across every write.
 type entryWriter struct {
 	reusableWALRecord *ingester.WALRecord
@@ -73,7 +79,7 @@ func newEntryWriter() *entryWriter {
 }
 
 // WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same ingester.WALRecord object for every
-// write, it first has to be reset, and then overwritten accordingly. Because of this, WriteEntry IS NOT THREAD SAFE.
+// write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
 func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
 	// Reset wal record slices
 	ew.reusableWALRecord.RefEntries = ew.reusableWALRecord.RefEntries[:0]
@@ -102,30 +108,4 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
 		Ref:    chunks.HeadSeriesRef(fp),
 		Labels: lbs,
 	})
-}
-
-type NoopWriter struct {
-	noopChan chan api.Entry
-	wg       sync.WaitGroup
-	once     sync.Once
-}
-
-func (n *NoopWriter) Chan() chan<- api.Entry {
-	return n.noopChan
-}
-
-func (n *NoopWriter) Stop() {
-	n.once.Do(func() { close(n.noopChan) })
-}
-
-func NewNoopWriter() *NoopWriter {
-	c := &NoopWriter{noopChan: make(chan api.Entry)}
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		for range c.noopChan {
-			// noop
-		}
-	}()
-	return c
 }

@@ -18,11 +18,13 @@ var (
 
 // WAL is an interface that allows us to abstract ourselves from Prometheus WAL implementation.
 type WAL interface {
-	// Log marshalls the records and writes it into the WAL.
+	// Log marshals the records and writes it into the WAL.
 	Log(*ingester.WALRecord) error
+
 	Delete() error
 	Sync() error
 	Dir() string
+	Close()
 }
 
 type wrapper struct {
@@ -30,9 +32,10 @@ type wrapper struct {
 	log log.Logger
 }
 
-// New creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL. Note that the WAL created by
-// New uses as directory the following path structure: cfg.Dir/clientName/tenantID.
+// New creates a new wrapper, instantiating the actual wlog.WL underneath.
 func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (WAL, error) {
+	// TODO: We should fine-tune the WAL instantiated here to allow some buffering of written entries, but not written to disk
+	// yet. This will attest for the lack of buffering in the channel Writer exposes.
 	tsdbWAL, err := wlog.NewSize(log, registerer, cfg.Dir, wlog.DefaultSegmentSize, false)
 	if err != nil {
 		return nil, fmt.Errorf("failde to create tsdb WAL: %w", err)
@@ -43,8 +46,10 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (WAL, err
 	}, nil
 }
 
-func (w *wrapper) Close() error {
-	return w.wal.Close()
+// Close closes the underlying wal, flushing pending writes and closing the active segment. Safe to call more than once
+func (w *wrapper) Close() {
+	// Avoid checking the error since it's safe to call Close more than once on wlog.WL
+	_ = w.wal.Close()
 }
 
 func (w *wrapper) Delete() error {
@@ -61,7 +66,6 @@ func (w *wrapper) Log(record *ingester.WALRecord) error {
 		return nil
 	}
 
-	// todo we don't new a pool this is synchronous
 	buf := recordPool.GetBytes()[:0]
 	defer func() {
 		recordPool.PutBytes(buf)

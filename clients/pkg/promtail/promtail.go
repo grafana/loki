@@ -9,11 +9,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -146,6 +144,10 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
+	} else if cfg.WAL.Enabled {
+		// TODO: Once we refactor all client instantiations into the manager, all ifs statements here will be removed
+		// and p.client will contain the manager, with all instantiated clients inside.
+		p.client, err = client.NewManager(p.reg, p.logger, cfg.WAL)
 	} else {
 		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
 		if err != nil {
@@ -153,22 +155,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 	}
 
-	// targetsSink represents the sink that all scraping targets will end up writing to. If WAL disabled, this will be
-	// a chanel each client exposes. Otherwise, the WAL writer
-	var targetsSink api.EntryHandler = p.client
-
-	if cfg.WAL.Enabled {
-		pWAL, err := wal.New(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return err
-		}
-		p.walWriter = wal.NewWriter(pWAL, p.logger)
-		targetsSink = p.walWriter
-	} else {
-		p.walWriter = wal.NewNoopWriter()
-	}
-
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, targetsSink, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.client, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return err
 	}
