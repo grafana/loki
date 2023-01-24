@@ -22,6 +22,7 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 {{ define "chart.valuesTableHtml" }}
+{{ `{{< responsive-table >}}` }}
 <table>
 	<thead>
 		<th>Key</th>
@@ -40,6 +41,7 @@ This is the generated reference for the Loki Helm Chart values.
 	{{- end }}
 	</tbody>
 </table>
+{{ `{{< /responsive-table >}}` }}
 {{ end }}
 
 {{ template "chart.valuesTableHtml" . }}

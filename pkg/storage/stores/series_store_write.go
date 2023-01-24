@@ -97,7 +97,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 		}
 	}
 
-	if err := c.indexWriter.IndexChunk(ctx, chk); err != nil {
+	if err := c.indexWriter.IndexChunk(ctx, from, through, chk); err != nil {
 		return err
 	}
 

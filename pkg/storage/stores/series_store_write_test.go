@@ -46,7 +46,7 @@ type mockIndexWriter struct {
 	called int
 }
 
-func (m *mockIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	m.called++
 	return nil
 }
