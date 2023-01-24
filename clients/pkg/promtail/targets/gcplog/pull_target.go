@@ -3,6 +3,7 @@ package gcplog
 import (
 	"context"
 	"sync"
+	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/log"
@@ -87,17 +88,21 @@ func (t *pullTarget) run() error {
 
 	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
 	go func() {
-		// NOTE(kavi): `cancel` the context as exiting from this goroutine should stop main `run` loop
-		// It makesense as no more messages will be received.
-		defer t.cancel()
-
-		err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
-			t.msgs <- m
-		})
-		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to receive pubsub messages", "error", err)
-			t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
-			t.metrics.gcplogTargetLastSuccessScrape.WithLabelValues(t.config.ProjectID, t.config.Subscription).SetToCurrentTime()
+		for {
+			err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
+				t.msgs <- m
+			})
+			if err != nil {
+				// Only quit if the parent context Err is not nill
+				if t.ctx.Err() != nil {
+					level.Info(t.logger).Log("msg", "shutting down pubsub receive")
+					return
+				}
+				level.Error(t.logger).Log("msg", "failed to receive pubsub messages", "error", err)
+				t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
+				t.metrics.gcplogTargetLastSuccessScrape.WithLabelValues(t.config.ProjectID, t.config.Subscription).SetToCurrentTime()
+			}
+			time.Sleep(5 * time.Second)
 		}
 	}()
 
