@@ -82,3 +82,51 @@ func Test_logQLAnalyzer_analyze_expected_all_stage_records_to_be_correct(t *test
 		FilteredOut:  true,
 	}, result.Results[0].StageRecords[2], "line is expected to be filtered out on this stage")
 }
+
+func Test_logQLAnalyzer_analyze_expected_line_after_line_format_to_be_correct(t *testing.T) {
+	line1 := "lvl=error msg=a"
+	line2 := "lvl=info msg=b"
+	reformattedLine1 := "level=error message=A"
+	reformattedLine2 := "level=info message=B"
+	result, err := logQLAnalyzer{}.analyze("{job=\"analyze\"} | logfmt | line_format \"level={{.lvl}} message={{.msg | ToUpper}}\"", []string{line1, line2})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, len(result.Results))
+	require.Equal(t, 2, len(result.Results[0].StageRecords), "expected records for two stages")
+	require.Equal(t, 2, len(result.Results[1].StageRecords), "expected records for two stages")
+
+	streamLabels := []Label{{"job", "analyze"}}
+	parsedLabelsLine1 := append(streamLabels, []Label{{"lvl", "error"}, {"msg", "a"}}...)
+	require.Equal(t, StageRecord{
+		LineBefore:   line1,
+		LabelsBefore: streamLabels,
+		LineAfter:    line1,
+		LabelsAfter:  parsedLabelsLine1,
+		FilteredOut:  false,
+	}, result.Results[0].StageRecords[0])
+
+	require.Equal(t, StageRecord{
+		LineBefore:   line1,
+		LabelsBefore: parsedLabelsLine1,
+		LineAfter:    reformattedLine1,
+		LabelsAfter:  parsedLabelsLine1,
+		FilteredOut:  false,
+	}, result.Results[0].StageRecords[1], "line is expected to be reformatted on this stage")
+
+	parsedLabelsLine2 := append(streamLabels, []Label{{"lvl", "info"}, {"msg", "b"}}...)
+	require.Equal(t, StageRecord{
+		LineBefore:   line2,
+		LabelsBefore: streamLabels,
+		LineAfter:    line2,
+		LabelsAfter:  parsedLabelsLine2,
+		FilteredOut:  false,
+	}, result.Results[1].StageRecords[0])
+
+	require.Equal(t, StageRecord{
+		LineBefore:   line2,
+		LabelsBefore: parsedLabelsLine2,
+		LineAfter:    reformattedLine2,
+		LabelsAfter:  parsedLabelsLine2,
+		FilteredOut:  false,
+	}, result.Results[1].StageRecords[1], "line is expected to be reformatted on this stage")
+}
