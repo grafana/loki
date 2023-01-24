@@ -82,8 +82,8 @@ func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.Ser
 	}
 }
 
-func (c *indexReaderWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
-	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, chk.From, chk.Through, chk)
+func (c *indexReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
+	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chk)
 	if err != nil {
 		return err
 	}
