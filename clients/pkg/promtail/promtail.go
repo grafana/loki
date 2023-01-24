@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -59,7 +58,6 @@ func WithRegisterer(reg prometheus.Registerer) Option {
 // Promtail is the root struct for Promtail.
 type Promtail struct {
 	client         client.Client
-	walWriter      api.EntryHandler
 	targetManagers *targets.TargetManagers
 	server         server.Server
 	logger         log.Logger
@@ -125,9 +123,6 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	level.Info(p.logger).Log("msg", "Reloading configuration file", "md5sum", fmt.Sprintf("%x", md5.Sum([]byte(newConf))))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
-	}
-	if p.walWriter != nil {
-		p.walWriter.Stop()
 	}
 	if p.client != nil {
 		p.client.Stop()
@@ -204,10 +199,6 @@ func (p *Promtail) Shutdown() {
 	}
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
-	}
-	// once targets have been closed, close the component that ties targets and clients together
-	if p.walWriter != nil {
-		p.walWriter.Stop()
 	}
 	// todo work out the stop.
 	p.client.Stop()
