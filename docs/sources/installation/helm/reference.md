@@ -2993,5 +2993,5 @@ null
 		</tr>
 	</tbody>
 </table>
-{{< responsive-table >}}
+{{< /responsive-table >}}
 
