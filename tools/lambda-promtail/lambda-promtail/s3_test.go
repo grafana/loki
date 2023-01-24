@@ -162,7 +162,7 @@ func Test_parseS3Log(t *testing.T) {
 				labels: map[string]string{
 					"account_id": "123456789012",
 					"src":        "fl-1234abcd",
-					"type":       S3_VPC_FLOW,
+					"type":       FLOW_LOG_TYPE,
 				},
 			},
 			want: map[string]string{
@@ -182,7 +182,7 @@ func Test_parseS3Log(t *testing.T) {
 				labels: map[string]string{
 					"account_id": "123456789012",
 					"src":        "fl-1234abcd",
-					"type":       S3_LB,
+					"type":       LB_LOG_TYPE,
 				},
 			},
 			want: map[string]string{
@@ -202,7 +202,7 @@ func Test_parseS3Log(t *testing.T) {
 				labels: map[string]string{
 					"account_id": "123456789012",
 					"src":        "public",
-					"type":       S3_WAF,
+					"type":       WAF_LOG_TYPE,
 				},
 				//timestampList: time.Date[]{},
 			},
