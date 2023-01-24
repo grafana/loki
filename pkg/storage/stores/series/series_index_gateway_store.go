@@ -146,7 +146,7 @@ func (c *IndexGatewayClientStore) SetChunkFilterer(chunkFilter chunk.RequestChun
 	}
 }
 
-func (c *IndexGatewayClientStore) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (c *IndexGatewayClientStore) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return fmt.Errorf("index writes not supported on index gateway client")
 }
 
