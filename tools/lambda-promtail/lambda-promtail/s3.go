@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-    "strconv"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -45,7 +45,7 @@ var (
 const (
 	FLOW_LOG_TYPE string = "vpcflowlogs"
 	LB_LOG_TYPE   string = "elasticloadbalancing"
-    WAF_LOG_TYPE  string = "waflogs"
+	WAF_LOG_TYPE  string = "waflogs"
 )
 
 func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, error) {
@@ -113,7 +113,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			fmt.Println(log_line)
 		}
 
-        timestamp := parseLogLineTimestamp(log_line)
+		timestamp := parseLogLineTimestamp(log_line)
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
 			Line:      log_line,
@@ -166,16 +166,16 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
 
-    match := filenameRegex.FindStringSubmatch(labels["key"])
-    if len(match) > 0 {
-        for i, name := range filenameRegex.SubexpNames() {
-            if i != 0 && name != "" {
-                labels[name] = match[i]
-            }
-        }
-    } else {
-        fmt.Printf("Unknown AWS S3 log filename format: %s\n", labels["key"])
-    }
+	match := filenameRegex.FindStringSubmatch(labels["key"])
+	if len(match) > 0 {
+		for i, name := range filenameRegex.SubexpNames() {
+			if i != 0 && name != "" {
+				labels[name] = match[i]
+			}
+		}
+	} else {
+		fmt.Printf("Unknown AWS S3 log filename format: %s\n", labels["key"])
+	}
 
 	return labels, nil
 }

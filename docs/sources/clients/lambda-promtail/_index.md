@@ -95,7 +95,7 @@ For those using Cloudwatch and wishing to test out Loki in a low-risk way, this 
 
 Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
 
-### WAF logs
+### AWS Web Application Firewall (WAF) logs
 
 This workflow allows ingesting Amazon Web Service (AWS) web application firewall (WAF) logs stored on S3 to Loki.
 
