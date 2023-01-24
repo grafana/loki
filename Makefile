@@ -760,7 +760,7 @@ validate-example-configs: loki
 generate-example-config-doc:
 	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\n---\n # Loki Configuration Examples" > ./docs/sources/configuration/examples.md
+	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > ./docs/sources/configuration/examples.md
 	# Append each configuration and its file name to examples.md
 	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
 
