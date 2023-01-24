@@ -1,4 +1,12 @@
 {{/*
+Enforce valid label value.
+See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+*/}}
+{{- define "loki.validLabelValue" -}}
+{{- (regexReplaceAllLiteral "[^a-zA-Z0-9._-]" . "-") | trunc 63 | trimSuffix "-" | trimSuffix "_" | trimSuffix "." }}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "loki.name" -}}
@@ -80,7 +88,7 @@ Common labels
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
-app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
+app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -556,7 +564,7 @@ http {
     location ~ /api/prom/.* {
       proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
     }
-    
+
     {{- if .Values.read.legacyReadTarget }}
     location ~ /prometheus/api/v1/alerts.* {
       proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
