@@ -59,7 +59,7 @@ local tenant = 'loki';
 
   grafanaNamespace: k.core.v1.namespace.new('grafana'),
 
-  local dashboardsPrefix = if enterprise then "enterprise-logs" else "loki",
+  local dashboardsPrefix = if enterprise then 'enterprise-logs' else 'loki',
   local grafanaImage = if enterprise then
     grafana.withImage('grafana/grafana-enterprise:8.2.5') else
     grafana.withImage('grafana/grafana:8.2.5'),
