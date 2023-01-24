@@ -700,6 +700,8 @@ write:
   # -- Tolerations for write pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -978,6 +980,8 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
     # -- Size of persistent disk

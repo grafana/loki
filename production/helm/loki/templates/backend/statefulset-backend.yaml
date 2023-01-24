@@ -16,6 +16,15 @@ spec:
       partition: 0
   serviceName: {{ include "loki.backendFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.backend.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{/*
+    Data on the backend nodes is easy to replace, so we want to always delete PVCs to make
+    operation easier, and will rely on re-fetching data when needed.
+  */}}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+  {{- end }}
   selector:
     matchLabels:
       {{- include "loki.backendSelectorLabels" . | nindent 6 }}
