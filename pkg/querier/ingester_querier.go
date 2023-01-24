@@ -28,6 +28,14 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+type IngesterStats struct {
+	TotalIngestersReached                 int
+	TotalIngestersReachedNonEmptyResponse int
+	MaxNonEmptyIngesterLatency            time.Duration
+	TotalIngestersLatency                 time.Duration
+	QuerySuccess                          bool
+}
+
 type responseFromIngesters struct {
 	addr     string
 	response interface{}
@@ -67,10 +75,10 @@ func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 
 // forAllIngesters runs f, in parallel, for all ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, IngesterStats, error) {
 	replicationSet, err := q.ring.GetReplicationSetForOperation(ring.Read)
 	if err != nil {
-		return nil, err
+		return nil, IngesterStats{}, err
 	}
 	level.Info(util_log.Logger).Log("method", "for_all_ingesters", "count", len(replicationSet.Instances))
 	return q.forGivenIngesters(ctx, replicationSet, f)
@@ -78,8 +86,17 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 
 // forGivenIngesters runs f, in parallel, for given ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, IngesterStats, error) {
+	start := time.Now()
+
+	var (
+		nonEmptyResponseCount         int
+		maxLatencyForNonEmptyResponse time.Duration
+	)
+
 	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
+		istart := time.Now()
+
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err
@@ -90,22 +107,48 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 			return nil, err
 		}
 
+		// TODO(kavi): This may not be the right way to identify if ingester response is empty.
+		// This is bit tricky as they return only iterator and we may not know if it's empty response until iterator is consumed.
+		// Two ways to solve the problem at the worst case
+		// 1. Add an additional flag in the `ingesterRespoinse` that says if response is empty
+		// 2. Move the stats calculation part close to where iterator is consumed.
+		// There may be a caveat with (1) as flag may say response is empty but during iterator consuption, it may have some data.
+		if resp != nil {
+			nonEmptyResponseCount++
+			elapsed := time.Since(istart)
+			if elapsed > maxLatencyForNonEmptyResponse {
+				maxLatencyForNonEmptyResponse = elapsed
+			}
+		}
+
 		return responseFromIngesters{ingester.Addr, resp}, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, IngesterStats{}, err
 	}
 
 	responses := make([]responseFromIngesters, 0, len(results))
 	for _, result := range results {
-		responses = append(responses, result.(responseFromIngesters))
+		r := result.(responseFromIngesters)
+		responses = append(responses, r)
+		if r.response == nil {
+			level.Info(util_log.Logger).Log("component", "ingester_querier", "event", "received nil response")
+		}
 	}
 
-	return responses, err
+	// update ingester stats
+	stats := IngesterStats{
+		TotalIngestersReached:                 len(responses),
+		TotalIngestersLatency:                 time.Since(start),
+		TotalIngestersReachedNonEmptyResponse: nonEmptyResponseCount,
+		MaxNonEmptyIngesterLatency:            maxLatencyForNonEmptyResponse,
+	}
+
+	return responses, stats, err
 }
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+	resps, ingesterStats, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
 		return client.Query(ctx, params.QueryRequest)
 	})
@@ -117,11 +160,12 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 	for i := range resps {
 		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), params.Direction)
 	}
+	logIngesterStats(ingesterStats, "select_logs")
 	return iterators, nil
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+	resps, ingesterStats, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
 		return client.QuerySample(ctx, params.SampleQueryRequest)
 	})
@@ -133,11 +177,12 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 	for i := range resps {
 		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
 	}
+	logIngesterStats(ingesterStats, "select_sample")
 	return iterators, nil
 }
 
 func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
+	resps, _, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Label(ctx, req)
 	})
 	if err != nil {
@@ -153,7 +198,7 @@ func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest)
 }
 
 func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+	resps, _, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -202,7 +247,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Instance a tail client for each ingester to re(connect)
-	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Instances: reconnectIngesters}, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+	reconnectClients, _, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Instances: reconnectIngesters}, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -218,7 +263,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 }
 
 func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
+	resps, _, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Series(ctx, req)
 	})
 	if err != nil {
@@ -250,7 +295,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
 	}
 
-	responses, err := q.forGivenIngesters(ctx, replicationSet, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+	responses, _, err := q.forGivenIngesters(ctx, replicationSet, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		resp, err := querierClient.TailersCount(ctx, &logproto.TailersCountRequest{})
 		if err != nil {
 			return nil, err
@@ -273,7 +318,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 }
 
 func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+	resps, _, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
 			Matchers: convertMatchersToString(matchers),
 			Start:    from.Time(),
@@ -293,7 +338,7 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 }
 
 func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+	resps, _, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetStats(ctx, &logproto.IndexStatsRequest{
 			From:     from,
 			Through:  through,
@@ -345,4 +390,14 @@ func isUnimplementedCallError(err error) bool {
 		return false
 	}
 	return (s.Code() == codes.Unimplemented)
+}
+
+func logIngesterStats(istats IngesterStats, queryType string) {
+	level.Info(util_log.Logger).Log(
+		"query_type", queryType,
+		"total_ingesters_reached", istats.TotalIngestersReached,
+		"total_ingesters_reached_non_empty_response", istats.TotalIngestersReachedNonEmptyResponse,
+		"total_ingesters_latency", istats.TotalIngestersLatency,
+		"max_non_empty_response_ingester_latency", istats.MaxNonEmptyIngesterLatency,
+	)
 }

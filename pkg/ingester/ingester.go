@@ -610,8 +610,6 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	fmt.Println("Debug!!", "in push handler on ingester.go")
-
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
