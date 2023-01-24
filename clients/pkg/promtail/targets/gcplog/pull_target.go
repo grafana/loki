@@ -89,6 +89,7 @@ func (t *pullTarget) run() error {
 	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
 	go func() {
 		for {
+			level.Info(t.logger).Log("msg", "connecting and listening for messages")
 			err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
 				t.msgs <- m
 			})
@@ -102,6 +103,7 @@ func (t *pullTarget) run() error {
 				t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
 				t.metrics.gcplogTargetLastSuccessScrape.WithLabelValues(t.config.ProjectID, t.config.Subscription).SetToCurrentTime()
 			}
+			// Arbitrary but I don't think we want to retry in a tight loop.
 			time.Sleep(5 * time.Second)
 		}
 	}()
