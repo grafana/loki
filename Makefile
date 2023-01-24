@@ -10,6 +10,7 @@
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
+.PHONY: k3d-loki k3d-enterprise-logs k3d-down
 
 SHELL = /usr/bin/env bash -o pipefail
 
@@ -773,3 +774,12 @@ check-example-config-doc: generate-example-config-doc
 		echo -e "(Don't forget to check in the generated files when finished)\n"; \
 		exit 1; \
 	fi
+
+dev-k3d-loki:
+	$(MAKE) -C $(CURDIR)/tools/dev/k3d loki
+
+dev-k3d-enterprise-logs:
+	$(MAKE) -C $(CURDIR)/tools/dev/k3d enterprise-logs
+
+dev-k3d-down:
+	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
