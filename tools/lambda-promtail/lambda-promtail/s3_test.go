@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -87,6 +88,41 @@ func Test_getLabels(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "s3_waf",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "aws-waf-logs-123456789012",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "my-bucket/AWSLogs/123456789012/WAFLogs/us-east-1/public/2022/01/24/11/12/123456789012_waflogs_us-east-1_public_20180620T1620Z_fe123456.log.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "aws-waf-logs-123456789012",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"day":           "24",
+				"hour":          "11",
+				"key":           "my-bucket/AWSLogs/123456789012/WAFLogs/us-east-1/public/2022/01/24/11/12/123456789012_waflogs_us-east-1_public_20180620T1620Z_fe123456.log.gz",
+				"type":          "waflogs",
+				"minute":        "12",
+				"month":         "01",
+				"region":        "us-east-1",
+				"src":           "public",
+				"year":          "2022",
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,6 +149,7 @@ func Test_parseS3Log(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
+		want    map[string]string
 		wantErr bool
 	}{
 		{
@@ -124,8 +161,14 @@ func Test_parseS3Log(t *testing.T) {
 					streams: map[string]*logproto.Stream{},
 				},
 				labels: map[string]string{
-					"type": FLOW_LOG_TYPE,
+                    "type": FLOW_LOG_TYPE,
+                    "account_id": "123456789012",
+                    "src": "fl-1234abcd",
 				},
+			},
+			want: map[string]string{
+				"labels":     "{__aws_log_type=\"s3_vpc_flow\", __aws_s3_vpc_flow_lb=\"fl-1234abcd\", __aws_s3_vpc_flow_lb_owner=\"123456789012\"}",
+				"timestamps": "2022-11-30 22:11:41,2022-11-30 22:11:41,2022-11-30 22:11:55",
 			},
 			wantErr: false,
 		},
@@ -138,8 +181,34 @@ func Test_parseS3Log(t *testing.T) {
 					streams: map[string]*logproto.Stream{},
 				},
 				labels: map[string]string{
-					"type": LB_LOG_TYPE,
+                    "type": LB_LOG_TYPE,
+                    "account_id": "123456789012",
+                    "src": "fl-1234abcd",
 				},
+			},
+			want: map[string]string{
+				"labels":     "{__aws_log_type=\"s3_lb\", __aws_s3_lb_lb=\"fl-1234abcd\", __aws_s3_lb_lb_owner=\"123456789012\"}",
+				"timestamps": "2022-12-06 17:42:16,2022-12-06 17:42:19",
+			},
+			wantErr: false,
+		},
+		{
+			name: "waflogs",
+			args: args{
+				batchSize: 4096, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/waflog.log.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+                    "type": WAF_LOG_TYPE,
+                    "account_id": "123456789012",
+                    "src": "public",
+				},
+			},
+			want: map[string]string{
+				"labels":     "{__aws_log_type=\"s3_waf\", __aws_s3_waf_lb=\"public\", __aws_s3_waf_lb_owner=\"123456789012\"}",
+				"timestamps": "2022-12-21 13:14:51,2022-12-21 13:15:32",
 			},
 			wantErr: false,
 		},
@@ -153,8 +222,25 @@ func Test_parseS3Log(t *testing.T) {
 				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
 			}
 
-			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
+			err = parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			var got_labels, got_timestamps string
+			for _, v := range tt.args.b.streams {
+				got_labels = v.Labels
+				var timestampList []string
+				for _, e := range v.Entries {
+					timestampList = append(timestampList, e.Timestamp.Format("2006-01-02 15:04:05"))
+				}
+				got_timestamps = strings.Join(timestampList, ",")
+				break
+			}
+			if !reflect.DeepEqual(got_labels, tt.want["labels"]) {
+				t.Errorf("parseS3Log() - labels = %v, want %v", got_labels, tt.want["labels"])
+			}
+			if !reflect.DeepEqual(got_timestamps, tt.want["timestamps"]) {
+				t.Errorf("parseS3Log() - timestamps = %v, want %v", got_timestamps, tt.want["timestamps"])
 			}
 		})
 	}
