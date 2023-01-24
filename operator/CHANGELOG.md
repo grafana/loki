@@ -1,5 +1,6 @@
 ## Main
 
+- [8253](https://github.com/grafana/loki/pull/8253) **aminesnow**: Add watch on the Alertmanager in openshift-monitoring and decouple it from the user-workload AM
 - [8038](https://github.com/grafana/loki/pull/8038) **aminesnow**: Add watch on the Alertmanager in OCP's user-workload-monitoring namespace
 - [8173](https://github.com/grafana/loki/pull/8173) **periklis**: Remove custom webhook cert mounts for OLM-based deployment (OpenShift)
 - [8001](https://github.com/grafana/loki/pull/8001) **aminesnow**: Add API validation to Alertmanager header auth config
