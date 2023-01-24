@@ -97,7 +97,7 @@ Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ 
 
 ### WAF logs
 
-This workflow allows ingesting AWS WAF logs stored on S3 to Loki.
+This workflow allows ingesting Amazon Web Service (AWS) web application firewall (WAF) logs stored on S3 to Loki.
 
 ### VPC Flow logs
 
