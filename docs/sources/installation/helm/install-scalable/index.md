@@ -3,12 +3,9 @@ title: Install the Helm Chart
 menuTitle: Install Loki
 description: Install Loki in scalable mode.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/scalable
 weight: 100
-keywords:
-  - keyword
-  - key
-  - word
+keywords: []
 ---
 
 # Install the Helm Chart
@@ -17,9 +14,9 @@ keywords:
 
 This Helm Chart installation runs the Grafana Loki cluster within a Kubernetes cluster.
 
-If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable](../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
+If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{<relref "../../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
 
-It is not possible to run the scalable mode with the `fulesystem` storage.
+It is not possible to run the scalable mode with the `filesystem` storage.
 
 **Before you begin:**
 
@@ -53,7 +50,6 @@ It is not possible to run the scalable mode with the `fulesystem` storage.
           admin: admin
         type: s3
         s3:
-          s3: <WHAT SHOULD GO HERE?>
           endpoint: <endpoint>
           region: <AWS region>
           secretAccessKey: <AWS secret access key>
@@ -62,7 +58,7 @@ It is not possible to run the scalable mode with the `fulesystem` storage.
           insecure: false
       ```
 
-      Consult the [Reference](../reference) for configuring otehr storage providers.
+      Consult the [Reference]({{<relref "../reference">}}) for configuring other storage providers.
 
     - Define the AWS S3 credentials in the file.
 

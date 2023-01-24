@@ -78,6 +78,9 @@
         "compute": {
             "component": "compute"
         },
+        "compute/metadata": {
+            "component": "compute/metadata"
+        },
         "contactcenterinsights": {
             "component": "contactcenterinsights"
         },
@@ -128,6 +131,9 @@
         },
         "domains": {
             "component": "domains"
+        },
+        "edgecontainer": {
+            "component": "edgecontainer"
         },
         "essentialcontacts": {
             "component": "essentialcontacts"
@@ -330,5 +336,6 @@
         "workflows": {
             "component": "workflows"
         }
-    }
+    },
+    "plugins": ["sentence-case"]
 }

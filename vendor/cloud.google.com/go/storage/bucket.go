@@ -20,21 +20,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/internal/optional"
 	"cloud.google.com/go/internal/trace"
-	"github.com/googleapis/go-type-adapters/adapters"
+	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iamcredentials/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	raw "google.golang.org/api/storage/v1"
-	"google.golang.org/genproto/googleapis/storage/v2"
-	storagepb "google.golang.org/genproto/googleapis/storage/v2"
+	dpb "google.golang.org/genproto/googleapis/type/date"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -56,7 +55,8 @@ type BucketHandle struct {
 // The supplied name must contain only lowercase letters, numbers, dashes,
 // underscores, and dots. The full specification for valid bucket names can be
 // found at:
-//   https://cloud.google.com/storage/docs/bucket-naming
+//
+//	https://cloud.google.com/storage/docs/bucket-naming
 func (c *Client) Bucket(name string) *BucketHandle {
 	retry := c.retry.clone()
 	return &BucketHandle{
@@ -83,27 +83,11 @@ func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *Buck
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Create")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	var bkt *raw.Bucket
-	if attrs != nil {
-		bkt = attrs.toRawBucket()
-	} else {
-		bkt = &raw.Bucket{}
+	o := makeStorageOpts(true, b.retry, b.userProject)
+	if _, err := b.c.tc.CreateBucket(ctx, projectID, b.name, attrs, o...); err != nil {
+		return err
 	}
-	bkt.Name = b.name
-	// If there is lifecycle information but no location, explicitly set
-	// the location. This is a GCS quirk/bug.
-	if bkt.Location == "" && bkt.Lifecycle != nil {
-		bkt.Location = "US"
-	}
-	req := b.c.raw.Buckets.Insert(projectID, bkt)
-	setClientHeader(req.Header())
-	if attrs != nil && attrs.PredefinedACL != "" {
-		req.PredefinedAcl(attrs.PredefinedACL)
-	}
-	if attrs != nil && attrs.PredefinedDefaultObjectACL != "" {
-		req.PredefinedDefaultObjectAcl(attrs.PredefinedDefaultObjectACL)
-	}
-	return run(ctx, func() error { _, err := req.Context(ctx).Do(); return err }, b.retry, true, setRetryHeaderHTTP(req))
+	return nil
 }
 
 // Delete deletes the Bucket.
@@ -111,24 +95,8 @@ func (b *BucketHandle) Delete(ctx context.Context) (err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Delete")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	req, err := b.newDeleteCall()
-	if err != nil {
-		return err
-	}
-
-	return run(ctx, func() error { return req.Context(ctx).Do() }, b.retry, true, setRetryHeaderHTTP(req))
-}
-
-func (b *BucketHandle) newDeleteCall() (*raw.BucketsDeleteCall, error) {
-	req := b.c.raw.Buckets.Delete(b.name)
-	setClientHeader(req.Header())
-	if err := applyBucketConds("BucketHandle.Delete", b.conds, req); err != nil {
-		return nil, err
-	}
-	if b.userProject != "" {
-		req.UserProject(b.userProject)
-	}
-	return req, nil
+	o := makeStorageOpts(true, b.retry, b.userProject)
+	return b.c.tc.DeleteBucket(ctx, b.name, b.conds, o...)
 }
 
 // ACL returns an ACLHandle, which provides access to the bucket's access control list.
@@ -151,7 +119,8 @@ func (b *BucketHandle) DefaultObjectACL() *ACLHandle {
 //
 // name must consist entirely of valid UTF-8-encoded runes. The full specification
 // for valid object names can be found at:
-//   https://cloud.google.com/storage/docs/naming-objects
+//
+//	https://cloud.google.com/storage/docs/naming-objects
 func (b *BucketHandle) Object(name string) *ObjectHandle {
 	retry := b.retry.clone()
 	return &ObjectHandle{
@@ -176,35 +145,8 @@ func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Attrs")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	req, err := b.newGetCall()
-	if err != nil {
-		return nil, err
-	}
-	var resp *raw.Bucket
-	err = run(ctx, func() error {
-		resp, err = req.Context(ctx).Do()
-		return err
-	}, b.retry, true, setRetryHeaderHTTP(req))
-	var e *googleapi.Error
-	if ok := errors.As(err, &e); ok && e.Code == http.StatusNotFound {
-		return nil, ErrBucketNotExist
-	}
-	if err != nil {
-		return nil, err
-	}
-	return newBucket(resp)
-}
-
-func (b *BucketHandle) newGetCall() (*raw.BucketsGetCall, error) {
-	req := b.c.raw.Buckets.Get(b.name).Projection("full")
-	setClientHeader(req.Header())
-	if err := applyBucketConds("BucketHandle.Attrs", b.conds, req); err != nil {
-		return nil, err
-	}
-	if b.userProject != "" {
-		req.UserProject(b.userProject)
-	}
-	return req, nil
+	o := makeStorageOpts(true, b.retry, b.userProject)
+	return b.c.tc.GetBucket(ctx, b.name, b.conds, o...)
 }
 
 // Update updates a bucket's attributes.
@@ -212,62 +154,23 @@ func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Create")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	req, err := b.newPatchCall(&uattrs)
-	if err != nil {
-		return nil, err
-	}
-	if uattrs.PredefinedACL != "" {
-		req.PredefinedAcl(uattrs.PredefinedACL)
-	}
-	if uattrs.PredefinedDefaultObjectACL != "" {
-		req.PredefinedDefaultObjectAcl(uattrs.PredefinedDefaultObjectACL)
-	}
-
 	isIdempotent := b.conds != nil && b.conds.MetagenerationMatch != 0
-
-	var rawBucket *raw.Bucket
-	call := func() error {
-		rb, err := req.Context(ctx).Do()
-		rawBucket = rb
-		return err
-	}
-
-	if err := run(ctx, call, b.retry, isIdempotent, setRetryHeaderHTTP(req)); err != nil {
-		return nil, err
-	}
-	return newBucket(rawBucket)
-}
-
-func (b *BucketHandle) newPatchCall(uattrs *BucketAttrsToUpdate) (*raw.BucketsPatchCall, error) {
-	rb := uattrs.toRawBucket()
-	req := b.c.raw.Buckets.Patch(b.name, rb).Projection("full")
-	setClientHeader(req.Header())
-	if err := applyBucketConds("BucketHandle.Update", b.conds, req); err != nil {
-		return nil, err
-	}
-	if b.userProject != "" {
-		req.UserProject(b.userProject)
-	}
-	return req, nil
+	o := makeStorageOpts(isIdempotent, b.retry, b.userProject)
+	return b.c.tc.UpdateBucket(ctx, b.name, &uattrs, b.conds, o...)
 }
 
 // SignedURL returns a URL for the specified object. Signed URLs allow anyone
-// access to a restricted resource for a limited time without needing a
-// Google account or signing in. For more information about signed URLs, see
-// https://cloud.google.com/storage/docs/accesscontrol#signed_urls_query_string_authentication
+// access to a restricted resource for a limited time without needing a Google
+// account or signing in.
+// For more information about signed URLs, see "[Overview of access control]."
 //
-// This method only requires the Method and Expires fields in the specified
-// SignedURLOptions opts to be non-nil. If not provided, it attempts to fill the
-// GoogleAccessID and PrivateKey from the GOOGLE_APPLICATION_CREDENTIALS environment variable.
-// If you are authenticating with a custom HTTP client, Service Account based
-// auto-detection will be hindered.
+// This method requires the Method and Expires fields in the specified
+// SignedURLOptions to be non-nil. You may need to set the GoogleAccessID and
+// PrivateKey fields in some cases. Read more on the [automatic detection of credentials]
+// for this method.
 //
-// If no private key is found, it attempts to use the GoogleAccessID to sign the URL.
-// This requires the IAM Service Account Credentials API to be enabled
-// (https://console.developers.google.com/apis/api/iamcredentials.googleapis.com/overview)
-// and iam.serviceAccounts.signBlob permissions on the GoogleAccessID service account.
-// If you do not want these fields set for you, you may pass them in through opts or use
-// SignedURL(bucket, name string, opts *SignedURLOptions) instead.
+// [Overview of access control]: https://cloud.google.com/storage/docs/accesscontrol#signed_urls_query_string_authentication
+// [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_[BucketHandle.SignedURL]_and_[BucketHandle.GenerateSignedPostPolicyV4]
 func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string, error) {
 	if opts.GoogleAccessID != "" && (opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
 		return SignedURL(b.name, object, opts)
@@ -305,18 +208,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 // GenerateSignedPostPolicyV4 generates a PostPolicyV4 value from bucket, object and opts.
 // The generated URL and fields will then allow an unauthenticated client to perform multipart uploads.
 //
-// This method only requires the Expires field in the specified PostPolicyV4Options
-// to be non-nil. If not provided, it attempts to fill the GoogleAccessID and PrivateKey
-// from the GOOGLE_APPLICATION_CREDENTIALS environment variable.
-// If you are authenticating with a custom HTTP client, Service Account based
-// auto-detection will be hindered.
+// This method requires the Expires field in the specified PostPolicyV4Options
+// to be non-nil. You may need to set the GoogleAccessID and PrivateKey fields
+// in some cases. Read more on the [automatic detection of credentials] for this method.
 //
-// If no private key is found, it attempts to use the GoogleAccessID to sign the URL.
-// This requires the IAM Service Account Credentials API to be enabled
-// (https://console.developers.google.com/apis/api/iamcredentials.googleapis.com/overview)
-// and iam.serviceAccounts.signBlob permissions on the GoogleAccessID service account.
-// If you do not want these fields set for you, you may pass them in through opts or use
-// GenerateSignedPostPolicyV4(bucket, name string, opts *PostPolicyV4Options) instead.
+// [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_[BucketHandle.SignedURL]_and_[BucketHandle.GenerateSignedPostPolicyV4]
 func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
 	if opts.GoogleAccessID != "" && (opts.SignRawBytes != nil || opts.SignBytes != nil || len(opts.PrivateKey) > 0) {
 		return GenerateSignedPostPolicyV4(b.name, object, opts)
@@ -356,17 +252,27 @@ func (b *BucketHandle) detectDefaultGoogleAccessID() (string, error) {
 
 	if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
 		var sa struct {
-			ClientEmail string `json:"client_email"`
-		}
-		err := json.Unmarshal(b.c.creds.JSON, &sa)
-		if err == nil && sa.ClientEmail != "" {
-			return sa.ClientEmail, nil
-		} else if err != nil {
-			returnErr = err
-		} else {
-			returnErr = errors.New("storage: empty client email in credentials")
+			ClientEmail        string `json:"client_email"`
+			SAImpersonationURL string `json:"service_account_impersonation_url"`
+			CredType           string `json:"type"`
 		}
 
+		err := json.Unmarshal(b.c.creds.JSON, &sa)
+		if err != nil {
+			returnErr = err
+		} else if sa.CredType == "impersonated_service_account" {
+			start, end := strings.LastIndex(sa.SAImpersonationURL, "/"), strings.LastIndex(sa.SAImpersonationURL, ":")
+
+			if end <= start {
+				returnErr = errors.New("error parsing impersonated service account credentials")
+			} else {
+				return sa.SAImpersonationURL[start+1 : end], nil
+			}
+		} else if sa.CredType == "service_account" && sa.ClientEmail != "" {
+			return sa.ClientEmail, nil
+		} else {
+			returnErr = errors.New("unable to parse credentials; only service_account and impersonated_service_account credentials are supported")
+		}
 	}
 
 	// Don't error out if we can't unmarshal, fallback to GCE check.
@@ -377,11 +283,11 @@ func (b *BucketHandle) detectDefaultGoogleAccessID() (string, error) {
 		} else if err != nil {
 			returnErr = err
 		} else {
-			returnErr = errors.New("got empty email from GCE metadata service")
+			returnErr = errors.New("empty email from GCE metadata service")
 		}
 
 	}
-	return "", fmt.Errorf("storage: unable to detect default GoogleAccessID: %v", returnErr)
+	return "", fmt.Errorf("storage: unable to detect default GoogleAccessID: %w. Please provide the GoogleAccessID or use a supported means for autodetecting it (see https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_[BucketHandle.SignedURL]_and_[BucketHandle.GenerateSignedPostPolicyV4])", returnErr)
 }
 
 func (b *BucketHandle) defaultSignBytesFunc(email string) func([]byte) ([]byte, error) {
@@ -461,7 +367,12 @@ type BucketAttrs struct {
 	PredefinedDefaultObjectACL string
 
 	// Location is the location of the bucket. It defaults to "US".
+	// If specifying a dual-region, CustomPlacementConfig should be set in conjunction.
 	Location string
+
+	// The bucket's custom placement configuration that holds a list of
+	// regional locations for custom dual regions.
+	CustomPlacementConfig *CustomPlacementConfig
 
 	// MetaGeneration is the metadata generation of the bucket.
 	// This field is read-only.
@@ -698,7 +609,12 @@ const (
 //
 // All configured conditions must be met for the associated action to be taken.
 type LifecycleCondition struct {
+	// AllObjects is used to select all objects in a bucket by
+	// setting AgeInDays to 0.
+	AllObjects bool
+
 	// AgeInDays is the age of the object in days.
+	// If you want to set AgeInDays to `0` use AllObjects set to `true`.
 	AgeInDays int64
 
 	// CreatedBefore is the time the object was created.
@@ -716,10 +632,12 @@ type LifecycleCondition struct {
 
 	// DaysSinceCustomTime is the days elapsed since the CustomTime date of the
 	// object. This condition can only be satisfied if CustomTime has been set.
+	// Note: Using `0` as the value will be ignored by the library and not sent to the API.
 	DaysSinceCustomTime int64
 
 	// DaysSinceNoncurrentTime is the days elapsed since the noncurrent timestamp
 	// of the object. This condition is relevant only for versioned objects.
+	// Note: Using `0` as the value will be ignored by the library and not sent to the API.
 	DaysSinceNoncurrentTime int64
 
 	// Liveness specifies the object's liveness. Relevant only for versioned objects
@@ -751,6 +669,7 @@ type LifecycleCondition struct {
 	// If the value is N, this condition is satisfied when there are at least N
 	// versions (including the live version) newer than this version of the
 	// object.
+	// Note: Using `0` as the value will be ignored by the library and not sent to the API.
 	NumNewerVersions int64
 }
 
@@ -780,6 +699,15 @@ type BucketWebsite struct {
 	// missing, if applicable, the service will return the named object from this
 	// bucket as the content for a 404 Not Found result.
 	NotFoundPage string
+}
+
+// CustomPlacementConfig holds the bucket's custom placement
+// configuration for Custom Dual Regions. See
+// https://cloud.google.com/storage/docs/locations#location-dr for more information.
+type CustomPlacementConfig struct {
+	// The list of regional locations in which data is placed.
+	// Custom Dual Regions require exactly 2 regional locations.
+	DataLocations []string
 }
 
 func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
@@ -815,6 +743,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		LocationType:             b.LocationType,
 		ProjectNumber:            b.ProjectNumber,
 		RPO:                      toRPO(b),
+		CustomPlacementConfig:    customPlacementFromRaw(b.CustomPlacementConfig),
 	}, nil
 }
 
@@ -845,6 +774,8 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		PublicAccessPrevention:   toPublicAccessPreventionFromProto(b.GetIamConfig()),
 		LocationType:             b.GetLocationType(),
 		RPO:                      toRPOFromProto(b),
+		CustomPlacementConfig:    customPlacementFromProto(b.GetCustomPlacementConfig()),
+		ProjectNumber:            parseProjectNumber(b.GetProject()), // this can return 0 the project resource name is ID based
 	}
 }
 
@@ -882,22 +813,23 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 		}
 	}
 	return &raw.Bucket{
-		Name:             b.Name,
-		Location:         b.Location,
-		StorageClass:     b.StorageClass,
-		Acl:              toRawBucketACL(b.ACL),
-		DefaultObjectAcl: toRawObjectACL(b.DefaultObjectACL),
-		Versioning:       v,
-		Labels:           labels,
-		Billing:          bb,
-		Lifecycle:        toRawLifecycle(b.Lifecycle),
-		RetentionPolicy:  b.RetentionPolicy.toRawRetentionPolicy(),
-		Cors:             toRawCORS(b.CORS),
-		Encryption:       b.Encryption.toRawBucketEncryption(),
-		Logging:          b.Logging.toRawBucketLogging(),
-		Website:          b.Website.toRawBucketWebsite(),
-		IamConfiguration: bktIAM,
-		Rpo:              b.RPO.String(),
+		Name:                  b.Name,
+		Location:              b.Location,
+		StorageClass:          b.StorageClass,
+		Acl:                   toRawBucketACL(b.ACL),
+		DefaultObjectAcl:      toRawObjectACL(b.DefaultObjectACL),
+		Versioning:            v,
+		Labels:                labels,
+		Billing:               bb,
+		Lifecycle:             toRawLifecycle(b.Lifecycle),
+		RetentionPolicy:       b.RetentionPolicy.toRawRetentionPolicy(),
+		Cors:                  toRawCORS(b.CORS),
+		Encryption:            b.Encryption.toRawBucketEncryption(),
+		Logging:               b.Logging.toRawBucketLogging(),
+		Website:               b.Website.toRawBucketWebsite(),
+		IamConfiguration:      bktIAM,
+		Rpo:                   b.RPO.String(),
+		CustomPlacementConfig: b.CustomPlacementConfig.toRawCustomPlacement(),
 	}
 }
 
@@ -924,7 +856,7 @@ func (b *BucketAttrs) toProtoBucket() *storagepb.Bucket {
 	}
 	var bb *storagepb.Bucket_Billing
 	if b.RequesterPays {
-		bb = &storage.Bucket_Billing{RequesterPays: true}
+		bb = &storagepb.Bucket_Billing{RequesterPays: true}
 	}
 	var bktIAM *storagepb.Bucket_IamConfig
 	if b.UniformBucketLevelAccess.Enabled || b.BucketPolicyOnly.Enabled || b.PublicAccessPrevention != PublicAccessPreventionUnknown {
@@ -940,22 +872,23 @@ func (b *BucketAttrs) toProtoBucket() *storagepb.Bucket {
 	}
 
 	return &storagepb.Bucket{
-		Name:             b.Name,
-		Location:         b.Location,
-		StorageClass:     b.StorageClass,
-		Acl:              toProtoBucketACL(b.ACL),
-		DefaultObjectAcl: toProtoObjectACL(b.DefaultObjectACL),
-		Versioning:       v,
-		Labels:           labels,
-		Billing:          bb,
-		Lifecycle:        toProtoLifecycle(b.Lifecycle),
-		RetentionPolicy:  b.RetentionPolicy.toProtoRetentionPolicy(),
-		Cors:             toProtoCORS(b.CORS),
-		Encryption:       b.Encryption.toProtoBucketEncryption(),
-		Logging:          b.Logging.toProtoBucketLogging(),
-		Website:          b.Website.toProtoBucketWebsite(),
-		IamConfig:        bktIAM,
-		Rpo:              b.RPO.String(),
+		Name:                  b.Name,
+		Location:              b.Location,
+		StorageClass:          b.StorageClass,
+		Acl:                   toProtoBucketACL(b.ACL),
+		DefaultObjectAcl:      toProtoObjectACL(b.DefaultObjectACL),
+		Versioning:            v,
+		Labels:                labels,
+		Billing:               bb,
+		Lifecycle:             toProtoLifecycle(b.Lifecycle),
+		RetentionPolicy:       b.RetentionPolicy.toProtoRetentionPolicy(),
+		Cors:                  toProtoCORS(b.CORS),
+		Encryption:            b.Encryption.toProtoBucketEncryption(),
+		Logging:               b.Logging.toProtoBucketLogging(),
+		Website:               b.Website.toProtoBucketWebsite(),
+		IamConfig:             bktIAM,
+		Rpo:                   b.RPO.String(),
+		CustomPlacementConfig: b.CustomPlacementConfig.toProtoCustomPlacement(),
 	}
 }
 
@@ -972,7 +905,7 @@ func (ua *BucketAttrsToUpdate) toProtoBucket() *storagepb.Bucket {
 	}
 	var bb *storagepb.Bucket_Billing
 	if ua.RequesterPays != nil {
-		bb = &storage.Bucket_Billing{RequesterPays: optional.ToBool(ua.RequesterPays)}
+		bb = &storagepb.Bucket_Billing{RequesterPays: optional.ToBool(ua.RequesterPays)}
 	}
 	var bktIAM *storagepb.Bucket_IamConfig
 	var ublaEnabled bool
@@ -1347,15 +1280,8 @@ func (b *BucketHandle) UserProject(projectID string) *BucketHandle {
 // most customers. It might be changed in backwards-incompatible ways and is not
 // subject to any SLA or deprecation policy.
 func (b *BucketHandle) LockRetentionPolicy(ctx context.Context) error {
-	var metageneration int64
-	if b.conds != nil {
-		metageneration = b.conds.MetagenerationMatch
-	}
-	req := b.c.raw.Buckets.LockRetentionPolicy(b.name, metageneration)
-	return run(ctx, func() error {
-		_, err := req.Context(ctx).Do()
-		return err
-	}, b.retry, true, setRetryHeaderHTTP(req))
+	o := makeStorageOpts(true, b.retry, b.userProject)
+	return b.c.tc.LockBucketRetentionPolicy(ctx, b.name, b.conds, o...)
 }
 
 // applyBucketConds modifies the provided call using the conditions in conds.
@@ -1503,19 +1429,6 @@ func toCORSFromProto(rc []*storagepb.Bucket_Cors) []CORS {
 	return out
 }
 
-// Used to handle breaking change in Autogen Storage client OLM Age field
-// from int64 to *int64 gracefully in the manual client
-// TODO(#6240): Method should be removed once breaking change is made and introduced to this client
-func setAgeCondition(age int64, ageField interface{}) {
-	c := reflect.ValueOf(ageField).Elem()
-	switch c.Kind() {
-	case reflect.Int64:
-		c.SetInt(age)
-	case reflect.Ptr:
-		c.Set(reflect.ValueOf(&age))
-	}
-}
-
 func toRawLifecycle(l Lifecycle) *raw.BucketLifecycle {
 	var rl raw.BucketLifecycle
 	if len(l.Rules) == 0 {
@@ -1537,7 +1450,15 @@ func toRawLifecycle(l Lifecycle) *raw.BucketLifecycle {
 			},
 		}
 
-		setAgeCondition(r.Condition.AgeInDays, &rr.Condition.Age)
+		// AllObjects takes precedent when both AllObjects and AgeInDays are set
+		// Rationale: If you've opted into using AllObjects, it makes sense that you
+		// understand the implications of how this option works with AgeInDays.
+		if r.Condition.AllObjects {
+			rr.Condition.Age = googleapi.Int64(0)
+			rr.Condition.ForceSendFields = []string{"Age"}
+		} else if r.Condition.AgeInDays > 0 {
+			rr.Condition.Age = googleapi.Int64(r.Condition.AgeInDays)
+		}
 
 		switch r.Condition.Liveness {
 		case LiveAndArchived:
@@ -1586,6 +1507,11 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 			},
 		}
 
+		// TODO(#6205): This may not be needed for gRPC
+		if r.Condition.AllObjects {
+			rr.Condition.AgeDays = proto.Int32(0)
+		}
+
 		switch r.Condition.Liveness {
 		case LiveAndArchived:
 			rr.Condition.IsLive = nil
@@ -1596,32 +1522,17 @@ func toProtoLifecycle(l Lifecycle) *storagepb.Bucket_Lifecycle {
 		}
 
 		if !r.Condition.CreatedBefore.IsZero() {
-			rr.Condition.CreatedBefore = adapters.TimeToProtoDate(r.Condition.CreatedBefore)
+			rr.Condition.CreatedBefore = timeToProtoDate(r.Condition.CreatedBefore)
 		}
 		if !r.Condition.CustomTimeBefore.IsZero() {
-			rr.Condition.CustomTimeBefore = adapters.TimeToProtoDate(r.Condition.CustomTimeBefore)
+			rr.Condition.CustomTimeBefore = timeToProtoDate(r.Condition.CustomTimeBefore)
 		}
 		if !r.Condition.NoncurrentTimeBefore.IsZero() {
-			rr.Condition.NoncurrentTimeBefore = adapters.TimeToProtoDate(r.Condition.NoncurrentTimeBefore)
+			rr.Condition.NoncurrentTimeBefore = timeToProtoDate(r.Condition.NoncurrentTimeBefore)
 		}
 		rl.Rule = append(rl.Rule, rr)
 	}
 	return &rl
-}
-
-// Used to handle breaking change in Autogen Storage client OLM Age field
-// from int64 to *int64 gracefully in the manual client
-// TODO(#6240): Method should be removed once breaking change is made and introduced to this client
-func getAgeCondition(ageField interface{}) int64 {
-	v := reflect.ValueOf(ageField)
-	if v.Kind() == reflect.Int64 {
-		return v.Interface().(int64)
-	} else if v.Kind() == reflect.Ptr {
-		if val, ok := v.Interface().(*int64); ok {
-			return *val
-		}
-	}
-	return 0
 }
 
 func toLifecycle(rl *raw.BucketLifecycle) Lifecycle {
@@ -1644,7 +1555,12 @@ func toLifecycle(rl *raw.BucketLifecycle) Lifecycle {
 				NumNewerVersions:        rr.Condition.NumNewerVersions,
 			},
 		}
-		r.Condition.AgeInDays = getAgeCondition(rr.Condition.Age)
+		if rr.Condition.Age != nil {
+			r.Condition.AgeInDays = *rr.Condition.Age
+			if *rr.Condition.Age == 0 {
+				r.Condition.AllObjects = true
+			}
+		}
 
 		if rr.Condition.IsLive == nil {
 			r.Condition.Liveness = LiveAndArchived
@@ -1690,6 +1606,11 @@ func toLifecycleFromProto(rl *storagepb.Bucket_Lifecycle) Lifecycle {
 			},
 		}
 
+		// TODO(#6205): This may not be needed for gRPC
+		if rr.GetCondition().GetAgeDays() == 0 {
+			r.Condition.AllObjects = true
+		}
+
 		if rr.GetCondition().IsLive == nil {
 			r.Condition.Liveness = LiveAndArchived
 		} else if rr.GetCondition().GetIsLive() {
@@ -1699,13 +1620,13 @@ func toLifecycleFromProto(rl *storagepb.Bucket_Lifecycle) Lifecycle {
 		}
 
 		if rr.GetCondition().GetCreatedBefore() != nil {
-			r.Condition.CreatedBefore = adapters.ProtoDateToUTCTime(rr.GetCondition().GetCreatedBefore())
+			r.Condition.CreatedBefore = protoDateToUTCTime(rr.GetCondition().GetCreatedBefore())
 		}
 		if rr.GetCondition().GetCustomTimeBefore() != nil {
-			r.Condition.CustomTimeBefore = adapters.ProtoDateToUTCTime(rr.GetCondition().GetCustomTimeBefore())
+			r.Condition.CustomTimeBefore = protoDateToUTCTime(rr.GetCondition().GetCustomTimeBefore())
 		}
 		if rr.GetCondition().GetNoncurrentTimeBefore() != nil {
-			r.Condition.NoncurrentTimeBefore = adapters.ProtoDateToUTCTime(rr.GetCondition().GetNoncurrentTimeBefore())
+			r.Condition.NoncurrentTimeBefore = protoDateToUTCTime(rr.GetCondition().GetNoncurrentTimeBefore())
 		}
 		l.Rules = append(l.Rules, r)
 	}
@@ -1933,24 +1854,46 @@ func toRPOFromProto(b *storagepb.Bucket) RPO {
 	}
 }
 
+func customPlacementFromRaw(c *raw.BucketCustomPlacementConfig) *CustomPlacementConfig {
+	if c == nil {
+		return nil
+	}
+	return &CustomPlacementConfig{DataLocations: c.DataLocations}
+}
+
+func (c *CustomPlacementConfig) toRawCustomPlacement() *raw.BucketCustomPlacementConfig {
+	if c == nil {
+		return nil
+	}
+	return &raw.BucketCustomPlacementConfig{
+		DataLocations: c.DataLocations,
+	}
+}
+
+func (c *CustomPlacementConfig) toProtoCustomPlacement() *storagepb.Bucket_CustomPlacementConfig {
+	if c == nil {
+		return nil
+	}
+	return &storagepb.Bucket_CustomPlacementConfig{
+		DataLocations: c.DataLocations,
+	}
+}
+
+func customPlacementFromProto(c *storagepb.Bucket_CustomPlacementConfig) *CustomPlacementConfig {
+	if c == nil {
+		return nil
+	}
+	return &CustomPlacementConfig{DataLocations: c.GetDataLocations()}
+}
+
 // Objects returns an iterator over the objects in the bucket that match the
 // Query q. If q is nil, no filtering is done. Objects will be iterated over
 // lexicographically by name.
 //
 // Note: The returned iterator is not safe for concurrent operations without explicit synchronization.
 func (b *BucketHandle) Objects(ctx context.Context, q *Query) *ObjectIterator {
-	it := &ObjectIterator{
-		ctx:    ctx,
-		bucket: b,
-	}
-	it.pageInfo, it.nextFunc = iterator.NewPageInfo(
-		it.fetch,
-		func() int { return len(it.items) },
-		func() interface{} { b := it.items; it.items = nil; return b })
-	if q != nil {
-		it.query = *q
-	}
-	return it
+	o := makeStorageOpts(true, b.retry, b.userProject)
+	return b.c.tc.ListObjects(ctx, b.name, q, o...)
 }
 
 // Retryer returns a bucket handle that is configured with custom retry
@@ -1985,7 +1928,6 @@ func (b *BucketHandle) Retryer(opts ...RetryOption) *BucketHandle {
 // Note: This iterator is not safe for concurrent operations without explicit synchronization.
 type ObjectIterator struct {
 	ctx      context.Context
-	bucket   *BucketHandle
 	query    Query
 	pageInfo *iterator.PageInfo
 	nextFunc func() error
@@ -2022,52 +1964,6 @@ func (it *ObjectIterator) Next() (*ObjectAttrs, error) {
 	return item, nil
 }
 
-func (it *ObjectIterator) fetch(pageSize int, pageToken string) (string, error) {
-	req := it.bucket.c.raw.Objects.List(it.bucket.name)
-	setClientHeader(req.Header())
-	projection := it.query.Projection
-	if projection == ProjectionDefault {
-		projection = ProjectionFull
-	}
-	req.Projection(projection.String())
-	req.Delimiter(it.query.Delimiter)
-	req.Prefix(it.query.Prefix)
-	req.StartOffset(it.query.StartOffset)
-	req.EndOffset(it.query.EndOffset)
-	req.Versions(it.query.Versions)
-	req.IncludeTrailingDelimiter(it.query.IncludeTrailingDelimiter)
-	if len(it.query.fieldSelection) > 0 {
-		req.Fields("nextPageToken", googleapi.Field(it.query.fieldSelection))
-	}
-	req.PageToken(pageToken)
-	if it.bucket.userProject != "" {
-		req.UserProject(it.bucket.userProject)
-	}
-	if pageSize > 0 {
-		req.MaxResults(int64(pageSize))
-	}
-	var resp *raw.Objects
-	var err error
-	err = run(it.ctx, func() error {
-		resp, err = req.Context(it.ctx).Do()
-		return err
-	}, it.bucket.retry, true, setRetryHeaderHTTP(req))
-	if err != nil {
-		var e *googleapi.Error
-		if ok := errors.As(err, &e); ok && e.Code == http.StatusNotFound {
-			err = ErrBucketNotExist
-		}
-		return "", err
-	}
-	for _, item := range resp.Items {
-		it.items = append(it.items, newObject(item))
-	}
-	for _, prefix := range resp.Prefixes {
-		it.items = append(it.items, &ObjectAttrs{Prefix: prefix})
-	}
-	return resp.NextPageToken, nil
-}
-
 // Buckets returns an iterator over the buckets in the project. You may
 // optionally set the iterator's Prefix field to restrict the list to buckets
 // whose names begin with the prefix. By default, all buckets in the project
@@ -2075,17 +1971,8 @@ func (it *ObjectIterator) fetch(pageSize int, pageToken string) (string, error) 
 //
 // Note: The returned iterator is not safe for concurrent operations without explicit synchronization.
 func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator {
-	it := &BucketIterator{
-		ctx:       ctx,
-		client:    c,
-		projectID: projectID,
-	}
-	it.pageInfo, it.nextFunc = iterator.NewPageInfo(
-		it.fetch,
-		func() int { return len(it.buckets) },
-		func() interface{} { b := it.buckets; it.buckets = nil; return b })
-
-	return it
+	o := makeStorageOpts(true, c.retry, "")
+	return c.tc.ListBuckets(ctx, projectID, o...)
 }
 
 // A BucketIterator is an iterator over BucketAttrs.
@@ -2096,7 +1983,6 @@ type BucketIterator struct {
 	Prefix string
 
 	ctx       context.Context
-	client    *Client
 	projectID string
 	buckets   []*BucketAttrs
 	pageInfo  *iterator.PageInfo
@@ -2121,36 +2007,6 @@ func (it *BucketIterator) Next() (*BucketAttrs, error) {
 //
 // Note: This method is not safe for concurrent operations without explicit synchronization.
 func (it *BucketIterator) PageInfo() *iterator.PageInfo { return it.pageInfo }
-
-// TODO: When the transport-agnostic client interface is integrated into the Veneer,
-// this method should be removed, and the iterator should be initialized by the
-// transport-specific client implementations.
-func (it *BucketIterator) fetch(pageSize int, pageToken string) (token string, err error) {
-	req := it.client.raw.Buckets.List(it.projectID)
-	setClientHeader(req.Header())
-	req.Projection("full")
-	req.Prefix(it.Prefix)
-	req.PageToken(pageToken)
-	if pageSize > 0 {
-		req.MaxResults(int64(pageSize))
-	}
-	var resp *raw.Buckets
-	err = run(it.ctx, func() error {
-		resp, err = req.Context(it.ctx).Do()
-		return err
-	}, it.client.retry, true, setRetryHeaderHTTP(req))
-	if err != nil {
-		return "", err
-	}
-	for _, item := range resp.Items {
-		b, err := newBucket(item)
-		if err != nil {
-			return "", err
-		}
-		it.buckets = append(it.buckets, b)
-	}
-	return resp.NextPageToken, nil
-}
 
 // RPO (Recovery Point Objective) configures the turbo replication feature. See
 // https://cloud.google.com/storage/docs/managing-turbo-replication for more information.
@@ -2185,5 +2041,30 @@ func (rpo RPO) String() string {
 		return rpoAsyncTurbo
 	default:
 		return rpoUnknown
+	}
+}
+
+// protoDateToUTCTime returns a new Time based on the google.type.Date, in UTC.
+//
+// Hours, minutes, seconds, and nanoseconds are set to 0.
+func protoDateToUTCTime(d *dpb.Date) time.Time {
+	return protoDateToTime(d, time.UTC)
+}
+
+// protoDateToTime returns a new Time based on the google.type.Date and provided
+// *time.Location.
+//
+// Hours, minutes, seconds, and nanoseconds are set to 0.
+func protoDateToTime(d *dpb.Date, l *time.Location) time.Time {
+	return time.Date(int(d.GetYear()), time.Month(d.GetMonth()), int(d.GetDay()), 0, 0, 0, 0, l)
+}
+
+// timeToProtoDate returns a new google.type.Date based on the provided time.Time.
+// The location is ignored, as is anything more precise than the day.
+func timeToProtoDate(t time.Time) *dpb.Date {
+	return &dpb.Date{
+		Year:  int32(t.Year()),
+		Month: int32(t.Month()),
+		Day:   int32(t.Day()),
 	}
 }

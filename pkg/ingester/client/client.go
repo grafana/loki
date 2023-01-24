@@ -41,9 +41,9 @@ type ClosableHealthAndIngesterClient struct {
 
 // Config for an ingester client.
 type Config struct {
-	PoolConfig                   clientpool.PoolConfig          `yaml:"pool_config,omitempty"`
+	PoolConfig                   clientpool.PoolConfig          `yaml:"pool_config,omitempty" doc:"description=Configures how connections are pooled."`
 	RemoteTimeout                time.Duration                  `yaml:"remote_timeout,omitempty"`
-	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config"`
+	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config" doc:"description=Configures how the gRPC connection to ingesters work as a client."`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 
@@ -58,8 +58,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
 	cfg.PoolConfig.RegisterFlags(f)
 
-	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "Timeout for healthcheck rpcs.")
-	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "Timeout for ingester client RPCs.")
+	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "How quickly a dead client will be removed after it has been detected to disappear. Set this to a value to allow time for a secondary health check to recover the missing client.")
+	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "The remote request timeout on the client side.")
 }
 
 // New returns a new ingester client.

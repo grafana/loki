@@ -88,7 +88,6 @@ groups:
           )
         ) by (job, le, namespace, route)
       )
-      * 100
       > 1
     for: 15m
     labels:
@@ -124,7 +123,6 @@ groups:
           job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="WRITE"}
         ) by (job, le, namespace)
       )
-      * 100
       > 1
     for: 15m
     labels:
@@ -141,7 +139,6 @@ groups:
           job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{operation="Shipper.Query"}
         ) by (job, le, namespace)
       )
-      * 100
       > 5
     for: 15m
     labels:
@@ -174,7 +171,6 @@ groups:
           )
         ) by (job, le, namespace)
       )
-      * 100
       > 30
     for: 15m
     labels:

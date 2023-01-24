@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/flagext"
@@ -20,7 +20,7 @@ var (
 	recordPool = newRecordPool()
 )
 
-const walSegmentSize = wal.DefaultSegmentSize * 4
+const walSegmentSize = wlog.DefaultSegmentSize * 4
 const defaultCeiling = 4 << 30 // 4GB
 
 type WALConfig struct {
@@ -40,14 +40,14 @@ func (cfg *WALConfig) Validate() error {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
+	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory where the WAL data is stored and/or recovered from.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", true, "Enable writing of ingested data into WAL.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
 
 	// Need to set default here
 	cfg.ReplayMemoryCeiling = flagext.ByteSize(defaultCeiling)
-	f.Var(&cfg.ReplayMemoryCeiling, "ingester.wal-replay-memory-ceiling", "How much memory the WAL may use during replay before it needs to flush chunks to storage, i.e. 10GB. We suggest setting this to a high percentage (~75%) of available memory.")
+	f.Var(&cfg.ReplayMemoryCeiling, "ingester.wal-replay-memory-ceiling", "Maximum memory size the WAL may use during replay. After hitting this, it will flush data to storage before continuing. A unit suffix (KB, MB, GB) may be applied.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -67,7 +67,7 @@ func (noopWAL) Stop() error          { return nil }
 
 type walWrapper struct {
 	cfg        WALConfig
-	wal        *wal.WAL
+	wal        *wlog.WL
 	metrics    *ingesterMetrics
 	seriesIter SeriesIter
 
@@ -81,7 +81,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wal.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
+	tsdbWAL, err := wlog.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}

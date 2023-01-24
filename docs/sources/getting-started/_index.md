@@ -6,9 +6,7 @@ aliases:
     - /docs/loki/latest/getting-started/get-logs-into-loki/
 ---
 
-# Getting started with Grafana Loki
-
-> **Note:** You can use [Grafana Cloud](https://grafana.com/products/cloud/features/#cloud-logs) to avoid installing, maintaining, and scaling your own instance of Grafana Loki. The free forever plan includes 50GB of free logs. [Create an account to get started](https://grafana.com/auth/sign-up/create-user?pg=docs-loki&plcmt=in-text).
+# Getting started
 
 This guide assists the reader to create and use a simple Loki cluster.
 The cluster is intended for testing, development, and evaluation;
@@ -24,7 +22,7 @@ Grafana provides a way to pose queries against the logs stored in Loki and visua
 
 The test environment uses Docker compose to instantiate these parts, each in its own container: 
 
-- One [single scalable deployment](../fundamentals/architecture/deployment-modes/) mode **Loki** instance has:
+- One [single scalable deployment]({{<relref "../fundamentals/architecture/deployment-modes">}}) mode **Loki** instance has:
     - One Loki read component
     - One Loki write component
     - **Minio** is Loki's storage back end in the test environment.
@@ -64,10 +62,10 @@ The write component returns `ready` when you point a web browser at http://local
 
 ## Use Grafana and the test environment
 
-Use [Grafana](https://grafana.com/docs/grafana/latest/) to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
-The Grafana instance has Loki configured as a [datasource](https://grafana.com/docs/grafana/latest/datasources/loki/).
+Use [Grafana](/docs/grafana/latest/) to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
+The Grafana instance has Loki configured as a [datasource](/docs/grafana/latest/datasources/loki/).
 
-Click on the Grafana instance's [Explore](https://grafana.com/docs/grafana/latest/explore/) icon to bring up the explore pane.
+Click on the Grafana instance's [Explore](/docs/grafana/latest/explore/) icon to bring up the explore pane.
 
 Use the Explore dropdown menu to choose the Loki datasource and bring up the Loki query browser.
 
@@ -99,7 +97,7 @@ To see every log line other than those that contain the value 401:
 {container="evaluate-loki_flog_1"} != "401"
 ```
 
-Refer to [query examples](../logql/query_examples/) for more examples.
+Refer to [query examples]({{<relref "../logql/query_examples">}}) for more examples.
 
 ## Stop and clean up the test environment
 

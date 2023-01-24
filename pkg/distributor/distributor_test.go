@@ -20,7 +20,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -470,36 +469,13 @@ func Test_TruncateLogLines(t *testing.T) {
 func TestStreamShard(t *testing.T) {
 	// setup base stream.
 	baseStream := logproto.Stream{}
-	baseLabels := "{app='myapp', job='fizzbuzz'}"
+	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
 	baseStream.Hash = lbs.Hash()
 	baseStream.Labels = lbs.String()
 
-	// helper funcs
-	generateEntries := func(n int) []logproto.Entry {
-		var entries []logproto.Entry
-		for i := 0; i < n; i++ {
-			entries = append(entries, logproto.Entry{
-				Line:      fmt.Sprintf("log line %d", i),
-				Timestamp: time.Now(),
-			})
-		}
-		return entries
-	}
-
 	totalEntries := generateEntries(100)
-
-	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "stream_sharding_failures",
-			Help:      "Total number of failures when sharding a stream",
-		}, []string{
-			"reason",
-		},
-	)
-
 	desiredRate := loki_flagext.ByteSize(300)
 
 	for _, tc := range []struct {
@@ -577,16 +553,90 @@ func TestStreamShard(t *testing.T) {
 			require.NoError(t, err)
 
 			d := Distributor{
-				rateStore:              &fakeRateStore{},
-				streamShardingFailures: shardingFailureMetric,
-				validator:              validator,
-				streamShardCount:       prometheus.NewCounter(prometheus.CounterOpts{}),
+				rateStore:        &fakeRateStore{},
+				validator:        validator,
+				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+				shardTracker:     NewShardTracker(),
 			}
 
 			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
+
+			for _, s := range derivedStreams {
+				// Generate sorted labels
+				lbls, err := syntax.ParseLabels(s.stream.Labels)
+				require.NoError(t, err)
+
+				require.Equal(t, lbls.Hash(), s.stream.Hash)
+				require.Equal(t, lbls.String(), s.stream.Labels)
+			}
 		})
 	}
+}
+
+func TestStreamShardAcrossCalls(t *testing.T) {
+	// setup base stream.
+	baseStream := logproto.Stream{}
+	baseLabels := "{app='myapp'}"
+	lbs, err := syntax.ParseLabels(baseLabels)
+	require.NoError(t, err)
+	baseStream.Hash = lbs.Hash()
+	baseStream.Labels = lbs.String()
+	baseStream.Entries = generateEntries(2)
+
+	streamRate := loki_flagext.ByteSize(400).Val()
+
+	distributorLimits := &validation.Limits{}
+	flagext.DefaultValues(distributorLimits)
+	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(100)
+
+	overrides, err := validation.NewOverrides(*distributorLimits, nil)
+	require.NoError(t, err)
+
+	validator, err := NewValidator(overrides)
+	require.NoError(t, err)
+
+	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
+		d := Distributor{
+			rateStore:        &fakeRateStore{},
+			validator:        validator,
+			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+			shardTracker:     NewShardTracker(),
+		}
+
+		_, derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		require.Len(t, derivedStreams, 2)
+
+		for i, s := range derivedStreams {
+			require.Len(t, s.stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.NoError(t, err)
+
+			require.Equal(t, lbls[0].Value, fmt.Sprint(i))
+		}
+
+		_, derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		require.Len(t, derivedStreams, 2)
+
+		for i, s := range derivedStreams {
+			require.Len(t, s.stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.NoError(t, err)
+
+			require.Equal(t, lbls[0].Value, fmt.Sprint(i+2))
+		}
+	})
+}
+
+func generateEntries(n int) []logproto.Entry {
+	var entries []logproto.Entry
+	for i := 0; i < n; i++ {
+		entries = append(entries, logproto.Entry{
+			Line:      fmt.Sprintf("log line %d", i),
+			Timestamp: time.Now(),
+		})
+	}
+	return entries
 }
 
 func BenchmarkShardStream(b *testing.B) {
@@ -596,34 +646,30 @@ func BenchmarkShardStream(b *testing.B) {
 	require.NoError(b, err)
 	stream.Hash = lbs.Hash()
 	stream.Labels = lbs.String()
-	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "stream_sharding_failures",
-			Help:      "Total number of failures when sharding a stream",
-		}, []string{
-			"reason",
-		},
-	)
 
-	// helper funcs
-	generateEntries := func(n int) []logproto.Entry {
-		var entries []logproto.Entry
-		for i := 0; i < n; i++ {
-			entries = append(entries, logproto.Entry{
-				Line:      fmt.Sprintf("log line %d", i),
-				Timestamp: time.Now(),
-			})
-		}
-		return entries
-	}
 	allEntries := generateEntries(25000)
 
 	desiredRate := 3000
+
+	distributorLimits := &validation.Limits{}
+	flagext.DefaultValues(distributorLimits)
+	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(desiredRate)
+
+	overrides, err := validation.NewOverrides(*distributorLimits, nil)
+	require.NoError(b, err)
+
+	validator, err := NewValidator(overrides)
+	require.NoError(b, err)
+
 	distributorBuilder := func(shards int) *Distributor {
-		d := &Distributor{streamShardingFailures: shardingFailureMetric}
-		// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
-		d.rateStore = &fakeRateStore{rate: int64(desiredRate*shards - 1)}
+		d := &Distributor{
+			validator:        validator,
+			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+			shardTracker:     NewShardTracker(),
+			// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
+			rateStore: &fakeRateStore{rate: int64(desiredRate*shards - 1)},
+		}
+
 		return d
 	}
 
@@ -756,16 +802,6 @@ func TestShardCalculation(t *testing.T) {
 }
 
 func TestShardCountFor(t *testing.T) {
-	shardingFailureMetric := promauto.With(prometheus.DefaultRegisterer).NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "test_shard_count_for",
-			Help:      "Total number of failures when sharding a stream",
-		}, []string{
-			"reason",
-		},
-	)
-
 	for _, tc := range []struct {
 		name        string
 		stream      *logproto.Stream
@@ -843,10 +879,9 @@ func TestShardCountFor(t *testing.T) {
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
-				streamShardingFailures: shardingFailureMetric,
-				rateStore:              &fakeRateStore{tc.rate},
+				rateStore: &fakeRateStore{tc.rate},
 			}
-			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, limits.ShardStreams)
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
@@ -1117,6 +1152,6 @@ type fakeRateStore struct {
 	rate int64
 }
 
-func (s *fakeRateStore) RateFor(_ uint64) int64 {
+func (s *fakeRateStore) RateFor(_ string, _ uint64) int64 {
 	return s.rate
 }

@@ -3,7 +3,7 @@ title: Configure monitoring and alerting
 menuTitle: Configure monitoring and alerting
 description: setup monitoring and alerts for the Helm Chart
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/monitoring
 weight: 100
 keywords:
   - monitoring 
@@ -119,8 +119,6 @@ Rules and alerts are automatically deployed.
    ...
    selfMonitoring:
      enabled: true
-     lokiCanary:
-       enabled: false
      logsInstance:
        clients:
        - url: <logs remote write endpoint>
@@ -130,7 +128,9 @@ Rules and alerts are automatically deployed.
              key: username
            password:
              name: primary-credentials-logs
-             key: password 
+             key: password
+   lokiCanary:
+     enabled: false
    ```
 
 5. Install the `Loki meta-motoring` connection on Grafana Cloud.

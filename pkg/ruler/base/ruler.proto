@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package base;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";

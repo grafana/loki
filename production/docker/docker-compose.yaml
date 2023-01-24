@@ -16,7 +16,7 @@ services:
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: grafana/loki:2.6.1
+    image: grafana/loki:2.7.1
     user: root
     entrypoint:
       - "chown"
@@ -72,7 +72,7 @@ services:
       - ./loki/:/var/log/
 
   promtail:
-    image: grafana/promtail:2.6.1
+    image: grafana/promtail:2.7.1
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
@@ -113,21 +113,8 @@ services:
     networks:
       - loki
 
-  loki-frontend:
-    image: grafana/loki:2.6.1
-    volumes:
-      - ./config:/etc/loki/
-    ports:
-      - "3100"
-    command: "-config.file=/etc/loki/loki.yaml -target=query-frontend -frontend.downstream-url=http://loki-read:3100"
-    networks:
-      - loki
-    deploy:
-      mode: replicated
-      replicas: 2
-
   loki-read:
-    image: grafana/loki:2.6.1
+    image: grafana/loki:2.7.1
     volumes:
       - ./config:/etc/loki/
     ports:
@@ -149,7 +136,7 @@ services:
     # only needed for interactive debugging with dlv
 
   loki-write:
-    image: grafana/loki:2.6.1
+    image: grafana/loki:2.7.1
     volumes:
       - ./config:/etc/loki/
     ports:

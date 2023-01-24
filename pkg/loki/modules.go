@@ -12,11 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/dns"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/ring"
@@ -28,7 +27,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
-	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
@@ -43,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -54,6 +53,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -98,6 +99,7 @@ const (
 	All                      string = "all"
 	Read                     string = "read"
 	Write                    string = "write"
+	Backend                  string = "backend"
 	UsageReport              string = "usage-report"
 )
 
@@ -339,6 +341,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
 		AllEnabled:            t.Cfg.isModuleEnabled(All),
 		ReadEnabled:           t.Cfg.isModuleEnabled(Read),
+		GrpcListenAddress:     t.Cfg.Server.GRPCListenAddress,
 		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
 		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
 		QuerierWorkerConfig:   &t.Cfg.Worker,
@@ -350,7 +353,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 	}
-	if t.supportIndexDeleteRequest() {
+	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
 			toMerge,
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
@@ -518,9 +521,9 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
 			// Use fifo cache for caching index in memory, this also significantly helps performance.
 			t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
-				EnableFifoCache: true,
-				Fifocache: cache.FifoCacheConfig{
-					MaxSizeBytes: "200 MB",
+				EmbeddedCache: cache.EmbeddedCacheConfig{
+					Enabled:   true,
+					MaxSizeMB: 200,
 					// This is a small hack to save some CPU cycles.
 					// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
 					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
@@ -541,7 +544,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 			t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.isModuleActive(IndexGateway):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 			t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -590,12 +593,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			asyncStore = true
 
-			if t.Cfg.isModuleEnabled(Read) {
-				// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
+			// The legacy Read target includes the index gateway, so disable the index-gateway client in that configuration.
+			if t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read) {
 				t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 				t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 			}
-		case t.Cfg.isModuleEnabled(IndexGateway):
+			// Backend target includes the index gateway
+		case t.Cfg.isModuleEnabled(IndexGateway), t.Cfg.isModuleEnabled(Backend):
 			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 			t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
@@ -660,7 +664,8 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.overrides,
-		t.Cfg.SchemaConfig, t.cacheGenerationLoader,
+		t.Cfg.SchemaConfig,
+		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -675,35 +680,54 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 	var client generationnumber.CacheGenClient
 	if t.supportIndexDeleteRequest() {
-		compactorAddress, err := t.compactorAddress()
+		compactorAddress, isGRPCAddress, err := t.compactorAddress()
 		if err != nil {
 			return nil, err
 		}
-		client, err = generationnumber.NewGenNumberClient(compactorAddress, &http.Client{Timeout: 5 * time.Second})
-		if err != nil {
-			return nil, err
+
+		reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "cache_gen", "client_type": t.Cfg.Target.String()}, prometheus.DefaultRegisterer)
+		if isGRPCAddress {
+			client, err = compactor_client.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			client, err = compactor_client.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
-	return services.NewIdleService(nil, nil), nil
+	return services.NewIdleService(nil, func(failureCase error) error {
+		t.cacheGenerationLoader.Stop()
+		return nil
+	}), nil
 }
 
 func (t *Loki) supportIndexDeleteRequest() bool {
 	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
-func (t *Loki) compactorAddress() (string, error) {
-	if t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read) {
+// compactorAddress returns the configured address of the compactor.
+// It prefers grpc address over http. If the address is grpc then the bool would be true otherwise false
+func (t *Loki) compactorAddress() (string, bool, error) {
+	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read)
+	if t.Cfg.isModuleEnabled(All) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
 		// In single binary or read modes, this module depends on Server
-		return fmt.Sprintf("http://127.0.0.1:%d", t.Cfg.Server.HTTPListenPort), nil
+		return fmt.Sprintf("%s:%d", t.Cfg.Server.GRPCListenAddress, t.Cfg.Server.GRPCListenPort), true, nil
 	}
 
-	if t.Cfg.Common.CompactorAddress == "" {
-		return "", errors.New("query filtering for deletes requires 'compactor_address' to be configured")
+	if t.Cfg.Common.CompactorAddress == "" && t.Cfg.Common.CompactorGRPCAddress == "" {
+		return "", false, errors.New("query filtering for deletes requires 'compactor_grpc_address' or 'compactor_address' to be configured")
 	}
 
-	return t.Cfg.Common.CompactorAddress, nil
+	if t.Cfg.Common.CompactorGRPCAddress != "" {
+		return t.Cfg.Common.CompactorGRPCAddress, true, nil
+	}
+
+	return t.Cfg.Common.CompactorAddress, false, nil
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
@@ -838,7 +862,8 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if (t.Cfg.isModuleEnabled(All) || t.Cfg.isModuleEnabled(Read)) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read)
+	if (t.Cfg.isModuleEnabled(All) || legacyReadMode || t.Cfg.isModuleEnabled(Backend)) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.")
 		return
 	}
@@ -1000,6 +1025,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler))
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler))
 		t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler))
+		grpc.RegisterCompactorServer(t.Server.GRPC, t.compactor.DeleteRequestsGRPCHandler)
 	}
 
 	return t.compactor, nil
@@ -1026,9 +1052,10 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
-	// IndexGateway runs by default on read target, and should always assume
+	// IndexGateway runs by default on legacy read and backend targets, and should always assume
 	// ring mode when run in this way.
-	if t.isModuleActive(Read) {
+	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
+	if legacyReadMode || t.isModuleActive(Backend) {
 		t.Cfg.IndexGateway.Mode = indexgateway.RingMode
 	}
 
@@ -1041,7 +1068,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	managerMode := indexgateway.ClientMode
-	if t.Cfg.isModuleEnabled(IndexGateway) || t.Cfg.isModuleEnabled(Read) {
+	if t.Cfg.isModuleEnabled(IndexGateway) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
 		managerMode = indexgateway.ServerMode
 	}
 	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
@@ -1112,21 +1139,30 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits *validation.Overrides) (deletion.DeleteRequestsClient, error) {
-	if !t.supportIndexDeleteRequest() {
+	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}
 
-	compactorAddress, err := t.compactorAddress()
+	compactorAddress, isGRPCAddress, err := t.compactorAddress()
 	if err != nil {
 		return nil, err
 	}
 
-	httpClient, err := deletion.NewDeleteHTTPClient(t.Cfg.DeleteClient)
-	if err != nil {
-		return nil, err
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "delete_requests", "client_type": clientType}, prometheus.DefaultRegisterer)
+	var compactorClient deletion.CompactorClient
+	if isGRPCAddress {
+		compactorClient, err = compactor_client.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		compactorClient, err = compactor_client.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	client, err := deletion.NewDeleteRequestsClient(compactorAddress, httpClient, t.deleteClientMetrics, clientType)
+	client, err := deletion.NewDeleteRequestsClient(compactorClient, t.deleteClientMetrics, clientType)
 	if err != nil {
 		return nil, err
 	}

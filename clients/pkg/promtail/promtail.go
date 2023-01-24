@@ -82,6 +82,13 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
+	for _, o := range opts {
+		// todo (callum) I don't understand why I needed to add this check
+		if o == nil {
+			continue
+		}
+		o(promtail)
+	}
 	err := promtail.reg.Register(reloadSuccessTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadSuccessTotal :%w", err)
@@ -89,13 +96,6 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 	err = promtail.reg.Register(reloadFailTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadFailTotal :%w", err)
-	}
-	for _, o := range opts {
-		// todo (callum) I don't understand why I needed to add this check
-		if o == nil {
-			continue
-		}
-		o(promtail)
 	}
 	err = promtail.reloadConfig(&cfg)
 	if err != nil {
@@ -134,13 +134,13 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	}
 	var err error
 	if p.dryRun {
-		p.client, err = client.NewLogger(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.ClientConfigs...)
+		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		p.client, err = client.NewMulti(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
+		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}

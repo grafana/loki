@@ -2,7 +2,7 @@
 
 - [About Cloud Storage](https://cloud.google.com/storage/)
 - [API documentation](https://cloud.google.com/storage/docs)
-- [Go client documentation](https://pkg.go.dev/cloud.google.com/go/storage)
+- [Go client documentation](https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest)
 - [Complete sample programs](https://github.com/GoogleCloudPlatform/golang-samples/tree/main/storage)
 
 ### Example Usage

@@ -184,7 +184,7 @@ func TestGetStreamRates(t *testing.T) {
 	close(startChannel)
 	wg.Wait()
 
-	var rates []*logproto.StreamRate
+	var rates []logproto.StreamRate
 	require.Eventually(t, func() bool {
 		rates = inst.streamRateCalculator.Rates()
 

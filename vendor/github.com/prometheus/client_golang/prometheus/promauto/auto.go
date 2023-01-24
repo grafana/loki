@@ -14,114 +14,114 @@
 // Package promauto provides alternative constructors for the fundamental
 // Prometheus metric types and their …Vec and …Func variants. The difference to
 // their counterparts in the prometheus package is that the promauto
-// constructors return Collectors that are already registered with a
-// registry. There are two sets of constructors. The constructors in the first
-// set are top-level functions, while the constructors in the other set are
-// methods of the Factory type. The top-level function return Collectors
-// registered with the global registry (prometheus.DefaultRegisterer), while the
-// methods return Collectors registered with the registry the Factory was
-// constructed with. All constructors panic if the registration fails.
+// constructors register the Collectors with a registry before returning them.
+// There are two sets of constructors. The constructors in the first set are
+// top-level functions, while the constructors in the other set are methods of
+// the Factory type. The top-level function return Collectors registered with
+// the global registry (prometheus.DefaultRegisterer), while the methods return
+// Collectors registered with the registry the Factory was constructed with. All
+// constructors panic if the registration fails.
 //
 // The following example is a complete program to create a histogram of normally
 // distributed random numbers from the math/rand package:
 //
-//      package main
+//	package main
 //
-//      import (
-//              "math/rand"
-//              "net/http"
+//	import (
+//	        "math/rand"
+//	        "net/http"
 //
-//              "github.com/prometheus/client_golang/prometheus"
-//              "github.com/prometheus/client_golang/prometheus/promauto"
-//              "github.com/prometheus/client_golang/prometheus/promhttp"
-//      )
+//	        "github.com/prometheus/client_golang/prometheus"
+//	        "github.com/prometheus/client_golang/prometheus/promauto"
+//	        "github.com/prometheus/client_golang/prometheus/promhttp"
+//	)
 //
-//      var histogram = promauto.NewHistogram(prometheus.HistogramOpts{
-//              Name:    "random_numbers",
-//              Help:    "A histogram of normally distributed random numbers.",
-//              Buckets: prometheus.LinearBuckets(-3, .1, 61),
-//      })
+//	var histogram = promauto.NewHistogram(prometheus.HistogramOpts{
+//	        Name:    "random_numbers",
+//	        Help:    "A histogram of normally distributed random numbers.",
+//	        Buckets: prometheus.LinearBuckets(-3, .1, 61),
+//	})
 //
-//      func Random() {
-//              for {
-//                      histogram.Observe(rand.NormFloat64())
-//              }
-//      }
+//	func Random() {
+//	        for {
+//	                histogram.Observe(rand.NormFloat64())
+//	        }
+//	}
 //
-//      func main() {
-//              go Random()
-//              http.Handle("/metrics", promhttp.Handler())
-//              http.ListenAndServe(":1971", nil)
-//      }
+//	func main() {
+//	        go Random()
+//	        http.Handle("/metrics", promhttp.Handler())
+//	        http.ListenAndServe(":1971", nil)
+//	}
 //
 // Prometheus's version of a minimal hello-world program:
 //
-//      package main
+//	package main
 //
-//      import (
-//      	"fmt"
-//      	"net/http"
+//	import (
+//		"fmt"
+//		"net/http"
 //
-//      	"github.com/prometheus/client_golang/prometheus"
-//      	"github.com/prometheus/client_golang/prometheus/promauto"
-//      	"github.com/prometheus/client_golang/prometheus/promhttp"
-//      )
+//		"github.com/prometheus/client_golang/prometheus"
+//		"github.com/prometheus/client_golang/prometheus/promauto"
+//		"github.com/prometheus/client_golang/prometheus/promhttp"
+//	)
 //
-//      func main() {
-//      	http.Handle("/", promhttp.InstrumentHandlerCounter(
-//      		promauto.NewCounterVec(
-//      			prometheus.CounterOpts{
-//      				Name: "hello_requests_total",
-//      				Help: "Total number of hello-world requests by HTTP code.",
-//      			},
-//      			[]string{"code"},
-//      		),
-//      		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//      			fmt.Fprint(w, "Hello, world!")
-//      		}),
-//      	))
-//      	http.Handle("/metrics", promhttp.Handler())
-//      	http.ListenAndServe(":1971", nil)
-//      }
+//	func main() {
+//		http.Handle("/", promhttp.InstrumentHandlerCounter(
+//			promauto.NewCounterVec(
+//				prometheus.CounterOpts{
+//					Name: "hello_requests_total",
+//					Help: "Total number of hello-world requests by HTTP code.",
+//				},
+//				[]string{"code"},
+//			),
+//			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//				fmt.Fprint(w, "Hello, world!")
+//			}),
+//		))
+//		http.Handle("/metrics", promhttp.Handler())
+//		http.ListenAndServe(":1971", nil)
+//	}
 //
 // A Factory is created with the With(prometheus.Registerer) function, which
 // enables two usage pattern. With(prometheus.Registerer) can be called once per
 // line:
 //
-//        var (
-//        	reg           = prometheus.NewRegistry()
-//        	randomNumbers = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-//        		Name:    "random_numbers",
-//        		Help:    "A histogram of normally distributed random numbers.",
-//        		Buckets: prometheus.LinearBuckets(-3, .1, 61),
-//        	})
-//        	requestCount = promauto.With(reg).NewCounterVec(
-//        		prometheus.CounterOpts{
-//        			Name: "http_requests_total",
-//        			Help: "Total number of HTTP requests by status code and method.",
-//        		},
-//        		[]string{"code", "method"},
-//        	)
-//        )
+//	var (
+//		reg           = prometheus.NewRegistry()
+//		randomNumbers = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+//			Name:    "random_numbers",
+//			Help:    "A histogram of normally distributed random numbers.",
+//			Buckets: prometheus.LinearBuckets(-3, .1, 61),
+//		})
+//		requestCount = promauto.With(reg).NewCounterVec(
+//			prometheus.CounterOpts{
+//				Name: "http_requests_total",
+//				Help: "Total number of HTTP requests by status code and method.",
+//			},
+//			[]string{"code", "method"},
+//		)
+//	)
 //
 // Or it can be used to create a Factory once to be used multiple times:
 //
-//        var (
-//        	reg           = prometheus.NewRegistry()
-//        	factory       = promauto.With(reg)
-//        	randomNumbers = factory.NewHistogram(prometheus.HistogramOpts{
-//        		Name:    "random_numbers",
-//        		Help:    "A histogram of normally distributed random numbers.",
-//        		Buckets: prometheus.LinearBuckets(-3, .1, 61),
-//        	})
-//        	requestCount = factory.NewCounterVec(
-//        		prometheus.CounterOpts{
-//        			Name: "http_requests_total",
-//        			Help: "Total number of HTTP requests by status code and method.",
-//        		},
-//        		[]string{"code", "method"},
-//        	)
-//        )
+//	var (
+//		reg           = prometheus.NewRegistry()
+//		factory       = promauto.With(reg)
+//		randomNumbers = factory.NewHistogram(prometheus.HistogramOpts{
+//			Name:    "random_numbers",
+//			Help:    "A histogram of normally distributed random numbers.",
+//			Buckets: prometheus.LinearBuckets(-3, .1, 61),
+//		})
+//		requestCount = factory.NewCounterVec(
+//			prometheus.CounterOpts{
+//				Name: "http_requests_total",
+//				Help: "Total number of HTTP requests by status code and method.",
+//			},
+//			[]string{"code", "method"},
+//		)
+//	)
 //
 // This appears very handy. So why are these constructors locked away in a
 // separate package?

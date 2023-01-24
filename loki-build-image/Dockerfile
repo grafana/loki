@@ -45,13 +45,13 @@ RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_li
 # Install faillint used to lint go imports in CI.
 # This collisions with the version of go tools used in the base image, thus we install it in its own image and copy it over.
 # Error:
-#	github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
+# github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM golang:1.19.2 as faillint
-RUN GO111MODULE=on go install github.com/fatih/faillint@v1.10.0
+RUN GO111MODULE=on go install github.com/fatih/faillint@v1.11.0
 
 FROM golang:1.19.2 as delve
-RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@v1.7.3
+RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
@@ -61,6 +61,10 @@ RUN GO111MODULE=on go install github.com/tcnksm/ghr@9349474
 # Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
 FROM golang:1.19.2 as nfpm
 RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
+
+# Install gotestsum
+FROM golang:1.19.2 as gotestsum
+RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.8.2
 
 # Install tools used to compile jsonnet.
 FROM golang:1.19.2 as jsonnet
@@ -77,6 +81,16 @@ RUN apt-get update && \
     libsystemd-dev jq && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Install dependencies to cross build Promtail to ARM and ARM64.
+RUN dpkg --add-architecture armhf && \
+    dpkg --add-architecture arm64 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    pkg-config \
+    gcc-aarch64-linux-gnu libc6-dev-arm64-cross libsystemd-dev:arm64 \
+    gcc-arm-linux-gnueabihf libc6-dev-armhf-cross libsystemd-dev:armhf && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs
@@ -88,6 +102,7 @@ COPY --from=faillint /go/bin/faillint /usr/bin/faillint
 COPY --from=delve /go/bin/dlv /usr/bin/dlv
 COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 COPY --from=nfpm /go/bin/nfpm /usr/bin/nfpm
+COPY --from=gotestsum /go/bin/gotestsum /usr/bin/gotestsum
 COPY --from=jsonnet /go/bin/jb /usr/bin/jb
 COPY --from=jsonnet /go/bin/mixtool /usr/bin/mixtool
 COPY --from=jsonnet /go/bin/jsonnet /usr/bin/jsonnet
@@ -99,11 +114,12 @@ COPY --from=jsonnet /go/bin/jsonnet /usr/bin/jsonnet
 # It's possible this can be revisited in newer versions of Go if the behavior around GOPATH vs GO111MODULES changes
 RUN GO111MODULE=on go install github.com/golang/protobuf/protoc-gen-go@v1.3.1
 RUN GO111MODULE=on go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0
-    # Due to the lack of a proper release tag, we use the commit hash of
-    # https://github.com/golang/tools/releases v0.1.7
+# Due to the lack of a proper release tag, we use the commit hash of
+# https://github.com/golang/tools/releases v0.1.7
 RUN GO111MODULE=on go install golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69
 RUN GO111MODULE=on go install github.com/mitchellh/gox@9f71238 && rm -rf /go/pkg /go/src
 ENV GOCACHE=/go/cache
+ENV GOTEST="gotestsum --format testname --"
 
 COPY build.sh /
 RUN chmod +x /build.sh

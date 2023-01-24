@@ -44,7 +44,7 @@ type storageClient interface {
 	// Top-level methods.
 
 	GetServiceAccount(ctx context.Context, project string, opts ...storageOption) (string, error)
-	CreateBucket(ctx context.Context, project string, attrs *BucketAttrs, opts ...storageOption) (*BucketAttrs, error)
+	CreateBucket(ctx context.Context, project, bucket string, attrs *BucketAttrs, opts ...storageOption) (*BucketAttrs, error)
 	ListBuckets(ctx context.Context, project string, opts ...storageOption) *BucketIterator
 	Close() error
 
@@ -66,19 +66,19 @@ type storageClient interface {
 
 	DeleteDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, opts ...storageOption) error
 	ListDefaultObjectACLs(ctx context.Context, bucket string, opts ...storageOption) ([]ACLRule, error)
-	UpdateDefaultObjectACL(ctx context.Context, opts ...storageOption) (*ACLRule, error)
+	UpdateDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) error
 
 	// Bucket ACL methods.
 
 	DeleteBucketACL(ctx context.Context, bucket string, entity ACLEntity, opts ...storageOption) error
 	ListBucketACLs(ctx context.Context, bucket string, opts ...storageOption) ([]ACLRule, error)
-	UpdateBucketACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error)
+	UpdateBucketACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) error
 
 	// Object ACL methods.
 
 	DeleteObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, opts ...storageOption) error
 	ListObjectACLs(ctx context.Context, bucket, object string, opts ...storageOption) ([]ACLRule, error)
-	UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error)
+	UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) error
 
 	// Media operations.
 
@@ -96,11 +96,11 @@ type storageClient interface {
 
 	// HMAC Key methods.
 
-	GetHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) (*HMACKey, error)
-	ListHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) *HMACKeysIterator
-	UpdateHMACKey(ctx context.Context, desc *hmacKeyDesc, attrs *HMACKeyAttrsToUpdate, opts ...storageOption) (*HMACKey, error)
-	CreateHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) (*HMACKey, error)
-	DeleteHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) error
+	GetHMACKey(ctx context.Context, project, accessID string, opts ...storageOption) (*HMACKey, error)
+	ListHMACKeys(ctx context.Context, project, serviceAccountEmail string, showDeletedKeys bool, opts ...storageOption) *HMACKeysIterator
+	UpdateHMACKey(ctx context.Context, project, serviceAccountEmail, accessID string, attrs *HMACKeyAttrsToUpdate, opts ...storageOption) (*HMACKey, error)
+	CreateHMACKey(ctx context.Context, project, serviceAccountEmail string, opts ...storageOption) (*HMACKey, error)
+	DeleteHMACKey(ctx context.Context, project, accessID string, opts ...storageOption) error
 
 	// Notification methods.
 	ListNotifications(ctx context.Context, bucket string, opts ...storageOption) (map[string]*Notification, error)
@@ -160,6 +160,20 @@ func callSettings(defaults *settings, opts ...storageOption) *settings {
 	cs := *defaults
 	resolveOptions(&cs, opts...)
 	return &cs
+}
+
+// makeStorageOpts is a helper for generating a set of storageOption based on
+// idempotency, retryConfig, and userProject. All top-level client operations
+// will generally have to pass these options through the interface.
+func makeStorageOpts(isIdempotent bool, retry *retryConfig, userProject string) []storageOption {
+	opts := []storageOption{idempotent(isIdempotent)}
+	if retry != nil {
+		opts = append(opts, withRetryConfig(retry))
+	}
+	if userProject != "" {
+		opts = append(opts, withUserProject(userProject))
+	}
+	return opts
 }
 
 // storageOption is the transport-agnostic call option for the storageClient
@@ -267,33 +281,44 @@ type openWriterParams struct {
 }
 
 type newRangeReaderParams struct {
-	bucket        string
-	conds         *Conditions
-	encryptionKey []byte
-	gen           int64
-	length        int64
-	object        string
-	offset        int64
+	bucket         string
+	conds          *Conditions
+	encryptionKey  []byte
+	gen            int64
+	length         int64
+	object         string
+	offset         int64
+	readCompressed bool // Use accept-encoding: gzip. Only works for HTTP currently.
 }
 
 type composeObjectRequest struct {
 	dstBucket     string
-	dstObject     string
-	srcs          []string
+	dstObject     destinationObject
+	srcs          []sourceObject
+	predefinedACL string
+	sendCRC32C    bool
+}
+
+type sourceObject struct {
+	name          string
+	bucket        string
 	gen           int64
 	conds         *Conditions
-	predefinedACL string
+	encryptionKey []byte
+}
+
+type destinationObject struct {
+	name          string
+	bucket        string
+	conds         *Conditions
+	attrs         *ObjectAttrs // attrs to set on the destination object.
+	encryptionKey []byte
+	keyName       string
 }
 
 type rewriteObjectRequest struct {
-	srcBucket     string
-	srcObject     string
-	dstBucket     string
-	dstObject     string
-	dstKeyName    string
-	attrs         *ObjectAttrs
-	gen           int64
-	conds         *Conditions
+	srcObject     sourceObject
+	dstObject     destinationObject
 	predefinedACL string
 	token         string
 }
@@ -302,5 +327,6 @@ type rewriteObjectResponse struct {
 	resource *ObjectAttrs
 	done     bool
 	written  int64
+	size     int64
 	token    string
 }

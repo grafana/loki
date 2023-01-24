@@ -31,6 +31,12 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.singleBinarySelectorLabels" . | nindent 8 }}
+        {{- with .Values.loki.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.singleBinary.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.singleBinary.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
@@ -38,6 +44,7 @@ spec:
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{ include "loki.enableServiceLinks" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -46,13 +53,19 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.singleBinary.terminationGracePeriodSeconds }}
+      {{- if .Values.singleBinary.initContainers }}
+      initContainers:
+        {{- with .Values.singleBinary.initContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: single-binary
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=all
+            - -target={{ .Values.singleBinary.targetModule }}
             {{- with .Values.singleBinary.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -79,14 +92,20 @@ spec:
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            {{- if .Values.singleBinary.persistence.enabled }}
             - name: storage
               mountPath: /var/loki
+            {{- end }}
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
-            {{- end}}
+            {{- end }}
             {{- with .Values.singleBinary.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -105,6 +124,8 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: config
           {{- if .Values.loki.existingSecretForConfig }}
           secret:
@@ -113,6 +134,9 @@ spec:
           configMap:
             name: {{ include "loki.name" . }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         {{- if .Values.enterprise.enabled }}
         - name: license
           secret:
@@ -125,6 +149,7 @@ spec:
         {{- with .Values.singleBinary.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if .Values.singleBinary.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: storage
@@ -137,4 +162,9 @@ spec:
         resources:
           requests:
             storage: {{ .Values.singleBinary.persistence.size | quote }}
+        {{- with .Values.singleBinary.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+  {{- end }}
 {{- end }}

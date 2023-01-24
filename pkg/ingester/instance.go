@@ -53,6 +53,11 @@ var (
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
+	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki",
+		Name:      "ingester_memory_streams_labels_bytes",
+		Help:      "Total bytes of labels of the streams in memory.",
+	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -279,6 +284,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	}
 
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
@@ -300,6 +306,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.addTailersToNewStream(s)
 
 	return s
@@ -322,6 +329,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
+		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
 	}
 }
@@ -751,12 +759,7 @@ func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, erro
 }
 
 func isDone(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
+	return ctx.Err() != nil
 }
 
 // QuerierQueryServer is the GRPC server stream we use to send batch of entries.
@@ -790,7 +793,10 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 		stats.Reset()
@@ -811,8 +817,10 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
-
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 

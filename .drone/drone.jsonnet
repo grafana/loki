@@ -62,7 +62,7 @@ local make(target, container=true, args=[]) = run(target, [
 
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
@@ -74,7 +74,7 @@ local docker(arch, app) = {
 
 local clients_docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
@@ -86,7 +86,7 @@ local clients_docker(arch, app) = {
 
 local docker_operator(arch, operator) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % operator,
     context: 'operator',
@@ -446,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.24.2',
+    local build_image_tag = '0.27.0',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -518,15 +518,20 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     steps: [
       make('check-drone-drift', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
-      run('clone-main', commands=['cd ..', 'git clone $CI_REPO_REMOTE loki-main', 'cd -']) { depends_on: ['clone'] },
-      make('test', container=false) { depends_on: ['clone', 'clone-main'] },
-      run('test-main', commands=['cd ../loki-main', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-main'] },
+      run('clone-target-branch', commands=[
+        'cd ..',
+        'echo "cloning "$DRONE_TARGET_BRANCH ',
+        'git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch',
+        'cd -',
+      ]) { depends_on: ['clone'], when: onPRs },
+      make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
+      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
-        'old=../loki-main/test_results.txt',
+        'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
         'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
-      ]) { depends_on: ['test', 'test-main'] },
+      ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
       run('report-coverage', commands=[
         "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
         "body=$(jq -Rs '{body: . }' diff.txt)",
@@ -534,15 +539,16 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       ], env={
         USER: 'grafanabot',
         TOKEN: { from_secret: github_secret.name },
-      }) { depends_on: ['compare-coverage'] },
-      make('lint', container=false) { depends_on: ['clone', 'check-generated-files'] },
-      make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
+      }) { depends_on: ['compare-coverage'], when: onPRs },
+      make('lint', container=false) { depends_on: ['check-generated-files'] },
+      make('check-mod', container=false) { depends_on: ['test', 'lint'] },
       {
         name: 'shellcheck',
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
-      make('loki', container=false) { depends_on: ['clone', 'check-generated-files'] },
+      make('loki', container=false) { depends_on: ['check-generated-files'] },
+      make('check-doc', container=false) { depends_on: ['loki'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
@@ -560,6 +566,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki-mixin-check', container=false) {
         depends_on: ['clone'],
+        when: onPRs + onPath('production/loki-mixin/**'),
       },
     ],
   },
@@ -611,7 +618,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
     trigger+: onTagOrMain,
   },
   pipeline('deploy') {
@@ -624,17 +631,17 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'prepare-updater-config',
         image: 'alpine',
         environment: {
-          RELEASE_BRANCH_REGEXP: '^release-([0-9\\.x]+)$',
+          MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)',
+          RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$',
         },
         commands: [
           'apk add --no-cache bash git',
           'git fetch origin --tags',
-          'echo $(./tools/image-tag)',
           'echo $(./tools/image-tag) > .tag',
-          // if the branch name matches the pattern `release-D.D.x` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
-          'export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] && echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\\.x]+)" | sed "s/\\./-/g" || echo "next")',
+          'export RELEASE_TAG=$(cat .tag)',
+          // if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+          'export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")',
           'echo $RELEASE_NAME',
-          'export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE_NAME and RELEASE TAG
           'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s' % configFileName,
@@ -662,6 +669,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: {
       event: ['pull_request', 'tag'],
     },
+    depends_on+: ['check'],
     image_pull_secrets: [pull_secret.name],
     volumes+: [
       {
@@ -749,6 +757,38 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
           }) { when: { event: ['tag'] } },
+    ],
+  },
+  pipeline('docker-driver') {
+    trigger+: onTagOrMain,
+    steps: [
+      {
+        name: 'build and push',
+        image: 'grafana/loki-build-image:%s' % build_image_version,
+        depends_on: ['clone'],
+        environment: {
+          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
+          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
+        },
+        commands: [
+          'make docker-driver-push',
+        ],
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
+      },
+    ],
+    volumes: [
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
     ],
   },
 ]

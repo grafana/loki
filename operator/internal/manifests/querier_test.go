@@ -29,6 +29,26 @@ func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 	require.Equal(t, annotations[expected], "deadbeef")
 }
 
+func TestNewQuerierDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
+	ss := manifests.NewQuerierDeployment(manifests.Options{
+		Name:                   "abcd",
+		Namespace:              "efgh",
+		CertRotationRequiredAt: "deadbeef",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	expected := "loki.grafana.com/certRotationRequiredAt"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
+}
+
 func TestNewQuerierDeployment_SelectorMatchesLabels(t *testing.T) {
 	// You must set the .spec.selector field of a Deployment to match the labels of
 	// its .spec.template.metadata.labels. Prior to Kubernetes 1.8, the

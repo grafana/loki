@@ -235,7 +235,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
 	}
 
-	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
+	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d", s.tenant, len(failedEntriesWithError), totalEntries)
 
 	return httpgrpc.Errorf(statusCode, buf.String())
 }
@@ -400,7 +400,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		}
 	}
 
-	s.streamRateCalculator.Record(s.labelHash, s.labelHashNoShard, int64(totalBytes))
+	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }

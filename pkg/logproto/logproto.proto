@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package logproto;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 
@@ -50,6 +50,7 @@ message StreamRate {
   uint64 streamHash = 1;
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
+  string tenant = 4;
 }
 
 message PushRequest {

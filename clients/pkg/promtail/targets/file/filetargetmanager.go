@@ -8,8 +8,10 @@ import (
 	"sync"
 
 	"github.com/bmatcuk/doublestar"
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -17,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -155,7 +156,9 @@ func (tm *FileTargetManager) watchTargetEvents(ctx context.Context) {
 				}
 			case fileTargetEventWatchStop:
 				if err := tm.watcher.Remove(event.path); err != nil {
-					level.Error(tm.log).Log("msg", " failed to remove directory from watcher", "error", err)
+					if !errors.Is(err, fsnotify.ErrNonExistentWatch) {
+						level.Error(tm.log).Log("msg", " failed to remove directory from watcher", "error", err)
+					}
 				}
 			}
 		case <-ctx.Done():

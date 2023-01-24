@@ -94,12 +94,11 @@ func (w *Writer) run() {
 				w.pad = str.String()
 				w.prevTsLen = tsLen
 			}
-
+			w.sent <- t
 			_, err := fmt.Fprintf(w.w, LogEntry, ts, w.pad)
 			if err != nil {
 				level.Error(w.logger).Log("msg", "failed to write log entry", "error", err)
 			}
-			w.sent <- t
 		case <-w.quit:
 			return
 		}

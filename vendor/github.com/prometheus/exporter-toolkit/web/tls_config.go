@@ -23,9 +23,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	config_util "github.com/prometheus/common/config"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v2"
 )
 
@@ -34,12 +36,12 @@ var (
 )
 
 type Config struct {
-	TLSConfig  TLSStruct                     `yaml:"tls_server_config"`
-	HTTPConfig HTTPStruct                    `yaml:"http_server_config"`
+	TLSConfig  TLSConfig                     `yaml:"tls_server_config"`
+	HTTPConfig HTTPConfig                    `yaml:"http_server_config"`
 	Users      map[string]config_util.Secret `yaml:"basic_auth_users"`
 }
 
-type TLSStruct struct {
+type TLSConfig struct {
 	TLSCertPath              string     `yaml:"cert_file"`
 	TLSKeyPath               string     `yaml:"key_file"`
 	ClientAuth               string     `yaml:"client_auth_type"`
@@ -51,14 +53,20 @@ type TLSStruct struct {
 	PreferServerCipherSuites bool       `yaml:"prefer_server_cipher_suites"`
 }
 
+type FlagConfig struct {
+	WebListenAddresses *[]string
+	WebSystemdSocket   *bool
+	WebConfigFile      *string
+}
+
 // SetDirectory joins any relative file paths with dir.
-func (t *TLSStruct) SetDirectory(dir string) {
+func (t *TLSConfig) SetDirectory(dir string) {
 	t.TLSCertPath = config_util.JoinDir(dir, t.TLSCertPath)
 	t.TLSKeyPath = config_util.JoinDir(dir, t.TLSKeyPath)
 	t.ClientCAs = config_util.JoinDir(dir, t.ClientCAs)
 }
 
-type HTTPStruct struct {
+type HTTPConfig struct {
 	HTTP2  bool              `yaml:"http2"`
 	Header map[string]string `yaml:"headers,omitempty"`
 }
@@ -69,12 +77,12 @@ func getConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 	c := &Config{
-		TLSConfig: TLSStruct{
+		TLSConfig: TLSConfig{
 			MinVersion:               tls.VersionTLS12,
 			MaxVersion:               tls.VersionTLS13,
 			PreferServerCipherSuites: true,
 		},
-		HTTPConfig: HTTPStruct{HTTP2: true},
+		HTTPConfig: HTTPConfig{HTTP2: true},
 	}
 	err = yaml.UnmarshalStrict(content, c)
 	if err == nil {
@@ -92,8 +100,8 @@ func getTLSConfig(configPath string) (*tls.Config, error) {
 	return ConfigToTLSConfig(&c.TLSConfig)
 }
 
-// ConfigToTLSConfig generates the golang tls.Config from the TLSStruct config.
-func ConfigToTLSConfig(c *TLSStruct) (*tls.Config, error) {
+// ConfigToTLSConfig generates the golang tls.Config from the TLSConfig struct.
+func ConfigToTLSConfig(c *TLSConfig) (*tls.Config, error) {
 	if c.TLSCertPath == "" && c.TLSKeyPath == "" && c.ClientAuth == "" && c.ClientCAs == "" {
 		return nil, errNoTLSConfig
 	}
@@ -177,22 +185,54 @@ func ConfigToTLSConfig(c *TLSStruct) (*tls.Config, error) {
 	return cfg, nil
 }
 
-// ListenAndServe starts the server on the given address. Based on the file
-// tlsConfigPath, TLS or basic auth could be enabled.
-func ListenAndServe(server *http.Server, tlsConfigPath string, logger log.Logger) error {
-	listener, err := net.Listen("tcp", server.Addr)
-	if err != nil {
-		return err
+// ServeMultiple starts the server on the given listeners. The FlagConfig is
+// also passed on to Serve.
+func ServeMultiple(listeners []net.Listener, server *http.Server, flags *FlagConfig, logger log.Logger) error {
+	errs := new(errgroup.Group)
+	for _, l := range listeners {
+		l := l
+		errs.Go(func() error {
+			return Serve(l, server, flags, logger)
+		})
 	}
-	defer listener.Close()
-	return Serve(listener, server, tlsConfigPath, logger)
+	return errs.Wait()
 }
 
-// Server starts the server on the given listener. Based on the file
-// tlsConfigPath, TLS or basic auth could be enabled.
-func Serve(l net.Listener, server *http.Server, tlsConfigPath string, logger log.Logger) error {
+// ListenAndServe starts the server on addresses given in WebListenAddresses in
+// the FlagConfig or instead uses systemd socket activated listeners if
+// WebSystemdSocket in the FlagConfig is true. The FlagConfig is also passed on
+// to ServeMultiple.
+func ListenAndServe(server *http.Server, flags *FlagConfig, logger log.Logger) error {
+	if *flags.WebSystemdSocket {
+		level.Info(logger).Log("msg", "Listening on systemd activated listeners instead of port listeners.")
+		listeners, err := activation.Listeners()
+		if err != nil {
+			return err
+		}
+		if len(listeners) < 1 {
+			return errors.New("no socket activation file descriptors found")
+		}
+		return ServeMultiple(listeners, server, flags, logger)
+	}
+	listeners := make([]net.Listener, 0, len(*flags.WebListenAddresses))
+	for _, address := range *flags.WebListenAddresses {
+		listener, err := net.Listen("tcp", address)
+		if err != nil {
+			return err
+		}
+		defer listener.Close()
+		listeners = append(listeners, listener)
+	}
+	return ServeMultiple(listeners, server, flags, logger)
+}
+
+// Server starts the server on the given listener. Based on the file path
+// WebConfigFile in the FlagConfig, TLS or basic auth could be enabled.
+func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger log.Logger) error {
+	level.Info(logger).Log("msg", "Listening on", "address", l.Addr().String())
+	tlsConfigPath := *flags.WebConfigFile
 	if tlsConfigPath == "" {
-		level.Info(logger).Log("msg", "TLS is disabled.", "http2", false)
+		level.Info(logger).Log("msg", "TLS is disabled.", "http2", false, "address", l.Addr().String())
 		return server.Serve(l)
 	}
 
@@ -225,10 +265,10 @@ func Serve(l net.Listener, server *http.Server, tlsConfigPath string, logger log
 			server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 		}
 		// Valid TLS config.
-		level.Info(logger).Log("msg", "TLS is enabled.", "http2", c.HTTPConfig.HTTP2)
+		level.Info(logger).Log("msg", "TLS is enabled.", "http2", c.HTTPConfig.HTTP2, "address", l.Addr().String())
 	case errNoTLSConfig:
 		// No TLS config, back to plain HTTP.
-		level.Info(logger).Log("msg", "TLS is disabled.", "http2", false)
+		level.Info(logger).Log("msg", "TLS is disabled.", "http2", false, "address", l.Addr().String())
 		return server.Serve(l)
 	default:
 		// Invalid TLS config.
@@ -356,6 +396,6 @@ func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
 // tlsConfigPath, TLS or basic auth could be enabled.
 //
 // Deprecated: Use ListenAndServe instead.
-func Listen(server *http.Server, tlsConfigPath string, logger log.Logger) error {
-	return ListenAndServe(server, tlsConfigPath, logger)
+func Listen(server *http.Server, flags *FlagConfig, logger log.Logger) error {
+	return ListenAndServe(server, flags, logger)
 }

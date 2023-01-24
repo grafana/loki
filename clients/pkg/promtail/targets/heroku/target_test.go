@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -33,7 +34,7 @@ const testLogLine1Timestamp = "2022-06-13T14:52:23.621815+00:00"
 const testLogLine2 = `156 <190>1 2022-06-13T14:52:23.827271+00:00 host app web.1 - [GIN] 2022/06/13 - 14:52:23 | 200 |      163.92µs |  181.167.87.140 | GET      "/static/main.css"
 `
 
-func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
+func makeDrainRequest(host string, params map[string][]string, bodies ...string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/heroku/api/v1/drain", host), strings.NewReader(strings.Join(bodies, "")))
 	if err != nil {
 		return nil, err
@@ -41,6 +42,15 @@ func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
 
 	drainToken := uuid.New().String()
 	frameID := uuid.New().String()
+
+	values := url.Values{}
+	for name, params := range params {
+		for _, p := range params {
+			values.Add(name, p)
+		}
+	}
+	req.URL.RawQuery = values.Encode()
+
 	req.Header.Set("Content-Type", "application/heroku_drain-1")
 	req.Header.Set("Logplex-Drain-Token", fmt.Sprintf("d.%s", drainToken))
 	req.Header.Set("Logplex-Frame-Id", frameID)
@@ -59,6 +69,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 	}
 	type args struct {
 		RequestBodies  []string
+		RequestParams  map[string][]string
 		RelabelConfigs []*relabel.Config
 		Labels         model.LabelSet
 	}
@@ -70,6 +81,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		"heroku request with a single log line, internal labels dropped, and fixed are propagated": {
 			args: args{
 				RequestBodies: []string{testPayload},
+				RequestParams: map[string][]string{},
 				Labels: model.LabelSet{
 					"job": "some_job_name",
 				},
@@ -84,9 +96,57 @@ func TestHerokuDrainTarget(t *testing.T) {
 				},
 			},
 		},
-		"heroku request with a two log lines, internal labels dropped, and fixed are propagated": {
+		"heroku request with a single log line and query parameters, internal labels dropped, and fixed are propagated": {
+			args: args{
+				RequestBodies: []string{testPayload},
+				RequestParams: map[string][]string{
+					"some_query_param": {"app_123", "app_456"},
+				},
+				Labels: model.LabelSet{
+					"job": "some_job_name",
+				},
+			},
+			expectedEntries: []expectedEntry{
+				{
+					labels: model.LabelSet{
+						"job": "some_job_name",
+					},
+					line: `at=info method=GET path="/" host=cryptic-cliffs-27764.herokuapp.com request_id=59da6323-2bc4-4143-8677-cc66ccfb115f fwd="181.167.87.140" dyno=web.1 connect=0ms service=3ms status=200 bytes=6979 protocol=https
+`,
+				},
+			},
+		},
+		"heroku request with two log lines, internal labels dropped, and fixed are propagated": {
 			args: args{
 				RequestBodies: []string{testLogLine1, testLogLine2},
+				RequestParams: map[string][]string{},
+				Labels: model.LabelSet{
+					"job": "multiple_line_job",
+				},
+			},
+			expectedEntries: []expectedEntry{
+				{
+					labels: model.LabelSet{
+						"job": "multiple_line_job",
+					},
+					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
+`,
+				},
+				{
+					labels: model.LabelSet{
+						"job": "multiple_line_job",
+					},
+					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |      163.92µs |  181.167.87.140 | GET      "/static/main.css"
+`,
+				},
+			},
+		},
+		"heroku request with two log lines and query parameters, internal labels dropped, and fixed are propagated": {
+			args: args{
+				RequestBodies: []string{testLogLine1, testLogLine2},
+				RequestParams: map[string][]string{
+					"some_query_param": {"app_123", "app_456"},
+				},
 				Labels: model.LabelSet{
 					"job": "multiple_line_job",
 				},
@@ -111,6 +171,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		"heroku request with a single log line, with internal labels relabeled, and fixed labels": {
 			args: args{
 				RequestBodies: []string{testLogLine1},
+				RequestParams: map[string][]string{},
 				Labels: model.LabelSet{
 					"job": "relabeling_job",
 				},
@@ -150,6 +211,59 @@ func TestHerokuDrainTarget(t *testing.T) {
 				},
 			},
 		},
+		"heroku request with a single log line and query parameters, with internal labels relabeled, and fixed labels": {
+			args: args{
+				RequestBodies: []string{testLogLine1},
+				RequestParams: map[string][]string{
+					"some_query_param": {"app_123", "app_456"},
+				},
+				Labels: model.LabelSet{
+					"job": "relabeling_job",
+				},
+				RelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels: model.LabelNames{"__heroku_drain_host"},
+						TargetLabel:  "host",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+					{
+						SourceLabels: model.LabelNames{"__heroku_drain_app"},
+						TargetLabel:  "app",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+					{
+						SourceLabels: model.LabelNames{"__heroku_drain_proc"},
+						TargetLabel:  "procID",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+					{
+						SourceLabels: model.LabelNames{"__heroku_drain_param_some_query_param"},
+						TargetLabel:  "query_param",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+				},
+			},
+			expectedEntries: []expectedEntry{
+				{
+					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
+`,
+					labels: model.LabelSet{
+						"host":        "host",
+						"app":         "app",
+						"procID":      "web.1",
+						"query_param": "app_123,app_456",
+					},
+				},
+			},
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -179,7 +293,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			// Send some logs
 			ts := time.Now()
 
-			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.RequestBodies...)
+			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.RequestParams, tc.args.RequestBodies...)
 			require.NoError(t, err, "expected test drain request to be successfully created")
 			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -237,7 +351,7 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 	// Clear received lines after test case is ran
 	defer eh.Clear()
 
-	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), testLogLine1)
+	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), make(map[string][]string), testLogLine1)
 	require.NoError(t, err, "expected test drain request to be successfully created")
 	res, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -315,7 +429,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	// Clear received lines after test case is ran
 	defer eh.Clear()
 
-	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), testLogLine1)
+	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), make(map[string][]string), testLogLine1)
 	require.NoError(t, err, "expected test drain request to be successfully created")
 	req.Header.Set("X-Scope-OrgID", "42")
 	res, err := http.DefaultClient.Do(req)

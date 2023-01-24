@@ -2,11 +2,6 @@ package sarama
 
 import "fmt"
 
-const (
-	responseLengthSize = 4
-	correlationIDSize  = 4
-)
-
 type responseHeader struct {
 	length        int32
 	correlationID int32
