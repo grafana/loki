@@ -29,13 +29,15 @@ type Writer struct {
 
 // NewWriter creates a new Writer
 func NewWriter(wal WAL, logger log.Logger) *Writer {
-	return &Writer{
+	wrt := &Writer{
 		entries:     make(chan api.Entry),
 		log:         logger,
 		wg:          sync.WaitGroup{},
 		wal:         wal,
 		entryWriter: newEntryWriter(),
 	}
+	wrt.start()
+	return wrt
 }
 
 func (wrt *Writer) start() {

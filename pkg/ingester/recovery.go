@@ -1,7 +1,7 @@
 package ingester
 
 import (
-	"io"
+	io "io"
 	"runtime"
 	"sync"
 

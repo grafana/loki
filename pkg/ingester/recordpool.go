@@ -6,40 +6,40 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-type resettingPool struct {
+type ResettingPool struct {
 	rPool *sync.Pool // records
 	ePool *sync.Pool // entries
 	bPool *sync.Pool // bytes
 }
 
-func (p *resettingPool) GetRecord() *WALRecord {
+func (p *ResettingPool) GetRecord() *WALRecord {
 	rec := p.rPool.Get().(*WALRecord)
 	rec.Reset()
 	return rec
 }
 
-func (p *resettingPool) PutRecord(r *WALRecord) {
+func (p *ResettingPool) PutRecord(r *WALRecord) {
 	p.rPool.Put(r)
 }
 
-func (p *resettingPool) GetEntries() []logproto.Entry {
+func (p *ResettingPool) GetEntries() []logproto.Entry {
 	return p.ePool.Get().([]logproto.Entry)
 }
 
-func (p *resettingPool) PutEntries(es []logproto.Entry) {
+func (p *ResettingPool) PutEntries(es []logproto.Entry) {
 	p.ePool.Put(es[:0]) // nolint:staticcheck
 }
 
-func (p *resettingPool) GetBytes() []byte {
+func (p *ResettingPool) GetBytes() []byte {
 	return p.bPool.Get().([]byte)
 }
 
-func (p *resettingPool) PutBytes(b []byte) {
+func (p *ResettingPool) PutBytes(b []byte) {
 	p.bPool.Put(b[:0]) // nolint:staticcheck
 }
 
-func NewRecordPool() *resettingPool {
-	return &resettingPool{
+func NewRecordPool() *ResettingPool {
+	return &ResettingPool{
 		rPool: &sync.Pool{
 			New: func() interface{} {
 				return &WALRecord{}

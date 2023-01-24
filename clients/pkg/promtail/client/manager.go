@@ -18,6 +18,7 @@ type Manager struct {
 	clientChannelHandler api.EntryHandler
 }
 
+// NewManager creates a new Manager
 func NewManager(reg prometheus.Registerer, logger log.Logger, walCfg wal.Config) (*Manager, error) {
 	// TODO: refactor this to instantiate all clients types
 	pWAL, err := wal.New(walCfg, logger, reg)
