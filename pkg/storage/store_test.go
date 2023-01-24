@@ -38,11 +38,12 @@ import (
 )
 
 var (
-	start      = model.Time(1523750400000)
-	m          runtime.MemStats
-	ctx        = user.InjectOrgID(context.Background(), "fake")
-	cm         = NewClientMetrics()
-	chunkStore = getLocalStore(cm)
+	start              = model.Time(1523750400000)
+	m                  runtime.MemStats
+	ctx                = user.InjectOrgID(context.Background(), "fake")
+	cm                 = NewClientMetrics()
+	chunkStore         = getLocalStore(cm)
+	chunkStoreWithTSDB = getLocalStoreWithTSDB(cm)
 )
 
 // go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -97,7 +98,7 @@ func Benchmark_store_SelectLogsBackward(b *testing.B) {
 }
 
 // rm -Rf /tmp/benchmark/chunks/ /tmp/benchmark/index
-// go run  -mod=vendor ./pkg/storage/hack/main.go
+// go run  -mod=vendor ./pkg/storage/hack-tsdb/main.go
 // go test -benchmem -run=^$ -mod=vendor  ./pkg/storage -bench=Benchmark_store_SelectSample   -memprofile memprofile.out -cpuprofile cpuprofile.out
 func Benchmark_store_SelectSample(b *testing.B) {
 	for _, test := range []string{
@@ -109,7 +110,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		b.Run(test, func(b *testing.B) {
 			sampleCount := 0
 			for i := 0; i < b.N; i++ {
-				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
+				iter, err := chunkStoreWithTSDB.SelectSamples(ctx, logql.SelectSampleParams{
 					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
 				})
 				if err != nil {
@@ -183,6 +184,54 @@ func printHeap(b *testing.B, show bool) {
 		log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
 		log.Printf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
 	}
+}
+
+func getLocalStoreWithTSDB(cm ClientMetrics) Store {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxQueryLength: model.Duration(6000 * time.Hour),
+	}, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	tempDir := "/tmp/benchmark"
+	ingesterName := "ingester-1"
+
+	// config for tsdb Shipper
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = filepath.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
+	tsdbShipperConfig.CacheLocation = filepath.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = ingesterName
+
+	storeConfig := Config{
+		FSConfig:          local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		TSDBShipperConfig: tsdbShipperConfig,
+		MaxChunkBatchSize: 10,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: start},
+				IndexType:  "tsdb",
+				ObjectType: "filesystem",
+				Schema:     "v12",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+		},
+	}
+
+	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	if err != nil {
+		panic(err)
+	}
+	return store
 }
 
 func getLocalStore(cm ClientMetrics) Store {
