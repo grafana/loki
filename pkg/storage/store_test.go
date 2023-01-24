@@ -204,7 +204,7 @@ func getLocalStore(cm ClientMetrics) Store {
 			{
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1005,7 +1005,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	boltdbShipperConfig := shipper.Config{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = "filesystem"
+	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
@@ -1023,7 +1023,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(firstStoreDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1033,7 +1033,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1293,7 +1293,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			{
 				From:       config.DayTime{Time: now.Add(30 * 24 * time.Hour)},
 				IndexType:  config.BoltDBShipperType,
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1303,7 +1303,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			{
 				From:       config.DayTime{Time: now.Add(20 * 24 * time.Hour)},
 				IndexType:  config.BoltDBShipperType,
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1314,7 +1314,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			{
 				From:       config.DayTime{Time: now.Add(15 * 24 * time.Hour)},
 				IndexType:  config.TSDBType,
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1325,7 +1325,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			{
 				From:       config.DayTime{Time: now.Add(10 * 24 * time.Hour)},
 				IndexType:  config.StorageTypeBigTable,
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1336,7 +1336,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			{
 				From:       config.DayTime{Time: now.Add(5 * 24 * time.Hour)},
 				IndexType:  config.TSDBType,
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1393,7 +1393,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	boltdbShipperConfig := shipper.Config{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = "filesystem"
+	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	boltdbShipperConfig.IngesterName = ingesterName
@@ -1402,7 +1402,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbShipperConfig := indexshipper.Config{}
 	flagext.DefaultValues(&tsdbShipperConfig)
 	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
-	tsdbShipperConfig.SharedStoreType = "filesystem"
+	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
 	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	tsdbShipperConfig.IngesterName = ingesterName
@@ -1422,7 +1422,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1433,7 +1433,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
 				IndexType:  "tsdb",
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
