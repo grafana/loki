@@ -16,6 +16,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 4.4.2
 
 - [CHANGE] Bump Loki version to 2.7.2 and GEL version to 1.6.1
+## 4.5
+
+- [ENHANCEMENT] Single binary mode is now possible for more than 1 replica, with a gateway and object storage backend.
 
 ## 4.4.1
 
