@@ -205,7 +205,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
-		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForUserWorkloadAMService(), createUpdateOrDeletePred)
+		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -265,7 +265,7 @@ func statusDifferent(e event.UpdateEvent) bool {
 	}
 }
 
-func (r *LokiStackReconciler) enqueueForUserWorkloadAMService() handler.EventHandler {
+func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHandler {
 	ctx := context.TODO()
 	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
@@ -275,7 +275,9 @@ func (r *LokiStackReconciler) enqueueForUserWorkloadAMService() handler.EventHan
 		}
 		var requests []reconcile.Request
 
-		if obj.GetName() == openshift.MonitoringSVCOperated && obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS {
+		if obj.GetName() == openshift.MonitoringSVCOperated &&
+			(obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS ||
+				obj.GetNamespace() == openshift.MonitoringNS) {
 
 			for _, stack := range lokiStacks.Items {
 				if stack.Spec.Tenants != nil && (stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging ||
