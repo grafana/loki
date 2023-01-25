@@ -4,7 +4,6 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.10.0
-  creationTimestamp: null
   name: lokistacks.loki.grafana.com
 spec:
   group: loki.grafana.com
