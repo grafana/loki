@@ -204,8 +204,10 @@ func (x *GrpcKeyBuilder) GetConstantKeys() map[string]string {
 //
 // For a service where the project id can be expressed either as a subdomain or
 // in the path, separate HttpKeyBuilders must be used:
-//     host_pattern: 'example.com' path_pattern: '/{id}/{object}/**'
-//     host_pattern: '{id}.example.com' path_pattern: '/{object}/**'
+//
+//	host_pattern: 'example.com' path_pattern: '/{id}/{object}/**'
+//	host_pattern: '{id}.example.com' path_pattern: '/{object}/**'
+//
 // If the host is exactly 'example.com', the first path segment will be used as
 // the id and the second segment as the object. If the host has a subdomain, the
 // subdomain will be used as the id and the first segment as the object. If
@@ -223,7 +225,7 @@ type HttpKeyBuilder struct {
 	//   - "*": Matches any single label.
 	//   - "**": Matches zero or more labels (first or last part of host only).
 	//   - "{<name>=...}": One or more label capture, where "..." can be any
-	//      template that does not include a capture.
+	//     template that does not include a capture.
 	//   - "{<name>}": A single label capture. Identical to {<name>=*}.
 	//
 	// Examples:
@@ -242,8 +244,9 @@ type HttpKeyBuilder struct {
 	//   - "*": Matches any single segment.
 	//   - "**": Matches zero or more segments (first or last part of path only).
 	//   - "{<name>=...}": One or more segment capture, where "..." can be any
-	//      template that does not include a capture.
+	//     template that does not include a capture.
 	//   - "{<name>}": A single segment capture. Identical to {<name>=*}.
+	//
 	// A custom method may also be specified by appending ":" and the custom
 	// method name or "*" to indicate any custom method (including no custom
 	// method).  For example, "/*/projects/{project_id}/**:*" extracts

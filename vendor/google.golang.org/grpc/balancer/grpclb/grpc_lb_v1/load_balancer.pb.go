@@ -52,6 +52,7 @@ type LoadBalanceRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to LoadBalanceRequestType:
+	//
 	//	*LoadBalanceRequest_InitialRequest
 	//	*LoadBalanceRequest_ClientStats
 	LoadBalanceRequestType isLoadBalanceRequest_LoadBalanceRequestType `protobuf_oneof:"load_balance_request_type"`
@@ -340,6 +341,7 @@ type LoadBalanceResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to LoadBalanceResponseType:
+	//
 	//	*LoadBalanceResponse_InitialResponse
 	//	*LoadBalanceResponse_ServerList
 	//	*LoadBalanceResponse_FallbackResponse

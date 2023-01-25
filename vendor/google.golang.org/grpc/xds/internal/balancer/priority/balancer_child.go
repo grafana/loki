@@ -29,9 +29,11 @@ import (
 )
 
 type childBalancer struct {
-	name   string
-	parent *priorityBalancer
-	bb     *ignoreResolveNowBalancerBuilder
+	name         string
+	parent       *priorityBalancer
+	parentCC     balancer.ClientConn
+	balancerName string
+	cc           *ignoreResolveNowClientConn
 
 	ignoreReresolutionRequests bool
 	config                     serviceconfig.LoadBalancingConfig
@@ -53,12 +55,14 @@ type childBalancer struct {
 
 // newChildBalancer creates a child balancer place holder, but doesn't
 // build/start the child balancer.
-func newChildBalancer(name string, parent *priorityBalancer, bb balancer.Builder) *childBalancer {
+func newChildBalancer(name string, parent *priorityBalancer, balancerName string, cc balancer.ClientConn) *childBalancer {
 	return &childBalancer{
-		name:    name,
-		parent:  parent,
-		bb:      newIgnoreResolveNowBalancerBuilder(bb, false),
-		started: false,
+		name:         name,
+		parent:       parent,
+		parentCC:     cc,
+		balancerName: balancerName,
+		cc:           newIgnoreResolveNowClientConn(cc, false),
+		started:      false,
 		// Start with the connecting state and picker with re-pick error, so
 		// that when a priority switch causes this child picked before it's
 		// balancing policy is created, a re-pick will happen.
@@ -69,9 +73,13 @@ func newChildBalancer(name string, parent *priorityBalancer, bb balancer.Builder
 	}
 }
 
-// updateBuilder updates builder for the child, but doesn't build.
-func (cb *childBalancer) updateBuilder(bb balancer.Builder) {
-	cb.bb = newIgnoreResolveNowBalancerBuilder(bb, cb.ignoreReresolutionRequests)
+// updateBalancerName updates balancer name for the child, but doesn't build a
+// new one. The parent priority LB always closes the child policy before
+// updating the balancer name, and the new balancer is built when it gets added
+// to the balancergroup as part of start().
+func (cb *childBalancer) updateBalancerName(balancerName string) {
+	cb.balancerName = balancerName
+	cb.cc = newIgnoreResolveNowClientConn(cb.parentCC, cb.ignoreReresolutionRequests)
 }
 
 // updateConfig sets childBalancer's config and state, but doesn't send update to
@@ -93,14 +101,14 @@ func (cb *childBalancer) start() {
 		return
 	}
 	cb.started = true
-	cb.parent.bg.Add(cb.name, cb.bb)
+	cb.parent.bg.AddWithClientConn(cb.name, cb.balancerName, cb.cc)
 	cb.startInitTimer()
 	cb.sendUpdate()
 }
 
 // sendUpdate sends the addresses and config to the child balancer.
 func (cb *childBalancer) sendUpdate() {
-	cb.bb.updateIgnoreResolveNow(cb.ignoreReresolutionRequests)
+	cb.cc.updateIgnoreResolveNow(cb.ignoreReresolutionRequests)
 	// TODO: return and aggregate the returned error in the parent.
 	err := cb.parent.bg.UpdateClientConnState(cb.name, balancer.ClientConnState{
 		ResolverState:  cb.rState,

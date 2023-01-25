@@ -340,7 +340,7 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 		"expiration": opts.Expires.Format(time.RFC3339),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("storage: PostPolicyV4 JSON serialization failed: %v", err)
+		return nil, fmt.Errorf("storage: PostPolicyV4 JSON serialization failed: %w", err)
 	}
 
 	b64Policy := base64.StdEncoding.EncodeToString(condsAsJSON)
