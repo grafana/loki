@@ -13,7 +13,7 @@ type Config struct {
 	ReadlineRateDrop    bool             `mapstructure:"readline_rate_drop,omitempty" yaml:"readline_rate_drop,omitempty"  json:"readline_rate_drop"`
 	MaxStreams          int              `mapstructure:"max_streams" yaml:"max_streams" json:"max_streams"`
 	MaxLineSize         flagext.ByteSize `mapstructure:"max_line_size" yaml:"max_line_size" json:"max_line_size"`
-	MaxLineSizeTruncate bool             `mapstructure:"max_line_size" yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
+	MaxLineSizeTruncate bool             `mapstructure:"max_line_size_truncate" yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
