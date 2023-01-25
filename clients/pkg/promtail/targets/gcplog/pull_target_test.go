@@ -63,33 +63,7 @@ func TestPullTarget_RunStop(t *testing.T) {
 		}, time.Second, 50*time.Millisecond)
 	})
 
-	t.Run("it gives up after MaxRetries of errors", func(t *testing.T) {
-		tc := testPullTarget(t)
-
-		runErr := make(chan error)
-		go func() {
-			runErr <- tc.target.run()
-		}()
-
-		tc.sub.errors <- errors.New("something bad")
-		tc.sub.errors <- errors.New("something bad")
-		tc.sub.errors <- errors.New("something bad")
-		tc.sub.errors <- errors.New("something bad")
-		tc.sub.errors <- errors.New("something bad")
-
-		require.NoError(t, tc.target.Stop())
-
-		require.Eventually(t, func() bool {
-			select {
-			case e := <-runErr:
-				return e.Error() == "terminated after 5 retries: something bad"
-			default:
-				return false
-			}
-		}, time.Second, 50*time.Millisecond)
-	})
-
-	t.Run("a successful message resets retrues", func(t *testing.T) {
+	t.Run("a successful message resets retries", func(t *testing.T) {
 		tc := testPullTarget(t)
 
 		runErr := make(chan error)
@@ -273,5 +247,4 @@ func (s *fakeSubscription) Receive(ctx context.Context, f func(context.Context, 
 var testBackoff = backoff.Config{
 	MinBackoff: 1 * time.Millisecond,
 	MaxBackoff: 10 * time.Millisecond,
-	MaxRetries: 5,
 }
