@@ -25,4 +25,4 @@ find cmd clients tools loki-build-image -type f -name 'Dockerfile*' -exec grep -
     ${SED} -i -re "s,golang:[0-9\.]+,golang:${VERSION},g" "${x}"
   done
 
-echo "Don't forget to update the sha156 hash in clients/cmd/fluent-bit/Dockerfile."
+echo "Don't forget to update the sha256 hash in clients/cmd/fluent-bit/Dockerfile."
