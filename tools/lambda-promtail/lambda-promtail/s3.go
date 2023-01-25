@@ -8,6 +8,7 @@ import (
 	"io"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -28,18 +29,18 @@ var (
 	// source: https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs-s3.html#flow-logs-s3-path
 	// format: bucket-and-optional-prefix/AWSLogs/account_id/vpcflowlogs/region/year/month/day/aws_account_id_vpcflowlogs_region_flow_log_id_YYYYMMDDTHHmmZ_hash.log.gz
 	// example: 123456789012_vpcflowlogs_us-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz
-    // AWS WAF logs
-    // source:  https://docs.aws.amazon.com/waf/latest/developerguide/logging-s3.html
-    // format:  bucket[/prefix]/AWSLogs/aws-account-id/WAFLogs/region/webacl-name/YYYY/MM/dd/HH/mm/aws-account-id_waflogs_region_webacl-name_YYYYMMddTHHmmZ_random-string.log.gz
-    // example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
-    filenameRegex = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>\w+)\/(?P<region>[\w-]+)\/(?:[\w-]+\/)?(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?:(?P<hour>\d+)\/)?(?:(?P<minute>\d+)\/)?\d+\_(?:elasticloadbalancing|vpcflowlogs|waflogs)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
+	// AWS WAF logs
+	// source:  https://docs.aws.amazon.com/waf/latest/developerguide/logging-s3.html
+	// format:  bucket[/prefix]/AWSLogs/aws-account-id/WAFLogs/region/webacl-name/YYYY/MM/dd/HH/mm/aws-account-id_waflogs_region_webacl-name_YYYYMMddTHHmmZ_random-string.log.gz
+	// example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
+	filenameRegex = regexp.MustCompile(`AWSLogs/(?P<account_id>\d+)/(?P<type>\w+)/(?P<region>[\w-]+)/(?:[\w-]+/)?(?P<year>\d+)/(?P<month>\d+)/(?P<day>\d+)/(?:(?P<hour>\d+)/)?(?:(?P<minute>\d+)/)?\d+_(?:elasticloadbalancing|vpcflowlogs|waflogs)_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
 
     // regex that extracts the timestamp from message log
-    timestampRegexList = []*regexp.Regexp {
-        regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`), //h2 2022-12-20T23:55:02.599911Z ...
-        regexp.MustCompile(`(?P<begin_date>\d{8,}+) (?P<end_date>\d{8,}+) (?:ACCEPT|REJECT)`), //... 1669842701 1669842702 ACCEPT ... (seconds)
-        regexp.MustCompile(`"timestamp":(?P<timestamp>\d+)`), //{"timestamp":1671624901861,... (milliseconds)
-    }
+	timestampRegexList = []*regexp.Regexp {
+		regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`), //h2 2022-12-20T23:55:02.599911Z ...
+		regexp.MustCompile(`(?P<begin_date>\d{8,}) (?P<end_date>\d{8,}) (?:ACCEPT|REJECT)`), //... 1669842701 1669842702 ACCEPT ... (seconds)
+		regexp.MustCompile(`"timestamp":(?P<timestamp>\d+)`), //{"timestamp":1671624901861,... (milliseconds)
+	}
 )
 
 const (
@@ -140,20 +141,20 @@ func parseLogLineTimestamp(log_line string) time.Time {
                 return timestamp
             }
 
-            //Try seconds format
+            //Try milliseconds/seconds format
             timeToParseNumber, err = strconv.ParseInt(match[1], 10, 64)
             if err == nil {
-                return time.Unix(timeToParseNumber, 0)
-            }
-
-            //Try milliseconds format
-            timeToParseNumber, err = strconv.ParseInt(match[1], 10, 64)
-            if err == nil {
-                return time.UnixMilli(timeToParseNumber)
-            }
+				//https://stackoverflow.com/questions/23929145/how-to-test-if-a-given-time-stamp-is-in-seconds-or-milliseconds
+				dateNowSecs := time.Now().Unix()
+				if timeToParseNumber > dateNowSecs {
+					return time.UnixMilli(timeToParseNumber)
+				}
+				return time.Unix(timeToParseNumber, 0)
+			}
         }
     }
 
+	//Use current time if no timestamp can be detected
     return time.Now()
 }
 
@@ -173,6 +174,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 				labels[name] = match[i]
 			}
 		}
+		labels["type"] = strings.ToLower(labels["type"])
 	} else {
 		fmt.Printf("Unknown AWS S3 log filename format: %s\n", labels["key"])
 	}
