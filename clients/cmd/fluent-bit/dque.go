@@ -72,7 +72,7 @@ func newDque(cfg *config, logger log.Logger, metrics *client.Metrics) (client.Cl
 		_ = q.queue.TurboOn()
 	}
 
-	q.loki, err = client.New(metrics, cfg.clientConfig, 0, 0, logger)
+	q.loki, err = client.New(metrics, cfg.clientConfig, 0, 0, false, logger)
 	if err != nil {
 		return nil, err
 	}
