@@ -80,7 +80,7 @@ prometheus:
         targetLabel: cluster
 ```
 
-The `kube-prometheus-stack` installs `ServicMonitor` and `PrometheusRule` resources for monitoring Kubernetes, and it depends on the `kube-state-metrics` and `prometheus-node-exporter` helm charts which also install `ServiceMonitor` resources for collecting `kubelet` and `node-exporter` metrics. The above values file adds the necessary additional relabelings are required for these metrics to work with the included dashboards.
+The `kube-prometheus-stack` installs `ServicMonitor` and `PrometheusRule` resources for monitoring Kubernetes, and it depends on the `kube-state-metrics` and `prometheus-node-exporter` helm charts which also install `ServiceMonitor` resources for collecting `kubelet` and `node-exporter` metrics. The above values file adds the necessary additional labels required for these metrics to work with the included dashboards.
 
 If using this helm chart in an environment which does not allow for the installation of `kube-prometheus-stack` or custom CRDs, it is recommended you run `helm template` on the `kube-prometheus-stack` helm chart with the above values file, and grab all generated `ServiceMonitor` and `PrometheusRule` resources. Note those resources may have to be modified with the correct ports and selectors to find the various services such as `kubelet` and `node-exporter` in your environment.
 
