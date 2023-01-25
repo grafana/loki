@@ -11,6 +11,14 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+## 4.1.1
+
+- [FEATURE] Added `loki.runtimeConfig` helm values to provide a reloadable runtime configuration.
+
+## 4.1
+
+- [BUGFIX] Fix bug in provisioner job that caused the self-monitoring tenant secret to be created with an empty token.
+
 ## 4.0
 
 - [FEATURE] Added `enterprise.adminToken.additionalNamespaces` which are a list of additional namespaces to create secrets containing the GEL admin token in. This is especially useful if your Grafana instance is in another namespace.

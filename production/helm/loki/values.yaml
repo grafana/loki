@@ -69,6 +69,8 @@ loki:
       drop:
         - ALL
     allowPrivilegeEscalation: false
+  # -- Should enableServiceLinks be enabled. Default to enable
+  enableServiceLinks: true
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
   # -- Config file contents for Loki
@@ -94,6 +96,11 @@ loki:
         {{- end }}
         {{- end }}
 
+    {{- with .Values.loki.ingester }}
+    ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -105,6 +112,9 @@ loki:
     limits_config:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    runtime_config:
+      file: /etc/loki/runtime-config/runtime-config.yaml
 
     {{- with .Values.loki.memcached.chunk_cache }}
     {{- if and .enabled (or .host .addresses) }}
@@ -140,6 +150,10 @@ loki:
     {{- end }}
 
     {{ include "loki.rulerConfig" . }}
+
+    table_manager:
+      retention_deletes_enabled: false
+      retention_period: 0
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -201,6 +215,9 @@ loki:
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
+
+  # -- Provides a reloadable runtime configuration file for some specific configuration
+  runtimeConfig: {}
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
@@ -281,6 +298,9 @@ loki:
 
   # --  Optional querier configuration
   querier: {}
+
+  # --  Optional ingester configuration
+  ingester: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
@@ -490,8 +510,9 @@ monitoring:
     namespace: null
     # -- Additional annotations for the dashboards ConfigMap
     annotations: {}
-    # -- Additional labels for the dashboards ConfigMap
-    labels: {}
+    # -- Labels for the dashboards ConfigMap
+    labels:
+      grafana_dashboard: "1"
 
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
@@ -642,7 +663,7 @@ write:
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
@@ -654,13 +675,15 @@ write:
   extraEnvFrom: []
   # -- Lifecycle for the write container
   lifecycle: {}
+  # -- Init containers to add to the write pods
+  initContainers: []
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
   extraVolumes: []
   # -- Resource requests and limits for the write
   resources: {}
-  # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingestor,
+  # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
@@ -678,6 +701,8 @@ write:
   # -- Tolerations for write pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -688,6 +713,64 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+
+# Configuration for the table-manager
+tableManager:
+  # -- Specifies whether the table-manager should be enabled
+  enabled: false
+  image:
+    # -- The Docker registry for the table-manager image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the table-manager image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the table-manager image. Overrides `loki.image.tag`
+    tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
+  # -- The name of the PriorityClass for table-manager pods
+  priorityClassName: null
+  # -- Labels for table-manager pods
+  podLabels: {}
+  # -- Annotations for table-manager pods
+  podAnnotations: {}
+  # -- Labels for table-manager service
+  serviceLabels: {}
+  # -- Additional CLI args for the table-manager
+  extraArgs: []
+  # -- Environment variables to add to the table-manager pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the table-manager pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the table-manager pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the table-manager pods
+  extraVolumes: []
+  # -- Resource requests and limits for the table-manager
+  resources: {}
+  # -- Containers to add to the table-manager pods
+  extraContainers: []
+  # -- Grace period to allow the table-manager to shutdown before it is killed
+  terminationGracePeriodSeconds: 30
+  # -- Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string
+  # @default -- Hard node and soft zone anti-affinity
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.tableManagerSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "loki.tableManagerSelectorLabels" . | nindent 12 }}
+            topologyKey: failure-domain.beta.kubernetes.io/zone
+  # -- Node selector for table-manager pods
+  nodeSelector: {}
+  # -- Tolerations for table-manager pods
+  tolerations: []
 
 # Configuration for the read pod(s)
 read:
@@ -787,7 +870,7 @@ backend:
   podAnnotations: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "backend"
@@ -797,13 +880,15 @@ backend:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the backend pods
   extraEnvFrom: []
+  # -- Init containers to add to the backend pods
+  initContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods
   extraVolumes: []
   # -- Resource requests and limits for the backend
   resources: {}
-  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor,
+  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
@@ -872,6 +957,8 @@ singleBinary:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the single binary pods
   extraEnvFrom: []
+  # -- Init containers to add to the single binary pods
+  initContainers: []
   # -- Volume mounts to add to the single binary pods
   extraVolumeMounts: []
   # -- Volumes to add to the single binary pods
@@ -894,6 +981,8 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
     # -- Size of persistent disk
@@ -1078,7 +1167,6 @@ gateway:
     # high CPU load.
     htpasswd: >-
       {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }}
-
 
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null

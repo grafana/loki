@@ -1,5 +1,6 @@
 ---
-title: Releasing Loki
+title: Releasing Grafana Loki
+description: Releasing Grafana Loki
 ---
 # Releasing Grafana Loki
 

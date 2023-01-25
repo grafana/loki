@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -108,11 +109,12 @@ func RecordRangeAndInstantQueryMetrics(
 
 	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 
-	logValues := make([]interface{}, 0, 20)
+	logValues := make([]interface{}, 0, 30)
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
+		"query_hash", hashedQuery(p.Query()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -160,6 +162,12 @@ func RecordRangeAndInstantQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
+}
+
+func hashedQuery(query string) uint32 {
+	h := fnv.New32()
+	_, _ = h.Write([]byte(query))
+	return h.Sum32()
 }
 
 func RecordLabelQueryMetrics(

@@ -48,7 +48,7 @@ spec:
           imagePullPolicy: {{ .Values.enterprise.provisioner.image.pullPolicy }}
           command:
             - /bin/sh
-            - -euc
+            - -exuc
             - |
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               /usr/bin/enterprise-logs-provisioner \
@@ -90,7 +90,7 @@ spec:
           imagePullPolicy: {{ .Values.kubectlImage.pullPolicy }}
           command:
             - /bin/bash
-            - -euc
+            - -exuc
             - |
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.provisionedSecretPrefix" $ }}-{{ .name }}" \
@@ -101,11 +101,11 @@ spec:
               {{- with .Values.monitoring.selfMonitoring.tenant }}
               kubectl --namespace "{{ $namespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
                 --from-literal=username="{{ .name }}" \
-                --from-literal=password="$(cat /bootstrap/token-canary)"
+                --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
               {{- if not (eq .secretNamespace $namespace) }}
               kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
                 --from-literal=username="{{ .name }}" \
-                --from-literal=password="$(cat /bootstrap/token-canary)"
+                --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
               {{- end }}
               {{- end }}
           volumeMounts:

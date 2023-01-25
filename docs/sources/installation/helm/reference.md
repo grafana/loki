@@ -2,8 +2,6 @@
 title: Helm Chart Values
 menuTitle: Helm Chart Values
 description: Reference for Helm Chart values.
-aliases:
-  - /docs/writers-toolkit/latest/templates/reference-template
 weight: 100
 keywords: []
 ---
@@ -17,8 +15,14 @@ keywords: []
 
 This is the generated reference for the Loki Helm Chart values.
 
+> **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
+> If you are using the `grafana/loki-stack` Helm chart from the community repo,
+> please refer to the `values.yaml` of the respective Github repository
+> [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts/loki-stack).
+
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+{{< responsive-table >}}
 <table>
 	<thead>
 		<th>Key</th>
@@ -105,6 +109,15 @@ null
 			<td>Docker image tag for the backend image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the backend pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -201,7 +214,7 @@ null
 		<tr>
 			<td>backend.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -219,7 +232,7 @@ null
 		<tr>
 			<td>backend.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -1586,6 +1599,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.enableServiceLinks</td>
+			<td>bool</td>
+			<td>Should enableServiceLinks be enabled. Default to enable</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.existingSecretForConfig</td>
 			<td>string</td>
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
@@ -1627,6 +1649,15 @@ See values.yaml
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
 "main-5e53303"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester</td>
+			<td>object</td>
+			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1768,6 +1799,15 @@ See values.yaml
 			<td>loki.rulerConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.runtimeConfig</td>
+			<td>object</td>
+			<td>Provides a reloadable runtime configuration file for some specific configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1967,9 +2007,11 @@ true
 		<tr>
 			<td>monitoring.dashboards.labels</td>
 			<td>object</td>
-			<td>Additional labels for the dashboards ConfigMap</td>
+			<td>Labels for the dashboards ConfigMap</td>
 			<td><pre lang="json">
-{}
+{
+  "grafana_dashboard": "1"
+}
 </pre>
 </td>
 		</tr>
@@ -3022,11 +3064,29 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -3142,6 +3202,186 @@ null
 			<td>singleBinary.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.affinity</td>
+			<td>string</td>
+			<td>Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td><pre lang="">
+Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether the table-manager should be enabled</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the table-manager</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the table-manager image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the table-manager image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the table-manager image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.podLabels</td>
+			<td>object</td>
+			<td>Labels for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for table-manager pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the table-manager</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for table-manager service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the table-manager to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for table-manager pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3345,6 +3585,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.lifecycle</td>
 			<td>object</td>
 			<td>Lifecycle for the write container</td>
@@ -3359,6 +3608,15 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -3446,7 +3704,7 @@ null
 		<tr>
 			<td>write.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3464,7 +3722,7 @@ null
 		<tr>
 			<td>write.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -3481,4 +3739,5 @@ null
 		</tr>
 	</tbody>
 </table>
+{{< /responsive-table >}}
 
