@@ -9,7 +9,7 @@ metadata:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
 spec:
-  replicas: {{ .Values.singleBinary.replicas }}
+  replicas: {{ include "loki.singleBinaryReplicas" . }}
   podManagementPolicy: Parallel
   updateStrategy:
     rollingUpdate:
