@@ -112,6 +112,28 @@ func Test_lineFormatter_Format(t *testing.T) {
 			nil,
 		},
 		{
+			"urlencode",
+			newMustLineFormatter(`{{.foo | urlencode }} {{ urlencode .foo }}`), // assert both syntax forms
+			labels.Labels{
+				{Name: "foo", Value: `/loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"}`},
+			},
+			0,
+			[]byte("%2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D %2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D"),
+			labels.Labels{{Name: "foo", Value: `/loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"}`}},
+			nil,
+		},
+		{
+			"urldecode",
+			newMustLineFormatter(`{{.foo | urldecode }} {{ urldecode .foo }}`), // assert both syntax forms
+			labels.Labels{
+				{Name: "foo", Value: `%2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D`},
+			},
+			0,
+			[]byte(`/loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"} /loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"}`),
+			labels.Labels{{Name: "foo", Value: `%2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D`}},
+			nil,
+		},
+		{
 			"repeat",
 			newMustLineFormatter(`{{ "foo" | repeat 3 }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
