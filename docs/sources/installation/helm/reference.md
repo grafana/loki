@@ -22,6 +22,7 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+{{< responsive-table >}}
 <table>
 	<thead>
 		<th>Key</th>
@@ -108,6 +109,15 @@ null
 			<td>Docker image tag for the backend image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the backend pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -204,7 +214,7 @@ null
 		<tr>
 			<td>backend.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -222,7 +232,7 @@ null
 		<tr>
 			<td>backend.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -1997,9 +2007,11 @@ true
 		<tr>
 			<td>monitoring.dashboards.labels</td>
 			<td>object</td>
-			<td>Additional labels for the dashboards ConfigMap</td>
+			<td>Labels for the dashboards ConfigMap</td>
 			<td><pre lang="json">
-{}
+{
+  "grafana_dashboard": "1"
+}
 </pre>
 </td>
 		</tr>
@@ -3052,11 +3064,29 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -3555,6 +3585,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.lifecycle</td>
 			<td>object</td>
 			<td>Lifecycle for the write container</td>
@@ -3569,6 +3608,15 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -3656,7 +3704,7 @@ null
 		<tr>
 			<td>write.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3674,7 +3722,7 @@ null
 		<tr>
 			<td>write.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -3691,4 +3739,5 @@ null
 		</tr>
 	</tbody>
 </table>
+{{< /responsive-table >}}
 
