@@ -510,8 +510,9 @@ monitoring:
     namespace: null
     # -- Additional annotations for the dashboards ConfigMap
     annotations: {}
-    # -- Additional labels for the dashboards ConfigMap
-    labels: {}
+    # -- Labels for the dashboards ConfigMap
+    labels:
+      grafana_dashboard: "1"
 
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
@@ -700,6 +701,8 @@ write:
   # -- Tolerations for write pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -978,6 +981,8 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
     # -- Size of persistent disk

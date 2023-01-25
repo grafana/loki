@@ -22,6 +22,7 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+{{< responsive-table >}}
 <table>
 	<thead>
 		<th>Key</th>
@@ -2006,9 +2007,11 @@ true
 		<tr>
 			<td>monitoring.dashboards.labels</td>
 			<td>object</td>
-			<td>Additional labels for the dashboards ConfigMap</td>
+			<td>Labels for the dashboards ConfigMap</td>
 			<td><pre lang="json">
-{}
+{
+  "grafana_dashboard": "1"
+}
 </pre>
 </td>
 		</tr>
@@ -3079,6 +3082,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enabled</td>
 			<td>bool</td>
 			<td>Enable persistent disk</td>
@@ -3600,6 +3612,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.selector</td>
 			<td>string</td>
 			<td>Selector for persistent disk</td>
@@ -3718,4 +3739,5 @@ null
 		</tr>
 	</tbody>
 </table>
+{{< /responsive-table >}}
 
