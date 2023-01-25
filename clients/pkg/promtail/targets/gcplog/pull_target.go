@@ -133,6 +133,10 @@ func (t *pullTarget) consumeSubscription(subscriptionErr chan error) {
 	for t.backoff.Ongoing() {
 		lastError = t.sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
 			t.msgs <- m
+
+			// When the subscription works properly, it doesn't return
+			// Reset relevant state here
+			lastError = nil
 			t.backoff.Reset()
 		})
 		if lastError != nil {
