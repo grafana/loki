@@ -210,6 +210,12 @@ steps:
   environment: {}
   image: grafana/loki-build-image:0.27.0
   name: check-example-config-doc
+- commands:
+  - mkdir -p /hugo/content/docs/loki/latest
+  - cp -r docs/sources/* /hugo/content/docs/loki/latest/
+  - cd /hugo && make prod
+  image: grafana/docs-base:latest
+  name: build-docs-website
 trigger:
   ref:
   - refs/heads/main
@@ -1667,6 +1673,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 58239f4ad12c6f5089ab3582f4086a6be2c3131778b71ddba9721b21fa03ce00
+hmac: b1c1f36ef727847ed4dc88f4b5fa2315545b55e524c10a5baa99baa155e58366
 
 ...
