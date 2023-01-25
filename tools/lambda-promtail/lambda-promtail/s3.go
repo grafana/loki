@@ -35,7 +35,7 @@ var (
 	// example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
 	filenameRegex = regexp.MustCompile(`AWSLogs/(?P<account_id>\d+)/(?P<type>\w+)/(?P<region>[\w-]+)/(?:[\w-]+/)?(?P<year>\d+)/(?P<month>\d+)/(?P<day>\d+)/(?:(?P<hour>\d+)/)?(?:(?P<minute>\d+)/)?\d+_(?:elasticloadbalancing|vpcflowlogs|waflogs)_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
 
-    // regex that extracts the timestamp from message log
+	// regex that extracts the timestamp from message log
 	timestampRegexList = []*regexp.Regexp {
 		regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`), //h2 2022-12-20T23:55:02.599911Z ...
 		regexp.MustCompile(`(?P<begin_date>\d{8,}) (?P<end_date>\d{8,}) (?:ACCEPT|REJECT)`), //... 1669842701 1669842702 ACCEPT ... (seconds)
