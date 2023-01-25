@@ -551,6 +551,15 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       make('check-doc', container=false) { depends_on: ['loki'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
+      {
+        name: 'build-docs-website',
+        image: 'grafana/docs-base:latest',
+        commands: [
+          'mkdir -p /hugo/content/docs/loki/latest',
+          'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
+          'cd /hugo && make prod',
+        ],
+      },
     ],
   },
   pipeline('mixins') {
