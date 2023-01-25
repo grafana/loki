@@ -46,9 +46,7 @@ func Test_getLabels(t *testing.T) {
 				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
-				"hour":			 "",
 				"key":           "my-bucket/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2022/01/24/123456789012_elasticloadbalancing_us-east-1_app.my-loadbalancer.b13ea9d19f16d015_20220124T0000Z_0.0.0.0_2et2e1mx.log.gz",
-				"minute":		 "",
 				"month":         "01",
 				"region":        "us-east-1",
 				"src":           "my-loadbalancer",
@@ -81,9 +79,7 @@ func Test_getLabels(t *testing.T) {
 				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
-				"hour":			 "",
 				"key":           "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/2022/01/24/123456789012_vpcflowlogs_us-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
-				"minute":		 "",
 				"month":         "01",
 				"region":        "us-east-1",
 				"src":           "fl-1234abcd",
@@ -93,7 +89,7 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "s3_waf",
+			name: "waflogs",
 			args: args{
 				record: events.S3EventRecord{
 					AWSRegion: "us-east-1",

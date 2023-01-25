@@ -128,22 +128,22 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 }
 
 func parseLogLineTimestamp(log_line string) time.Time {
-    for _, regex := range timestampRegexList {
-        match := regex.FindStringSubmatch(log_line)
-        if len(match) > 0 {
-            var timestamp time.Time
-            var err error
-            var timeToParseNumber int64
+	for _, regex := range timestampRegexList {
+		match := regex.FindStringSubmatch(log_line)
+		if len(match) > 0 {
+			var timestamp time.Time
+			var err error
+			var timeToParseNumber int64
 
-            //Try RFC3339 format
-            timestamp, err = time.Parse(time.RFC3339, match[1])
-            if err == nil {
-                return timestamp
-            }
+			//Try RFC3339 format
+			timestamp, err = time.Parse(time.RFC3339, match[1])
+			if err == nil {
+				return timestamp
+			}
 
-            //Try milliseconds/seconds format
-            timeToParseNumber, err = strconv.ParseInt(match[1], 10, 64)
-            if err == nil {
+			//Try milliseconds/seconds format
+			timeToParseNumber, err = strconv.ParseInt(match[1], 10, 64)
+			if err == nil {
 				//https://stackoverflow.com/questions/23929145/how-to-test-if-a-given-time-stamp-is-in-seconds-or-milliseconds
 				dateNowSecs := time.Now().Unix()
 				if timeToParseNumber > dateNowSecs {
@@ -151,11 +151,11 @@ func parseLogLineTimestamp(log_line string) time.Time {
 				}
 				return time.Unix(timeToParseNumber, 0)
 			}
-        }
-    }
+		}
+	}
 
 	//Use current time if no timestamp can be detected
-    return time.Now()
+	return time.Now()
 }
 
 func getLabels(record events.S3EventRecord) (map[string]string, error) {
@@ -170,7 +170,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	match := filenameRegex.FindStringSubmatch(labels["key"])
 	if len(match) > 0 {
 		for i, name := range filenameRegex.SubexpNames() {
-			if i != 0 && name != "" {
+			if i != 0 && name != "" && match[i] != "" {
 				labels[name] = match[i]
 			}
 		}
