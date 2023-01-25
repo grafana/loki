@@ -931,15 +931,14 @@ alertmanager_client:
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]
 
-# Distribute rule groups across rulers for tenants using a shuffle-sharding
-# algorithm. Implies -ruler.enable-sharding=true.
-# CLI flag: -ruler.enable-shuffle-sharding
-[enable_shuffle_sharding: <boolean> | default = false]
-
-# The sharding strategy to use. Supported values are: default, shuffle-sharding,
-# by-rule.
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
 # CLI flag: -ruler.sharding-strategy
 [sharding_strategy: <string> | default = "default"]
+
+# The sharding algorithm to use for deciding how rules & groups are sharded.
+# Supported values are: by-group, by-rule.
+# CLI flag: -ruler.sharding-algo
+[sharding_algo: <string> | default = "by-group"]
 
 # Time to spend searching for a pending ruler when shutting down.
 # CLI flag: -ruler.search-pending-for
