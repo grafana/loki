@@ -41,30 +41,44 @@ var (
 // from a priority to another).
 //
 // It's guaranteed that after this function returns:
-// - If some child is READY, it is childInUse, and all lower priorities are
-// closed.
-// - If some child is newly started(in Connecting for the first time), it is
-// childInUse, and all lower priorities are closed.
-// - Otherwise, the lowest priority is childInUse (none of the children is
-// ready, and the overall state is not ready).
+//
+//	If some child is READY, it is childInUse, and all lower priorities are
+//	closed.
+//
+//	If some child is newly started(in Connecting for the first time), it is
+//	childInUse, and all lower priorities are closed.
+//
+//	Otherwise, the lowest priority is childInUse (none of the children is
+//	ready, and the overall state is not ready).
 //
 // Steps:
-// - If all priorities were deleted, unset childInUse (to an empty string), and
-// set parent ClientConn to TransientFailure
-// - Otherwise, Scan all children from p0, and check balancer stats:
-//   - For any of the following cases:
-//     - If balancer is not started (not built), this is either a new child with
-//       high priority, or a new builder for an existing child.
-//     - If balancer is Connecting and has non-nil initTimer (meaning it
-//       transitioned from Ready or Idle to connecting, not from TF, so we
-//       should give it init-time to connect).
-//     - If balancer is READY or IDLE
-//     - If this is the lowest priority
-//   - do the following:
-//     - if this is not the old childInUse, override picker so old picker is no
-//       longer used.
-//     - switch to it (because all higher priorities are neither new or Ready)
-//     - forward the new addresses and config
+//
+//	If all priorities were deleted, unset childInUse (to an empty string), and
+//	set parent ClientConn to TransientFailure
+//
+//	Otherwise, Scan all children from p0, and check balancer stats:
+//
+//	  For any of the following cases:
+//
+//	    If balancer is not started (not built), this is either a new child with
+//	    high priority, or a new builder for an existing child.
+//
+//	    If balancer is Connecting and has non-nil initTimer (meaning it
+//	    transitioned from Ready or Idle to connecting, not from TF, so we
+//	    should give it init-time to connect).
+//
+//	    If balancer is READY or IDLE
+//
+//	    If this is the lowest priority
+//
+//	 do the following:
+//
+//	    if this is not the old childInUse, override picker so old picker is no
+//	    longer used.
+//
+//	    switch to it (because all higher priorities are neither new or Ready)
+//
+//	    forward the new addresses and config
 //
 // Caller must hold b.mu.
 func (b *priorityBalancer) syncPriority(childUpdating string) {
@@ -160,6 +174,10 @@ func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.S
 	child, ok := b.children[childName]
 	if !ok {
 		b.logger.Warningf("priority: child balancer not found for child %v", childName)
+		return
+	}
+	if !child.started {
+		b.logger.Warningf("priority: ignoring update from child %q which is not in started state: %+v", childName, s)
 		return
 	}
 	child.state = s

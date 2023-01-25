@@ -19,6 +19,7 @@ package xdsresource
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"strconv"
 
@@ -90,7 +91,7 @@ func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropO
 	}
 }
 
-func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint) ([]Endpoint, error) {
+func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs map[string]bool) ([]Endpoint, error) {
 	endpoints := make([]Endpoint, 0, len(lbEndpoints))
 	for _, lbEndpoint := range lbEndpoints {
 		// If the load_balancing_weight field is specified, it must be set to a
@@ -103,9 +104,14 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint) ([]Endpoint, error) 
 			}
 			weight = w.GetValue()
 		}
+		addr := parseAddress(lbEndpoint.GetEndpoint().GetAddress().GetSocketAddress())
+		if uniqueEndpointAddrs[addr] {
+			return nil, fmt.Errorf("duplicate endpoint with the same address %s", addr)
+		}
+		uniqueEndpointAddrs[addr] = true
 		endpoints = append(endpoints, Endpoint{
 			HealthStatus: EndpointHealthStatus(lbEndpoint.GetHealthStatus()),
-			Address:      parseAddress(lbEndpoint.GetEndpoint().GetAddress().GetSocketAddress()),
+			Address:      addr,
 			Weight:       weight,
 		})
 	}
@@ -118,6 +124,8 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment, logger *grpclog.Pr
 		ret.Drops = append(ret.Drops, parseDropPolicy(dropPolicy))
 	}
 	priorities := make(map[uint32]map[string]bool)
+	sumOfWeights := make(map[uint32]uint64)
+	uniqueEndpointAddrs := make(map[string]bool)
 	for _, locality := range m.Endpoints {
 		l := locality.GetLocality()
 		if l == nil {
@@ -128,23 +136,27 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment, logger *grpclog.Pr
 			logger.Warningf("Ignoring locality %s with weight 0", pretty.ToJSON(l))
 			continue
 		}
-		lid := internal.LocalityID{
-			Region:  l.Region,
-			Zone:    l.Zone,
-			SubZone: l.SubZone,
-		}
 		priority := locality.GetPriority()
+		sumOfWeights[priority] += uint64(weight)
+		if sumOfWeights[priority] > math.MaxUint32 {
+			return EndpointsUpdate{}, fmt.Errorf("sum of weights of localities at the same priority %d exceeded maximal value", priority)
+		}
 		localitiesWithPriority := priorities[priority]
 		if localitiesWithPriority == nil {
 			localitiesWithPriority = make(map[string]bool)
 			priorities[priority] = localitiesWithPriority
+		}
+		lid := internal.LocalityID{
+			Region:  l.Region,
+			Zone:    l.Zone,
+			SubZone: l.SubZone,
 		}
 		lidStr, _ := lid.ToString()
 		if localitiesWithPriority[lidStr] {
 			return EndpointsUpdate{}, fmt.Errorf("duplicate locality %s with the same priority %v", lidStr, priority)
 		}
 		localitiesWithPriority[lidStr] = true
-		endpoints, err := parseEndpoints(locality.GetLbEndpoints())
+		endpoints, err := parseEndpoints(locality.GetLbEndpoints(), uniqueEndpointAddrs)
 		if err != nil {
 			return EndpointsUpdate{}, err
 		}

@@ -216,6 +216,7 @@ type Identity struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to IdentityOneof:
+	//
 	//	*Identity_ServiceAccount
 	//	*Identity_Hostname
 	IdentityOneof isIdentity_IdentityOneof `protobuf_oneof:"identity_oneof"`
@@ -664,6 +665,7 @@ type HandshakerReq struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to ReqOneof:
+	//
 	//	*HandshakerReq_ClientStart
 	//	*HandshakerReq_ServerStart
 	//	*HandshakerReq_Next
