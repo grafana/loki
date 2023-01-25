@@ -265,13 +265,15 @@ github.com/aws/smithy-go/rand
 github.com/aws/smithy-go/time
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
-# github.com/baidubce/bce-sdk-go v0.9.111
+# github.com/baidubce/bce-sdk-go v0.9.141
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
 github.com/baidubce/bce-sdk-go/http
 github.com/baidubce/bce-sdk-go/services/bos
 github.com/baidubce/bce-sdk-go/services/bos/api
+github.com/baidubce/bce-sdk-go/services/sts
+github.com/baidubce/bce-sdk-go/services/sts/api
 github.com/baidubce/bce-sdk-go/util
 github.com/baidubce/bce-sdk-go/util/log
 # github.com/beorn7/perks v1.0.1
