@@ -10,7 +10,7 @@ local helm = tanka.helm.new(std.thisFile);
 local spec = (import './spec.json').spec;
 
 local enterprise = std.extVar('enterprise');
-
+local clusterName = if enterprise then 'enterprise-logs-test-fixture' else 'loki';
 local lokiGatewayUrl = if enterprise then
   'http://enterprise-logs-gateway.loki.svc.cluster.local'
 else 'http://loki-gateway.loki.svc.cluster.local';
@@ -27,11 +27,76 @@ local tenant = 'loki';
 
   lokiNamespace: k.core.v1.namespace.new('loki'),
   prometheus: helm.template('prometheus', '../../charts/kube-prometheus-stack', {
+    local clusterRelabel =
+      {
+        action: 'replace',
+        replacement: clusterName,
+        targetLabel: 'cluster',
+      },
     namespace: $._config.namespace,
     values+: {
       grafana+: {
         enabled: false,
       },
+
+      kubelet: {
+        serviceMonitor: {
+          cAdvisorRelabelings: [
+            clusterRelabel,
+            {
+              targetLabel: 'metrics_path',
+              sourceLabels: [
+                '__metrics_path__',
+              ],
+            },
+            {
+              targetLabel: 'instance',
+              sourceLabels: [
+                'node',
+              ],
+            },
+          ],
+        },
+      },
+
+      defaultRules: {
+        additionalRuleLabels: {
+          cluster: clusterName,
+        },
+      },
+
+      'kube-state-metrics': {
+        prometheus: {
+          monitor: {
+            relabelings: [
+              clusterRelabel,
+              {
+                targetLabel: 'instance',
+                sourceLabels: [
+                  '__meta_kubernetes_pod_node_name',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      'prometheus-node-exporter': {
+        prometheus: {
+          monitor: {
+            relabelings: [
+              clusterRelabel,
+              {
+                targetLabel: 'instance',
+                sourceLabels: [
+                  '__meta_kubernetes_pod_node_name',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
       prometheus: {
         prometheusSpec: {
           serviceMonitorSelector: {
@@ -39,6 +104,11 @@ local tenant = 'loki';
               release: 'prometheus',
             },
           },
+        },
+        monitor: {
+          relabelings: [
+            clusterRelabel,
+          ],
         },
       },
     },
