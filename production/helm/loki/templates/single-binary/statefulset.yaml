@@ -69,7 +69,7 @@ spec:
         {{- end }}
       {{- end }}
       containers:
-        - name: single-binary
+        - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:

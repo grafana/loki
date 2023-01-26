@@ -31,6 +31,22 @@ singleBinary fullname
 {{- end -}}
 
 {{/*
+Resource name template
+Params:
+  ctx = . context
+  component = component name (optional)
+  rolloutZoneName = rollout zone name (optional)
+*/}}
+{{- define "loki.resourceName" -}}
+{{- $resourceName := include "loki.fullname" .ctx -}}
+{{- if .component -}}{{- $resourceName = printf "%s-%s" $resourceName .component -}}{{- end -}}
+{{- if and (not .component) .rolloutZoneName -}}{{- printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail -}}{{- end -}}
+{{- if .rolloutZoneName -}}{{- $resourceName = printf "%s-%s" $resourceName .rolloutZoneName -}}{{- end -}}
+{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install or shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness." $resourceName | fail -}}{{- end -}}
+{{- $resourceName -}}
+{{- end -}}
+
+{{/*
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
