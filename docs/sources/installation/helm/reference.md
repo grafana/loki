@@ -2192,6 +2192,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.namespace</td>
+			<td>string</td>
+			<td>Alternative namespace to create PrometheusRule resources in</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.enabled</td>
 			<td>bool</td>
 			<td></td>
