@@ -1,0 +1,12 @@
+groups:
+  - name: Sample Rule Group
+    interval: 1m
+    rules:
+      - record: generated_logs:rate1m
+        expr: sum(rate({job="generated-logs"}[1m]))
+        labels:
+          source: "recording rule"
+      - alert: NoGeneratedLogs
+        expr: absent_over_time({job="generated-logs"}[1m])
+        labels:
+          source: "alerting rule"

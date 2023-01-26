@@ -49,6 +49,29 @@ ingester:
   chunk_block_size: 262144
   flush_op_timeout: 10s
 
+ruler:
+  enable_sharding: true
+  sharding_strategy: shuffle-sharding
+  storage:
+    type: local
+    local:
+      directory: /data/rules
+
+  alertmanager_url: http://alertmanager:9093
+  enable_alertmanager_v2: true
+  enable_api: true
+  evaluation_interval: 15s
+  rule_path: /tmp/rules
+
+  remote_write:
+    enabled: true
+    config_refresh_period: 1m
+    client:
+      name: primary
+      url: http://prometheus:9090/api/v1/write
+  wal:
+    dir: /loki/ruler-wal
+
 schema_config:
   configs:
   - from: 2020-08-01
