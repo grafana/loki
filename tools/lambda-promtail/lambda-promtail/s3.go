@@ -37,8 +37,17 @@ var (
 
 	// regex that extracts the timestamp from message log
 	timestampRegexList = []*regexp.Regexp {
+		// regex that extracts the timestamp from the AWS Loadbalancer message log
+		// format: timestamp (RFC3339)
+		// example: h2 2022-12-20T23:55:02.599911Z ...
 		regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`), //h2 2022-12-20T23:55:02.599911Z ...
-		regexp.MustCompile(`(?P<begin_date>\d{8,}) (?P<end_date>\d{8,}) (?:ACCEPT|REJECT)`), //... 1669842701 1669842702 ACCEPT ... (seconds)
+		// regex that extracts the timestamp from the AWS VPC Flow Logs message log
+		// format: timestamp (seconds)
+		// example: ... 1669842701 1669842702 ACCEPT
+		regexp.MustCompile(`(?P<begin_date>\d{8,}) (?P<end_date>\d{8,}) (?:ACCEPT|REJECT)`),
+		// regex that extracts the timestamp from the AWS WAF message log
+		// format: timestamp (milliseconds)
+		// example: {"timestamp":1671624901861,...
 		regexp.MustCompile(`"timestamp":(?P<timestamp>\d+)`), //{"timestamp":1671624901861,... (milliseconds)
 	}
 )
@@ -143,14 +152,16 @@ func parseLogLineTimestamp(log_line string) time.Time {
 
 			//Try milliseconds/seconds format
 			timeToParseNumber, err = strconv.ParseInt(match[1], 10, 64)
-			if err == nil {
-				//https://stackoverflow.com/questions/23929145/how-to-test-if-a-given-time-stamp-is-in-seconds-or-milliseconds
-				dateNowSecs := time.Now().Unix()
-				if timeToParseNumber > dateNowSecs {
-					return time.UnixMilli(timeToParseNumber)
-				}
-				return time.Unix(timeToParseNumber, 0)
+			if err != nil {
+				continue
 			}
+
+			//https://stackoverflow.com/questions/23929145/how-to-test-if-a-given-time-stamp-is-in-seconds-or-milliseconds
+			dateNowSecs := time.Now().Unix()
+			if timeToParseNumber > dateNowSecs {
+				return time.UnixMilli(timeToParseNumber)
+			}
+			return time.Unix(timeToParseNumber, 0)
 		}
 	}
 
@@ -168,17 +179,17 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket_region"] = record.AWSRegion
 
 	match := filenameRegex.FindStringSubmatch(labels["key"])
-	if len(match) > 0 {
-		for i, name := range filenameRegex.SubexpNames() {
-			if i != 0 && name != "" && match[i] != "" {
-				labels[name] = match[i]
-			}
-		}
-		labels["type"] = strings.ToLower(labels["type"])
-	} else {
+	if len(match) < 1 {
 		fmt.Printf("Unknown AWS S3 log filename format: %s\n", labels["key"])
+		return labels, nil
 	}
 
+	for i, name := range filenameRegex.SubexpNames() {
+		if i != 0 && name != "" && match[i] != "" {
+			labels[name] = match[i]
+		}
+	}
+	labels["type"] = strings.ToLower(labels["type"])
 	return labels, nil
 }
 
