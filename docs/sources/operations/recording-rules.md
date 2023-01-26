@@ -1,6 +1,6 @@
 ---
 title: Recording Rules
-description: Operational documentation for working with recording rules.
+description: Working with recording rules.
 ---
 
 # Recording Rules
