@@ -15,7 +15,7 @@ if [[ ! -d "${LOCAL_REPOSITORIES_PATH}/${UPSTREAM_REPOSITORY}" ]]; then
 fi
 
 SOURCE_DIR=$(pwd)
-VERSION=$(grep "COMMUNITY_RELEASE_VERSION=" Makefile | awk -F= '{print $2}')
+VERSION=$(grep "VERSION ?= " Makefile | awk -F= '{print $3}' | xargs)
 
 for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
     (

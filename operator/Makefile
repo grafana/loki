@@ -10,15 +10,10 @@ WEBSITE_BASE_URL ?= https://loki-operator.dev
 .DEFAULT_GOAL := default
 default: all
 
-# CLUSTER_LOGGING_VERSION
-# defines the version of the OpenShift Cluster Logging product.
-# Updates this value when a new version of the product should include this operator and its bundle.
-CLUSTER_LOGGING_VERSION ?= 5.1.preview.1
-
 # LOKI_OPERATOR_NS
 # defines the default namespace of the Loki Operator in OpenShift.
 # Loki Operator will be installed in this namespace.
-LOKI_OPERATOR_NS ?= openshift-operators-redhat
+LOKI_OPERATOR_NS ?= kubernetes-operators
 
 # VERSION
 # defines the project version for the bundle.
@@ -27,10 +22,8 @@ LOKI_OPERATOR_NS ?= openshift-operators-redhat
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= v0.1.0
-COMMUNITY_VERSION ?= main-39f2856
-COMMUNITY_RELEASE_VERSION=0.1.0
-CHANNELS ?= "stable"
-DEFAULT_CHANNEL ?= "stable"
+CHANNELS ?= "alpha"
+DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
 
 # CHANNELS define the bundle channels used in the bundle.
@@ -52,15 +45,22 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
-REGISTRY_ORG_OPENSHIFT ?= openshift-logging
-REGISTRY_ORG_COMMUNITY ?= grafana
+# REGISTRY_ORG
+# defines the container registry organization for the bundle and operator container images.
+REGISTRY_ORG_COMMUNITY = grafana
+REGISTRY_ORG_OPENSHIFT = openshift-logging
+REGISTRY_ORG ?= $(REGISTRY_ORG_COMMUNITY)
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG_OPENSHIFT)/loki-operator-bundle:$(VERSION)
+BUNDLE_IMG ?= docker.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
+
+MANIFESTS_DIR = config/manifests/community
+BUNDLE_DIR = ./bundle/community
+BUNDLE_BUILD_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_DIR)
 
 # USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
 # You can enable this value if you would like to use SHA Based Digests
@@ -70,12 +70,14 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
     BUNDLE_GEN_FLAGS += --use-image-digests
 endif
 
-CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG_OPENSHIFT)/storage-size-calculator:latest
+CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG)/storage-size-calculator:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
 
+# TODO(@periklis): Replace this image tag with VERSION once we have GH tags
+COMMUNITY_IMAGE_TAG = main-39f2856
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/$(REGISTRY_ORG_OPENSHIFT)/loki-operator:$(VERSION)
+IMG ?= docker.io/$(REGISTRY_ORG)/loki-operator:$(COMMUNITY_IMAGE_TAG)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -84,14 +86,20 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-USE_COMMUNITY_BUILD ?= false
-ifeq ($(USE_COMMUNITY_BUILD), true)
-	BUNDLE_CHANNELS = --channels=alpha
-	BUNDLE_DEFAULT_CHANNEL = --default-channel=alpha
+USE_OPENSHIFT_BUILD ?= false
+ifeq ($(USE_OPENSHIFT_BUILD), true)
+ifeq ($(REGISTRY_ORG), $(REGISTRY_ORG_COMMUNITY))
+	REGISTRY_ORG = $(REGISTRY_ORG_OPENSHIFT)
+endif
+	BUNDLE_CHANNELS = --channels=stable
+	BUNDLE_DEFAULT_CHANNEL = --default-channel=stable
     BUNDLE_METADATA_OPTS = $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
-    LOKI_OPERATOR_NS = kubernetes-operators
-	IMG = docker.io/$(REGISTRY_ORG_COMMUNITY)/loki-operator:$(COMMUNITY_VERSION)
-    BUNDLE_IMG = docker.io/$(REGISTRY_ORG_COMMUNITY)/loki-operator-bundle:$(COMMUNITY_VERSION)
+    LOKI_OPERATOR_NS = openshift-operators-redhat
+	IMG = quay.io/$(REGISTRY_ORG)/loki-operator:$(VERSION)
+    BUNDLE_IMG = quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
+    MANIFESTS_DIR = config/manifests/openshift
+    BUNDLE_DIR = ./bundle/openshift
+    BUNDLE_BUILD_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_DIR)
 endif
 
 .PHONY: all
@@ -185,39 +193,20 @@ oci-push: ## Push the image
 
 .PHONY: bundle-all
 bundle-all: ## Generate both bundles.
-	$(MAKE) bundle USE_COMMUNITY_BUILD=true
 	$(MAKE) bundle
+	$(MAKE) bundle USE_OPENSHIFT_BUILD=true
 
 .PHONY: bundle
-ifeq ($(USE_COMMUNITY_BUILD), true)
-MANIFESTS_COMMUNITY_DIR = config/manifests/community
-BUNDLE_COMMUNITY_DIR = ./bundle/community
-BUNDLE_COMMUNITY_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_COMMUNITY_DIR)
-bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate community bundle manifests and metadata, then validate generated files (Requires: USE_COMMUNITY_BUILD=true).
-	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_COMMUNITY_DIR) --output-dir $(MANIFESTS_COMMUNITY_DIR)
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	cd $(BUNDLE_COMMUNITY_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_COMMUNITY_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_COMMUNITY_GEN_FLAGS) && rm PROJECT
-	$(OPERATOR_SDK) bundle validate $(BUNDLE_COMMUNITY_DIR)
-else
-MANIFESTS_OPENSHIFT_DIR = config/manifests/openshift
-BUNDLE_OPENSHIFT_DIR = ./bundle/openshift
-BUNDLE_OPENSHIFT_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_OPENSHIFT_DIR)
 bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate openshift bundle manifests and metadata, then validate generated files.
-	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_OPENSHIFT_DIR) --output-dir $(MANIFESTS_OPENSHIFT_DIR)
+	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_DIR) --output-dir $(MANIFESTS_DIR)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	cd $(BUNDLE_OPENSHIFT_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_OPENSHIFT_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_OPENSHIFT_GEN_FLAGS) && rm PROJECT
-	$(OPERATOR_SDK) bundle validate $(BUNDLE_OPENSHIFT_DIR)
-endif
+	cd $(BUNDLE_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_BUILD_GEN_FLAGS) && rm PROJECT
+	$(OPERATOR_SDK) bundle validate $(BUNDLE_DIR)
 
 
 .PHONY: bundle-build
-ifeq ($(USE_COMMUNITY_BUILD), true)
-bundle-build: ## Build the community bundle image (Requires: USE_COMMUNITY_BUILD=true).
-	$(OCI_RUNTIME) build -f $(BUNDLE_COMMUNITY_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_COMMUNITY_DIR)
-else
-bundle-build: ## Build the OpenShift bundle image.
-	$(OCI_RUNTIME) build -f $(BUNDLE_OPENSHIFT_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_OPENSHIFT_DIR)
-endif
+bundle-build: ## Build the community bundle image
+	$(OCI_RUNTIME) build -f $(BUNDLE_DIR)/bundle.Dockerfile -t $(BUNDLE_IMG) $(BUNDLE_DIR)
 
 ##@ Deployment
 
@@ -271,7 +260,7 @@ olm-deploy-operator: oci-build oci-push
 .PHONY: olm-deploy
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
-	$(error Set variable REGISTRY_ORG_OPENSHIFT to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
@@ -280,7 +269,7 @@ endif
 .PHONY: olm-upgrade
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 olm-upgrade:  ## Upgrade the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
-	$(error Set variable REGISTRY_ORG_OPENSHIFT to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
 else
 olm-upgrade: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(BUNDLE_IMG)
@@ -293,7 +282,7 @@ olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and 
 .PHONY: deploy-size-calculator
 ifeq ($(findstring openshift-logging,$(CALCULATOR_IMG)),openshift-logging)
 deploy-size-calculator: ## Deploy storage size calculator (OpenShift only!)
-	$(error Set variable REGISTRY_ORG_OPENSHIFT to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
 else
 deploy-size-calculator:  $(KUSTOMIZE) ## Deploy storage size calculator (OpenShift only!)
 	kubectl apply -f config/overlays/openshift/size-calculator/cluster_monitoring_config.yaml
