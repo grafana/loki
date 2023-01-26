@@ -134,7 +134,7 @@ github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 ## explicit; go 1.13
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.44.159
+# github.com/aws/aws-sdk-go v1.44.187
 ## explicit; go 1.11
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
