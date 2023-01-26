@@ -87,6 +87,30 @@ If you are using this helm chart in an environment which does not allow for the 
 **To install the dashboards:**
 
 1. Dashboards are enabled by default. Set `monitoring.dashboards.namespace` to the namespace of the Grafana instance if it is in a different namespace than this Loki cluster.
+1. Dashbards must be mounted to your Grafana container. The dashboards are in `ConfigMap`s named `loki-dashboards-1` and `loki-dashboards-2` for Loki, and `enterprise-logs-dashboards-1` and `enterprise-logs-dashboards-2` for GEL. Mount them to `/var/lib/grafana/dashboards/loki-1` and `/var/lib/grafana/dashboards/loki-2` in your Grafana container.
+1. Create a dashboard provisioning file called `dashboards.yaml` in `/etc/grafana/provisioning/dashboards` of your Grafana container with the following contents (_note_: you may need to edit the `orgId`):
+
+   ```yaml
+   ---
+   apiVersion: 1
+   providers:
+     - disableDeletion: true
+       editable: false
+       folder: Loki
+       name: loki-1
+       options:
+         path: /var/lib/grafana/dashboards/loki-1
+       orgId: 1
+       type: file
+     - disableDeletion: true
+       editable: false
+       folder: Loki
+       name: loki-2
+       options:
+         path: /var/lib/grafana/dashboards/loki-2
+       orgId: 1
+       type: file
+   ```
 
 **To add add additional Prometheus rules:**
 
