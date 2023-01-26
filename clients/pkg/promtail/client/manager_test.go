@@ -22,7 +22,7 @@ import (
 
 func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 	walDir := t.TempDir()
-	_, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, prometheus.NewRegistry(), wal.Config{
+	_, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, false, prometheus.NewRegistry(), wal.Config{
 		Dir:     walDir,
 		Enabled: true,
 	})
@@ -67,7 +67,7 @@ func TestManager_WALEnabled_EntriesAreWrittenToWALAndClients(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
 	clientMetrics := NewMetrics(reg)
-	manager, err := NewManager(clientMetrics, log.NewLogfmtLogger(os.Stdout), 0, 0, reg, wal.Config{
+	manager, err := NewManager(clientMetrics, log.NewLogfmtLogger(os.Stdout), 0, 0, false, reg, wal.Config{
 		Dir:     walDir,
 		Enabled: true,
 	}, testClientConfig)

@@ -147,6 +147,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 			p.logger,
 			cfg.LimitsConfig.MaxStreams,
 			cfg.LimitsConfig.MaxLineSize.Val(),
+			cfg.LimitsConfig.MaxLineSizeTruncate,
 			p.reg,
 			cfg.WAL,
 			cfg.ClientConfigs...,

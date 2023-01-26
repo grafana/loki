@@ -28,7 +28,7 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager
-func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int, reg prometheus.Registerer, walCfg wal.Config, clientCfgs ...Config) (*Manager, error) {
+func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int, maxLineSizeTruncate bool, reg prometheus.Registerer, walCfg wal.Config, clientCfgs ...Config) (*Manager, error) {
 	// TODO: refactor this to instantiate all clients types
 	pWAL, err := wal.New(walCfg, logger, reg)
 	if err != nil {
@@ -44,7 +44,7 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 	clientsCheck := make(map[string]struct{})
 	clients := make([]Client, 0, len(clientCfgs))
 	for _, cfg := range clientCfgs {
-		client, err := New(metrics, cfg, maxStreams, maxLineSize, logger)
+		client, err := New(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
 		if err != nil {
 			return nil, err
 		}
