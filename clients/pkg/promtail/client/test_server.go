@@ -14,6 +14,8 @@ type receivedReq struct {
 	pushReq  logproto.PushRequest
 }
 
+// newTestMoreWriteServer creates a new httpserver.Server that can handle remote write request. When a request is handled,
+// the received entries are written to receivedChan, and status is responded.
 func newTestRemoteWriteServer(receivedChan chan receivedReq, status int) *httptest.Server {
 	server := httptest.NewServer(createServerHandler(receivedChan, status))
 	return server
