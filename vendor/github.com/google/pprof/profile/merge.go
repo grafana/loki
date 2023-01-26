@@ -566,3 +566,102 @@ func (lm locationIDMap) set(id uint64, loc *Location) {
 	}
 	lm.sparse[id] = loc
 }
+
+// CompatibilizeSampleTypes makes profiles compatible to be compared/merged. It
+// keeps sample types that appear in all profiles only and drops/reorders the
+// sample types as necessary.
+//
+// In the case of sample types order is not the same for given profiles the
+// order is derived from the first profile.
+//
+// Profiles are modified in-place.
+//
+// It returns an error if the sample type's intersection is empty.
+func CompatibilizeSampleTypes(ps []*Profile) error {
+	sTypes := commonSampleTypes(ps)
+	if len(sTypes) == 0 {
+		return fmt.Errorf("profiles have empty common sample type list")
+	}
+	for _, p := range ps {
+		if err := compatibilizeSampleTypes(p, sTypes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// commonSampleTypes returns sample types that appear in all profiles in the
+// order how they ordered in the first profile.
+func commonSampleTypes(ps []*Profile) []string {
+	if len(ps) == 0 {
+		return nil
+	}
+	sTypes := map[string]int{}
+	for _, p := range ps {
+		for _, st := range p.SampleType {
+			sTypes[st.Type]++
+		}
+	}
+	var res []string
+	for _, st := range ps[0].SampleType {
+		if sTypes[st.Type] == len(ps) {
+			res = append(res, st.Type)
+		}
+	}
+	return res
+}
+
+// compatibilizeSampleTypes drops sample types that are not present in sTypes
+// list and reorder them if needed.
+//
+// It sets DefaultSampleType to sType[0] if it is not in sType list.
+//
+// It assumes that all sample types from the sTypes list are present in the
+// given profile otherwise it returns an error.
+func compatibilizeSampleTypes(p *Profile, sTypes []string) error {
+	if len(sTypes) == 0 {
+		return fmt.Errorf("sample type list is empty")
+	}
+	defaultSampleType := sTypes[0]
+	reMap, needToModify := make([]int, len(sTypes)), false
+	for i, st := range sTypes {
+		if st == p.DefaultSampleType {
+			defaultSampleType = p.DefaultSampleType
+		}
+		idx := searchValueType(p.SampleType, st)
+		if idx < 0 {
+			return fmt.Errorf("%q sample type is not found in profile", st)
+		}
+		reMap[i] = idx
+		if idx != i {
+			needToModify = true
+		}
+	}
+	if !needToModify && len(sTypes) == len(p.SampleType) {
+		return nil
+	}
+	p.DefaultSampleType = defaultSampleType
+	oldSampleTypes := p.SampleType
+	p.SampleType = make([]*ValueType, len(sTypes))
+	for i, idx := range reMap {
+		p.SampleType[i] = oldSampleTypes[idx]
+	}
+	values := make([]int64, len(sTypes))
+	for _, s := range p.Sample {
+		for i, idx := range reMap {
+			values[i] = s.Value[idx]
+		}
+		s.Value = s.Value[:len(values)]
+		copy(s.Value, values)
+	}
+	return nil
+}
+
+func searchValueType(vts []*ValueType, s string) int {
+	for i, vt := range vts {
+		if vt.Type == s {
+			return i
+		}
+	}
+	return -1
+}
