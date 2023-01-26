@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package push;
+package logproto;
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
