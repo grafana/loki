@@ -49,7 +49,17 @@ type DefaultMultiTenantManager struct {
 }
 
 func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits) (*DefaultMultiTenantManager, error) {
-	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel)
+	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel, func(k, v string) string {
+		// When "by-rule" sharding is enabled, each rule group is assigned a unique name to work around some of Prometheus'
+		// assumptions, and metrics are exported based on these rule group names. If we kept these unique rule group names
+		// in place, this would explode cardinality.
+		if k == RuleGroupLabel {
+			return RemoveRuleTokenFromGroupName(v)
+		}
+
+		return v
+
+	})
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}

@@ -1,13 +1,13 @@
 ---
 title: Recording Rules
-description: Recording Rules
+description: Working with recording rules.
 ---
 
 # Recording Rules
 
 Recording rules are evaluated by the `ruler` component. Each `ruler` acts as its own `querier`, in the sense that it
 executes queries against the store without using the `query-frontend` or `querier` components. It will respect all query
-[limits](/docs/loki/latest/configuration/#limits_config) put in place for the `querier`.
+[limits]({{< relref "../configuration/#limits_config" >}}) put in place for the `querier`.
 
 Loki's implementation of recording rules largely reuses Prometheus' code.
 
@@ -78,6 +78,13 @@ have [override options]({{<relref "../configuration/#limits_config">}}) (which c
 Remote-write can be tuned if the default configuration is insufficient (see [Failure Modes](#failure-modes) below).
 
 There is a [guide](https://prometheus.io/docs/practices/remote_write/) on the Prometheus website, all of which applies to Loki, too.
+
+Rules can be evenly distributed across available rulers by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy="by-rule"`.
+Rule groups execute in order; this is a feature inherited from Prometheus' rule engine (which Loki uses), but Loki has no
+need for this constraint because rules cannot depend on each other. The default sharding strategy will shard by rule groups,
+but this may be undesirable as some rule groups could contain more expensive rules, which can lead to subsequent rules missing evaluations.
+The `by-rule` sharding strategy creates one rule group for each rule the ruler instance "owns" (based on its hash ring), and these rings
+are all executed concurrently.
 
 ## Observability
 
