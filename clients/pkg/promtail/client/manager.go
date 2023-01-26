@@ -58,11 +58,13 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 		clients = append(clients, client)
 	}
 
-	return &Manager{
+	manager := &Manager{
 		clientChannelHandler: walWriter,
 		clients:              clients,
 		entries:              make(chan api.Entry),
-	}, nil
+	}
+	manager.start()
+	return manager, nil
 }
 
 func (m *Manager) start() {
