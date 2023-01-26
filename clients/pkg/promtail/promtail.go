@@ -142,7 +142,15 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	} else if cfg.WAL.Enabled {
 		// TODO: Once we refactor all client instantiations into the manager, all ifs statements here will be removed
 		// and p.client will contain the manager, with all instantiated clients inside.
-		p.client, err = client.NewManager(p.reg, p.logger, cfg.WAL)
+		p.client, err = client.NewManager(
+			p.metrics,
+			p.logger,
+			cfg.LimitsConfig.MaxStreams,
+			cfg.LimitsConfig.MaxLineSize.Val(),
+			p.reg,
+			cfg.WAL,
+			cfg.ClientConfigs...,
+		)
 		if err != nil {
 			return err
 		}

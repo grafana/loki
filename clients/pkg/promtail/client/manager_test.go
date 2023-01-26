@@ -18,7 +18,7 @@ import (
 
 func TestManager_WALEnabled_EntriesAreWrittenToWAL(t *testing.T) {
 	walDir := t.TempDir()
-	manager, err := NewManager(prometheus.NewRegistry(), log.NewLogfmtLogger(os.Stdout), wal.Config{
+	manager, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, prometheus.NewRegistry(), wal.Config{
 		Dir:     walDir,
 		Enabled: true,
 	})

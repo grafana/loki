@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
 	"github.com/grafana/loki/pkg/util"
 )
 
