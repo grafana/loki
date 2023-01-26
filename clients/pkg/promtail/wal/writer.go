@@ -63,23 +63,23 @@ func (wrt *Writer) Stop() {
 	wrt.wal.Close()
 }
 
-// entryWriter writes api.Entry to a WAL, keeping in memory a single WALRecord object that's reused
+// entryWriter writes api.Entry to a WAL, keeping in memory a single Record object that's reused
 // across every write.
 type entryWriter struct {
-	reusableWALRecord *WALRecord
+	reusableWALRecord *Record
 }
 
 // newEntryWriter creates a new entryWriter.
 func newEntryWriter() *entryWriter {
 	return &entryWriter{
-		reusableWALRecord: &WALRecord{
+		reusableWALRecord: &Record{
 			RefEntries: make([]RefEntries, 0, 1),
 			Series:     make([]record.RefSeries, 0, 1),
 		},
 	}
 }
 
-// WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same WALRecord object for every
+// WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same Record object for every
 // write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
 func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
 	// Reset wal record slices

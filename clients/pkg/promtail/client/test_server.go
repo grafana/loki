@@ -1,11 +1,12 @@
 package client
 
 import (
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	"math"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type receivedReq struct {

@@ -25,7 +25,7 @@ func ReadWAL(dir string) ([]api.Entry, error) {
 	seenEntries := []api.Entry{}
 
 	for reader.Next() {
-		var walRec = WALRecord{}
+		var walRec = Record{}
 		bytes := reader.Record()
 		err = DecodeWALRecord(bytes, &walRec)
 		if err != nil {

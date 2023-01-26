@@ -17,7 +17,7 @@ var (
 // WAL is an interface that allows us to abstract ourselves from Prometheus WAL implementation.
 type WAL interface {
 	// Log marshals the records and writes it into the WAL.
-	Log(*WALRecord) error
+	Log(*Record) error
 
 	Delete() error
 	Sync() error
@@ -59,7 +59,7 @@ func (w *wrapper) Delete() error {
 	return err
 }
 
-func (w *wrapper) Log(record *WALRecord) error {
+func (w *wrapper) Log(record *Record) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil
 	}

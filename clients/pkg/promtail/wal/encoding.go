@@ -31,8 +31,8 @@ const (
 // Loki can read in a backwards compatible manner, but will write the newest variant.
 const CurrentEntriesRec RecordType = WALRecordEntriesV2
 
-// WALRecord is a struct combining the series and samples record.
-type WALRecord struct {
+// Record is a struct combining the series and samples record.
+type Record struct {
 	UserID string
 	Series []record.RefSeries
 
@@ -43,11 +43,11 @@ type WALRecord struct {
 	RefEntries    []RefEntries
 }
 
-func (r *WALRecord) IsEmpty() bool {
+func (r *Record) IsEmpty() bool {
 	return len(r.Series) == 0 && len(r.RefEntries) == 0
 }
 
-func (r *WALRecord) Reset() {
+func (r *Record) Reset() {
 	r.UserID = ""
 	if len(r.Series) > 0 {
 		r.Series = r.Series[:0]
@@ -60,7 +60,7 @@ func (r *WALRecord) Reset() {
 	r.entryIndexMap = make(map[uint64]int)
 }
 
-func (r *WALRecord) AddEntries(fp uint64, counter int64, entries ...logproto.Entry) {
+func (r *Record) AddEntries(fp uint64, counter int64, entries ...logproto.Entry) {
 	if idx, ok := r.entryIndexMap[fp]; ok {
 		r.RefEntries[idx].Entries = append(r.RefEntries[idx].Entries, entries...)
 		r.RefEntries[idx].Counter = counter
@@ -81,7 +81,7 @@ type RefEntries struct {
 	Entries []logproto.Entry
 }
 
-func (r *WALRecord) EncodeSeries(b []byte) []byte {
+func (r *Record) EncodeSeries(b []byte) []byte {
 	buf := EncWith(b)
 	buf.PutByte(byte(WALRecordSeries))
 	buf.PutUvarintStr(r.UserID)
@@ -95,7 +95,7 @@ func (r *WALRecord) EncodeSeries(b []byte) []byte {
 	return encoded
 }
 
-func (r *WALRecord) EncodeEntries(version RecordType, b []byte) []byte {
+func (r *Record) EncodeEntries(version RecordType, b []byte) []byte {
 	buf := EncWith(b)
 	buf.PutByte(byte(version))
 	buf.PutUvarintStr(r.UserID)
@@ -136,7 +136,7 @@ outer:
 	return buf.Get()
 }
 
-func DecodeEntries(b []byte, version RecordType, rec *WALRecord) error {
+func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -184,8 +184,8 @@ func DecodeEntries(b []byte, version RecordType, rec *WALRecord) error {
 	return nil
 }
 
-// DecodeWALRecord decodes the byte stream representation of a wal record into the WALRecord struct.
-func DecodeWALRecord(b []byte, walRec *WALRecord) (err error) {
+// DecodeWALRecord decodes the byte stream representation of a wal record into the Record struct.
+func DecodeWALRecord(b []byte, walRec *Record) (err error) {
 	var (
 		userID  string
 		dec     record.Decoder
