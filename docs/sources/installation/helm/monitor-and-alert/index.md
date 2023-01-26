@@ -6,7 +6,7 @@ aliases:
   - /docs/installation/helm/monitoring
 weight: 100
 keywords:
-  - monitoring
+  - monitoring 
   - alert
   - alerting
 ---
@@ -17,7 +17,7 @@ By default this Helm Chart configures meta-monitoring of metrics (service monito
 
 The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. Scraping this Loki cluster using the scrape config defined in the `ServiceMonitor` resource is required for the included dashboards to work. A `MetricsInstance` can be configured to write the metrics to a remote Prometheus instance such as Grafana Cloud Metrics.
 
-_Self monitoring_ is enabled by default. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed seperately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
+*Self monitoring* is enabled by default. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed seperately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
 
 Rules and alerts are automatically deployed.
 
@@ -26,63 +26,8 @@ Rules and alerts are automatically deployed.
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster with a running Loki deployment.
 - A running Grafana instance.
-- A running Prometheus Operator installed using the `kube-prometheus-stack` Helm chart.
-
-**Prometheus Operator Prequisites**
-
-The dashboards require certain metric labels to display Kubernetes metrics. The best way to accomplish this is to install the `kube-prometheus-stack` Helm chart with the following values file, replacing `CLUSTER_NAME` with the name of your cluster. The cluster name is what you specify during the helm installation, so a cluster installed with the command `helm install loki-cluster grafana/loki` would be called `loki-cluster`.
-
-```yaml
-kubelet:
-  serviceMonitor:
-    cAdvisorRelabelings:
-      - action: replace
-        replacement: <CLUSTER_NAME>
-        targetLabel: cluster
-      - targetLabel: metrics_path
-        sourceLabels:
-          - "__metrics_path__"
-      - targetLabel: "instance"
-        sourceLabels:
-          - "node"
-
-defaultRules:
-  additionalRuleLabels:
-    cluster: <CLUSTER_NAME>
-
-"kube-state-metrics":
-  prometheus:
-    monitor:
-      relabelings:
-        - action: replace
-          replacement: <CLUSTER_NAME>
-          targetLabel: cluster
-        - targetLabel: "instance"
-          sourceLabels:
-            - "__meta_kubernetes_pod_node_name"
-
-"prometheus-node-exporter":
-  prometheus:
-    monitor:
-      relabelings:
-        - action: replace
-          replacement: <CLUSTER_NAME>
-          targetLabel: cluster
-        - targetLabel: "instance"
-          sourceLabels:
-            - "__meta_kubernetes_pod_node_name"
-
-prometheus:
-  monitor:
-    relabelings:
-      - action: replace
-        replacement: <CLUSTER_NAME>
-        targetLabel: cluster
-```
-
-The `kube-prometheus-stack` installs `ServicMonitor` and `PrometheusRule` resources for monitoring Kubernetes, and it depends on the `kube-state-metrics` and `prometheus-node-exporter` helm charts which also install `ServiceMonitor` resources for collecting `kubelet` and `node-exporter` metrics. The above values file adds the necessary additional labels required for these metrics to work with the included dashboards.
-
-If you are using this helm chart in an environment which does not allow for the installation of `kube-prometheus-stack` or custom CRDs, you should run `helm template` on the `kube-prometheus-stack` helm chart with the above values file, and review all generated `ServiceMonitor` and `PrometheusRule` resources. These resources may have to be modified with the correct ports and selectors to find the various services such as `kubelet` and `node-exporter` in your environment.
+- A running Prometheus operator in order for recording rules for the dashboards
+  to work.
 
 **To install the dashboards:**
 
@@ -130,16 +75,17 @@ If you are using this helm chart in an environment which does not allow for the 
                expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
    ```
 
+
 **To disable monitoring:**
 
 1. Modify the configuration file `values.yaml`:
 
    ```yaml
    selfMonitoring:
-     enabled: false
+       enabled: false
 
    serviceMonitor:
-     enabled: false
+       enabled: false
    ```
 
 **To use a remote Prometheus and Loki instance such as Grafana Cloud**
@@ -154,8 +100,8 @@ If you are using this helm chart in an environment which does not allow for the 
      name: primary-credentials-metrics
      namespace: default
    stringData:
-     username: "<instance ID>"
-     password: "<API key>"
+     username: '<instance ID>'
+     password: '<API key>'
    ---
    apiVersion: v1
    kind: Secret
@@ -163,8 +109,8 @@ If you are using this helm chart in an environment which does not allow for the 
      name: primary-credentials-logs
      namespace: default
    stringData:
-     username: "<instance ID>"
-     password: "<API key>"
+     username: '<instance ID>'
+     password: '<API key>'
    ```
 
 2. Add the secret to Kubernetes with `kubectl create -f secret.yaml`.
@@ -193,19 +139,19 @@ If you are using this helm chart in an environment which does not allow for the 
 
    ```yaml
    monitoring:
-   ---
+   ...
    selfMonitoring:
      enabled: true
      logsInstance:
        clients:
-         - url: <logs remote write endpoint>
-           basicAuth:
-             username:
-               name: primary-credentials-logs
-               key: username
-             password:
-               name: primary-credentials-logs
-               key: password
+       - url: <logs remote write endpoint>
+         basicAuth:
+           username:
+             name: primary-credentials-logs
+             key: username
+           password:
+             name: primary-credentials-logs
+             key: password
    lokiCanary:
      enabled: false
    ```
