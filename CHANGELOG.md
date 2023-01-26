@@ -6,28 +6,17 @@
 
 ##### Enhancements
 
-* [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` doc.
-* [6360](https://github.com/grafana/loki/pull/6099) **liguozhong**: Hide error message when ctx timeout occurs in s3.getObject
-* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
-
 ##### Fixes
-
-* [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
-
-* [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix multitenant querying.
 
 ##### Changes
 
 #### Promtail
-
-* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
 
 ##### Enhancements
 
 ##### Fixes
 
 ##### Changes
-* [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
 
 #### Fluent Bit
 
@@ -37,30 +26,58 @@
 
 ### Notes
 
-This release was created from a branch starting at commit FIXME but it may also contain backported changes from main.
+### Dependencies
 
-Check the history of the branch FIXME.
+## 2.7.2 (2023-01-25)
+
+#### Loki
+
+##### Fixes
+
+* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix bug in validation of `pattern` and `regexp` parsers where missing or empty parameters caused panics.
+* [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: Fix bugs in processing delete requests with line filters.
+* [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix bug in multi-tenant querying.
+
+### Notes
+
+This release was created from a branch starting at commit `706c22e9e40b0156031f214b63dc6ed4e210abc1` but it may also contain backported changes from main.
+
+Check the history of the branch `release-2.7.x`.
 
 ### Dependencies
 
-* Go Version: 1.19
+* Go version: 1.19.5
 
-## 2.7.1
+## 2.7.1 (2022-12-09)
 
 #### Loki
 
 ##### Enhancements
 
+* [6360](https://github.com/grafana/loki/pull/6360) **liguozhong**: Hide error message when context timeout occurs in `s3.getObject`
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize filter to easily parse colored logs.
 * [7804](https://github.com/grafana/loki/pull/7804) **sandeepsukhani**: Use grpc for communicating with compactor for query time filtering of data requested for deletion.
+* [7684](https://github.com/grafana/loki/pull/7684) **kavirajk**: Add missing `embedded-cache` config under `cache_config` reference documentation.
 
 ##### Fixes
 
-* [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix validation for pattern and regexp parsers.
 * [7453](https://github.com/grafana/loki/pull/7453) **periklis**: Add single compactor http client for delete and gennumber clients
 
 ##### Changes
 
 * [7877](https://github.com/grafana/loki/pull/7877)A **trevorwhitney**: Due to a known bug with experimental new delete mode feature, the default delete mode has been changed to `filter-only`.
+
+#### Promtail
+
+##### Enhancements
+
+* [7602](https://github.com/grafana/loki/pull/7602) **vmax**: Add decolorize stage to Promtail to easily parse colored logs.
+
+##### Fixes
+
+##### Changes
+
+* [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
 
 ## 2.7.0
 
