@@ -18,7 +18,7 @@
 {{- fail "Cannot run more than 1 Single Binary replica without an object storage backend."}}
 {{- end }}
 
-{{- if and (eq (include "loki.isUsingObjectStorage" .) "false") (or (gt (int .Values.backend.replicas) 0) (gt (int (.Values.read.replicas) 0)) (gt (int .Values.write.replicas) 0)) }}
+{{- if and (eq (include "loki.isUsingObjectStorage" .) "false") (or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0)) }}
 {{- fail "Cannot run Scalable targets (backend, read, write) without an object storage backend."}}
 {{- end }}
 
