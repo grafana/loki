@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 
-	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -64,23 +63,23 @@ func (wrt *Writer) Stop() {
 	wrt.wal.Close()
 }
 
-// entryWriter writes api.Entry to a WAL, keeping in memory a single ingester.WALRecord object that's reused
+// entryWriter writes api.Entry to a WAL, keeping in memory a single WALRecord object that's reused
 // across every write.
 type entryWriter struct {
-	reusableWALRecord *ingester.WALRecord
+	reusableWALRecord *WALRecord
 }
 
 // newEntryWriter creates a new entryWriter.
 func newEntryWriter() *entryWriter {
 	return &entryWriter{
-		reusableWALRecord: &ingester.WALRecord{
-			RefEntries: make([]ingester.RefEntries, 0, 1),
+		reusableWALRecord: &WALRecord{
+			RefEntries: make([]RefEntries, 0, 1),
 			Series:     make([]record.RefSeries, 0, 1),
 		},
 	}
 }
 
-// WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same ingester.WALRecord object for every
+// WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same WALRecord object for every
 // write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
 func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
 	// Reset wal record slices
@@ -100,7 +99,7 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
 	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
 
 	// Append the entry to an already existing stream (if any)
-	ew.reusableWALRecord.RefEntries = append(ew.reusableWALRecord.RefEntries, ingester.RefEntries{
+	ew.reusableWALRecord.RefEntries = append(ew.reusableWALRecord.RefEntries, RefEntries{
 		Ref: chunks.HeadSeriesRef(fp),
 		Entries: []logproto.Entry{
 			entry.Entry,

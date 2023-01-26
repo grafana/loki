@@ -8,18 +8,16 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-
-	"github.com/grafana/loki/pkg/ingester"
 )
 
 var (
-	recordPool = ingester.NewRecordPool()
+	recordPool = NewRecordPool()
 )
 
 // WAL is an interface that allows us to abstract ourselves from Prometheus WAL implementation.
 type WAL interface {
 	// Log marshals the records and writes it into the WAL.
-	Log(*ingester.WALRecord) error
+	Log(*WALRecord) error
 
 	Delete() error
 	Sync() error
@@ -61,7 +59,7 @@ func (w *wrapper) Delete() error {
 	return err
 }
 
-func (w *wrapper) Log(record *ingester.WALRecord) error {
+func (w *wrapper) Log(record *WALRecord) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil
 	}
@@ -80,7 +78,7 @@ func (w *wrapper) Log(record *ingester.WALRecord) error {
 		buf = buf[:0]
 	}
 	if len(record.RefEntries) > 0 {
-		buf = record.EncodeEntries(ingester.CurrentEntriesRec, buf)
+		buf = record.EncodeEntries(CurrentEntriesRec, buf)
 		if err := w.wal.Log(buf); err != nil {
 			return err
 		}
