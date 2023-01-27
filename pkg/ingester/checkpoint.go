@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

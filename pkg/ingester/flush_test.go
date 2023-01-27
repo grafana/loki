@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"

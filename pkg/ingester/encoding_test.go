@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
