@@ -8,6 +8,8 @@
 
 ##### Fixes
 
+* [8120](https://github.com/grafana/loki/pull/8232) **TaehyunHwang** Fix version info issue that shows wrong version.
+
 ##### Changes
 
 #### Promtail
