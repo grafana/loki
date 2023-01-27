@@ -1,8 +1,9 @@
 ---
 title: "0002: Remote Rule Evaluation"
+description: "Remote Rule Evaluation"
 ---
 
-# Remote Rule Evaluation
+# 0002: Remote Rule Evaluation
 
 **Author:** Danny Kopping (danny.kopping@grafana.com)
 
@@ -59,7 +60,7 @@ Loki's current `ruler` implementation is sufficient for small installations runn
 
 ### Proposal 1: Remote Execution
 
-Taking inspiration from [Grafana Mimir's implementation](https://grafana.com/docs/mimir/latest/operators-guide/architecture/components/ruler/#remote), the `ruler` would be configured to send its rule query to the `query-frontend` component over gRPC. The `querier` instances receiving queries from the `query-frontend` (or optionally via the `query-scheduler`) will handle the request and send the responses to the `query-frontend` and be combined. The `ruler` will receive and process these responses as if the query had been executed locally.
+Taking inspiration from [Grafana Mimir's implementation](/docs/mimir/latest/operators-guide/architecture/components/ruler/#remote), the `ruler` would be configured to send its rule query to the `query-frontend` component over gRPC. The `querier` instances receiving queries from the `query-frontend` (or optionally via the `query-scheduler`) will handle the request and send the responses to the `query-frontend` and be combined. The `ruler` will receive and process these responses as if the query had been executed locally.
 
 **Pros:**
 - Takes full advantage of Loki's query acceleration techniques, leading to faster and more efficient rule evaluation
