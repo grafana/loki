@@ -2,12 +2,13 @@ package ingester
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"

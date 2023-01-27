@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 
 	"github.com/weaveworks/common/httpgrpc"
 

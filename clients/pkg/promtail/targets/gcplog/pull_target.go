@@ -1,17 +1,18 @@
 package gcplog
 
 import (
-	"cloud.google.com/go/pubsub"
 	"context"
+	"io"
+	"sync"
+	"time"
+
+	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"google.golang.org/api/option"
-	"io"
-	"sync"
-	"time"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"

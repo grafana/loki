@@ -2,9 +2,10 @@ package ingester
 
 import (
 	"flag"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"

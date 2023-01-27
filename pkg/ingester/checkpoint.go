@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"

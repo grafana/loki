@@ -2,13 +2,14 @@ package ingester
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"os"
 	"sort"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"

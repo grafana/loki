@@ -2,12 +2,14 @@ package wal
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
+	"testing"
+	"time"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_Encoding_Series(t *testing.T) {

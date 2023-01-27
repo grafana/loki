@@ -3,11 +3,12 @@ package ingester
 import (
 	"context"
 	fmt "fmt"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
