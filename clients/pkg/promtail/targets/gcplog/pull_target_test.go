@@ -2,12 +2,11 @@ package gcplog
 
 import (
 	"context"
+	"github.com/grafana/dskit/backoff"
+	"github.com/pkg/errors"
 	"io"
 	"testing"
 	"time"
-
-	"github.com/grafana/dskit/backoff"
-	"github.com/pkg/errors"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/log"
