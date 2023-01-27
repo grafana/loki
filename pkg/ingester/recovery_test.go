@@ -2,13 +2,11 @@ package ingester
 
 import (
 	"context"
-	fmt "fmt"
+	"fmt"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/grafana/loki/pkg/ingester/wal"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,6 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"

@@ -1,8 +1,7 @@
 package ingester
 
 import (
-	"github.com/grafana/loki/pkg/ingester/wal"
-	io "io"
+	"io"
 	"runtime"
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"golang.org/x/net/context"
 
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )

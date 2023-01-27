@@ -8,17 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/go-kit/log/level"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
