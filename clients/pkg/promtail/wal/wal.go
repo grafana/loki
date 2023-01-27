@@ -2,6 +2,7 @@ package wal
 
 import (
 	"fmt"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"os"
 
 	"github.com/go-kit/log"
@@ -11,13 +12,13 @@ import (
 )
 
 var (
-	recordPool = NewRecordPool()
+	recordPool = wal.NewRecordPool()
 )
 
 // WAL is an interface that allows us to abstract ourselves from Prometheus WAL implementation.
 type WAL interface {
 	// Log marshals the records and writes it into the WAL.
-	Log(*Record) error
+	Log(*wal.Record) error
 
 	Delete() error
 	Sync() error
@@ -59,7 +60,7 @@ func (w *wrapper) Delete() error {
 	return err
 }
 
-func (w *wrapper) Log(record *Record) error {
+func (w *wrapper) Log(record *wal.Record) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil
 	}
@@ -78,7 +79,7 @@ func (w *wrapper) Log(record *Record) error {
 		buf = buf[:0]
 	}
 	if len(record.RefEntries) > 0 {
-		buf = record.EncodeEntries(CurrentEntriesRec, buf)
+		buf = record.EncodeEntries(wal.CurrentEntriesRec, buf)
 		if err := w.wal.Log(buf); err != nil {
 			return err
 		}

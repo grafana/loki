@@ -2,20 +2,17 @@ package wal
 
 import (
 	"fmt"
-	"io"
-
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/tsdb/wlog"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/ingester/wal"
+	walUtils "github.com/grafana/loki/pkg/util/wal"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/util"
 )
 
 // ReadWAL will read all entries in the WAL located under dir. Mainly used for testing
 func ReadWAL(dir string) ([]api.Entry, error) {
-	reader, close, err := NewWalReader(dir, -1)
+	reader, close, err := walUtils.NewWalReader(dir, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -25,9 +22,9 @@ func ReadWAL(dir string) ([]api.Entry, error) {
 	seenEntries := []api.Entry{}
 
 	for reader.Next() {
-		var walRec = Record{}
+		var walRec = wal.Record{}
 		bytes := reader.Record()
-		err = DecodeWALRecord(bytes, &walRec)
+		err = wal.DecodeWALRecord(bytes, &walRec)
 		if err != nil {
 			return nil, fmt.Errorf("error decoding wal record: %w", err)
 		}
@@ -59,39 +56,4 @@ func ReadWAL(dir string) ([]api.Entry, error) {
 	}
 
 	return seenEntries, nil
-}
-
-// NewWalReader creates a reader that's able to read all segments in a WAL from startSegment onwards. If startSegment is
-// less than 1, all segments are read.
-func NewWalReader(dir string, startSegment int) (*wlog.Reader, io.Closer, error) {
-	var (
-		segmentReader io.ReadCloser
-		err           error
-	)
-	if startSegment < 0 {
-		segmentReader, err = wlog.NewSegmentsReader(dir)
-		if err != nil {
-			return nil, nil, err
-		}
-	} else {
-		first, last, err := wlog.Segments(dir)
-		if err != nil {
-			return nil, nil, err
-		}
-		if startSegment > last {
-			return nil, nil, errors.New("start segment is beyond the last WAL segment")
-		}
-		if first > startSegment {
-			startSegment = first
-		}
-		segmentReader, err = wlog.NewSegmentsRangeReader(wlog.SegmentRange{
-			Dir:   dir,
-			First: startSegment,
-			Last:  -1, // Till the end.
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	return wlog.NewReader(segmentReader), segmentReader, nil
 }

@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"sort"
 	"sync"
 
@@ -72,14 +73,14 @@ func (wrt *Writer) Stop() {
 // entryWriter writes api.Entry to a WAL, keeping in memory a single Record object that's reused
 // across every write.
 type entryWriter struct {
-	reusableWALRecord *Record
+	reusableWALRecord *wal.Record
 }
 
 // newEntryWriter creates a new entryWriter.
 func newEntryWriter() *entryWriter {
 	return &entryWriter{
-		reusableWALRecord: &Record{
-			RefEntries: make([]RefEntries, 0, 1),
+		reusableWALRecord: &wal.Record{
+			RefEntries: make([]wal.RefEntries, 0, 1),
 			Series:     make([]record.RefSeries, 0, 1),
 		},
 	}
@@ -87,13 +88,13 @@ func newEntryWriter() *entryWriter {
 
 // WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same Record object for every
 // write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
-func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
+func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
 	// Reset wal record slices
 	ew.reusableWALRecord.RefEntries = ew.reusableWALRecord.RefEntries[:0]
 	ew.reusableWALRecord.Series = ew.reusableWALRecord.Series[:0]
 
 	defer func() {
-		err := wal.Log(ew.reusableWALRecord)
+		err := wl.Log(ew.reusableWALRecord)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to write to WAL", "err", err)
 		}
@@ -105,7 +106,7 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wal WAL, logger log.Logger) {
 	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
 
 	// Append the entry to an already existing stream (if any)
-	ew.reusableWALRecord.RefEntries = append(ew.reusableWALRecord.RefEntries, RefEntries{
+	ew.reusableWALRecord.RefEntries = append(ew.reusableWALRecord.RefEntries, wal.RefEntries{
 		Ref: chunks.HeadSeriesRef(fp),
 		Entries: []logproto.Entry{
 			entry.Entry,
