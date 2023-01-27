@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"net/http"
 	"sync"
 	"time"
@@ -149,7 +150,7 @@ func (s *stream) Push(
 	entries []logproto.Entry,
 	// WAL record to add push contents to.
 	// May be nil to disable this functionality.
-	record *WALRecord,
+	record *wal.WALRecord,
 	// Counter used in WAL replay to avoid duplicates.
 	// If this is non-zero, the stream will reject entries
 	// with a counter value less than or equal to it's own.
@@ -250,7 +251,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.Entry) {
+func (s *stream) recordAndSendToTailers(record *wal.WALRecord, entries []logproto.Entry) {
 	if len(entries) == 0 {
 		return
 	}
