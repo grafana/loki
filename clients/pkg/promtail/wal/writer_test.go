@@ -2,6 +2,7 @@ package wal
 
 import (
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +16,37 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func TestWriter(t *testing.T) {
+type savingEntryHandler struct {
+	entries  chan api.Entry
+	Received []api.Entry
+	wg       sync.WaitGroup
+}
+
+func newSavingEntryHandler() *savingEntryHandler {
+	eh := &savingEntryHandler{
+		entries:  make(chan api.Entry),
+		Received: []api.Entry{},
+	}
+	eh.wg.Add(1)
+	go func() {
+		for e := range eh.entries {
+			eh.Received = append(eh.Received, e)
+		}
+		eh.wg.Done()
+	}()
+	return eh
+}
+
+func (x *savingEntryHandler) Chan() chan<- api.Entry {
+	return x.entries
+}
+
+func (x *savingEntryHandler) Stop() {
+	close(x.entries)
+	x.wg.Wait()
+}
+
+func TestWriter_EntriesAreWrittenToWALAndForwardedToClients(t *testing.T) {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	dir := t.TempDir()
 	wl, err := New(Config{
@@ -24,7 +55,9 @@ func TestWriter(t *testing.T) {
 	}, logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	writer := NewWriter(wl, logger)
+	eh := newSavingEntryHandler()
+
+	writer := NewWriter(wl, logger, eh)
 	defer func() {
 		writer.Stop()
 	}()
@@ -51,8 +84,12 @@ func TestWriter(t *testing.T) {
 
 	require.NoError(t, wl.Sync(), "failed to sync wal")
 
+	// assert over WAL entries
 	readEntries, err := ReadWAL(dir)
 	require.NoError(t, err)
 	require.Len(t, readEntries, len(lines), "written lines and seen differ")
 	require.Equal(t, testLabels, readEntries[0].Labels)
+
+	// assert over entries written to client
+	require.Len(t, eh.Received, len(lines), "count of entries received in client differ")
 }

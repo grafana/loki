@@ -18,8 +18,7 @@ import (
 // work, tracked in https://github.com/grafana/loki/issues/8197, this Manager will be responsible for instantiating all client
 // types: Logger, Multi and WAL.
 type Manager struct {
-	clientChannelHandler api.EntryHandler
-	clients              []Client
+	clients []Client
 
 	entries chan api.Entry
 	once    sync.Once
@@ -30,12 +29,6 @@ type Manager struct {
 // NewManager creates a new Manager
 func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int, maxLineSizeTruncate bool, reg prometheus.Registerer, walCfg wal.Config, clientCfgs ...Config) (*Manager, error) {
 	// TODO: refactor this to instantiate all clients types
-	pWAL, err := wal.New(walCfg, logger, reg)
-	if err != nil {
-		return nil, err
-	}
-	walWriter := wal.NewWriter(pWAL, logger)
-
 	var fake struct{}
 
 	if len(clientCfgs) == 0 {
@@ -59,9 +52,8 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 	}
 
 	manager := &Manager{
-		clientChannelHandler: walWriter,
-		clients:              clients,
-		entries:              make(chan api.Entry),
+		clients: clients,
+		entries: make(chan api.Entry),
 	}
 	manager.start()
 	return manager, nil
@@ -73,9 +65,6 @@ func (m *Manager) start() {
 		defer m.wg.Done()
 		// keep reading received entries
 		for e := range m.entries {
-			// first write to WAL
-			m.clientChannelHandler.Chan() <- e
-
 			// then fanout to every remote write client
 			for _, c := range m.clients {
 				c.Chan() <- e
@@ -92,6 +81,7 @@ func (m *Manager) StopNow() {
 
 func (m *Manager) Name() string {
 	var sb strings.Builder
+	// name contains wal since manager is used as client only when WAL enabled for now
 	sb.WriteString("wal:")
 	for i, c := range m.clients {
 		sb.WriteString(c.Name())
@@ -110,8 +100,6 @@ func (m *Manager) Stop() {
 	// first stop the receiving channel
 	m.once.Do(func() { close(m.entries) })
 	m.wg.Wait()
-	// wait for WAL to finish writing entries
-	m.clientChannelHandler.Stop()
 	// close clients
 	for _, c := range m.clients {
 		c.Stop()

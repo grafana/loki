@@ -16,7 +16,9 @@ import (
 )
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
-// writes incoming entries to a WAL
+// writes incoming entries to a WAL.
+// Until the WAL reader side is implemented, the WAL writer will also be responsible for forwarding log entries to the
+// remote write clients. This functionality will be removed after.
 type Writer struct {
 	entries     chan api.Entry
 	log         log.Logger
@@ -24,16 +26,18 @@ type Writer struct {
 	once        sync.Once
 	wal         WAL
 	entryWriter *entryWriter
+	toClients   api.EntryHandler
 }
 
-// NewWriter creates a new Writer
-func NewWriter(wal WAL, logger log.Logger) *Writer {
+// NewWriter creates a new Writer.
+func NewWriter(wal WAL, logger log.Logger, toClients api.EntryHandler) *Writer {
 	wrt := &Writer{
 		entries:     make(chan api.Entry),
 		log:         logger,
 		wg:          sync.WaitGroup{},
 		wal:         wal,
 		entryWriter: newEntryWriter(),
+		toClients:   toClients,
 	}
 	wrt.start()
 	return wrt
@@ -45,6 +49,8 @@ func (wrt *Writer) start() {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
 			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
+			// Also propagate to clients, until WAL reader side is implemented
+			wrt.toClients.Chan() <- e
 		}
 	}()
 }

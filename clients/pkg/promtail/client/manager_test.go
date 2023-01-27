@@ -62,7 +62,7 @@ func newServerAncClientConfig(t *testing.T) (Config, chan receivedReq, closer) {
 	})
 }
 
-func TestManager_WALEnabled_EntriesAreWrittenToWALAndClients(t *testing.T) {
+func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 	walDir := t.TempDir()
 	reg := prometheus.NewRegistry()
 	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
@@ -96,14 +96,6 @@ func TestManager_WALEnabled_EntriesAreWrittenToWALAndClients(t *testing.T) {
 	manager.Stop()
 	closeServer.Close()
 
-	// assert over entries written to WAL
-	readEntries, err := wal.ReadWAL(walDir)
-	require.NoError(t, err, "error reading wal entries")
-	require.Len(t, readEntries, len(lines))
-	for _, entry := range readEntries {
-		require.Equal(t, testLabels, entry.Labels)
-		require.Contains(t, lines, entry.Line)
-	}
 	// assert over rw client received entries
 	rwSeenEntriesCount := 0
 	for req := range rwReceivedReqs {
