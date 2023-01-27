@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -57,13 +59,15 @@ type RulesLimits interface {
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
+func engineQueryFunc(cfg Config, engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string, logger log.Logger, rng *rand.Rand) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
 		if !checker.isReady(userID) {
 			return nil, errNotReady
 		}
+
+		applyJitter(rng, cfg.EvaluationJitter, log.With(logger, "query_hash", logql.HashQueryString(qs)))
 
 		adjusted := t.Add(-overrides.EvaluationDelay(userID))
 		params := logql.NewLiteralParams(
@@ -94,6 +98,19 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyC
 			return nil, errors.New("rule result is not a vector or scalar")
 		}
 	})
+}
+
+// applyJitter sleeps up to a maximum of EvaluationJitter seconds to spread out evaluations to prevent thundering herd
+func applyJitter(rng *rand.Rand, jitter time.Duration, logger log.Logger) float64 {
+	if jitter <= 0 {
+		return 0
+	}
+
+	j := rng.Float64() * jitter.Seconds()
+	level.Debug(logger).Log("msg", "applying rule evaluation jitter", "seconds", fmt.Sprintf("%.2f", j))
+	time.Sleep(time.Duration(j * float64(time.Second)))
+
+	return j
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
@@ -147,7 +164,8 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		queryFunc := engineQueryFunc(cfg, engine, overrides, registry, userID, logger, rng)
 		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{

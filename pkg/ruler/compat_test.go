@@ -3,18 +3,20 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -304,11 +306,23 @@ func TestNonMetricQuery(t *testing.T) {
 	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.Nil(t, err)
 
-	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log.Logger)
-	queryFunc := engineQueryFunc(engine, overrides, fakeChecker{}, "fake")
+	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, util_log.Logger)
+	queryFunc := engineQueryFunc(Config{}, engine, overrides, fakeChecker{}, "fake", log.NewNopLogger(), rand.New(rand.NewSource(time.Now().UnixNano())))
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")
+}
+
+func TestRuleEvalJitter(t *testing.T) {
+	const jitter = 2 * time.Second
+
+	rng := rand.New(rand.NewSource(1234))
+
+	then := time.Now()
+	j := applyJitter(rng, jitter, log.NewNopLogger())
+	since := time.Since(then)
+
+	require.GreaterOrEqualf(t, since.Seconds(), j, "should have slept for at least the returned random jitter %.2f", j)
 }
 
 type FakeQuerier struct{}

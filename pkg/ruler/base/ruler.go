@@ -103,6 +103,8 @@ type Config struct {
 	// Minimum amount of time to wait before resending an alert to Alertmanager.
 	ResendDelay time.Duration `yaml:"resend_delay"`
 
+	EvaluationJitter time.Duration `yaml:"evaluation_jitter"`
+
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`
 	ShardingStrategy string        `yaml:"sharding_strategy"`
@@ -183,6 +185,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than the grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
+	// TODO(dannyk): set this to a non-zero value once "by-rule" sharding is enabled by default
+	f.DurationVar(&cfg.EvaluationJitter, "ruler.evaluation-jitter", 0, "Upper bound of random duration to wait before rule evaluation; this is to avoid contention during concurrent execution of rules. This is most relevant when using the 'by-ruler' sharding algorithm. Set 0 to disable.")
 
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
