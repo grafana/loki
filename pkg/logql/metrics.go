@@ -114,7 +114,7 @@ func RecordRangeAndInstantQueryMetrics(
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
-		"query_hash", hashedQuery(p.Query()),
+		"query_hash", HashQueryString(p.Query()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -164,7 +164,7 @@ func RecordRangeAndInstantQueryMetrics(
 	recordUsageStats(queryType, stats)
 }
 
-func hashedQuery(query string) uint32 {
+func HashQueryString(query string) uint32 {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(query))
 	return h.Sum32()

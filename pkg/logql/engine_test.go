@@ -2526,7 +2526,7 @@ func TestHashingStability(t *testing.T) {
 		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
 	} {
 		params.qs = test.qs
-		expectedQueryHash := hashedQuery(test.qs)
+		expectedQueryHash := HashQueryString(test.qs)
 
 		// check that both places will end up having the same query hash, even though they're emitting different log lines.
 		require.Regexp(t,
