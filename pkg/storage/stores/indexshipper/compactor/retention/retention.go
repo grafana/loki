@@ -106,6 +106,11 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, in
 	}()
 	level.Debug(logger).Log("msg", "starting to process table")
 
+	interval := ExtractIntervalFromTableName(tableName)
+	mayHaveExpired := t.expiration.IntervalMayHaveExpiredChunks(interval, userID)
+
+	level.Debug(logger).Log("msg", "retention checked", "user_id", userID, "may_have_expired", mayHaveExpired, "begin", interval.Start.String(), "end", interval.End.String())
+
 	empty, modified, err := t.markTable(ctx, tableName, userID, indexProcessor, logger)
 	if err != nil {
 		status = statusFailure
