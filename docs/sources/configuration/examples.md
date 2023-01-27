@@ -334,7 +334,7 @@ storage_config:
       idle_conn_timeout: 90s
       response_header_timeout: 0s
       insecure_skip_verify: false
-    s3forcepathstyle: true
+    s3ForcePathStyle: true
     
 ```
 
