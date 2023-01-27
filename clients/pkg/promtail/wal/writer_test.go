@@ -49,15 +49,14 @@ func (x *savingEntryHandler) Stop() {
 func TestWriter_EntriesAreWrittenToWALAndForwardedToClients(t *testing.T) {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	dir := t.TempDir()
-	wl, err := New(Config{
-		Dir:     dir,
-		Enabled: true,
-	}, logger, prometheus.NewRegistry())
-	require.NoError(t, err)
 
 	eh := newSavingEntryHandler()
 
-	writer := NewWriter(wl, logger, eh)
+	writer, err := NewWriter(Config{
+		Dir:     dir,
+		Enabled: true,
+	}, logger, prometheus.NewRegistry(), eh)
+	require.NoError(t, err)
 	defer func() {
 		writer.Stop()
 	}()
@@ -82,7 +81,8 @@ func TestWriter_EntriesAreWrittenToWALAndForwardedToClients(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, wl.Sync(), "failed to sync wal")
+	// accessing the WAL inside, just for testing!
+	require.NoError(t, writer.wal.Sync(), "failed to sync wal")
 
 	// assert over WAL entries
 	readEntries, err := ReadWAL(dir)

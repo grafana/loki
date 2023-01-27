@@ -1,9 +1,15 @@
 package wal
 
 import (
+	"fmt"
 	"github.com/grafana/loki/pkg/ingester/wal"
+	"github.com/prometheus/client_golang/prometheus"
+	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -14,6 +20,10 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
+)
+
+const (
+	minimumCleanSegmentsEvery = time.Second
 )
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
@@ -28,30 +38,68 @@ type Writer struct {
 	wal         WAL
 	entryWriter *entryWriter
 	toClients   api.EntryHandler
+
+	closeCleaner chan struct{}
 }
 
 // NewWriter creates a new Writer.
-func NewWriter(wal WAL, logger log.Logger, toClients api.EntryHandler) *Writer {
-	wrt := &Writer{
-		entries:     make(chan api.Entry),
-		log:         logger,
-		wg:          sync.WaitGroup{},
-		wal:         wal,
-		entryWriter: newEntryWriter(),
-		toClients:   toClients,
+func NewWriter(walCfg Config, logger log.Logger, reg prometheus.Registerer, toClients api.EntryHandler) (*Writer, error) {
+	// Start WAL
+	wl, err := New(Config{
+		Dir:     walCfg.Dir,
+		Enabled: true,
+	}, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("error starting WAL: %w", err)
 	}
-	wrt.start()
-	return wrt
+
+	wrt := &Writer{
+		entries:      make(chan api.Entry),
+		log:          logger,
+		wg:           sync.WaitGroup{},
+		wal:          wl,
+		entryWriter:  newEntryWriter(),
+		toClients:    toClients,
+		closeCleaner: make(chan struct{}),
+	}
+
+	wrt.start(walCfg.MaxSegmentAge)
+	return wrt, nil
 }
 
-func (wrt *Writer) start() {
+func (wrt *Writer) start(maxSegmentAge time.Duration) {
 	wrt.wg.Add(1)
+	// main WAL writer routine
 	go func() {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
 			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
 			// Also propagate to clients, until WAL reader side is implemented
 			wrt.toClients.Chan() <- e
+		}
+	}()
+	// WAL cleanup routine that cleans old segments
+	wrt.wg.Add(1)
+	go func() {
+		defer wrt.wg.Done()
+		// By cleaning every 10th of the configured threshold for considering a segment old, we are allowing a maximum slip
+		// of 10%. If the configured time is 1 hour, that'd be 6 minutes.
+		triggerEvery := maxSegmentAge / 10
+		if triggerEvery < minimumCleanSegmentsEvery {
+			triggerEvery = minimumCleanSegmentsEvery
+		}
+		trigger := time.NewTicker(triggerEvery)
+		for {
+			select {
+			case <-trigger.C:
+				if err := wrt.cleanSegments(maxSegmentAge); err != nil {
+					level.Error(wrt.log).Log("msg", "Error cleaning old segments", "err", err)
+				}
+				break
+			case <-wrt.closeCleaner:
+				trigger.Stop()
+				return
+			}
 		}
 	}()
 }
@@ -68,6 +116,31 @@ func (wrt *Writer) Stop() {
 	wrt.wg.Wait()
 	// Close WAL to finalize all pending writes
 	wrt.wal.Close()
+}
+
+func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
+	maxModifiedAt := time.Now().Add(-maxAge)
+	walDir := wrt.wal.Dir()
+	segments, err := listSegments(walDir)
+	if err != nil {
+		return fmt.Errorf("error reading segments in wal directory: %w", err)
+	}
+	// Only clean if there's more than one segment
+	if len(segments) <= 1 {
+		return nil
+	}
+	for _, segment := range segments {
+		// TODO: Should we avoid deleting the last segment as well? Maybe the reader side is far behind, even though it hasn't
+		// been written in the last hour
+		if segment.lastModified.Before(maxModifiedAt) {
+			// segment is older than allowed age, cleaning up
+			if err := os.Remove(filepath.Join(walDir, segment.name)); err != nil {
+				level.Error(wrt.log).Log("msg", "Error old wal segment", "err", err, "segmentNum", segment.number)
+			}
+			level.Debug(wrt.log).Log("msg", "Deleted old wal segmenet", "segmentNum", segment.number)
+		}
+	}
+	return nil
 }
 
 // entryWriter writes api.Entry to a WAL, keeping in memory a single Record object that's reused
@@ -116,4 +189,39 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
 		Ref:    chunks.HeadSeriesRef(fp),
 		Labels: lbs,
 	})
+}
+
+type segmentRef struct {
+	name         string
+	number       int
+	lastModified time.Time
+}
+
+func listSegments(dir string) (refs []segmentRef, err error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	// the following will attempt to get segments info in a best effort manner
+	for _, f := range files {
+		fn := f.Name()
+		k, err := strconv.Atoi(fn)
+		if err != nil {
+			continue
+		}
+		fileInfo, err := f.Info()
+		if err != nil {
+			continue
+		}
+		refs = append(refs, segmentRef{name: fn, number: k, lastModified: fileInfo.ModTime()})
+	}
+	sort.Slice(refs, func(i, j int) bool {
+		return refs[i].number < refs[j].number
+	})
+	for i := 0; i < len(refs)-1; i++ {
+		if refs[i].number+1 != refs[i+1].number {
+			return nil, fmt.Errorf("segments are not sequential")
+		}
+	}
+	return refs, nil
 }

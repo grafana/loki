@@ -171,11 +171,10 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 
 	// If WAL is enabled, instantiate the WAL itself, it's writer, and use that as entries sink for all scraping targets
 	if cfg.WAL.Enabled {
-		pWAL, err := wal.New(cfg.WAL, p.logger, p.reg)
+		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg, p.client)
 		if err != nil {
-			return fmt.Errorf("error starting WAL: %w", err)
+			return fmt.Errorf("failed to create wal writer: %w", err)
 		}
-		p.walWriter = wal.NewWriter(pWAL, p.logger, p.client)
 		entriesSink = p.walWriter
 	}
 
