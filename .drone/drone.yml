@@ -1278,7 +1278,7 @@ steps:
   - CURRENT_TAG="v2.6.1"
   - if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG
     is not the latest version of Loki. The latest version is $latest_version" && exit
-    1; fi
+    78; fi
   image: alpine
   name: check-latest-version
   when:
@@ -1286,13 +1286,10 @@ steps:
     - push
 - commands:
   - echo "run updater"
+  depends_on:
+  - check-latest-version
   image: alpine
   name: update-helm-chart
-  when:
-    event:
-    - tag
-    status: success
-    step: check-latest-version
 trigger:
   ref:
   - refs/heads/helm-chart-auto-update
@@ -1702,6 +1699,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 430ab86a414c5d01acc373a81a88a4b64a3db848cfb5c0b6821a5dbb988f27e6
+hmac: 755ffad95501451f5ef54378d09b814a0e9b469d0d643f4a9f794469aa9ef7eb
 
 ...

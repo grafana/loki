@@ -697,16 +697,13 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'git fetch --tags',
           "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)",
           'CURRENT_TAG="v2.6.1"',
-          'if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 1; fi',
+          'if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
         ],
       },
       {
         name: 'update-helm-chart',
         image: 'alpine',
-        when: onTag + {
-          status: 'success',
-          step: 'check-latest-version',
-        },
+        depends_on: ['check-latest-version'],
         commands: [
           'echo "run updater"'
         ],
