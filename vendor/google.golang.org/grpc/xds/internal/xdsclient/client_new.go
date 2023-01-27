@@ -20,6 +20,7 @@ package xdsclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -55,10 +56,14 @@ func NewWithConfig(config *bootstrap.Config) (XDSClient, error) {
 
 // newWithConfig returns a new xdsClient with the given config.
 func newWithConfig(config *bootstrap.Config, watchExpiryTimeout time.Duration, idleAuthorityDeleteTimeout time.Duration) (*clientImpl, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &clientImpl{
 		done:               grpcsync.NewEvent(),
 		config:             config,
 		watchExpiryTimeout: watchExpiryTimeout,
+		serializer:         newCallbackSerializer(ctx),
+		serializerClose:    cancel,
+		resourceTypes:      newResourceTypeRegistry(),
 		authorities:        make(map[string]*authority),
 		idleAuthorities:    cache.NewTimeoutCache(idleAuthorityDeleteTimeout),
 	}
