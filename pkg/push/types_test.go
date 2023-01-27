@@ -1,4 +1,4 @@
-package logproto
+package push
 
 import (
 	"testing"

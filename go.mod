@@ -15,7 +15,7 @@ require (
 	github.com/Shopify/sarama v1.38.1
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/alicebob/miniredis/v2 v2.30.0
-	github.com/aws/aws-sdk-go v1.44.159
+	github.com/aws/aws-sdk-go v1.44.187
 	github.com/baidubce/bce-sdk-go v0.9.141
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/buger/jsonparser v1.1.1
@@ -31,7 +31,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fatih/color v1.13.0
-	github.com/felixge/fgprof v0.9.2
+	github.com/felixge/fgprof v0.9.3
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
@@ -103,7 +103,7 @@ require (
 	golang.org/x/sys v0.4.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.108.0
-	google.golang.org/grpc v1.51.0
+	google.golang.org/grpc v1.52.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -114,6 +114,7 @@ require (
 require (
 	github.com/Azure/go-autorest/autorest v0.11.28
 	github.com/fsnotify/fsnotify v1.6.0
+	github.com/grafana/loki/pkg/push v0.0.0-00010101000000-000000000000
 	github.com/heroku/x v0.0.55
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
@@ -324,3 +325,5 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 
 // Insist on the optimised version of grafana/regexp
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+
+replace github.com/grafana/loki/pkg/push => ./pkg/push

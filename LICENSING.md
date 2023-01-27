@@ -13,6 +13,7 @@ clients/
 pkg/logproto/
 pkg/loghttp/
 pkg/logqlmodel/
+pkg/push
 pkg/util
 production/
 tools/

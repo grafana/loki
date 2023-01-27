@@ -520,6 +520,8 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
+    # -- Alternative namespace to create PrometheusRule resources in
+    namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
