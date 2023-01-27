@@ -35,6 +35,9 @@ func NewRecordPool() *ResettingPool {
 func (p *ResettingPool) GetRecord() *Record {
 	rec := p.rPool.Get().(*Record)
 	rec.Reset()
+	for _, ref := range rec.RefEntries {
+		p.PutEntries(ref.Entries)
+	}
 	return rec
 }
 

@@ -12,6 +12,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+var (
+	recordPool = NewRecordPool()
+)
+
 func Test_Encoding_Series(t *testing.T) {
 	record := &Record{
 		entryIndexMap: make(map[uint64]int),
@@ -38,7 +42,7 @@ func Test_Encoding_Series(t *testing.T) {
 
 	decoded := recordPool.GetRecord()
 
-	err := DecodeWALRecord(buf, decoded)
+	err := DecodeRecord(buf, decoded)
 	require.Nil(t, err)
 
 	// Since we use a pool, there can be subtle differentiations between nil slices and len(0) slices.
@@ -131,7 +135,7 @@ func Test_Encoding_Entries(t *testing.T) {
 	} {
 		decoded := recordPool.GetRecord()
 		buf := tc.rec.EncodeEntries(tc.version, nil)
-		err := DecodeWALRecord(buf, decoded)
+		err := DecodeRecord(buf, decoded)
 		require.Nil(t, err)
 		require.Equal(t, tc.rec, decoded)
 
@@ -199,6 +203,6 @@ func Benchmark_DecodeWAL(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		require.NoError(b, DecodeWALRecord(buf, rec))
+		require.NoError(b, DecodeRecord(buf, rec))
 	}
 }

@@ -11,11 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
-var (
-	// shared pool for WALRecords and []logproto.Entries
-	recordPool = NewRecordPool()
-)
-
 // RecordType represents the type of the WAL/Checkpoint record.
 type RecordType byte
 
@@ -34,7 +29,7 @@ const (
 
 // The current type of Entries that this distribution writes.
 // Loki can read in a backwards compatible manner, but will write the newest variant.
-const CurrentEntriesRec RecordType = WALRecordEntriesV2
+const CurrentEntriesRec = WALRecordEntriesV2
 
 // Record is a struct combining the series and samples record.
 type Record struct {
@@ -58,9 +53,6 @@ func (r *Record) Reset() {
 		r.Series = r.Series[:0]
 	}
 
-	for _, ref := range r.RefEntries {
-		recordPool.PutEntries(ref.Entries)
-	}
 	r.RefEntries = r.RefEntries[:0]
 	r.entryIndexMap = make(map[uint64]int)
 }
@@ -189,7 +181,7 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 	return nil
 }
 
-func DecodeWALRecord(b []byte, walRec *Record) (err error) {
+func DecodeRecord(b []byte, walRec *Record) (err error) {
 	var (
 		userID  string
 		dec     record.Decoder
