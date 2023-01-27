@@ -55,16 +55,16 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 type WAL interface {
 	Start()
 	// Log marshalls the records and writes it into the WAL.
-	Log(*wal.WALRecord) error
+	Log(*wal.Record) error
 	// Stop stops all the WAL operations.
 	Stop() error
 }
 
 type noopWAL struct{}
 
-func (noopWAL) Start()                   {}
-func (noopWAL) Log(*wal.WALRecord) error { return nil }
-func (noopWAL) Stop() error              { return nil }
+func (noopWAL) Start()                {}
+func (noopWAL) Log(*wal.Record) error { return nil }
+func (noopWAL) Stop() error           { return nil }
 
 type walWrapper struct {
 	cfg        WALConfig
@@ -103,7 +103,7 @@ func (w *walWrapper) Start() {
 	go w.run()
 }
 
-func (w *walWrapper) Log(record *wal.WALRecord) error {
+func (w *walWrapper) Log(record *wal.Record) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil
 	}

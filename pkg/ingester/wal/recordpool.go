@@ -16,7 +16,7 @@ func NewRecordPool() *ResettingPool {
 	return &ResettingPool{
 		rPool: &sync.Pool{
 			New: func() interface{} {
-				return &WALRecord{}
+				return &Record{}
 			},
 		},
 		ePool: &sync.Pool{
@@ -32,13 +32,13 @@ func NewRecordPool() *ResettingPool {
 	}
 }
 
-func (p *ResettingPool) GetRecord() *WALRecord {
-	rec := p.rPool.Get().(*WALRecord)
+func (p *ResettingPool) GetRecord() *Record {
+	rec := p.rPool.Get().(*Record)
 	rec.Reset()
 	return rec
 }
 
-func (p *ResettingPool) PutRecord(r *WALRecord) {
+func (p *ResettingPool) PutRecord(r *Record) {
 	p.rPool.Put(r)
 }
 

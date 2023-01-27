@@ -49,12 +49,12 @@ func (m *MemoryWALReader) Err() error { return nil }
 
 func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 
-func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALReader, []*wal.WALRecord) {
-	var recs []*wal.WALRecord
+func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALReader, []*wal.Record) {
+	var recs []*wal.Record
 	reader := &MemoryWALReader{}
 	for i := 0; i < totalStreams; i++ {
 		user := fmt.Sprintf("%d", i%users)
-		recs = append(recs, &wal.WALRecord{
+		recs = append(recs, &wal.Record{
 			UserID: user,
 			Series: []record.RefSeries{
 				{
@@ -76,7 +76,7 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 				Line:      fmt.Sprintf("%d", j),
 			})
 		}
-		recs = append(recs, &wal.WALRecord{
+		recs = append(recs, &wal.Record{
 			UserID: user,
 			RefEntries: []wal.RefEntries{
 				{

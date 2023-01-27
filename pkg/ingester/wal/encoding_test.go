@@ -13,7 +13,7 @@ import (
 )
 
 func Test_Encoding_Series(t *testing.T) {
-	record := &WALRecord{
+	record := &Record{
 		entryIndexMap: make(map[uint64]int),
 		UserID:        "123",
 		Series: []record.RefSeries{
@@ -51,12 +51,12 @@ func Test_Encoding_Series(t *testing.T) {
 func Test_Encoding_Entries(t *testing.T) {
 	for _, tc := range []struct {
 		desc    string
-		rec     *WALRecord
+		rec     *Record
 		version RecordType
 	}{
 		{
 			desc: "v1",
-			rec: &WALRecord{
+			rec: &Record{
 				entryIndexMap: make(map[uint64]int),
 				UserID:        "123",
 				RefEntries: []RefEntries{
@@ -92,7 +92,7 @@ func Test_Encoding_Entries(t *testing.T) {
 		},
 		{
 			desc: "v2",
-			rec: &WALRecord{
+			rec: &Record{
 				entryIndexMap: make(map[uint64]int),
 				UserID:        "123",
 				RefEntries: []RefEntries{
@@ -146,7 +146,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
 		})
 	}
-	record := &WALRecord{
+	record := &Record{
 		entryIndexMap: make(map[uint64]int),
 		UserID:        "123",
 		RefEntries: []RefEntries{
@@ -178,7 +178,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
 		})
 	}
-	record := &WALRecord{
+	record := &Record{
 		entryIndexMap: make(map[uint64]int),
 		UserID:        "123",
 		RefEntries: []RefEntries{

@@ -230,7 +230,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.WALRecord) (*stream, error) {
+func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
@@ -317,7 +317,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 // getOrCreateStream returns the stream or creates it.
 // It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
 // otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *wal.WALRecord) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
 		return i.createStream(pushReqStream, record)
 	}, nil)

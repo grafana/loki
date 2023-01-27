@@ -67,9 +67,9 @@ func TestChunkFlushingShutdown(t *testing.T) {
 
 type fullWAL struct{}
 
-func (fullWAL) Log(_ *wal.WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
-func (fullWAL) Start()                     {}
-func (fullWAL) Stop() error                { return nil }
+func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
+func (fullWAL) Start()                  {}
+func (fullWAL) Stop() error             { return nil }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
