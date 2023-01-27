@@ -927,6 +927,12 @@ alertmanager_client:
 # CLI flag: -ruler.resend-delay
 [resend_delay: <duration> | default = 1m]
 
+# Upper bound of random duration to wait before rule evaluation; this is to
+# avoid contention during concurrent execution of rules. This is most relevant
+# when using the 'by-ruler' sharding algorithm. Set 0 to disable.
+# CLI flag: -ruler.evaluation-jitter
+[evaluation_jitter: <duration> | default = 0s]
+
 # Distribute rule evaluation using ring backend.
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]
