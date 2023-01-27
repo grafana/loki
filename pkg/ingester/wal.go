@@ -5,13 +5,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
