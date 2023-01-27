@@ -22842,11 +22842,6 @@ type CreateDomainInput struct {
 
 	// The domain name to manage (e.g., example.com).
 	//
-	// You cannot register a new domain name using Lightsail. You must register
-	// a domain name using Amazon Route 53 or another domain name registrar. If
-	// you have already registered your domain, you can enter its name in this parameter
-	// to manage the DNS records for that domain using Lightsail.
-	//
 	// DomainName is a required field
 	DomainName *string `locationName:"domainName" type:"string" required:"true"`
 
@@ -25311,8 +25306,7 @@ type DeleteDiskInput struct {
 	// DiskName is a required field
 	DiskName *string `locationName:"diskName" type:"string" required:"true"`
 
-	// A Boolean value to indicate whether to delete the enabled add-ons for the
-	// disk.
+	// A Boolean value to indicate whether to delete all add-ons for the disk.
 	ForceDeleteAddOns *bool `locationName:"forceDeleteAddOns" type:"boolean"`
 }
 
@@ -25713,8 +25707,7 @@ func (s *DeleteDomainOutput) SetOperation(v *Operation) *DeleteDomainOutput {
 type DeleteInstanceInput struct {
 	_ struct{} `type:"structure"`
 
-	// A Boolean value to indicate whether to delete the enabled add-ons for the
-	// disk.
+	// A Boolean value to indicate whether to delete all add-ons for the instance.
 	ForceDeleteAddOns *bool `locationName:"forceDeleteAddOns" type:"boolean"`
 
 	// The name of the instance to delete.

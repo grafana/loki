@@ -120,7 +120,8 @@ func (c *SchemaClient) setGoogleClientInfo(keyval ...string) {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *SchemaClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
@@ -244,7 +245,8 @@ func NewSchemaClient(ctx context.Context, opts ...option.ClientOption) (*SchemaC
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *schemaGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
 }

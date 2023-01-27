@@ -1,7 +1,8 @@
 ---
 title: drop
+description: drop stage
 ---
-# `drop` stage
+# drop
 
 The `drop` stage is a filtering stage that lets you drop logs based on several options. 
 
@@ -106,7 +107,7 @@ Would drop this log line:
 
 #### Drop old log lines
 
-**NOTE** For `older_than` to work, you must be using the [timestamp](../timestamp) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
+**NOTE** For `older_than` to work, you must be using the [timestamp]({{<relref "timestamp">}}) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
 
 Given the pipeline:
 

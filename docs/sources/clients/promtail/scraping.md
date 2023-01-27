@@ -1,7 +1,8 @@
 ---
 title: Scraping
+description: Promtail Scraping (Service Discovery) 
 ---
-# Promtail Scraping (Service Discovery)
+# Scraping
 
 ## File Target Discovery
 
@@ -222,7 +223,7 @@ Here `project_id` and `subscription` are the only required fields.
 - `project_id` is the GCP project id.
 - `subscription` is the GCP pubsub subscription where Promtail can consume log entries from.
 
-Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
+Before using `gcplog` target, GCP should be [configured]({{<relref "gcplog-cloud">}}) with pubsub subscription to receive logs from.
 
 It also supports `relabeling` and `pipeline` stages just like other targets.
 
@@ -256,7 +257,7 @@ section. This server exposes the single endpoint `POST /gcp/api/v1/push`, respon
 
 For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed
 as part of a larger orchestration service like Kubernetes, which can handle HTTPS traffic through an ingress, or it can be hosted behind
-a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured](../gcplog-cloud)
+a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured]({{<relref "gcplog-cloud">}})
 to send logs to Promtail.
 
 It also supports `relabeling` and `pipeline` stages.
@@ -558,5 +559,5 @@ clients:
   - [ <client_option> ]
 ```
 
-Refer to [`client_config`]({{< relref "configuration#client_config" >}}) from the Promtail
+Refer to [`client_config`]({{< relref "configuration#clients" >}}) from the Promtail
 Configuration reference for all available options.

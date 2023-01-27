@@ -5,9 +5,10 @@ import (
 )
 
 type ClusterSize struct {
-	totalNodes         int
-	totalReadReplicas  int
-	totalWriteReplicas int
+	TotalNodes         int
+	TotalReadReplicas  int
+	TotalWriteReplicas int
+	TotalCoresRequest  float64
 
 	expectedMaxReadThroughputBytesSec float64
 	expectedMaxIngestBytesDay         float64
@@ -23,7 +24,7 @@ const (
 func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) ClusterSize {
 
 	// 1 Petabyte per day is maximum. We use decimal prefix https://en.wikipedia.org/wiki/Binary_prefix
-	bytesDayIngest = math.Min(bytesDayIngest, 1e12)
+	bytesDayIngest = math.Min(bytesDayIngest, 1e15)
 	bytesSecondIngest := bytesDayIngest / 86400
 	numWriteReplicasNeeded := math.Ceil(bytesSecondIngest / nt.writePod.rateBytesSecond)
 
@@ -33,7 +34,7 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 	replicasOnLastNode := math.Mod(numWriteReplicasNeeded, writeReplicasPerNode)
 
 	coresOnLastNode := 0.0
-	if replicasOnLastNode >= 0.0 {
+	if replicasOnLastNode > 0.0 {
 		coresOnLastNode = math.Max(float64(nt.cores)-replicasOnLastNode*nt.writePod.cpuRequest, 0.0)
 	}
 
@@ -44,12 +45,13 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 	readReplicasOnFullyPackedWriteNodes := readReplicasPerNode * fullyWritePackedNodes
 	readReplicasOnPartiallyPackedWriteNodes := math.Floor(coresOnLastNode / nt.readPod.cpuRequest)
 
-	basicQperfReadReplicas := readReplicasOnFullyPackedWriteNodes + readReplicasOnPartiallyPackedWriteNodes
+	// Required read replicase without considering required query performance.
+	baselineReadReplicas := readReplicasOnFullyPackedWriteNodes + readReplicasOnPartiallyPackedWriteNodes
 
 	scaleUp := 0.25
 	additionalReadReplicas := 0.0
 	if qperf != Basic {
-		additionalReadReplicas = basicQperfReadReplicas * scaleUp
+		additionalReadReplicas = baselineReadReplicas * scaleUp
 	}
 
 	readReplicasPerEmptyNode := math.Floor(float64(nt.cores) / nt.readPod.cpuRequest)
@@ -58,15 +60,16 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 	actualNodesAddedForReads := calculateActualReadNodes(additionalNodesNeededForReads)
 	actualReadReplicasAdded := actualNodesAddedForReads * readReplicasPerEmptyNode
 
-	totalReadReplicas := actualReadReplicasAdded + basicQperfReadReplicas
+	totalReadReplicas := actualReadReplicasAdded + baselineReadReplicas
 	totalReadThroughputBytesSec := totalReadReplicas * nt.readPod.rateBytesSecond
 
 	totalNodesNeeded := nodesNeededForWrites + actualNodesAddedForReads
-
+	totalCoresLimit := numWriteReplicasNeeded*nt.writePod.cpuRequest + totalReadReplicas*nt.readPod.cpuRequest
 	return ClusterSize{
-		totalNodes:         int(totalNodesNeeded),
-		totalReadReplicas:  int(totalReadReplicas),
-		totalWriteReplicas: int(numWriteReplicasNeeded),
+		TotalNodes:         int(totalNodesNeeded),
+		TotalReadReplicas:  int(totalReadReplicas),
+		TotalWriteReplicas: int(numWriteReplicasNeeded),
+		TotalCoresRequest:  totalCoresLimit,
 
 		expectedMaxReadThroughputBytesSec: totalReadThroughputBytesSec,
 		expectedMaxIngestBytesDay:         (nt.writePod.rateBytesSecond * numWriteReplicasNeeded) * 86400,

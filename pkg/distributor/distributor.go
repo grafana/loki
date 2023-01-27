@@ -525,7 +525,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 			stream.Entries[i].Line = e.Line[:maxSize]
 
 			truncatedSamples++
-			truncatedBytes = len(e.Line) - maxSize
+			truncatedBytes += len(e.Line) - maxSize
 		}
 	}
 

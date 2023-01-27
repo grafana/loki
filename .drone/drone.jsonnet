@@ -62,7 +62,7 @@ local make(target, container=true, args=[]) = run(target, [
 
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
@@ -74,7 +74,7 @@ local docker(arch, app) = {
 
 local clients_docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
@@ -86,7 +86,7 @@ local clients_docker(arch, app) = {
 
 local docker_operator(arch, operator) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + operator else 'publish-' + operator,
-  image: 'plugins/docker',
+  image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % operator,
     context: 'operator',
@@ -446,7 +446,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.27.0',
+    local build_image_tag = '0.27.1',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -551,6 +551,15 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       make('check-doc', container=false) { depends_on: ['loki'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
+      {
+        name: 'build-docs-website',
+        image: 'grafana/docs-base:latest',
+        commands: [
+          'mkdir -p /hugo/content/docs/loki/latest',
+          'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
+          'cd /hugo && make prod',
+        ],
+      },
     ],
   },
   pipeline('mixins') {
@@ -669,6 +678,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: {
       event: ['pull_request', 'tag'],
     },
+    depends_on+: ['check'],
     image_pull_secrets: [pull_secret.name],
     volumes+: [
       {

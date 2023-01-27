@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
@@ -35,19 +34,19 @@ const (
 	// pipeline stages
 	ReservedLabelTenantID = "__tenant_id__"
 
-	LatencyLabel    = "filename"
-	HostLabel       = "host"
-	ClientLabel     = "client"
-	TenantLabel     = "tenant"
-	DropReasonLabel = "reason"
+	LatencyLabel = "filename"
+	HostLabel    = "host"
+	ClientLabel  = "client"
+	TenantLabel  = "tenant"
+	ReasonLabel  = "reason"
 
-	DropReasonGeneric             = "ingester_error"
-	DropReasonRateLimited         = "rate_limited"
-	DropReasonStreamLimited       = "stream_limited"
-	DropReasongMaxLineSizeLimited = "max_line_size_limited"
+	ReasonGeneric       = "ingester_error"
+	ReasonRateLimited   = "rate_limited"
+	ReasonStreamLimited = "stream_limited"
+	ReasonLineTooLong   = "line_too_long"
 )
 
-var DropReasons = []string{DropReasonGeneric, DropReasonRateLimited, DropReasonStreamLimited}
+var Reasons = []string{ReasonGeneric, ReasonRateLimited, ReasonStreamLimited, ReasonLineTooLong}
 
 var UserAgent = fmt.Sprintf("promtail/%s", build.Version)
 
@@ -57,15 +56,16 @@ type Metrics struct {
 	droppedBytes                 *prometheus.CounterVec
 	sentEntries                  *prometheus.CounterVec
 	droppedEntries               *prometheus.CounterVec
+	mutatedEntries               *prometheus.CounterVec
+	mutatedBytes                 *prometheus.CounterVec
 	requestDuration              *prometheus.HistogramVec
 	batchRetries                 *prometheus.CounterVec
 	countersWithHost             []*prometheus.CounterVec
 	countersWithHostTenant       []*prometheus.CounterVec
 	countersWithHostTenantReason []*prometheus.CounterVec
-	streamLag                    *prometheus.GaugeVec
 }
 
-func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
+func NewMetrics(reg prometheus.Registerer) *Metrics {
 	var m Metrics
 
 	m.encodedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -82,7 +82,7 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "dropped_bytes_total",
 		Help:      "Number of bytes dropped because failed to be sent to the ingester after all retries.",
-	}, []string{HostLabel, TenantLabel, DropReasonLabel})
+	}, []string{HostLabel, TenantLabel, ReasonLabel})
 	m.sentEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_entries_total",
@@ -92,7 +92,17 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		Namespace: "promtail",
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
-	}, []string{HostLabel, TenantLabel, DropReasonLabel})
+	}, []string{HostLabel, TenantLabel, ReasonLabel})
+	m.mutatedEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "mutated_entries_total",
+		Help:      "The total number of log entries that have been mutated.",
+	}, []string{HostLabel, TenantLabel, ReasonLabel})
+	m.mutatedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "mutated_bytes_total",
+		Help:      "The total number of bytes that have been mutated.",
+	}, []string{HostLabel, TenantLabel, ReasonLabel})
 	m.requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
@@ -113,16 +123,8 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 	}
 
 	m.countersWithHostTenantReason = []*prometheus.CounterVec{
-		m.droppedBytes, m.droppedEntries,
+		m.droppedBytes, m.droppedEntries, m.mutatedEntries, m.mutatedBytes,
 	}
-
-	streamLagLabelsMerged := []string{HostLabel, ClientLabel}
-	streamLagLabelsMerged = append(streamLagLabelsMerged, streamLagLabels...)
-	m.streamLag = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "promtail",
-		Name:      "stream_lag_seconds",
-		Help:      "Difference between current time and last batch timestamp for successful sends",
-	}, streamLagLabelsMerged)
 
 	if reg != nil {
 		m.encodedBytes = mustRegisterOrGet(reg, m.encodedBytes).(*prometheus.CounterVec)
@@ -130,9 +132,10 @@ func NewMetrics(reg prometheus.Registerer, streamLagLabels []string) *Metrics {
 		m.droppedBytes = mustRegisterOrGet(reg, m.droppedBytes).(*prometheus.CounterVec)
 		m.sentEntries = mustRegisterOrGet(reg, m.sentEntries).(*prometheus.CounterVec)
 		m.droppedEntries = mustRegisterOrGet(reg, m.droppedEntries).(*prometheus.CounterVec)
+		m.mutatedEntries = mustRegisterOrGet(reg, m.mutatedEntries).(*prometheus.CounterVec)
+		m.mutatedBytes = mustRegisterOrGet(reg, m.mutatedBytes).(*prometheus.CounterVec)
 		m.requestDuration = mustRegisterOrGet(reg, m.requestDuration).(*prometheus.HistogramVec)
 		m.batchRetries = mustRegisterOrGet(reg, m.batchRetries).(*prometheus.CounterVec)
-		m.streamLag = mustRegisterOrGet(reg, m.streamLag).(*prometheus.GaugeVec)
 	}
 
 	return &m
@@ -158,13 +161,12 @@ type Client interface {
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type client struct {
-	name            string
-	metrics         *Metrics
-	streamLagLabels []string
-	logger          log.Logger
-	cfg             Config
-	client          *http.Client
-	entries         chan api.Entry
+	name    string
+	metrics *Metrics
+	logger  log.Logger
+	cfg     Config
+	client  *http.Client
+	entries chan api.Entry
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -172,24 +174,25 @@ type client struct {
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
-	ctx         context.Context
-	cancel      context.CancelFunc
-	maxStreams  int
-	maxLineSize int
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	maxStreams          int
+	maxLineSize         int
+	maxLineSizeTruncate bool
 }
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // New makes a new Client.
-func New(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger) (Client, error) {
+func New(metrics *Metrics, cfg Config, maxStreams, maxLineSize int, maxLineSizeTruncate bool, logger log.Logger) (Client, error) {
 	if cfg.StreamLagLabels.String() != "" {
-		return nil, fmt.Errorf("client config stream_lag_labels is deprecated in favour of the config file options block field, and will be ignored: %+v", cfg.StreamLagLabels.String())
+		return nil, fmt.Errorf("client config stream_lag_labels is deprecated and the associated metric has been removed, stream_lag_labels: %+v", cfg.StreamLagLabels.String())
 	}
-	return newClient(metrics, cfg, streamLagLabels, maxStreams, maxLineSize, logger)
+	return newClient(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
 }
 
-func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger) (*client, error) {
+func newClient(metrics *Metrics, cfg Config, maxStreams, maxLineSize int, maxLineSizeTruncate bool, logger log.Logger) (*client, error) {
 
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
@@ -198,18 +201,18 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := &client{
-		logger:          log.With(logger, "component", "client", "host", cfg.URL.Host),
-		cfg:             cfg,
-		entries:         make(chan api.Entry),
-		metrics:         metrics,
-		streamLagLabels: streamLagLabels,
-		name:            asSha256(cfg),
+		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
+		cfg:     cfg,
+		entries: make(chan api.Entry),
+		metrics: metrics,
+		name:    asSha256(cfg),
 
-		externalLabels: cfg.ExternalLabels.LabelSet,
-		ctx:            ctx,
-		cancel:         cancel,
-		maxStreams:     maxStreams,
-		maxLineSize:    maxLineSize,
+		externalLabels:      cfg.ExternalLabels.LabelSet,
+		ctx:                 ctx,
+		cancel:              cancel,
+		maxStreams:          maxStreams,
+		maxLineSize:         maxLineSize,
+		maxLineSizeTruncate: maxLineSizeTruncate,
 	}
 	if cfg.Name != "" {
 		c.name = cfg.Name
@@ -239,8 +242,8 @@ func newClient(metrics *Metrics, cfg Config, streamLagLabels []string, maxStream
 }
 
 // NewWithTripperware creates a new Loki client with a custom tripperware.
-func NewWithTripperware(metrics *Metrics, cfg Config, streamLagLabels []string, maxStreams, maxLineSize int, logger log.Logger, tp Tripperware) (Client, error) {
-	c, err := newClient(metrics, cfg, streamLagLabels, maxStreams, maxLineSize, logger)
+func NewWithTripperware(metrics *Metrics, cfg Config, maxStreams, maxLineSize int, maxLineSizeTruncate bool, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +259,7 @@ func (c *client) initBatchMetrics(tenantID string) {
 	// Initialize counters to 0 so the metrics are exported before the first
 	// occurrence of incrementing to avoid missing metrics.
 	for _, counter := range c.metrics.countersWithHostTenantReason {
-		for _, reason := range DropReasons {
+		for _, reason := range Reasons {
 			counter.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Add(0)
 		}
 	}
@@ -302,10 +305,17 @@ func (c *client) run() {
 
 			e, tenantID := c.processEntry(e)
 
-			// drop the entry because its length is greater than maxLineSize. maxLineSize == 0 means disabled.
+			// Either drop or mutate the log entry because its length is greater than maxLineSize. maxLineSize == 0 means disabled.
 			if c.maxLineSize != 0 && len(e.Line) > c.maxLineSize {
-				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasongMaxLineSizeLimited).Inc()
-				break
+				if !c.maxLineSizeTruncate {
+					c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Inc()
+					c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Add(float64(len(e.Line)))
+					break
+				}
+
+				c.metrics.mutatedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Inc()
+				c.metrics.mutatedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonLineTooLong).Add(float64(len(e.Line) - c.maxLineSize))
+				e.Line = e.Line[:c.maxLineSize]
 			}
 
 			batch, ok := batches[tenantID]
@@ -330,9 +340,9 @@ func (c *client) run() {
 			err := batch.add(e)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "batch add err", "tenant", tenantID, "error", err)
-				reason := DropReasonGeneric
+				reason := ReasonGeneric
 				if err.Error() == errMaxStreamsLimitExceeded {
-					reason = DropReasonStreamLimited
+					reason = ReasonStreamLimited
 				}
 				c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Add(float64(len(e.Line)))
 				c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, reason).Inc()
@@ -389,46 +399,15 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		// Immediately drop rate limited batches to avoid HOL blocking for other tenants not experiencing throttling
 		if c.cfg.DropRateLimitedBatches && batchIsRateLimited(status) {
 			level.Warn(c.logger).Log("msg", "dropping batch due to rate limiting applied at ingester")
-			c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasonRateLimited).Add(bufBytes)
-			c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, DropReasonRateLimited).Add(float64(entriesCount))
+			c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonRateLimited).Add(bufBytes)
+			c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, ReasonRateLimited).Add(float64(entriesCount))
 			return
 		}
 
 		if err == nil {
 			c.metrics.sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 			c.metrics.sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
-			for _, s := range batch.streams {
-				lbls, err := parser.ParseMetric(s.Labels)
-				if err != nil {
-					// is this possible?
-					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
-					return
-				}
 
-				//nolint:staticcheck
-				lblSet := make(prometheus.Labels)
-				for _, lbl := range c.streamLagLabels {
-					// label from streamLagLabels may not be found but we still need an empty value
-					// so that the prometheus client library doesn't panic on inconsistent label cardinality
-					value := ""
-					for i := range lbls {
-						if lbls[i].Name == lbl {
-							value = lbls[i].Value
-						}
-					}
-					lblSet[lbl] = value
-				}
-
-				//nolint:staticcheck
-				if lblSet != nil {
-					// always set host
-					lblSet[HostLabel] = c.cfg.URL.Host
-					// also set client name since if we have multiple promtail clients configured we will run into a
-					// duplicate metric collected with same labels error when trying to hit the /metrics endpoint
-					lblSet[ClientLabel] = c.name
-					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
-				}
-			}
 			return
 		}
 
@@ -451,9 +430,9 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "tenant", tenantID, "error", err)
 		// If the reason for the last retry error was rate limiting, count the drops as such, even if the previous errors
 		// were for a different reason
-		dropReason := DropReasonGeneric
+		dropReason := ReasonGeneric
 		if batchIsRateLimited(status) {
-			dropReason = DropReasonRateLimited
+			dropReason = ReasonRateLimited
 		}
 		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host, tenantID, dropReason).Add(bufBytes)
 		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host, tenantID, dropReason).Add(float64(entriesCount))
@@ -529,11 +508,6 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 	}
 	tenantID := c.getTenantID(e.Labels)
 	return e, tenantID
-}
-
-func (c *client) UnregisterLatencyMetric(labels prometheus.Labels) {
-	labels[HostLabel] = c.cfg.URL.Host
-	c.metrics.streamLag.Delete(labels)
 }
 
 func (c *client) Name() string {

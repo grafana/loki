@@ -1,10 +1,11 @@
 package logql
 
 import (
-	"github.com/prometheus/prometheus/promql"
-	"github.com/stretchr/testify/require"
 	"math"
 	"testing"
+
+	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
