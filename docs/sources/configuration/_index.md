@@ -3612,7 +3612,7 @@ dynamodb:
 
 # Set this to `true` to force the request to use path-style addressing.
 # CLI flag: -s3.force-path-style
-[s3forcepathstyle: <boolean> | default = false]
+[s3ForcePathStyle: <boolean> | default = false]
 
 # Comma separated list of bucket names to evenly distribute chunks over.
 # Overrides any buckets specified in s3.url flag
