@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"fmt"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"testing"
 	"time"
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"os"
 	"path/filepath"
 	"regexp"
