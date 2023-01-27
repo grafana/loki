@@ -12,7 +12,7 @@ title: "0002: Remote Rule Evaluation"
 
 **Type:** Feature
 
-**Status:** In Discussion
+**Status:** Accepted
 
 **Related issues/PRs:** https://github.com/grafana/mimir/pull/1536
 
