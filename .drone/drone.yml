@@ -1269,6 +1269,35 @@ trigger:
   - refs/pull/*/head
 ---
 kind: pipeline
+name: update-helm-charts
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch --tags
+  - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)
+  - CURRENT_TAG="v2.6.1"
+  - if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG
+    is not the latest version of Loki. The latest version is $latest_version" && exit
+    1; fi
+  image: alpine
+  name: check-latest-version
+  when:
+    event:
+    - push
+- commands:
+  - echo "run updater"
+  image: alpine
+  name: update-helm-chart
+  when:
+    event:
+    - tag
+    status: success
+    step: check-latest-version
+trigger:
+  ref:
+  - refs/heads/helm-chart-auto-update
+---
+kind: pipeline
 name: promtail-windows
 platform:
   arch: amd64
@@ -1673,6 +1702,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 5624f951bb85d3ea60019de484eb85a68bb75c1fffc16150bfefd1cfa129d52d
+hmac: 430ab86a414c5d01acc373a81a88a4b64a3db848cfb5c0b6821a5dbb988f27e6
 
 ...
