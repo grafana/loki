@@ -714,7 +714,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'RELEASE_TAG="2.7.3"',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE TAG
-          'sed -i -E "s/\\"\\{\\{release\\}\\}\\"/\\"$RELEASE_TAG\\"/g" %s' % configFileName,
+          'sed -i -E "s/\\{\\{release\\}\\}/\\"$RELEASE_TAG\\"/g" %s' % configFileName,
           'cat %s' % configFileName,
         ],
         settings: {
