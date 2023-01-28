@@ -1290,7 +1290,7 @@ steps:
 - commands:
   - RELEASE_TAG="2.7.3"
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
-  - sed -i -E "s/\{\{release\}\}/\"$RELEASE_TAG\"/g" updater-config.json
+  - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
   - cat updater-config.json
   depends_on:
   - check-version-is-latest
@@ -1722,6 +1722,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: b486e0f954c85f3bfc35599a2481c82acfa4a5fdfd47a9219977407ab506742e
+hmac: 7d6bf8a5da77919d11ea7e9ad14e89b21f918ee63059055de3f8079ea5b9145b
 
 ...
