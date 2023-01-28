@@ -48,6 +48,7 @@ local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publis
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
+local helm_chart_auto_update_config_template = secret('helm-chart-update-config-template', 'secret/data/common/loki-helm-chart-auto-update', 'on-loki-release-config.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -676,7 +677,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
-  pipeline('update-helm-charts') {
+  pipeline('update-loki-helm-chart') {
+    local configFileName = 'updater-config.json',
     //todo uncomment
 //    depends_on: ['manifest'],
     trigger: {
@@ -685,7 +687,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     },
     steps: [
       {
-        name: 'check-latest-version',
+        name: 'check-version-is-latest',
         image: 'alpine',
         //todo uncomment
         // when: onTag,
@@ -695,18 +697,37 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         commands: [
           'apk add --no-cache bash git',
           'git fetch --tags',
-          "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)",
-          'CURRENT_TAG="v2.7.2"',
-          'if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
+          "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
+//          'RELEASE_TAG=$(./tools/image-tag)',
+          'RELEASE_TAG="2.7.3"',
+          'if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
         ],
       },
       {
-        name: 'update-helm-chart',
+        name: 'prepare-helm-chart-update-config',
         image: 'alpine',
-        depends_on: ['check-latest-version'],
+        depends_on: ['check-version-is-latest'],
         commands: [
-          'echo "run updater"'
+          // todo uncomment
+          // 'RELEASE_TAG=$(./tools/image-tag)',
+          'RELEASE_TAG="2.7.3"',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE TAG
+          'sed -i "s/\\"{{release}}\\"/\\"$RELEASE_TAG\\"/g" %s' % configFileName,
+          'cat %s' % configFileName,
         ],
+        settings: {
+          config_template: { from_secret: helm_chart_auto_update_config_template.name },
+        },
+      },
+      {
+        name: 'trigger-helm-chart-update',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+        settings: {
+          github_token: { from_secret: github_secret.name },
+          config_file: configFileName,
+        },
+        depends_on: ['prepare-helm-chart-update-config'],
       },
     ],
   },

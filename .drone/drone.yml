@@ -1269,27 +1269,42 @@ trigger:
   - refs/pull/*/head
 ---
 kind: pipeline
-name: update-helm-charts
+name: update-loki-helm-chart
 steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch --tags
-  - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)
-  - CURRENT_TAG="v2.7.2"
-  - if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG
+  - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
+    's/v//g')
+  - RELEASE_TAG="2.7.3"
+  - if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG
     is not the latest version of Loki. The latest version is $latest_version" && exit
     78; fi
   image: alpine
-  name: check-latest-version
+  name: check-version-is-latest
   when:
     event:
     - push
 - commands:
-  - echo "run updater"
+  - RELEASE_TAG="2.7.3"
+  - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
+  - sed -i "s/\"{{release}}\"/\"$RELEASE_TAG\"/g" updater-config.json
+  - cat updater-config.json
   depends_on:
-  - check-latest-version
+  - check-version-is-latest
   image: alpine
-  name: update-helm-chart
+  name: prepare-helm-chart-update-config
+  settings:
+    config_template:
+      from_secret: helm-chart-update-config-template
+- depends_on:
+  - prepare-helm-chart-update-config
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
+  name: trigger-helm-chart-update
+  settings:
+    config_file: updater-config.json
+    github_token:
+      from_secret: github_token
 trigger:
   ref:
   - refs/heads/helm-chart-auto-update
@@ -1699,6 +1714,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: d0c89c4625f77fa65eb808d2f729ed5d162bf996e4053008eca331fd166ef411
+hmac: 7ab44fbccf0958610acfa0f6babf0a6d9cbcd8c234f1113e93464303d99f7cf7
 
 ...
