@@ -699,7 +699,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           'git fetch --tags',
           "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
 //          'RELEASE_TAG=$(./tools/image-tag)',
-          'RELEASE_TAG="2.7.3"',
+          'RELEASE_TAG="2.7.2"',
           'if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
         ],
       },

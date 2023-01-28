@@ -1276,7 +1276,7 @@ steps:
   - git fetch --tags
   - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
     's/v//g')
-  - RELEASE_TAG="2.7.3"
+  - RELEASE_TAG="2.7.2"
   - if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG
     is not the latest version of Loki. The latest version is $latest_version" && exit
     78; fi
@@ -1714,6 +1714,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 7ab44fbccf0958610acfa0f6babf0a6d9cbcd8c234f1113e93464303d99f7cf7
+hmac: d739e7683e32c21f888e22c6a75428c2b8d23986060aca10bc369a2875833719
 
 ...
