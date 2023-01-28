@@ -1275,7 +1275,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch --tags
   - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)
-  - CURRENT_TAG="v2.6.1"
+  - CURRENT_TAG="v2.7.2"
   - if [ "$CURRENT_TAG" != "$latest_version" ]; then echo "Current version $CURRENT_TAG
     is not the latest version of Loki. The latest version is $latest_version" && exit
     78; fi
@@ -1699,6 +1699,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 755ffad95501451f5ef54378d09b814a0e9b469d0d643f4a9f794469aa9ef7eb
+hmac: d0c89c4625f77fa65eb808d2f729ed5d162bf996e4053008eca331fd166ef411
 
 ...
