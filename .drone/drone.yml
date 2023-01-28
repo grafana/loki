@@ -1704,6 +1704,12 @@ kind: secret
 name: updater_config_template
 ---
 get:
+  name: on-loki-release-config.json
+  path: secret/data/common/loki-helm-chart-auto-update
+kind: secret
+name: helm-chart-update-config-template
+---
+get:
   name: passphrase
   path: infra/data/ci/packages-publish/gpg
 kind: secret
@@ -1716,6 +1722,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 51494cc064f1712dd14a2034f2dc6957962606396e226aff4669312aa5f956f1
+hmac: 654439b1fc1894ab0e49a4d69530f8487c1a97bdcf9187a33d2faa3297798083
 
 ...

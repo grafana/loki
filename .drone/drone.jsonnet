@@ -876,6 +876,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ecr_key,
   ecr_secret_key,
   updater_config_template,
+  helm_chart_auto_update_config_template,
   gpg_passphrase,
   gpg_private_key,
 ]
