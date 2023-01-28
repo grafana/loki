@@ -681,6 +681,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     local configFileName = 'updater-config.json',
     //todo uncomment
 //    depends_on: ['manifest'],
+    image_pull_secrets: [pull_secret.name],
     trigger: {
       // TODO remove
       ref: ['refs/heads/helm-chart-auto-update'],
