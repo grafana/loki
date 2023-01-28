@@ -1268,6 +1268,8 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+image_pull_secrets:
+- dockerconfigjson
 kind: pipeline
 name: update-loki-helm-chart
 steps:
@@ -1714,6 +1716,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: d739e7683e32c21f888e22c6a75428c2b8d23986060aca10bc369a2875833719
+hmac: 51494cc064f1712dd14a2034f2dc6957962606396e226aff4669312aa5f956f1
 
 ...
