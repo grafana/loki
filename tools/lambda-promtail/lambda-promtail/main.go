@@ -2,16 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -37,7 +37,6 @@ var (
 	extraLabels                                               model.LabelSet
 	skipTlsVerify                                             bool
 	printLogLine                                              bool
-	promtailClient                                            *http.Client
 )
 
 func setupArguments() {
@@ -99,12 +98,7 @@ func setupArguments() {
 	if strings.EqualFold(print, "false") {
 		printLogLine = false
 	}
-
 	s3Clients = make(map[string]*s3.Client)
-	promtailClient = &http.Client{}
-	if skipTlsVerify == true {
-		promtailClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
-	}
 }
 
 func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
@@ -161,26 +155,42 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 }
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
+	lvl, ok := os.LookupEnv("LOG_LEVEL")
+	if !ok {
+		lvl = "info"
+	}
+	log := NewLogger(lvl)
+	pClient := NewPromtailClient(&promtailClientConfig{
+		backoff: &backoff.Config{
+			MinBackoff: minBackoff,
+			MaxBackoff: maxBackoff,
+			MaxRetries: maxRetries,
+		},
+		http: &httpClientConfig{
+			timeout:       timeout,
+			skipTlsVerify: skipTlsVerify,
+		},
+	}, log)
+
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Printf("invalid event: %s\n", ev)
+		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s\n", ev))
 		return err
 	}
 
 	switch evt := event.(type) {
 	case *events.S3Event:
-		return processS3Event(ctx, evt)
+		return processS3Event(ctx, evt, pClient, pClient.log)
 	case *events.CloudwatchLogsEvent:
-		return processCWEvent(ctx, evt)
+		return processCWEvent(ctx, evt, pClient)
 	case *events.KinesisEvent:
-		return processKinesisEvent(ctx, evt)
+		return processKinesisEvent(ctx, evt, pClient)
 	case *events.SQSEvent:
 		return processSQSEvent(ctx, evt)
-	//When setting up S3Notification to SQS, a test event is first sent to the queue
+	// When setting up S3 Notification on a bucket, a test event is first sent, see: https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html
 	case *events.S3TestEvent:
 		return nil
 	}
-
 	return err
 }
 

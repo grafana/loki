@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-
 	"github.com/grafana/loki/pkg/logproto"
 )
 

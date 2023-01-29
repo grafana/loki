@@ -7,9 +7,8 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/stretchr/testify/require"
-
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/stretchr/testify/require"
 )
 
 type MockBatch struct {
