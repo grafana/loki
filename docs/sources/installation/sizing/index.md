@@ -72,7 +72,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     Defines how long the ingested logs should be kept.
     </span>
     <span v-else-if="help === 'queryperf'">
-    Defines the expected query performance. Basic enables 3mbps. Super should be chosen if more query throughput is required.
+    Defines the expected query performance. Basic enables 3GB/s. Super enables 25% more and should be chosen if more query throughput is required.
     </span>
   </blockquote>
 </div>
