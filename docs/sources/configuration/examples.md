@@ -4,49 +4,54 @@ description: Loki Configuration Examples
 ---
  # Examples
 
-## almost-zero-dependency.yaml
+## Simple local configuration
 
 ```yaml
-# This is a configuration to deploy Loki depending only on a storage solution 
-# for example, an S3-compatible API like MinIO. 
-# The ring configuration is based on the gossip memberlist and the index is shipped to storage 
-# via Single Store (boltdb-shipper)
-
 auth_enabled: false
 
 server:
   http_listen_port: 3100
 
-distributor:
+common:
   ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /tmp/loki
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: filesystem
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+```
+
+## Running with s3-compatible API
+
+```yaml
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
     kvstore:
       store: memberlist
-
-ingester:
-  lifecycler:
-    ring:
-      kvstore:
-        store: memberlist
-      replication_factor: 1
-    final_sleep: 0s
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
+  replication_factor: 1
+  path_prefix: /loki # Update this accordingly
 
 memberlist:
-  abort_if_cluster_join_fails: false
-
-  # Expose this port on all distributor, ingester
-  # and querier replicas.
-  bind_port: 7946
-
   # You can use a headless k8s service for all distributor,
   # ingester and querier components.
   join_members:
   - loki-gossip-ring.loki.svc.cluster.local:7946
-
-  max_join_backoff: 1m
-  max_join_retries: 10
-  min_join_backoff: 1s
 
 schema_config:
   configs:
@@ -59,33 +64,16 @@ schema_config:
       period: 24h
 
 storage_config:
- boltdb_shipper:
-   active_index_directory: /loki/index
-   cache_location: /loki/index_cache
-   shared_store: s3
-
- aws:
-   s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
-   s3forcepathstyle: true
-
-limits_config:
-  enforce_metric_name: false
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
-
-compactor:
-  working_directory: /data/compactor
-  shared_store: s3
-  compaction_interval: 5m
+  boltdb_shipper:
+    shared_store: s3
+  aws:
+    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
+    s3forcepathstyle: true
 ```
 
-
-## aws-basic-config-no-creds.yaml
+## S3 without credentials
 
 ```yaml
-# If you don't wish to hard-code S3 credentials you can also configure an EC2
-# instance role by changing the `storage_config` section
-
 schema_config:
   configs:
   - from: 2020-05-15
@@ -94,20 +82,19 @@ schema_config:
     schema: v11
     index:
       prefix: loki_
+# If you don't wish to hard-code S3 credentials you can also configure an EC2
+# instance role by changing the `storage_config` section.
 storage_config:
   aws:
     s3: s3://region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://region
-      
 ```
 
 
-## aws-basic-config.yaml
+## Storing chunks on S3 and indexes on DynamoDB
 
 ```yaml
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
-
 schema_config:
   configs:
   - from: 2020-05-15
@@ -121,11 +108,9 @@ storage_config:
     s3: s3://access_key:secret_access_key@region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
 ```
 
-
-## bos-config.yaml
+## Storing data on BOS (Baidu Object Storage)
 
 ```yaml
 schema_config:
@@ -155,12 +140,9 @@ compactor:
   shared_store: bos
 ```
 
-
-## cassandra-index.yaml
+## Storing indexes on Cassandra
 
 ```yaml
-# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
-
 schema_config:
   configs:
   - from: 2020-05-15
@@ -181,62 +163,14 @@ storage_config:
 
   filesystem:
     directory: /tmp/loki/chunks
-    
 ```
 
-
-## complete-local-config.yaml
-
-```yaml
-auth_enabled: false
-
-server:
-  http_listen_port: 3100
-
-ingester:
-  lifecycler:
-    address: 127.0.0.1
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-    final_sleep: 0s
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: boltdb
-    object_store: filesystem
-    schema: v11
-    index:
-      prefix: index_
-      period: 168h
-
-storage_config:
-  boltdb:
-    directory: /tmp/loki/index
-
-  filesystem:
-    directory: /tmp/loki/chunks
-
-limits_config:
-  enforce_metric_name: false
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
-```
-
-
-## example-schema-config.yaml
+## Migrating from backend stores
 
 ```yaml
-# Additional example schema configuration for Cassandra
-
 schema_config:
   configs:
-    # Starting from 2018-04-15 Loki should store indexes on Cassandra
-    # using weekly periodic tables and chunks on filesystem.
+    # Starting from 2018-04-15 Loki should store indexes on Cassandra and chunks on filesystem.
     # The index tables will be prefixed with "index_".
   - from: "2018-04-15"
     store: cassandra
@@ -246,7 +180,7 @@ schema_config:
         period: 168h
         prefix: index_
 
-  # Starting from 2020-6-15 we moved from filesystem to AWS S3 for storing the chunks.
+  # Starting from 2020-6-15 chunks are stored on AWS S3 instead of filesystem.
   - from: "2020-06-15"
     store: cassandra
     object_store: s3
@@ -254,15 +188,11 @@ schema_config:
     index:
         period: 168h
         prefix: index_
-        
 ```
 
-
-## google-cloud-storage-config.yaml
+## GoogleCloudStorage usage
 
 ```yaml
-# This partial configuration uses GCS for chunk storage and uses BigTable for index storage
-
 schema_config:
   configs:
   - from: 2020-05-15
@@ -279,17 +209,11 @@ storage_config:
     project: BIGTABLE_PROJECT
   gcs:
     bucket_name: GCS_BUCKET_NAME
-    
 ```
 
-
-## s3-compatible-apis.yaml
+## S3-compatible API usage (ex: Ceph Storage)
 
 ```yaml
-# S3-compatible APIs such as Ceph Object Storage with an S3-compatible API, can be used.
-# If the API supports path-style URLs rather than virtual hosted bucket addressing,
-# configure the URL in `storage_config` with the custom endpoint
-
 schema_config:
   configs:
   - from: 2020-05-15
@@ -300,19 +224,17 @@ schema_config:
       prefix: loki_
 storage_config:
   aws:
+    # If the API supports path-style URLs rather than virtual hosted bucket addressing,
+    # configure the URL with the custom endpoint.
     s3: s3://access_key:secret_access_key@region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://access_key:secret_access_key@region
       
 ```
 
-
-## s3-expanded-config.yaml
+## S3 configuration expanded
 
 ```yaml
-# S3 configuration supports an expanded configuration. 
-# Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
-
 schema_config:
   configs:
   - from: 2020-05-15
@@ -335,6 +257,4 @@ storage_config:
       response_header_timeout: 0s
       insecure_skip_verify: false
     s3forcepathstyle: true
-    
 ```
-
