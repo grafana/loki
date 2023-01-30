@@ -403,8 +403,8 @@ github.com/docker/go-plugins-helpers/sdk
 # github.com/docker/go-units v0.5.0
 ## explicit
 github.com/docker/go-units
-# github.com/drone/envsubst v1.0.2
-## explicit
+# github.com/drone/envsubst v1.0.3
+## explicit; go 1.13
 github.com/drone/envsubst
 github.com/drone/envsubst/parse
 github.com/drone/envsubst/path
