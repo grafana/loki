@@ -2496,7 +2496,7 @@ func TestHashingStability(t *testing.T) {
 	queryWithEngine := func() string {
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		eng := NewEngine(EngineOpts{}, getLocalQuerier(4), NoLimits, logger)
+		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
 		query := eng.Query(params)
 		_, err := query.Exec(ctx)
 		require.NoError(t, err)
@@ -2526,7 +2526,7 @@ func TestHashingStability(t *testing.T) {
 		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
 	} {
 		params.qs = test.qs
-		expectedQueryHash := hashedQuery(test.qs)
+		expectedQueryHash := HashedQuery(test.qs)
 
 		// check that both places will end up having the same query hash, even though they're emitting different log lines.
 		require.Regexp(t,
