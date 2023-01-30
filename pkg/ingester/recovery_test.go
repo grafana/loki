@@ -2,7 +2,7 @@ package ingester
 
 import (
 	"context"
-	fmt "fmt"
+	"fmt"
 	"runtime"
 	"sync"
 	"testing"
@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -47,12 +48,12 @@ func (m *MemoryWALReader) Err() error { return nil }
 
 func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 
-func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALReader, []*WALRecord) {
-	var recs []*WALRecord
+func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALReader, []*wal.Record) {
+	var recs []*wal.Record
 	reader := &MemoryWALReader{}
 	for i := 0; i < totalStreams; i++ {
 		user := fmt.Sprintf("%d", i%users)
-		recs = append(recs, &WALRecord{
+		recs = append(recs, &wal.Record{
 			UserID: user,
 			Series: []record.RefSeries{
 				{
@@ -74,9 +75,9 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 				Line:      fmt.Sprintf("%d", j),
 			})
 		}
-		recs = append(recs, &WALRecord{
+		recs = append(recs, &wal.Record{
 			UserID: user,
-			RefEntries: []RefEntries{
+			RefEntries: []wal.RefEntries{
 				{
 					Ref:     chunks.HeadSeriesRef(i),
 					Entries: entries,
@@ -87,11 +88,11 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 
 	for _, rec := range recs {
 		if len(rec.Series) > 0 {
-			reader.xs = append(reader.xs, rec.encodeSeries(nil))
+			reader.xs = append(reader.xs, rec.EncodeSeries(nil))
 		}
 
 		if len(rec.RefEntries) > 0 {
-			reader.xs = append(reader.xs, rec.encodeEntries(CurrentEntriesRec, nil))
+			reader.xs = append(reader.xs, rec.EncodeEntries(wal.CurrentEntriesRec, nil))
 		}
 	}
 
@@ -136,7 +137,7 @@ func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
 	return nil
 }
 
-func (r *MemRecoverer) Push(userID string, entries RefEntries) error {
+func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
 	r.Lock()
 	defer r.Unlock()
 
