@@ -88,6 +88,7 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 		for {
 			select {
 			case <-trigger.C:
+				level.Debug(wrt.log).Log("msg", "Running wal old segments cleanup")
 				if err := wrt.cleanSegments(maxSegmentAge); err != nil {
 					level.Error(wrt.log).Log("msg", "Error cleaning old segments", "err", err)
 				}
@@ -117,7 +118,9 @@ func (wrt *Writer) Stop() {
 }
 
 // cleanSegments will remove segments older than maxAge from the WAL directory. If there's just one segment, none will be
-// deleted since it's likely there's active readers on it.
+// deleted since it's likely there's active readers on it. In case there's multiple segments, each will be deleted if:
+// - It's not the last (highest numbered) segment
+// - It's last modified date is older than the max allowed age
 func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	maxModifiedAt := time.Now().Add(-maxAge)
 	walDir := wrt.wal.Dir()
@@ -129,10 +132,15 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	if len(segments) <= 1 {
 		return nil
 	}
+	// find the most recent, or head segment to avoid cleaning it up
+	lastSegment := -1
 	for _, segment := range segments {
-		// TODO: Should we avoid deleting the last segment as well? Maybe the reader side is far behind, even though it hasn't
-		// been written in the last hour
-		if segment.lastModified.Before(maxModifiedAt) {
+		if lastSegment < segment.number {
+			lastSegment = segment.number
+		}
+	}
+	for _, segment := range segments {
+		if segment.lastModified.Before(maxModifiedAt) && segment.number != lastSegment {
 			// segment is older than allowed age, cleaning up
 			if err := os.Remove(filepath.Join(walDir, segment.name)); err != nil {
 				level.Error(wrt.log).Log("msg", "Error old wal segment", "err", err, "segmentNum", segment.number)

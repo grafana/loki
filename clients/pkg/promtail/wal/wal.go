@@ -24,6 +24,7 @@ type WAL interface {
 	Sync() error
 	Dir() string
 	Close()
+	NextSegment() (int, error)
 }
 
 type wrapper struct {
@@ -96,4 +97,9 @@ func (w *wrapper) Sync() error {
 // Dir returns the path to the WAL directory.
 func (w *wrapper) Dir() string {
 	return w.wal.Dir()
+}
+
+// NextSegment closes the current segment synchronously. Mainly used for testing.
+func (w *wrapper) NextSegment() (int, error) {
+	return w.wal.NextSegmentSync()
 }
