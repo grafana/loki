@@ -28,6 +28,9 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 	bytesSecondIngest := bytesDayIngest / 86400
 	numWriteReplicasNeeded := math.Ceil(bytesSecondIngest / nt.writePod.rateBytesSecond)
 
+	// High availability requires at least 3 replicas.
+	numWriteReplicasNeeded = math.Max(3, numWriteReplicasNeeded)
+
 	//Hack based on current 4-1 mem to cpu ratio and base machine w/ 4 cores and 1 write/read
 	writeReplicasPerNode := float64(nt.cores / 4)
 	fullyWritePackedNodes := math.Floor(numWriteReplicasNeeded / writeReplicasPerNode)
@@ -61,6 +64,10 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 	actualReadReplicasAdded := actualNodesAddedForReads * readReplicasPerEmptyNode
 
 	totalReadReplicas := actualReadReplicasAdded + baselineReadReplicas
+
+	// High availability requires at least 3 replicas.
+	totalReadReplicas = math.Max(3, totalReadReplicas)
+
 	totalReadThroughputBytesSec := totalReadReplicas * nt.readPod.rateBytesSecond
 
 	totalNodesNeeded := nodesNeededForWrites + actualNodesAddedForReads
