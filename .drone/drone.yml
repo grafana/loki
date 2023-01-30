@@ -1268,17 +1268,19 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+depends_on:
+- manifest
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
-name: update-loki-helm-chart
+name: update-loki-helm-chart-on-loki-release
 steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch --tags
   - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
     's/v//g')
-  - RELEASE_TAG="2.7.2"
+  - RELEASE_TAG=$(./tools/image-tag)
   - if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG
     is not the latest version of Loki. The latest version is $latest_version" && exit
     78; fi
@@ -1286,12 +1288,11 @@ steps:
   name: check-version-is-latest
   when:
     event:
-    - push
+    - tag
 - commands:
-  - RELEASE_TAG="2.7.3"
+  - RELEASE_TAG=$(./tools/image-tag)
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
-  - cat updater-config.json
   depends_on:
   - check-version-is-latest
   image: alpine
@@ -1309,7 +1310,7 @@ steps:
       from_secret: github_token
 trigger:
   ref:
-  - refs/heads/helm-chart-auto-update
+  - refs/tags/v*
 ---
 kind: pipeline
 name: promtail-windows
@@ -1722,6 +1723,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 7d6bf8a5da77919d11ea7e9ad14e89b21f918ee63059055de3f8079ea5b9145b
+hmac: 50fde7c7f452adbbc1f9d6ff8c22289a92c0317854ca442bd5775e186366f3f6
 
 ...

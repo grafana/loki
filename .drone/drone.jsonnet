@@ -677,30 +677,24 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
-  pipeline('update-loki-helm-chart') {
+  pipeline('update-loki-helm-chart-on-loki-release') {
     local configFileName = 'updater-config.json',
-    //todo uncomment
-//    depends_on: ['manifest'],
+    depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     trigger: {
-      // TODO remove
-      ref: ['refs/heads/helm-chart-auto-update'],
+      // wee need to run it only on Loki tags that starts with `v`.
+      ref: ['refs/tags/v*'],
     },
     steps: [
       {
         name: 'check-version-is-latest',
         image: 'alpine',
-        //todo uncomment
-        // when: onTag,
-        when: {
-          event: ['push'],
-        },
+        when: onTag,
         commands: [
           'apk add --no-cache bash git',
           'git fetch --tags',
           "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
-//          'RELEASE_TAG=$(./tools/image-tag)',
-          'RELEASE_TAG="2.7.2"',
+          'RELEASE_TAG=$(./tools/image-tag)',
           'if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
         ],
       },
@@ -709,13 +703,10 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         image: 'alpine',
         depends_on: ['check-version-is-latest'],
         commands: [
-          // todo uncomment
-          // 'RELEASE_TAG=$(./tools/image-tag)',
-          'RELEASE_TAG="2.7.3"',
+          'RELEASE_TAG=$(./tools/image-tag)',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE TAG
           'sed -i -E "s/\\{\\{release\\}\\}/$RELEASE_TAG/g" %s' % configFileName,
-          'cat %s' % configFileName,
         ],
         settings: {
           config_template: { from_secret: helm_chart_auto_update_config_template.name },
@@ -725,7 +716,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'trigger-helm-chart-update',
         image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
         settings: {
-          github_token: { from_secret: github_secret.name },
+          github_token: {
+            from_secret: github_secret.name,
+          },
           config_file: configFileName,
         },
         depends_on: ['prepare-helm-chart-update-config'],
