@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"text/template"
@@ -16,9 +17,11 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -152,9 +155,10 @@ func (w *wrappedRegisterer) MustRegister(collectors ...prometheus.Collector) {
 }
 
 type Cluster struct {
-	sharedPath string
-	components []*Component
-	waitGroup  sync.WaitGroup
+	sharedPath    string
+	overridesFile string
+	components    []*Component
+	waitGroup     sync.WaitGroup
 }
 
 func New() *Cluster {
@@ -164,8 +168,16 @@ func New() *Cluster {
 		panic(err.Error())
 	}
 
+	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
+
+	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
+	if err != nil {
+		panic(fmt.Errorf("error creating overrides file: %w", err))
+	}
+
 	return &Cluster{
-		sharedPath: sharedPath,
+		sharedPath:    sharedPath,
+		overridesFile: overridesFile,
 	}
 }
 
@@ -220,10 +232,11 @@ func (c *Cluster) Cleanup() error {
 
 func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 	component := &Component{
-		name:    name,
-		cluster: c,
-		flags:   flags,
-		running: false,
+		name:          name,
+		cluster:       c,
+		flags:         flags,
+		running:       false,
+		overridesFile: c.overridesFile,
 	}
 
 	c.components = append(c.components, component)
@@ -236,11 +249,12 @@ type Component struct {
 	cluster *Cluster
 	flags   []string
 
-	configFile   string
-	dataPath     string
-	rulerWALPath string
-	rulesPath    string
-	RulesTenant  string
+	configFile    string
+	overridesFile string
+	dataPath      string
+	rulerWALPath  string
+	rulesPath     string
+	RulesTenant   string
 
 	running bool
 
@@ -336,6 +350,8 @@ func (c *Component) run() error {
 		c.flags,
 		"-config.file",
 		c.configFile,
+		"-limits.per-user-override-config",
+		c.overridesFile,
 	), flagset); err != nil {
 		return err
 	}
@@ -412,6 +428,41 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	}
 
 	return files, dirs
+}
+
+func (c *Component) Restart() error {
+	c.cleanup()
+	c.wg.Wait()
+	return c.run()
+}
+
+type runtimeConfigValues struct {
+	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
+}
+
+func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) error {
+	rcv := runtimeConfigValues{}
+	rcv.TenantLimits = c.loki.TenantLimits.AllByUserID()
+	if rcv.TenantLimits == nil {
+		rcv.TenantLimits = map[string]*validation.Limits{}
+	}
+	rcv.TenantLimits[tenant] = &limits
+
+	config, err := yaml.Marshal(rcv)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(c.overridesFile, config, 0777)
+}
+
+func (c *Component) GetTenantLimits(tenant string) validation.Limits {
+	limits := c.loki.TenantLimits.TenantLimits(tenant)
+	if limits == nil {
+		return c.loki.Cfg.LimitsConfig
+	}
+
+	return *limits
 }
 
 func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
