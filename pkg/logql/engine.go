@@ -119,7 +119,7 @@ type EngineOpts struct {
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 
-	// LogExecutingQuery will control if we log the query name when Exec is called.
+	// LogExecutingQuery will control if we log the query when Exec is called.
 	LogExecutingQuery bool `yaml:"-"`
 }
 
