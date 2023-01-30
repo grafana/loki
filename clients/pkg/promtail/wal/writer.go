@@ -28,6 +28,7 @@ const (
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
 // writes incoming entries to a WAL.
+// Also, since Writer is responsible for all changing operations over the WAL, a routine is run for cleaning old segments.
 type Writer struct {
 	entries     chan api.Entry
 	log         log.Logger
@@ -57,7 +58,7 @@ func NewWriter(walCfg Config, logger log.Logger, reg prometheus.Registerer) (*Wr
 		wg:           sync.WaitGroup{},
 		wal:          wl,
 		entryWriter:  newEntryWriter(),
-		closeCleaner: make(chan struct{}),
+		closeCleaner: make(chan struct{}, 1),
 	}
 
 	wrt.start(walCfg.MaxSegmentAge)
@@ -107,12 +108,16 @@ func (wrt *Writer) Stop() {
 	wrt.once.Do(func() {
 		close(wrt.entries)
 	})
+	// close cleaner routine
+	wrt.closeCleaner <- struct{}{}
 	// Wait for routine to write to wal all pending entries
 	wrt.wg.Wait()
 	// Close WAL to finalize all pending writes
 	wrt.wal.Close()
 }
 
+// cleanSegments will remove segments older than maxAge from the WAL directory. If there's just one segment, none will be
+// deleted since it's likely there's active readers on it.
 func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	maxModifiedAt := time.Now().Add(-maxAge)
 	walDir := wrt.wal.Dir()
@@ -132,7 +137,7 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 			if err := os.Remove(filepath.Join(walDir, segment.name)); err != nil {
 				level.Error(wrt.log).Log("msg", "Error old wal segment", "err", err, "segmentNum", segment.number)
 			}
-			level.Debug(wrt.log).Log("msg", "Deleted old wal segmenet", "segmentNum", segment.number)
+			level.Debug(wrt.log).Log("msg", "Deleted old wal segment", "segmentNum", segment.number)
 		}
 	}
 	return nil

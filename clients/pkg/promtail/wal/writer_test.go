@@ -20,8 +20,9 @@ func TestWriter_EntriesAreWrittenToWALAndForwardedToClients(t *testing.T) {
 	dir := t.TempDir()
 
 	writer, err := NewWriter(Config{
-		Dir:     dir,
-		Enabled: true,
+		Dir:           dir,
+		Enabled:       true,
+		MaxSegmentAge: time.Minute,
 	}, logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer func() {
