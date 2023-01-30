@@ -159,29 +159,35 @@ func (ejvr *extJSONValueReader) pop() {
 	}
 }
 
-func (ejvr *extJSONValueReader) skipDocument() error {
-	// read entire document until ErrEOD (using readKey and readValue)
-	_, typ, err := ejvr.p.readKey()
-	for err == nil {
-		_, err = ejvr.p.readValue(typ)
-		if err != nil {
-			break
+func (ejvr *extJSONValueReader) skipObject() {
+	// read entire object until depth returns to 0 (last ending } or ] seen)
+	depth := 1
+	for depth > 0 {
+		ejvr.p.advanceState()
+
+		// If object is empty, raise depth and continue. When emptyObject is true, the
+		// parser has already read both the opening and closing brackets of an empty
+		// object ("{}"), so the next valid token will be part of the parent document,
+		// not part of the nested document.
+		//
+		// If there is a comma, there are remaining fields, emptyObject must be set back
+		// to false, and comma must be skipped with advanceState().
+		if ejvr.p.emptyObject {
+			if ejvr.p.s == jpsSawComma {
+				ejvr.p.emptyObject = false
+				ejvr.p.advanceState()
+			}
+			depth--
+			continue
 		}
 
-		_, typ, err = ejvr.p.readKey()
+		switch ejvr.p.s {
+		case jpsSawBeginObject, jpsSawBeginArray:
+			depth++
+		case jpsSawEndObject, jpsSawEndArray:
+			depth--
+		}
 	}
-
-	return err
-}
-
-func (ejvr *extJSONValueReader) skipArray() error {
-	// read entire array until ErrEOA (using peekType)
-	_, err := ejvr.p.peekType()
-	for err == nil {
-		_, err = ejvr.p.peekType()
-	}
-
-	return err
 }
 
 func (ejvr *extJSONValueReader) invalidTransitionErr(destination mode, name string, modes []mode) error {
@@ -234,30 +240,9 @@ func (ejvr *extJSONValueReader) Skip() error {
 
 	t := ejvr.stack[ejvr.frame].vType
 	switch t {
-	case bsontype.Array:
-		// read entire array until ErrEOA
-		err := ejvr.skipArray()
-		if err != ErrEOA {
-			return err
-		}
-	case bsontype.EmbeddedDocument:
-		// read entire doc until ErrEOD
-		err := ejvr.skipDocument()
-		if err != ErrEOD {
-			return err
-		}
-	case bsontype.CodeWithScope:
-		// read the code portion and set up parser in document mode
-		_, err := ejvr.p.readValue(t)
-		if err != nil {
-			return err
-		}
-
-		// read until ErrEOD
-		err = ejvr.skipDocument()
-		if err != ErrEOD {
-			return err
-		}
+	case bsontype.Array, bsontype.EmbeddedDocument, bsontype.CodeWithScope:
+		// read entire array, doc or CodeWithScope
+		ejvr.skipObject()
 	default:
 		_, err := ejvr.p.readValue(t)
 		if err != nil {

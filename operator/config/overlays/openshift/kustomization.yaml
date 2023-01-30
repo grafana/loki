@@ -1,0 +1,47 @@
+resources:
+- ../../crd
+- ../../rbac
+- ../../manager
+- ../../webhook
+- ../../prometheus
+
+# Adds namespace to all resources.
+namespace: openshift-operators-redhat
+
+# Value of this field is prepended to the
+# names of all resources, e.g. a deployment named
+# "wordpress" becomes "alices-wordpress".
+# Note that it should also match with the prefix (text before '-') of the namespace
+# field above.
+namePrefix: loki-operator-
+
+labels:
+- pairs:
+    app.kubernetes.io/name: loki-operator
+    app.kubernetes.io/part-of: cluster-logging
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
+  includeSelectors: true
+- pairs:
+    app.kubernetes.io/instance: loki-operator-v0.0.1
+    app.kubernetes.io/version: "0.0.1"
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+- files:
+  - controller_manager_config.yaml
+  name: manager-config
+
+patchesStrategicMerge:
+- auth_proxy_service_annotations_patch.yaml
+- manager_auth_proxy_patch.yaml
+- manager_related_image_patch.yaml
+- manager_run_flags_patch.yaml
+- manager_webhook_patch.yaml
+- prometheus_service_monitor_patch.yaml
+
+images:
+- name: controller
+  newName: quay.io/openshift-logging/loki-operator
+  newTag: v0.0.1

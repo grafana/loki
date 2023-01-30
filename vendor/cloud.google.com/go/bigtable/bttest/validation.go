@@ -25,12 +25,12 @@ import (
 )
 
 // validateRowRanges returns a status.Error for req if:
-//  * both start_qualifier_closed and start_qualifier_open are set
-//  * both end_qualifier_closed and end_qualifier_open are set
-//  * start_qualifier_closed > end_qualifier_closed
-//  * start_qualifier_closed > end_qualifier_open
-//  * start_qualifier_open > end_qualifier_closed
-//  * start_qualifier_open > end_qualifier_open
+//   - both start_qualifier_closed and start_qualifier_open are set
+//   - both end_qualifier_closed and end_qualifier_open are set
+//   - start_qualifier_closed > end_qualifier_closed
+//   - start_qualifier_closed > end_qualifier_open
+//   - start_qualifier_open > end_qualifier_closed
+//   - start_qualifier_open > end_qualifier_open
 func validateRowRanges(req *btpb.ReadRowsRequest) error {
 	rowRanges := req.GetRows().GetRowRanges()
 	if len(rowRanges) == 0 {

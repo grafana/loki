@@ -3,6 +3,7 @@ package comparator
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -186,18 +187,17 @@ func (c *Comparator) Stop() {
 	}
 }
 
-func (c *Comparator) entrySent(time time.Time) {
+func (c *Comparator) entrySent(ts time.Time) {
 	c.entMtx.Lock()
-	c.entries = append(c.entries, &time)
+	c.entries = append(c.entries, &ts)
 	totalEntries.Inc()
 	c.entMtx.Unlock()
 	//If this entry equals or exceeds the spot check interval from the last entry in the spot check array, add it.
 	c.spotEntMtx.Lock()
-	if len(c.spotCheck) == 0 || time.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
-		c.spotCheck = append(c.spotCheck, &time)
+	if len(c.spotCheck) == 0 || ts.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
+		c.spotCheck = append(c.spotCheck, &ts)
 	}
 	c.spotEntMtx.Unlock()
-
 }
 
 // entryReceived removes the received entry from the buffer if it exists, reports on out of order entries received
@@ -247,7 +247,10 @@ func (c *Comparator) Size() int {
 
 func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
-	mt := time.NewTicker(c.metricTestInterval)
+	// Use a random tick up to the interval for the first tick
+	firstMt := true
+	rand.Seed(time.Now().UnixNano())
+	mt := time.NewTicker(time.Duration(rand.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
 		t.Stop()
@@ -286,12 +289,18 @@ func (c *Comparator) run() {
 				go c.metricTest(time.Now())
 			}
 			c.metTestMtx.Unlock()
+			if firstMt {
+				// After the first tick which is at a random time, resume at the normal periodic interval
+				firstMt = false
+				mt.Reset(c.metricTestInterval)
+			}
 		case <-c.quit:
 			return
 		}
 	}
 }
 
+// check that the expected # of log lines have been written to Loki
 func (c *Comparator) metricTest(currTime time.Time) {
 	// Always make sure to set the running state back to false
 	defer func() {
@@ -319,6 +328,10 @@ func (c *Comparator) metricTest(currTime time.Time) {
 	metricTestActual.Set(actualCount)
 }
 
+// spotCheck is used to ensure that log data is actually available after being flushed from the
+// ingesters in memory storage and  persisted to disk/blob storage, which the tail check cannot confirm.
+// It keeps a sampled slice of log lines written by the canary and checks for them periodically until
+// it decides they are too old to continue checking for.
 func (c *Comparator) spotCheckEntries(currTime time.Time) {
 	// Always make sure to set the running state back to false
 	defer func() {
@@ -427,15 +440,28 @@ func (c *Comparator) pruneEntries(currentTime time.Time) {
 func (c *Comparator) confirmMissing(currentTime time.Time) {
 	// Because we are querying loki timestamps vs the timestamp in the log,
 	// make the range +/- 10 seconds to allow for clock inaccuracies
+	c.missingMtx.Lock()
+	if len(c.missingEntries) == 0 {
+		c.missingMtx.Unlock()
+		return
+	}
 	start := *c.missingEntries[0]
 	start = start.Add(-10 * time.Second)
 	end := *c.missingEntries[len(c.missingEntries)-1]
 	end = end.Add(10 * time.Second)
+	c.missingMtx.Unlock()
+
 	recvd, err := c.rdr.Query(start, end)
 	if err != nil {
 		fmt.Fprintf(c.w, "error querying loki: %s\n", err)
 		return
 	}
+	// Now that query has returned, take out the lock on the missingEntries list so we can modify it
+	// It's possible more entries were added to this list but that's ok, if they match something in the
+	// query result we will remove them, if they don't they won't be old enough yet to remove.
+	c.missingMtx.Lock()
+	defer c.missingMtx.Unlock()
+
 	// This is to help debug some missing log entries when queried,
 	// let's print exactly what we are missing and what Loki sent back
 	for _, r := range c.missingEntries {
@@ -445,11 +471,6 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 		fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
 	}
 
-	// Now that query has returned, take out the lock on the missingEntries list so we can modify it
-	// It's possible more entries were added to this list but that's ok, if they match something in the
-	// query result we will remove them, if they don't they won't be old enough yet to remove.
-	c.missingMtx.Lock()
-	defer c.missingMtx.Unlock()
 	k := 0
 	for i, m := range c.missingEntries {
 		found := false

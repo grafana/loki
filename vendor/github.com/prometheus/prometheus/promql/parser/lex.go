@@ -48,6 +48,10 @@ func (i Item) String() string {
 	return fmt.Sprintf("%q", i.Val)
 }
 
+// Pretty returns the prettified form of an item.
+// This is same as the item's stringified format.
+func (i Item) Pretty(int) string { return i.String() }
+
 // IsOperator returns true if the Item corresponds to a arithmetic or set operator.
 // Returns false otherwise.
 func (i ItemType) IsOperator() bool { return i > operatorsStart && i < operatorsEnd }
@@ -97,6 +101,7 @@ var key = map[string]ItemType{
 	"and":    LAND,
 	"or":     LOR,
 	"unless": LUNLESS,
+	"atan2":  ATAN2,
 
 	// Aggregators.
 	"sum":          SUM,
@@ -583,8 +588,12 @@ func lexEscape(l *Lexer) stateFn {
 			return lexString
 		}
 		x = x*base + d
-		ch = l.next()
 		n--
+
+		// Don't seek after last rune.
+		if n > 0 {
+			ch = l.next()
+		}
 	}
 
 	if x > max || 0xD800 <= x && x < 0xE000 {

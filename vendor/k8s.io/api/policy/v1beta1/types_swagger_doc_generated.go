@@ -96,9 +96,10 @@ func (IDRange) SwaggerDoc() map[string]string {
 }
 
 var map_PodDisruptionBudget = map[string]string{
-	"":       "PodDisruptionBudget is an object to define the max disruption that can be caused to a collection of pods",
-	"spec":   "Specification of the desired behavior of the PodDisruptionBudget.",
-	"status": "Most recently observed status of the PodDisruptionBudget.",
+	"":         "PodDisruptionBudget is an object to define the max disruption that can be caused to a collection of pods",
+	"metadata": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
+	"spec":     "Specification of the desired behavior of the PodDisruptionBudget.",
+	"status":   "Most recently observed status of the PodDisruptionBudget.",
 }
 
 func (PodDisruptionBudget) SwaggerDoc() map[string]string {
@@ -106,7 +107,9 @@ func (PodDisruptionBudget) SwaggerDoc() map[string]string {
 }
 
 var map_PodDisruptionBudgetList = map[string]string{
-	"": "PodDisruptionBudgetList is a collection of PodDisruptionBudgets.",
+	"":         "PodDisruptionBudgetList is a collection of PodDisruptionBudgets.",
+	"metadata": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
+	"items":    "items list individual PodDisruptionBudget objects",
 }
 
 func (PodDisruptionBudgetList) SwaggerDoc() map[string]string {
@@ -114,10 +117,11 @@ func (PodDisruptionBudgetList) SwaggerDoc() map[string]string {
 }
 
 var map_PodDisruptionBudgetSpec = map[string]string{
-	"":               "PodDisruptionBudgetSpec is a description of a PodDisruptionBudget.",
-	"minAvailable":   "An eviction is allowed if at least \"minAvailable\" pods selected by \"selector\" will still be available after the eviction, i.e. even in the absence of the evicted pod.  So for example you can prevent all voluntary evictions by specifying \"100%\".",
-	"selector":       "Label query over pods whose evictions are managed by the disruption budget.",
-	"maxUnavailable": "An eviction is allowed if at most \"maxUnavailable\" pods selected by \"selector\" are unavailable after the eviction, i.e. even in absence of the evicted pod. For example, one can prevent all voluntary evictions by specifying 0. This is a mutually exclusive setting with \"minAvailable\".",
+	"":                           "PodDisruptionBudgetSpec is a description of a PodDisruptionBudget.",
+	"minAvailable":               "An eviction is allowed if at least \"minAvailable\" pods selected by \"selector\" will still be available after the eviction, i.e. even in the absence of the evicted pod.  So for example you can prevent all voluntary evictions by specifying \"100%\".",
+	"selector":                   "Label query over pods whose evictions are managed by the disruption budget. A null selector selects no pods. An empty selector ({}) also selects no pods, which differs from standard behavior of selecting all pods. In policy/v1, an empty selector will select all pods in the namespace.",
+	"maxUnavailable":             "An eviction is allowed if at most \"maxUnavailable\" pods selected by \"selector\" are unavailable after the eviction, i.e. even in absence of the evicted pod. For example, one can prevent all voluntary evictions by specifying 0. This is a mutually exclusive setting with \"minAvailable\".",
+	"unhealthyPodEvictionPolicy": "UnhealthyPodEvictionPolicy defines the criteria for when unhealthy pods should be considered for eviction. Current implementation considers healthy pods, as pods that have status.conditions item with type=\"Ready\",status=\"True\".\n\nValid policies are IfHealthyBudget and AlwaysAllow. If no policy is specified, the default behavior will be used, which corresponds to the IfHealthyBudget policy.\n\nIfHealthyBudget policy means that running pods (status.phase=\"Running\"), but not yet healthy can be evicted only if the guarded application is not disrupted (status.currentHealthy is at least equal to status.desiredHealthy). Healthy pods will be subject to the PDB for eviction.\n\nAlwaysAllow policy means that all running pods (status.phase=\"Running\"), but not yet healthy are considered disrupted and can be evicted regardless of whether the criteria in a PDB is met. This means perspective running pods of a disrupted application might not get a chance to become healthy. Healthy pods will be subject to the PDB for eviction.\n\nAdditional policies may be added in the future. Clients making eviction decisions should disallow eviction of unhealthy pods if they encounter an unrecognized policy in this field.\n\nThis field is alpha-level. The eviction API uses this field when the feature gate PDBUnhealthyPodEvictionPolicy is enabled (disabled by default).",
 }
 
 func (PodDisruptionBudgetSpec) SwaggerDoc() map[string]string {
@@ -132,6 +136,7 @@ var map_PodDisruptionBudgetStatus = map[string]string{
 	"currentHealthy":     "current number of healthy pods",
 	"desiredHealthy":     "minimum desired number of healthy pods",
 	"expectedPods":       "total number of pods counted by this disruption budget",
+	"conditions":         "Conditions contain conditions for PDB. The disruption controller sets the DisruptionAllowed condition. The following are known values for the reason field (additional reasons could be added in the future): - SyncFailed: The controller encountered an error and wasn't able to compute\n              the number of allowed disruptions. Therefore no disruptions are\n              allowed and the status of the condition will be False.\n- InsufficientPods: The number of pods are either at or below the number\n                    required by the PodDisruptionBudget. No disruptions are\n                    allowed and the status of the condition will be False.\n- SufficientPods: There are more pods than required by the PodDisruptionBudget.\n                  The condition will be True, and the number of allowed\n                  disruptions are provided by the disruptionsAllowed property.",
 }
 
 func (PodDisruptionBudgetStatus) SwaggerDoc() map[string]string {
@@ -139,7 +144,7 @@ func (PodDisruptionBudgetStatus) SwaggerDoc() map[string]string {
 }
 
 var map_PodSecurityPolicy = map[string]string{
-	"":         "PodSecurityPolicy governs the ability to make requests that affect the Security Context that will be applied to a pod and container.",
+	"":         "PodSecurityPolicy governs the ability to make requests that affect the Security Context that will be applied to a pod and container. Deprecated in 1.21.",
 	"metadata": "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
 	"spec":     "spec defines the policy enforced.",
 }
@@ -179,7 +184,7 @@ var map_PodSecurityPolicySpec = map[string]string{
 	"allowPrivilegeEscalation":        "allowPrivilegeEscalation determines if a pod can request to allow privilege escalation. If unspecified, defaults to true.",
 	"allowedHostPaths":                "allowedHostPaths is an allowlist of host paths. Empty indicates that all host paths may be used.",
 	"allowedFlexVolumes":              "allowedFlexVolumes is an allowlist of Flexvolumes.  Empty or nil indicates that all Flexvolumes may be used.  This parameter is effective only when the usage of the Flexvolumes is allowed in the \"volumes\" field.",
-	"allowedCSIDrivers":               "AllowedCSIDrivers is an allowlist of inline CSI drivers that must be explicitly set to be embedded within a pod spec. An empty value indicates that any CSI driver can be used for inline ephemeral volumes. This is a beta field, and is only honored if the API server enables the CSIInlineVolume feature gate.",
+	"allowedCSIDrivers":               "AllowedCSIDrivers is an allowlist of inline CSI drivers that must be explicitly set to be embedded within a pod spec. An empty value indicates that any CSI driver can be used for inline ephemeral volumes.",
 	"allowedUnsafeSysctls":            "allowedUnsafeSysctls is a list of explicitly allowed unsafe sysctls, defaults to none. Each entry is either a plain sysctl name or ends in \"*\" in which case it is considered as a prefix of allowed sysctls. Single * means all unsafe sysctls are allowed. Kubelet has to allowlist all allowed unsafe sysctls explicitly to avoid rejection.\n\nExamples: e.g. \"foo/*\" allows \"foo/bar\", \"foo/baz\", etc. e.g. \"foo.*\" allows \"foo.bar\", \"foo.baz\", etc.",
 	"forbiddenSysctls":                "forbiddenSysctls is a list of explicitly forbidden sysctls, defaults to none. Each entry is either a plain sysctl name or ends in \"*\" in which case it is considered as a prefix of forbidden sysctls. Single * means all sysctls are forbidden.\n\nExamples: e.g. \"foo/*\" forbids \"foo/bar\", \"foo/baz\", etc. e.g. \"foo.*\" forbids \"foo.bar\", \"foo.baz\", etc.",
 	"allowedProcMountTypes":           "AllowedProcMountTypes is an allowlist of allowed ProcMountTypes. Empty or nil indicates that only the DefaultProcMountType may be used. This requires the ProcMountType feature flag to be enabled.",

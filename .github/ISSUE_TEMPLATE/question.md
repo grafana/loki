@@ -1,12 +1,15 @@
 ---
 name: Question
-about: 'Questions should be handled in the mailing list: lokiproject@googlegroups.com'
+about: 'Questions can be submitted to our forum, mailing list or Slack'
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-Please ask questions you have in the mailing list: https://groups.google.com/forum/#!forum/lokiproject
+You may submit questions in any of the following ways:
+  - On our [community forum](https://community.grafana.com/c/grafana-loki/41)
+  - To our [mailing list](https://groups.google.com/forum/#!forum/lokiproject)
+  - In `#loki` in [Grafana's Public Slack](https://slack.grafana.com/)
 
-Or join our #loki slack channel at http://slack.raintank.io/
+**NOTE: All questions submitted as issues will be closed.**

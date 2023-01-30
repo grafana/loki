@@ -10,6 +10,7 @@
 package primitive
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -132,11 +133,9 @@ Loop:
 }
 
 // BigInt returns significand as big.Int and exponent, bi * 10 ^ exp.
-func (d Decimal128) BigInt() (bi *big.Int, exp int, err error) {
+func (d Decimal128) BigInt() (*big.Int, int, error) {
 	high, low := d.GetBytes()
-	var posSign bool // positive sign
-
-	posSign = high>>63&1 == 0
+	posSign := high>>63&1 == 0 // positive sign
 
 	switch high >> 58 & (1<<5 - 1) {
 	case 0x1F:
@@ -148,6 +147,7 @@ func (d Decimal128) BigInt() (bi *big.Int, exp int, err error) {
 		return nil, 0, ErrParseNegInf
 	}
 
+	var exp int
 	if high>>61&3 == 3 {
 		// Bits: 1*sign 2*ignored 14*exponent 111*significand.
 		// Implicit 0b100 prefix in significand.
@@ -170,7 +170,7 @@ func (d Decimal128) BigInt() (bi *big.Int, exp int, err error) {
 		return new(big.Int), 0, nil
 	}
 
-	bi = big.NewInt(0)
+	bi := big.NewInt(0)
 	const host32bit = ^uint(0)>>32 == 0
 	if host32bit {
 		bi.SetBits([]big.Word{big.Word(low), big.Word(low >> 32), big.Word(high), big.Word(high >> 32)})
@@ -181,7 +181,7 @@ func (d Decimal128) BigInt() (bi *big.Int, exp int, err error) {
 	if !posSign {
 		return bi.Neg(bi), exp, nil
 	}
-	return
+	return bi, exp, nil
 }
 
 // IsNaN returns whether d is NaN.
@@ -191,10 +191,9 @@ func (d Decimal128) IsNaN() bool {
 
 // IsInf returns:
 //
-//   +1 d == Infinity
-//    0 other case
-//   -1 d == -Infinity
-//
+//	+1 d == Infinity
+//	 0 other case
+//	-1 d == -Infinity
 func (d Decimal128) IsInf() int {
 	if d.h>>58&(1<<5-1) != 0x1E {
 		return 0
@@ -204,6 +203,54 @@ func (d Decimal128) IsInf() int {
 		return 1
 	}
 	return -1
+}
+
+// IsZero returns true if d is the empty Decimal128.
+func (d Decimal128) IsZero() bool {
+	return d.h == 0 && d.l == 0
+}
+
+// MarshalJSON returns Decimal128 as a string.
+func (d Decimal128) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+// UnmarshalJSON creates a primitive.Decimal128 from a JSON string, an extended JSON $numberDecimal value, or the string
+// "null". If b is a JSON string or extended JSON value, d will have the value of that string, and if b is "null", d will
+// be unchanged.
+func (d *Decimal128) UnmarshalJSON(b []byte) error {
+	// Ignore "null" to keep parity with the standard library. Decoding a JSON null into a non-pointer Decimal128 field
+	// will leave the field unchanged. For pointer values, encoding/json will set the pointer to nil and will not
+	// enter the UnmarshalJSON hook.
+	if string(b) == "null" {
+		return nil
+	}
+
+	var res interface{}
+	err := json.Unmarshal(b, &res)
+	if err != nil {
+		return err
+	}
+	str, ok := res.(string)
+
+	// Extended JSON
+	if !ok {
+		m, ok := res.(map[string]interface{})
+		if !ok {
+			return errors.New("not an extended JSON Decimal128: expected document")
+		}
+		d128, ok := m["$numberDecimal"]
+		if !ok {
+			return errors.New("not an extended JSON Decimal128: expected key $numberDecimal")
+		}
+		str, ok = d128.(string)
+		if !ok {
+			return errors.New("not an extended JSON Decimal128: expected decimal to be string")
+		}
+	}
+
+	*d, err = ParseDecimal128(str)
+	return err
 }
 
 func divmod(h, l uint64, div uint32) (qh, ql uint64, rem uint32) {

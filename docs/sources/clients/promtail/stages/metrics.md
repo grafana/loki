@@ -1,7 +1,8 @@
 ---
 title: metrics
+description: metrics stage
 ---
-# `metrics` stage
+# metrics
 
 The `metrics` stage is an action stage that allows for defining and updating
 metrics based on data from the extracted map. Note that created metrics are not
@@ -81,7 +82,7 @@ type: Gauge
 # Defines custom prefix name for the metric. If undefined, default name "promtail_custom_" will be prefixed.
 [prefix: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -119,7 +120,7 @@ type: Histogram
 # Defines custom prefix name for the metric. If undefined, default name "promtail_custom_" will be prefixed.
 [prefix: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -135,13 +136,6 @@ config:
   # if the targeted value exactly matches the provided string.
   # If not present, all data will match.
   [value: <string>]
-
-  # Must be either "inc" or "add" (case insensitive). If
-  # inc is chosen, the metric value will increase by 1 for each
-  # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
-  # and its value will be added to the metric.
-  action: <string>
 
   # Holds all the numbers in which to bucket the metric.
   buckets:
@@ -274,3 +268,16 @@ number in the `retries` field from the extracted map.
 This pipeline creates a histogram that reads `response_time` from the extracted
 map and places it into a bucket, both increasing the count of the bucket and the
 sum for that particular bucket.
+
+## Supported values
+
+The metric values extracted from the log data are internally converted to floating points. 
+The supported values are the following:
+* integers, floating point numbers
+* string - two types of string formats are supported:
+  * strings that represent floating point numbers: e.g., `"0.804"` is converted to `0.804`.
+  * duration format strings. Valid time units are "ns", "us", "ms", "s", "m", "h". 
+    Values in this format are converted as a floating point number of seconds. E.g., `"0.5ms"` is converted to `0.0005`.
+* boolean:
+  * `true` is converted to `1`
+  * `false` is converted to `0`

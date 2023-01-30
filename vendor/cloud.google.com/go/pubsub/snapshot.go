@@ -20,8 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	pb "google.golang.org/genproto/googleapis/pubsub/v1"
+	fmpb "google.golang.org/genproto/protobuf/field_mask"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Snapshot is a reference to a PubSub snapshot.
@@ -42,11 +43,30 @@ func (s *Snapshot) ID() string {
 	return s.name[slash+1:]
 }
 
+// SetLabels sets or replaces the labels on a given snapshot.
+func (s *Snapshot) SetLabels(ctx context.Context, label map[string]string) (*SnapshotConfig, error) {
+	sc, err := s.c.subc.UpdateSnapshot(ctx, &pb.UpdateSnapshotRequest{
+		Snapshot: &pb.Snapshot{
+			Name:   s.name,
+			Labels: label,
+		},
+		UpdateMask: &fmpb.FieldMask{
+			Paths: []string{"labels"},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toSnapshotConfig(sc, s.c)
+}
+
 // SnapshotConfig contains the details of a Snapshot.
 type SnapshotConfig struct {
 	*Snapshot
 	Topic      *Topic
 	Expiration time.Time
+	// The set of labels for the snapshot.
+	Labels map[string]string
 }
 
 // Snapshot creates a reference to a snapshot.
@@ -100,11 +120,8 @@ func (s *Snapshot) Delete(ctx context.Context) error {
 // creation time), only retained messages will be marked as unacknowledged,
 // and already-expunged messages will not be restored.
 func (s *Subscription) SeekToTime(ctx context.Context, t time.Time) error {
-	ts, err := ptypes.TimestampProto(t)
-	if err != nil {
-		return err
-	}
-	_, err = s.c.subc.Seek(ctx, &pb.SeekRequest{
+	ts := timestamppb.New(t)
+	_, err := s.c.subc.Seek(ctx, &pb.SeekRequest{
 		Subscription: s.name,
 		Target:       &pb.SeekRequest_Time{Time: ts},
 	})
@@ -116,11 +133,12 @@ func (s *Subscription) SeekToTime(ctx context.Context, t time.Time) error {
 // If the name is empty string, a unique name is assigned.
 //
 // The created snapshot is guaranteed to retain:
-//  (a) The existing backlog on the subscription. More precisely, this is
-//      defined as the messages in the subscription's backlog that are
-//      unacknowledged when Snapshot returns without error.
-//  (b) Any messages published to the subscription's topic following
-//      Snapshot returning without error.
+//
+//	(a) The existing backlog on the subscription. More precisely, this is
+//	    defined as the messages in the subscription's backlog that are
+//	    unacknowledged when Snapshot returns without error.
+//	(b) Any messages published to the subscription's topic following
+//	    Snapshot returning without error.
 func (s *Subscription) CreateSnapshot(ctx context.Context, name string) (*SnapshotConfig, error) {
 	if name != "" {
 		name = fmt.Sprintf("projects/%s/snapshots/%s", strings.Split(s.name, "/")[1], name)
@@ -148,13 +166,11 @@ func (s *Subscription) SeekToSnapshot(ctx context.Context, snap *Snapshot) error
 }
 
 func toSnapshotConfig(snap *pb.Snapshot, c *Client) (*SnapshotConfig, error) {
-	exp, err := ptypes.Timestamp(snap.ExpireTime)
-	if err != nil {
-		return nil, err
-	}
+	exp := snap.ExpireTime.AsTime()
 	return &SnapshotConfig{
 		Snapshot:   &Snapshot{c: c, name: snap.Name},
 		Topic:      newTopic(c, snap.Topic),
 		Expiration: exp,
+		Labels:     snap.Labels,
 	}, nil
 }

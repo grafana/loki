@@ -12,19 +12,44 @@ Example of Show Hypervisor Details
 
 	fmt.Printf("%+v\n", hypervisor)
 
-Example of Show Hypervisor Details with Compute API microversion greater than 2.53
+Example of Show Hypervisor Details when using Compute API microversion greater than 2.53
 
-    hypervisorID := "c48f6247-abe4-4a24-824e-ea39e108874f"
-    hypervisor, err := hypervisors.Get(computeClient, hypervisorID).Extract()
-    if err != nil {
-        panic(err)
-    }
+	computeClient.Microversion = "2.53"
+
+	hypervisorID := "c48f6247-abe4-4a24-824e-ea39e108874f"
+	hypervisor, err := hypervisors.Get(computeClient, hypervisorID).Extract()
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Printf("%+v\n", hypervisor)
 
 Example of Retrieving Details of All Hypervisors
 
-	allPages, err := hypervisors.List(computeClient).AllPages()
+	allPages, err := hypervisors.List(computeClient, nil).AllPages()
+	if err != nil {
+		panic(err)
+	}
+
+	allHypervisors, err := hypervisors.ExtractHypervisors(allPages)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, hypervisor := range allHypervisors {
+		fmt.Printf("%+v\n", hypervisor)
+	}
+
+Example of Retrieving Details of All Hypervisors when using Compute API microversion 2.33 or greater.
+
+	computeClient.Microversion = "2.53"
+
+	iTrue := true
+	listOpts := hypervisors.ListOpts{
+		WithServers: &true,
+	}
+
+	allPages, err := hypervisors.List(computeClient, listOpts).AllPages()
 	if err != nil {
 		panic(err)
 	}
@@ -59,11 +84,13 @@ Example of Show Hypervisor Uptime
 
 Example of Show Hypervisor Uptime with Compute API microversion greater than 2.53
 
-    hypervisorID := "c48f6247-abe4-4a24-824e-ea39e108874f"
-    hypervisorUptime, err := hypervisors.GetUptime(computeClient, hypervisorID).Extract()
-    if err != nil {
-        panic(err)
-    }
+	computeClient.Microversion = "2.53"
+
+	hypervisorID := "c48f6247-abe4-4a24-824e-ea39e108874f"
+	hypervisorUptime, err := hypervisors.GetUptime(computeClient, hypervisorID).Extract()
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Printf("%+v\n", hypervisorUptime)
 */

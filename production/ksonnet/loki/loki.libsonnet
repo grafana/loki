@@ -1,4 +1,3 @@
-(import 'ksonnet-util/kausal.libsonnet') +
 (import 'jaeger-agent-mixin/jaeger.libsonnet') +
 (import 'images.libsonnet') +
 (import 'common.libsonnet') +
@@ -14,11 +13,25 @@
 (import 'query-frontend.libsonnet') +
 (import 'ruler.libsonnet') +
 
+// Query scheduler support
+// must be mixed in after frontend and querier so it can override their configuration.
+(import 'query-scheduler.libsonnet') +
+
 // Supporting services
 (import 'memcached.libsonnet') +
+(import 'overrides-exporter.libsonnet') +
 
 // WAL support
 (import 'wal.libsonnet') +
 
+// Index Gateway support
+(import 'index-gateway.libsonnet') +
+
 // BoltDB Shipper support. This should be the last one to get imported.
-(import 'boltdb_shipper.libsonnet')
+(import 'boltdb_shipper.libsonnet') +
+
+// Memberlist related deployment configuration, mostly migration related
+(import 'memberlist.libsonnet') +
+
+// Prometheus ServiceMonitor
+(import 'servicemonitor.libsonnet')

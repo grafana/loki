@@ -1,20 +1,26 @@
+local k = import 'ksonnet-util/kausal.libsonnet';
+
 {
   _config+:: {
     htpasswd_contents: error 'must specify htpasswd contents',
+
+    // This is inserted into the gateway Nginx config file
+    // under the server directive
+    gateway_server_snippet: '',
   },
 
   _images+:: {
     nginx: 'nginx:1.15.1-alpine',
   },
 
-  local secret = $.core.v1.secret,
+  local secret = k.core.v1.secret,
 
   gateway_secret:
     secret.new('gateway-secret', {
       '.htpasswd': std.base64($._config.htpasswd_contents),
     }),
 
-  local configMap = $.core.v1.configMap,
+  local configMap = k.core.v1.configMap,
 
   gateway_config:
     configMap.new('gateway-config') +
@@ -37,7 +43,7 @@
           access_log   /dev/stderr  main;
           sendfile     on;
           tcp_nopush   on;
-          resolver kube-dns.kube-system.svc.cluster.local;
+          resolver %(dns_resolver)s;
 
           server {
             listen               80;
@@ -72,20 +78,22 @@
             location ~ /loki/api/.* {
               proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
+
+            %(gateway_server_snippet)s
           }
         }
       ||| % $._config,
     }),
 
-  local container = $.core.v1.container,
-  local containerPort = $.core.v1.containerPort,
+  local container = k.core.v1.container,
+  local containerPort = k.core.v1.containerPort,
 
   gateway_container::
     container.new('nginx', $._images.nginx) +
-    container.withPorts($.core.v1.containerPort.new(name='http', port=80)) +
-    $.util.resourcesRequests('50m', '100Mi'),
+    container.withPorts(k.core.v1.containerPort.new(name='http', port=80)) +
+    k.util.resourcesRequests('50m', '100Mi'),
 
-  local deployment = $.apps.v1.deployment,
+  local deployment = k.apps.v1.deployment,
 
   gateway_deployment:
     deployment.new('gateway', 3, [
@@ -94,10 +102,12 @@
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({
       config_hash: std.md5(std.toString($.gateway_config)),
     }) +
-    $.util.configVolumeMount('gateway-config', '/etc/nginx') +
-    $.util.secretVolumeMount('gateway-secret', '/etc/nginx/secrets', defaultMode=420) +
-    $.util.antiAffinity,
+    k.util.configVolumeMount('gateway-config', '/etc/nginx') +
+    k.util.secretVolumeMount('gateway-secret', '/etc/nginx/secrets', defaultMode=420) +
+    k.util.antiAffinity +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
+    deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
   gateway_service:
-    $.util.serviceFor($.gateway_deployment),
+    k.util.serviceFor($.gateway_deployment, $._config.service_ignored_labels),
 }

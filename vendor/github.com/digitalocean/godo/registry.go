@@ -18,15 +18,17 @@ const (
 
 // RegistryService is an interface for interfacing with the Registry endpoints
 // of the DigitalOcean API.
-// See: https://developers.digitalocean.com/documentation/v2#registry
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Container-Registry
 type RegistryService interface {
 	Create(context.Context, *RegistryCreateRequest) (*Registry, *Response, error)
 	Get(context.Context) (*Registry, *Response, error)
 	Delete(context.Context) (*Response, error)
 	DockerCredentials(context.Context, *RegistryDockerCredentialsRequest) (*DockerCredentials, *Response, error)
 	ListRepositories(context.Context, string, *ListOptions) ([]*Repository, *Response, error)
+	ListRepositoriesV2(context.Context, string, *TokenListOptions) ([]*RepositoryV2, *Response, error)
 	ListRepositoryTags(context.Context, string, string, *ListOptions) ([]*RepositoryTag, *Response, error)
 	DeleteTag(context.Context, string, string, string) (*Response, error)
+	ListRepositoryManifests(context.Context, string, string, *ListOptions) ([]*RepositoryManifest, *Response, error)
 	DeleteManifest(context.Context, string, string, string) (*Response, error)
 	StartGarbageCollection(context.Context, string, ...*StartGarbageCollectionRequest) (*GarbageCollection, *Response, error)
 	GetGarbageCollection(context.Context, string) (*GarbageCollection, *Response, error)
@@ -48,6 +50,7 @@ type RegistryServiceOp struct {
 type RegistryCreateRequest struct {
 	Name                 string `json:"name,omitempty"`
 	SubscriptionTierSlug string `json:"subscription_tier_slug,omitempty"`
+	Region               string `json:"region,omitempty"`
 }
 
 // RegistryDockerCredentialsRequest represents a request to retrieve docker
@@ -63,6 +66,7 @@ type Registry struct {
 	StorageUsageBytes          uint64    `json:"storage_usage_bytes,omitempty"`
 	StorageUsageBytesUpdatedAt time.Time `json:"storage_usage_bytes_updated_at,omitempty"`
 	CreatedAt                  time.Time `json:"created_at,omitempty"`
+	Region                     string    `json:"region,omitempty"`
 }
 
 // Repository represents a repository
@@ -71,6 +75,15 @@ type Repository struct {
 	Name         string         `json:"name,omitempty"`
 	LatestTag    *RepositoryTag `json:"latest_tag,omitempty"`
 	TagCount     uint64         `json:"tag_count,omitempty"`
+}
+
+// RepositoryV2 represents a repository in the V2 format
+type RepositoryV2 struct {
+	RegistryName   string              `json:"registry_name,omitempty"`
+	Name           string              `json:"name,omitempty"`
+	TagCount       uint64              `json:"tag_count,omitempty"`
+	ManifestCount  uint64              `json:"manifest_count,omitempty"`
+	LatestManifest *RepositoryManifest `json:"latest_manifest,omitempty"`
 }
 
 // RepositoryTag represents a repository tag
@@ -84,6 +97,24 @@ type RepositoryTag struct {
 	UpdatedAt           time.Time `json:"updated_at,omitempty"`
 }
 
+// RepositoryManifest represents a repository manifest
+type RepositoryManifest struct {
+	RegistryName        string    `json:"registry_name,omitempty"`
+	Repository          string    `json:"repository,omitempty"`
+	Digest              string    `json:"digest,omitempty"`
+	CompressedSizeBytes uint64    `json:"compressed_size_bytes,omitempty"`
+	SizeBytes           uint64    `json:"size_bytes,omitempty"`
+	UpdatedAt           time.Time `json:"updated_at,omitempty"`
+	Tags                []string  `json:"tags,omitempty"`
+	Blobs               []*Blob   `json:"blobs,omitempty"`
+}
+
+// Blob represents a registry blob
+type Blob struct {
+	Digest              string `json:"digest,omitempty"`
+	CompressedSizeBytes uint64 `json:"compressed_size_bytes,omitempty"`
+}
+
 type registryRoot struct {
 	Registry *Registry `json:"registry,omitempty"`
 }
@@ -94,10 +125,22 @@ type repositoriesRoot struct {
 	Meta         *Meta         `json:"meta"`
 }
 
+type repositoriesV2Root struct {
+	Repositories []*RepositoryV2 `json:"repositories,omitempty"`
+	Links        *Links          `json:"links,omitempty"`
+	Meta         *Meta           `json:"meta"`
+}
+
 type repositoryTagsRoot struct {
 	Tags  []*RepositoryTag `json:"tags,omitempty"`
 	Links *Links           `json:"links,omitempty"`
 	Meta  *Meta            `json:"meta"`
+}
+
+type repositoryManifestsRoot struct {
+	Manifests []*RepositoryManifest `json:"manifests,omitempty"`
+	Links     *Links                `json:"links,omitempty"`
+	Meta      *Meta                 `json:"meta"`
 }
 
 // GarbageCollection represents a garbage collection.
@@ -151,6 +194,7 @@ type UpdateGarbageCollectionRequest struct {
 // RegistryOptions are options for users when creating or updating a registry.
 type RegistryOptions struct {
 	SubscriptionTiers []*RegistrySubscriptionTier `json:"subscription_tiers,omitempty"`
+	AvailableRegions  []string                    `json:"available_regions"`
 }
 
 type registryOptionsRoot struct {
@@ -167,8 +211,8 @@ type RegistrySubscriptionTier struct {
 	IncludedBandwidthBytes uint64 `json:"included_bandwidth_bytes"`
 	MonthlyPriceInCents    uint64 `json:"monthly_price_in_cents"`
 	Eligible               bool   `json:"eligible,omitempty"`
-	// EligibilityReaons is included when Eligible is false, and indicates the
-	// reasons why this tier is not availble to the user.
+	// EligibilityReasons is included when Eligible is false, and indicates the
+	// reasons why this tier is not available to the user.
 	EligibilityReasons []string `json:"eligibility_reasons,omitempty"`
 }
 
@@ -293,6 +337,30 @@ func (svc *RegistryServiceOp) ListRepositories(ctx context.Context, registry str
 	return root.Repositories, resp, nil
 }
 
+// ListRepositoriesV2 returns a list of the Repositories in a registry.
+func (svc *RegistryServiceOp) ListRepositoriesV2(ctx context.Context, registry string, opts *TokenListOptions) ([]*RepositoryV2, *Response, error) {
+	path := fmt.Sprintf("%s/%s/repositoriesV2", registryPath, registry)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(repositoriesV2Root)
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	resp.Links = root.Links
+	resp.Meta = root.Meta
+
+	return root.Repositories, resp, nil
+}
+
 // ListRepositoryTags returns a list of the RepositoryTags available within the given repository.
 func (svc *RegistryServiceOp) ListRepositoryTags(ctx context.Context, registry, repository string, opts *ListOptions) ([]*RepositoryTag, *Response, error) {
 	path := fmt.Sprintf("%s/%s/repositories/%s/tags", registryPath, registry, url.PathEscape(repository))
@@ -334,6 +402,30 @@ func (svc *RegistryServiceOp) DeleteTag(ctx context.Context, registry, repositor
 	}
 
 	return resp, nil
+}
+
+// ListRepositoryManifests returns a list of the RepositoryManifests available within the given repository.
+func (svc *RegistryServiceOp) ListRepositoryManifests(ctx context.Context, registry, repository string, opts *ListOptions) ([]*RepositoryManifest, *Response, error) {
+	path := fmt.Sprintf("%s/%s/repositories/%s/digests", registryPath, registry, url.PathEscape(repository))
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(repositoryManifestsRoot)
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	resp.Links = root.Links
+	resp.Meta = root.Meta
+
+	return root.Manifests, resp, nil
 }
 
 // DeleteManifest deletes a manifest by its digest within a given repository.

@@ -17,64 +17,28 @@ limitations under the License.
 package v1beta1
 
 import (
+	v1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Rule is a tuple of APIGroups, APIVersion, and Resources.It is recommended
 // to make sure that all the tuple expansions are valid.
-type Rule struct {
-	// APIGroups is the API groups the resources belong to. '*' is all groups.
-	// If '*' is present, the length of the slice must be one.
-	// Required.
-	APIGroups []string `json:"apiGroups,omitempty" protobuf:"bytes,1,rep,name=apiGroups"`
+type Rule = v1.Rule
 
-	// APIVersions is the API versions the resources belong to. '*' is all versions.
-	// If '*' is present, the length of the slice must be one.
-	// Required.
-	APIVersions []string `json:"apiVersions,omitempty" protobuf:"bytes,2,rep,name=apiVersions"`
-
-	// Resources is a list of resources this rule applies to.
-	//
-	// For example:
-	// 'pods' means pods.
-	// 'pods/log' means the log subresource of pods.
-	// '*' means all resources, but not subresources.
-	// 'pods/*' means all subresources of pods.
-	// '*/scale' means all scale subresources.
-	// '*/*' means all resources and their subresources.
-	//
-	// If wildcard is present, the validation rule will ensure resources do not
-	// overlap with each other.
-	//
-	// Depending on the enclosing object, subresources might not be allowed.
-	// Required.
-	Resources []string `json:"resources,omitempty" protobuf:"bytes,3,rep,name=resources"`
-
-	// scope specifies the scope of this rule.
-	// Valid values are "Cluster", "Namespaced", and "*"
-	// "Cluster" means that only cluster-scoped resources will match this rule.
-	// Namespace API objects are cluster-scoped.
-	// "Namespaced" means that only namespaced resources will match this rule.
-	// "*" means that there are no scope restrictions.
-	// Subresources match the scope of their parent resource.
-	// Default is "*".
-	//
-	// +optional
-	Scope *ScopeType `json:"scope,omitempty" protobuf:"bytes,4,rep,name=scope"`
-}
-
-type ScopeType string
+// ScopeType specifies a scope for a Rule.
+type ScopeType = v1.ScopeType
 
 const (
 	// ClusterScope means that scope is limited to cluster-scoped objects.
 	// Namespace objects are cluster-scoped.
-	ClusterScope ScopeType = "Cluster"
+	ClusterScope ScopeType = v1.ClusterScope
 	// NamespacedScope means that scope is limited to namespaced objects.
-	NamespacedScope ScopeType = "Namespaced"
+	NamespacedScope ScopeType = v1.NamespacedScope
 	// AllScopes means that all scopes are included.
-	AllScopes ScopeType = "*"
+	AllScopes ScopeType = v1.AllScopes
 )
 
+// FailurePolicyType specifies a failure policy that defines how unrecognized errors from the admission endpoint are handled.
 type FailurePolicyType string
 
 const (
@@ -94,6 +58,7 @@ const (
 	Equivalent MatchPolicyType = "Equivalent"
 )
 
+// SideEffectClass specifies the types of side effects a webhook may have.
 type SideEffectClass string
 
 const (
@@ -294,7 +259,7 @@ type ValidatingWebhook struct {
 	// SideEffects states whether this webhook has side effects.
 	// Acceptable values are: Unknown, None, Some, NoneOnDryRun
 	// Webhooks with side effects MUST implement a reconciliation system, since a request may be
-	// rejected by a future step in the admission change and the side effects therefore need to be undone.
+	// rejected by a future step in the admission chain and the side effects therefore need to be undone.
 	// Requests with the dryRun attribute will be auto-rejected if they match a webhook with
 	// sideEffects == Unknown or Some. Defaults to Unknown.
 	// +optional
@@ -426,7 +391,7 @@ type MutatingWebhook struct {
 	// SideEffects states whether this webhook has side effects.
 	// Acceptable values are: Unknown, None, Some, NoneOnDryRun
 	// Webhooks with side effects MUST implement a reconciliation system, since a request may be
-	// rejected by a future step in the admission change and the side effects therefore need to be undone.
+	// rejected by a future step in the admission chain and the side effects therefore need to be undone.
 	// Requests with the dryRun attribute will be auto-rejected if they match a webhook with
 	// sideEffects == Unknown or Some. Defaults to Unknown.
 	// +optional
@@ -485,26 +450,19 @@ const (
 
 // RuleWithOperations is a tuple of Operations and Resources. It is recommended to make
 // sure that all the tuple expansions are valid.
-type RuleWithOperations struct {
-	// Operations is the operations the admission hook cares about - CREATE, UPDATE, DELETE, CONNECT or *
-	// for all of those operations and any future admission operations that are added.
-	// If '*' is present, the length of the slice must be one.
-	// Required.
-	Operations []OperationType `json:"operations,omitempty" protobuf:"bytes,1,rep,name=operations,casttype=OperationType"`
-	// Rule is embedded, it describes other criteria of the rule, like
-	// APIGroups, APIVersions, Resources, etc.
-	Rule `json:",inline" protobuf:"bytes,2,opt,name=rule"`
-}
+type RuleWithOperations = v1.RuleWithOperations
 
-type OperationType string
+// OperationType specifies an operation for a request.
+// +enum
+type OperationType = v1.OperationType
 
 // The constants should be kept in sync with those defined in k8s.io/kubernetes/pkg/admission/interface.go.
 const (
-	OperationAll OperationType = "*"
-	Create       OperationType = "CREATE"
-	Update       OperationType = "UPDATE"
-	Delete       OperationType = "DELETE"
-	Connect      OperationType = "CONNECT"
+	OperationAll OperationType = v1.OperationAll
+	Create       OperationType = v1.Create
+	Update       OperationType = v1.Update
+	Delete       OperationType = v1.Delete
+	Connect      OperationType = v1.Connect
 )
 
 // WebhookClientConfig contains the information to make a TLS

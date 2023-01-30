@@ -1,12 +1,14 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -15,19 +17,22 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
 
-	"github.com/grafana/loki/pkg/build"
+	"github.com/grafana/dskit/backoff"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 const (
-	queryPath       = "/loki/api/v1/query"
-	queryRangePath  = "/loki/api/v1/query_range"
-	labelsPath      = "/loki/api/v1/labels"
-	labelValuesPath = "/loki/api/v1/label/%s/values"
-	seriesPath      = "/loki/api/v1/series"
-	tailPath        = "/loki/api/v1/tail"
+	queryPath         = "/loki/api/v1/query"
+	queryRangePath    = "/loki/api/v1/query_range"
+	labelsPath        = "/loki/api/v1/labels"
+	labelValuesPath   = "/loki/api/v1/label/%s/values"
+	seriesPath        = "/loki/api/v1/series"
+	tailPath          = "/loki/api/v1/tail"
+	defaultAuthHeader = "Authorization"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -43,13 +48,28 @@ type Client interface {
 	GetOrgID() string
 }
 
+// Tripperware can wrap a roundtripper.
+type Tripperware func(http.RoundTripper) http.RoundTripper
+type BackoffConfig struct {
+	MaxBackoff int
+	MinBackoff int
+}
+
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig config.TLSConfig
-	Username  string
-	Password  string
-	Address   string
-	OrgID     string
+	TLSConfig       config.TLSConfig
+	Username        string
+	Password        string
+	Address         string
+	OrgID           string
+	Tripperware     Tripperware
+	BearerToken     string
+	BearerTokenFile string
+	Retries         int
+	QueryTags       string
+	AuthHeader      string
+	ProxyURL        string
+	BackoffConfig   BackoffConfig
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -59,7 +79,7 @@ func (c *DefaultClient) Query(queryStr string, limit int, time time.Time, direct
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("start", time.UnixNano())
+	qsb.SetInt("time", time.UnixNano())
 	qsb.SetString("direction", direction.String())
 
 	return c.doQuery(queryPath, qsb.Encode(), quiet)
@@ -170,39 +190,132 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		return err
 	}
 
-	req.SetBasicAuth(c.Username, c.Password)
-	req.Header.Set("User-Agent", userAgent)
-
-	if c.OrgID != "" {
-		req.Header.Set("X-Scope-OrgID", c.OrgID)
+	h, err := c.getHTTPRequestHeader()
+	if err != nil {
+		return err
 	}
+	req.Header = h
 
 	// Parse the URL to extract the host
 	clientConfig := config.HTTPClientConfig{
 		TLSConfig: c.TLSConfig,
 	}
 
-	client, err := config.NewClientFromConfig(clientConfig, "logcli", false, false)
-	if err != nil {
-		return err
+	if c.ProxyURL != "" {
+		prox, err := url.Parse(c.ProxyURL)
+		if err != nil {
+			return err
+		}
+		clientConfig.ProxyURL = config.URL{URL: prox}
 	}
 
-	resp, err := client.Do(req)
+	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return err
 	}
+	if c.Tripperware != nil {
+		client.Transport = c.Tripperware(client.Transport)
+	}
+
+	var resp *http.Response
+
+	success := false
+
+	bkcfg := backoff.Config{
+		MinBackoff: time.Duration(c.BackoffConfig.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.BackoffConfig.MaxBackoff) * time.Second,
+		// 0 max-retries for backoff means infinite number of retries.
+		MaxRetries: c.Retries + 1,
+	}
+	backoff := backoff.New(context.Background(), bkcfg)
+
+	for {
+		if !backoff.Ongoing() {
+			break
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			log.Println("error sending request", err)
+			backoff.Wait()
+			continue
+		}
+		if resp.StatusCode/100 != 2 {
+			buf, _ := io.ReadAll(resp.Body) // nolint
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
+			if err := resp.Body.Close(); err != nil {
+				log.Println("error closing body", err)
+			}
+			backoff.Wait()
+			continue
+		}
+		success = true
+
+		break
+
+	}
+	if !success {
+		return fmt.Errorf("run out of attempts while querying the server")
+	}
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			log.Println("error closing body", err)
 		}
 	}()
+	return json.NewDecoder(resp.Body).Decode(out)
+}
 
-	if resp.StatusCode/100 != 2 {
-		buf, _ := ioutil.ReadAll(resp.Body) // nolint
-		return fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
+func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
+	h := make(http.Header)
+
+	if c.Username != "" && c.Password != "" {
+		if c.AuthHeader == "" {
+			c.AuthHeader = defaultAuthHeader
+		}
+		h.Set(
+			c.AuthHeader,
+			"Basic "+base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)),
+		)
 	}
 
-	return json.NewDecoder(resp.Body).Decode(out)
+	h.Set("User-Agent", userAgent)
+
+	if c.OrgID != "" {
+		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+
+	if c.QueryTags != "" {
+		h.Set("X-Query-Tags", c.QueryTags)
+	}
+
+	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
+		return nil, fmt.Errorf("at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured")
+	}
+
+	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
+		return nil, fmt.Errorf("at most one of the options bearer-token & bearer-token-file is allowed to be configured")
+	}
+
+	if c.BearerToken != "" {
+		if c.AuthHeader == "" {
+			c.AuthHeader = defaultAuthHeader
+		}
+
+		h.Set(c.AuthHeader, "Bearer "+c.BearerToken)
+	}
+
+	if c.BearerTokenFile != "" {
+		b, err := os.ReadFile(c.BearerTokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
+		}
+		bearerToken := strings.TrimSpace(string(b))
+		if c.AuthHeader == "" {
+			c.AuthHeader = defaultAuthHeader
+		}
+		h.Set(c.AuthHeader, "Bearer "+bearerToken)
+	}
+	return h, nil
 }
 
 func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
@@ -216,23 +329,27 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		return nil, err
 	}
 
-	if strings.HasPrefix(us, "https") {
-		us = strings.Replace(us, "https", "wss", 1)
-	} else if strings.HasPrefix(us, "http") {
+	if strings.HasPrefix(us, "http") {
 		us = strings.Replace(us, "http", "ws", 1)
 	}
+
 	if !quiet {
 		log.Println(us)
 	}
 
-	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
-
-	if c.OrgID != "" {
-		h.Set("X-Scope-OrgID", c.OrgID)
+	h, err := c.getHTTPRequestHeader()
+	if err != nil {
+		return nil, err
 	}
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
+	}
+
+	if c.ProxyURL != "" {
+		ws.Proxy = func(req *http.Request) (*url.URL, error) {
+			return url.Parse(c.ProxyURL)
+		}
 	}
 
 	conn, resp, err := ws.Dial(us, h)
@@ -240,7 +357,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		if resp == nil {
 			return nil, err
 		}
-		buf, _ := ioutil.ReadAll(resp.Body) // nolint
+		buf, _ := io.ReadAll(resp.Body) // nolint
 		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
 	}
 

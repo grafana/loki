@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-cleanhttp"
@@ -72,10 +72,37 @@ const (
 	// other ENV names we use.
 	GRPCAddrEnvName = "CONSUL_GRPC_ADDR"
 
+	// GRPCCAFileEnvName defines an environment variable name which sets the
+	// CA file to use for talking to Consul gRPC over TLS.
+	GRPCCAFileEnvName = "CONSUL_GRPC_CACERT"
+
+	// GRPCCAPathEnvName defines an environment variable name which sets the
+	// path to a directory of CA certs to use for talking to Consul gRPC over TLS.
+	GRPCCAPathEnvName = "CONSUL_GRPC_CAPATH"
+
 	// HTTPNamespaceEnvVar defines an environment variable name which sets
 	// the HTTP Namespace to be used by default. This can still be overridden.
 	HTTPNamespaceEnvName = "CONSUL_NAMESPACE"
+
+	// HTTPPartitionEnvName defines an environment variable name which sets
+	// the HTTP Partition to be used by default. This can still be overridden.
+	HTTPPartitionEnvName = "CONSUL_PARTITION"
+
+	// QueryBackendStreaming Query backend of type streaming
+	QueryBackendStreaming = "streaming"
+
+	// QueryBackendBlockingQuery Query backend of type blocking query
+	QueryBackendBlockingQuery = "blocking-query"
 )
+
+type StatusError struct {
+	Code int
+	Body string
+}
+
+func (e StatusError) Error() string {
+	return fmt.Sprintf("Unexpected response code: %d (%s)", e.Code, e.Body)
+}
 
 // QueryOptions are used to parameterize a query
 type QueryOptions struct {
@@ -83,9 +110,16 @@ type QueryOptions struct {
 	// Note: Namespaces are available only in Consul Enterprise
 	Namespace string
 
+	// Partition overrides the `default` partition
+	// Note: Partitions are available only in Consul Enterprise
+	Partition string
+
 	// Providing a datacenter overwrites the DC provided
 	// by the Config
 	Datacenter string
+
+	// Providing a peer name in the query option
+	Peer string
 
 	// AllowStale allows any Consul server (non-leader) to service
 	// a read. This allows for lower latency and higher throughput
@@ -166,6 +200,12 @@ type QueryOptions struct {
 	// Filter requests filtering data prior to it being returned. The string
 	// is a go-bexpr compatible expression.
 	Filter string
+
+	// MergeCentralConfig returns a service definition merged with the
+	// proxy-defaults/global and service-defaults/:service config entries.
+	// This can be used to ensure a full service definition is returned in the response
+	// especially when the service might not be written into the catalog that way.
+	MergeCentralConfig bool
 }
 
 func (o *QueryOptions) Context() context.Context {
@@ -189,6 +229,10 @@ type WriteOptions struct {
 	// Namespace overrides the `default` namespace
 	// Note: Namespaces are available only in Consul Enterprise
 	Namespace string
+
+	// Partition overrides the `default` partition
+	// Note: Partitions are available only in Consul Enterprise
+	Partition string
 
 	// Providing a datacenter overwrites the DC provided
 	// by the Config
@@ -255,10 +299,18 @@ type QueryMeta struct {
 	// response is.
 	CacheAge time.Duration
 
+	// QueryBackend represent which backend served the request.
+	QueryBackend string
+
 	// DefaultACLPolicy is used to control the ACL interaction when there is no
 	// defined policy. This can be "allow" which means ACLs are used to
 	// deny-list, or "deny" which means ACLs are allow-lists.
 	DefaultACLPolicy string
+
+	// ResultsFilteredByACLs is true when some of the query's results were
+	// filtered out by enforcing ACLs. It may be false because nothing was
+	// removed, or because the endpoint does not yet support this flag.
+	ResultsFilteredByACLs bool
 }
 
 // WriteMeta is used to return meta data about a write
@@ -283,6 +335,11 @@ type Config struct {
 
 	// Scheme is the URI scheme for the Consul server
 	Scheme string
+
+	// Prefix for URIs for when consul is behind an API gateway (reverse
+	// proxy).  The API gateway must strip off the PathPrefix before
+	// passing the request onto consul.
+	PathPrefix string
 
 	// Datacenter to use. If not provided, the default agent datacenter is used.
 	Datacenter string
@@ -312,6 +369,10 @@ type Config struct {
 	// Namespace is the name of the namespace to send along for the request
 	// when no other Namespace is present in the QueryOptions
 	Namespace string
+
+	// Partition is the name of the partition to send along for the request
+	// when no other Partition is present in the QueryOptions
+	Partition string
 
 	TLSConfig TLSConfig
 }
@@ -465,6 +526,10 @@ func defaultConfig(logger hclog.Logger, transportFn func() *http.Transport) *Con
 		config.Namespace = v
 	}
 
+	if v := os.Getenv(HTTPPartitionEnvName); v != "" {
+		config.Partition = v
+	}
+
 	return config
 }
 
@@ -548,7 +613,46 @@ func (c *Config) GenerateEnv() []string {
 
 // Client provides a client to the Consul API
 type Client struct {
+	modifyLock sync.RWMutex
+	headers    http.Header
+
 	config Config
+}
+
+// Headers gets the current set of headers used for requests. This returns a
+// copy; to modify it call AddHeader or SetHeaders.
+func (c *Client) Headers() http.Header {
+	c.modifyLock.RLock()
+	defer c.modifyLock.RUnlock()
+
+	if c.headers == nil {
+		return nil
+	}
+
+	ret := make(http.Header)
+	for k, v := range c.headers {
+		for _, val := range v {
+			ret[k] = append(ret[k], val)
+		}
+	}
+
+	return ret
+}
+
+// AddHeader allows a single header key/value pair to be added
+// in a race-safe fashion.
+func (c *Client) AddHeader(key, value string) {
+	c.modifyLock.Lock()
+	defer c.modifyLock.Unlock()
+	c.headers.Add(key, value)
+}
+
+// SetHeaders clears all previous headers and uses only the given
+// ones going forward.
+func (c *Client) SetHeaders(headers http.Header) {
+	c.modifyLock.Lock()
+	defer c.modifyLock.Unlock()
+	c.headers = headers
 }
 
 // NewClient returns a new client
@@ -600,6 +704,14 @@ func NewClient(config *Config) (*Client, error) {
 		}
 	}
 
+	if config.Namespace == "" {
+		config.Namespace = defConfig.Namespace
+	}
+
+	if config.Partition == "" {
+		config.Partition = defConfig.Partition
+	}
+
 	parts := strings.SplitN(config.Address, "://", 2)
 	if len(parts) == 2 {
 		switch parts[0] {
@@ -621,13 +733,25 @@ func NewClient(config *Config) (*Client, error) {
 			return nil, fmt.Errorf("Unknown protocol scheme: %s", parts[0])
 		}
 		config.Address = parts[1]
+
+		// separate out a reverse proxy prefix, if it is present.
+		// NOTE: Rewriting this code to use url.Parse() instead of
+		// strings.SplitN() breaks existing test cases.
+		switch parts[0] {
+		case "http", "https":
+			parts := strings.SplitN(parts[1], "/", 2)
+			if len(parts) == 2 {
+				config.Address = parts[0]
+				config.PathPrefix = "/" + parts[1]
+			}
+		}
 	}
 
 	// If the TokenFile is set, always use that, even if a Token is configured.
 	// This is because when TokenFile is set it is read into the Token field.
 	// We want any derived clients to have to re-read the token file.
 	if config.TokenFile != "" {
-		data, err := ioutil.ReadFile(config.TokenFile)
+		data, err := os.ReadFile(config.TokenFile)
 		if err != nil {
 			return nil, fmt.Errorf("Error loading token file: %s", err)
 		}
@@ -640,7 +764,7 @@ func NewClient(config *Config) (*Client, error) {
 		config.Token = defConfig.Token
 	}
 
-	return &Client{config: *config}, nil
+	return &Client{config: *config, headers: make(http.Header)}, nil
 }
 
 // NewHttpClient returns an http client configured with the given Transport and TLS
@@ -692,8 +816,14 @@ func (r *request) setQueryOptions(q *QueryOptions) {
 	if q.Namespace != "" {
 		r.params.Set("ns", q.Namespace)
 	}
+	if q.Partition != "" {
+		r.params.Set("partition", q.Partition)
+	}
 	if q.Datacenter != "" {
 		r.params.Set("dc", q.Datacenter)
+	}
+	if q.Peer != "" {
+		r.params.Set("peer", q.Peer)
 	}
 	if q.AllowStale {
 		r.params.Set("stale", "")
@@ -747,6 +877,9 @@ func (r *request) setQueryOptions(q *QueryOptions) {
 			r.header.Set("Cache-Control", strings.Join(cc, ", "))
 		}
 	}
+	if q.MergeCentralConfig {
+		r.params.Set("merge-central-config", "")
+	}
 
 	r.ctx = q.ctx
 }
@@ -794,6 +927,9 @@ func (r *request) setWriteOptions(q *WriteOptions) {
 	if q.Namespace != "" {
 		r.params.Set("ns", q.Namespace)
 	}
+	if q.Partition != "" {
+		r.params.Set("partition", q.Partition)
+	}
 	if q.Datacenter != "" {
 		r.params.Set("dc", q.Datacenter)
 	}
@@ -831,6 +967,12 @@ func (r *request) toHTTP() (*http.Request, error) {
 	req.Host = r.url.Host
 	req.Header = r.header
 
+	// Content-Type must always be set when a body is present
+	// See https://github.com/hashicorp/consul/issues/10011
+	if req.Body != nil && req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
 	// Setup auth
 	if r.config.HttpAuth != nil {
 		req.SetBasicAuth(r.config.HttpAuth.Username, r.config.HttpAuth.Password)
@@ -850,16 +992,20 @@ func (c *Client) newRequest(method, path string) *request {
 		url: &url.URL{
 			Scheme: c.config.Scheme,
 			Host:   c.config.Address,
-			Path:   path,
+			Path:   c.config.PathPrefix + path,
 		},
 		params: make(map[string][]string),
-		header: make(http.Header),
+		header: c.Headers(),
 	}
+
 	if c.config.Datacenter != "" {
 		r.params.Set("dc", c.config.Datacenter)
 	}
 	if c.config.Namespace != "" {
 		r.params.Set("ns", c.config.Namespace)
+	}
+	if c.config.Partition != "" {
+		r.params.Set("partition", c.config.Partition)
 	}
 	if c.config.WaitTime != 0 {
 		r.params.Set("wait", durToMsec(r.config.WaitTime))
@@ -892,8 +1038,10 @@ func (c *Client) query(endpoint string, out interface{}, q *QueryOptions) (*Quer
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -910,18 +1058,21 @@ func (c *Client) write(endpoint string, in, out interface{}, q *WriteOptions) (*
 	r := c.newRequest("PUT", endpoint)
 	r.setWriteOptions(q)
 	r.obj = in
-	rtt, resp, err := requireOK(c.doRequest(r))
+	rtt, resp, err := c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	if out != nil {
 		if err := decodeBody(resp, &out); err != nil {
 			return nil, err
 		}
-	} else if _, err := ioutil.ReadAll(resp.Body); err != nil {
+	} else if _, err := io.ReadAll(resp.Body); err != nil {
 		return nil, err
 	}
 	return wm, nil
@@ -973,6 +1124,14 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 		q.DefaultACLPolicy = v
 	}
 
+	// Parse the X-Consul-Results-Filtered-By-ACLs
+	switch header.Get("X-Consul-Results-Filtered-By-ACLs") {
+	case "true":
+		q.ResultsFilteredByACLs = true
+	default:
+		q.ResultsFilteredByACLs = false
+	}
+
 	// Parse Cache info
 	if cacheStr := header.Get("X-Cache"); cacheStr != "" {
 		q.CacheHit = strings.EqualFold(cacheStr, "HIT")
@@ -985,6 +1144,10 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 		q.CacheAge = time.Duration(age) * time.Second
 	}
 
+	switch v := header.Get("X-Consul-Query-Backend"); v {
+	case QueryBackendStreaming, QueryBackendBlockingQuery:
+		q.QueryBackend = v
+	}
 	return nil
 }
 
@@ -1005,17 +1168,30 @@ func encodeBody(obj interface{}) (io.Reader, error) {
 }
 
 // requireOK is used to wrap doRequest and check for a 200
-func requireOK(d time.Duration, resp *http.Response, e error) (time.Duration, *http.Response, error) {
-	if e != nil {
-		if resp != nil {
-			resp.Body.Close()
+func requireOK(resp *http.Response) error {
+	return requireHttpCodes(resp, 200)
+}
+
+// requireHttpCodes checks for the "allowable" http codes for a response
+func requireHttpCodes(resp *http.Response, httpCodes ...int) error {
+	// if there is an http code that we require, return w no error
+	for _, httpCode := range httpCodes {
+		if resp.StatusCode == httpCode {
+			return nil
 		}
-		return d, nil, e
 	}
-	if resp.StatusCode != 200 {
-		return d, nil, generateUnexpectedResponseCodeError(resp)
-	}
-	return d, resp, nil
+
+	// if we reached here, then none of the http codes in resp matched any that we expected
+	// so err out
+	return generateUnexpectedResponseCodeError(resp)
+}
+
+// closeResponseBody reads resp.Body until EOF, and then closes it. The read
+// is necessary to ensure that the http.Client's underlying RoundTripper is able
+// to re-use the TCP connection. See godoc on net/http.Client.Do.
+func closeResponseBody(resp *http.Response) error {
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.Body.Close()
 }
 
 func (req *request) filterQuery(filter string) {
@@ -1032,23 +1208,19 @@ func (req *request) filterQuery(filter string) {
 func generateUnexpectedResponseCodeError(resp *http.Response) error {
 	var buf bytes.Buffer
 	io.Copy(&buf, resp.Body)
-	resp.Body.Close()
-	return fmt.Errorf("Unexpected response code: %d (%s)", resp.StatusCode, buf.Bytes())
+	closeResponseBody(resp)
+
+	trimmed := strings.TrimSpace(string(buf.Bytes()))
+	return StatusError{Code: resp.StatusCode, Body: trimmed}
 }
 
-func requireNotFoundOrOK(d time.Duration, resp *http.Response, e error) (bool, time.Duration, *http.Response, error) {
-	if e != nil {
-		if resp != nil {
-			resp.Body.Close()
-		}
-		return false, d, nil, e
-	}
+func requireNotFoundOrOK(resp *http.Response) (bool, *http.Response, error) {
 	switch resp.StatusCode {
 	case 200:
-		return true, d, resp, nil
+		return true, resp, nil
 	case 404:
-		return false, d, resp, nil
+		return false, resp, nil
 	default:
-		return false, d, nil, generateUnexpectedResponseCodeError(resp)
+		return false, nil, generateUnexpectedResponseCodeError(resp)
 	}
 }

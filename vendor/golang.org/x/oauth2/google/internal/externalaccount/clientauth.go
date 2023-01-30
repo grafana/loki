@@ -6,20 +6,24 @@ package externalaccount
 
 import (
 	"encoding/base64"
-	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
+
+	"golang.org/x/oauth2"
 )
 
-// ClientAuthentication represents an OAuth client ID and secret and the mechanism for passing these credentials as stated in rfc6749#2.3.1.
-type ClientAuthentication struct {
+// clientAuthentication represents an OAuth client ID and secret and the mechanism for passing these credentials as stated in rfc6749#2.3.1.
+type clientAuthentication struct {
 	// AuthStyle can be either basic or request-body
 	AuthStyle    oauth2.AuthStyle
 	ClientID     string
 	ClientSecret string
 }
 
-func (c *ClientAuthentication) InjectAuthentication(values url.Values, headers http.Header) {
+// InjectAuthentication is used to add authentication to a Secure Token Service exchange
+// request.  It modifies either the passed url.Values or http.Header depending on the desired
+// authentication format.
+func (c *clientAuthentication) InjectAuthentication(values url.Values, headers http.Header) {
 	if c.ClientID == "" || c.ClientSecret == "" || values == nil || headers == nil {
 		return
 	}

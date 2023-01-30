@@ -1,28 +1,33 @@
 package queryrange
 
 import (
-	"errors"
+	"context"
 	"flag"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the configuration for the queryrange tripperware
 type Config struct {
-	queryrange.Config `yaml:",inline"`
+	queryrangebase.Config `yaml:",inline"`
+	Transformer           UserIDTransformer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -40,66 +45,81 @@ func NewTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
-	minShardingLookback time.Duration,
+	schema config.SchemaConfig,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
 	registerer prometheus.Registerer,
-) (queryrange.Tripperware, Stopper, error) {
-	// Ensure that QuerySplitDuration uses configuration defaults.
-	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
-	limits = WithDefaultLimits(limits, cfg.Config)
+) (queryrangebase.Tripperware, Stopper, error) {
+	metrics := NewMetrics(registerer)
 
-	instrumentMetrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
-	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
-	shardingMetrics := logql.NewShardingMetrics(registerer)
-	splitByMetrics := NewSplitByMetrics(registerer)
+	var (
+		c   cache.Cache
+		err error
+	)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec,
-		PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics, registerer)
+	if cfg.CacheResults {
+		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
+		if err != nil {
+			return nil, nil, err
+		}
+		if cfg.Compression == "snappy" {
+			c = cache.NewSnappy(c, log)
+		}
+	}
+
+	metricsTripperware, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec, c,
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, LokiCodec, c, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, LokiCodec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, LokiCodec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, log, limits, schema, LokiCodec, metrics)
+	if err != nil {
+		return nil, nil, err
+	}
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		seriesRT := seriesTripperware(next)
 		labelsRT := labelsTripperware(next)
-		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, limits)
-	}, cache, nil
+		instantRT := instantMetricTripperware(next)
+		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, limits)
+	}, c, nil
 }
 
 type roundTripper struct {
-	next, log, metric, series, labels http.RoundTripper
+	next, log, metric, series, labels, instantMetric http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric, series, labels http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(next, log, metric, series, labels, instantMetric http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
-		log:    log,
-		limits: limits,
-		metric: metric,
-		series: series,
-		labels: labels,
-		next:   next,
+		log:           log,
+		limits:        limits,
+		metric:        metric,
+		series:        series,
+		labels:        labels,
+		instantMetric: instantMetric,
+		next:          next,
 	}
 }
 
@@ -115,23 +135,21 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		expr, err := logql.ParseExpr(rangeQuery.Query)
+		expr, err := syntax.ParseExpr(rangeQuery.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		switch e := expr.(type) {
-		case logql.SampleExpr:
+		case syntax.SampleExpr:
 			return r.metric.RoundTrip(req)
-		case logql.LogSelectorExpr:
-			expr, err := transformRegexQuery(req, e)
+		case syntax.LogSelectorExpr:
+			// Note, this function can mutate the request
+			_, err := transformRegexQuery(req, e)
 			if err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
-			}
-			if !expr.HasFilter() {
-				return r.next.RoundTrip(req)
 			}
 			return r.log.RoundTrip(req)
 
@@ -139,7 +157,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return r.next.RoundTrip(req)
 		}
 	case SeriesOp:
-		_, err := loghttp.ParseSeriesQuery(req)
+		_, err := loghttp.ParseAndValidateSeriesQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -150,16 +168,31 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return r.labels.RoundTrip(req)
+	case InstantQueryOp:
+		instantQuery, err := loghttp.ParseInstantQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		expr, err := syntax.ParseExpr(instantQuery.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		switch expr.(type) {
+		case syntax.SampleExpr:
+			return r.instantMetric.RoundTrip(req)
+		default:
+			return r.next.RoundTrip(req)
+		}
 	default:
 		return r.next.RoundTrip(req)
 	}
 }
 
 // transformRegexQuery backport the old regexp params into the v1 query format
-func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.LogSelectorExpr, error) {
+func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax.LogSelectorExpr, error) {
 	regexp := req.Form.Get("regexp")
 	if regexp != "" {
-		filterExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		filterExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return nil, err
 		}
@@ -176,12 +209,12 @@ func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.L
 
 // validates log entries limits
 func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	userID, err := user.ExtractOrgID(req.Context())
+	tenantIDs, err := tenant.TenantIDs(req.Context())
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	maxEntriesLimit := limits.MaxEntriesLimitPerQuery(userID)
+	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, limits.MaxEntriesLimitPerQuery)
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
@@ -190,9 +223,11 @@ func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 }
 
 const (
-	QueryRangeOp = "query_range"
-	SeriesOp     = "series"
-	LabelNamesOp = "labels"
+	InstantQueryOp = "instant_query"
+	QueryRangeOp   = "query_range"
+	SeriesOp       = "series"
+	LabelNamesOp   = "labels"
+	IndexStatsOp   = "index_stats"
 )
 
 func getOperation(path string) string {
@@ -201,84 +236,121 @@ func getOperation(path string) string {
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
-	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
+	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label") || strings.HasSuffix(path, "/values"):
 		return LabelNamesOp
+	case strings.HasSuffix(path, "/v1/query"):
+		return InstantQueryOp
+	case path == "/loki/api/v1/index/stats":
+		return IndexStatsOp
 	default:
 		return ""
 	}
 }
 
-// NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.
+// NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
 func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
-	minShardingLookback time.Duration,
-	codec queryrange.Codec,
-	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
-	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-	shardingMetrics *logql.ShardingMetrics,
-	splitByMetrics *SplitByMetrics,
-) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
-	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByTime, splitByMetrics))
+	schema config.SchemaConfig,
+	codec queryrangebase.Codec,
+	c cache.Cache,
+	metrics *Metrics,
+) (queryrangebase.Tripperware, error) {
+	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
+		NewLimitsMiddleware(limits),
+		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
+	}
+
+	if cfg.CacheResults {
+		queryCacheMiddleware := NewLogResultCache(
+			log,
+			limits,
+			c,
+			func(r queryrangebase.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			cfg.Transformer,
+			metrics.LogResultCacheMetrics,
+		)
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrangebase.InstrumentMiddleware("log_results_cache", metrics.InstrumentMiddlewareMetrics),
+			queryCacheMiddleware,
+		)
 	}
 
 	if cfg.ShardedQueries {
-		if minShardingLookback == 0 {
-			return nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
-		}
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
-				minShardingLookback,
-				instrumentMetrics, // instrumentation is included in the sharding middleware
-				shardingMetrics,
+				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)
 	}
 
 	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
+		queryRangeMiddleware = append(
+			queryRangeMiddleware, queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+			queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+		)
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
 }
 
-// NewSeriesripperware creates a new frontend tripperware responsible for handling series requests
+// NewSeriesTripperware creates a new frontend tripperware responsible for handling series requests
 func NewSeriesTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	codec queryrange.Codec,
-	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
-	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-	splitByMetrics *SplitByMetrics,
-) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{}
-	if cfg.SplitQueriesByInterval != 0 {
+	codec queryrangebase.Codec,
+	metrics *Metrics,
+	schema config.SchemaConfig,
+) (queryrangebase.Tripperware, error) {
+	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
+		NewLimitsMiddleware(limits),
+		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
+		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
+		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+	}
+
+	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-			// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, cfg.SplitQueriesByInterval), codec, splitByTime, splitByMetrics),
+			queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+			queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
 		)
 	}
-	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
+
+	if cfg.ShardedQueries {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSeriesQueryShardMiddleware(
+				log,
+				schema.Configs,
+				metrics.InstrumentMiddlewareMetrics,
+				metrics.MiddlewareMapperMetrics.shardMapper,
+				limits,
+				codec,
+			),
+		)
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -289,27 +361,30 @@ func NewLabelsTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	codec queryrange.Codec,
-	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
-	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-	splitByMetrics *SplitByMetrics,
-) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{}
-	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-			// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
-			// This is because the labels API is an index-only operation.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
-		)
+	codec queryrangebase.Codec,
+	metrics *Metrics,
+	schema config.SchemaConfig,
+) (queryrangebase.Tripperware, error) {
+	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
+		NewLimitsMiddleware(limits),
+		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
+		// This is because the labels API is an index-only operation.
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
 	}
+
 	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+			queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+		)
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+			// Do not forward any request header.
+			return queryrangebase.NewRoundTripper(next, codec, nil, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -320,68 +395,73 @@ func NewMetricTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	schema chunk.SchemaConfig,
-	minShardingLookback time.Duration,
-	codec queryrange.Codec,
-	extractor queryrange.Extractor,
-	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
-	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-	shardingMetrics *logql.ShardingMetrics,
-	splitByMetrics *SplitByMetrics,
+	schema config.SchemaConfig,
+	codec queryrangebase.Codec,
+	c cache.Cache,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
+	extractor queryrangebase.Extractor,
+	metrics *Metrics,
 	registerer prometheus.Registerer,
-) (queryrange.Tripperware, Stopper, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
+) (queryrangebase.Tripperware, error) {
+	queryRangeMiddleware := []queryrangebase.Middleware{StatsCollectorMiddleware(), NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("step_align", instrumentMetrics),
-			queryrange.StepAlignMiddleware,
+			queryrangebase.InstrumentMiddleware("step_align", metrics.InstrumentMiddlewareMetrics),
+			queryrangebase.StepAlignMiddleware,
 		)
 	}
 
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, splitByMetrics),
+		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
 	)
 
-	var c cache.Cache
+	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(
+		queryCacheMiddleware, err := queryrangebase.NewResultsCacheMiddleware(
 			log,
-			cfg.ResultsCacheConfig,
-			cacheKeyLimits{limits},
+			c,
+			cacheKey,
 			limits,
 			codec,
 			extractor,
-			nil,
-			func(r queryrange.Request) bool {
+			cacheGenNumLoader,
+			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
-			registerer,
+			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart()),
+					model.Time(r.GetEnd()),
+				)
+			},
+			retentionEnabled,
+			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		c = cache
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
+			queryrangebase.InstrumentMiddleware("results_cache", metrics.InstrumentMiddlewareMetrics),
 			queryCacheMiddleware,
 		)
 	}
 
 	if cfg.ShardedQueries {
-		if minShardingLookback == 0 {
-			return nil, nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
-		}
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
-				minShardingLookback,
-				instrumentMetrics, // instrumentation is included in the sharding middleware
-				shardingMetrics,
+				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
 			),
 		)
@@ -390,16 +470,16 @@ func NewMetricTripperware(
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("retry", instrumentMetrics),
-			queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics),
+			queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+			queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
 		)
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			rt := NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
-			return queryrange.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {
 					return next.RoundTrip(r)
 				}
@@ -407,5 +487,45 @@ func NewMetricTripperware(
 			})
 		}
 		return next
-	}, c, nil
+	}, nil
+}
+
+// NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
+func NewInstantMetricTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	codec queryrangebase.Codec,
+	metrics *Metrics,
+) (queryrangebase.Tripperware, error) {
+	queryRangeMiddleware := []queryrangebase.Middleware{StatsCollectorMiddleware(), NewLimitsMiddleware(limits)}
+
+	if cfg.ShardedQueries {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSplitByRangeMiddleware(log, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
+			NewQueryShardMiddleware(
+				log,
+				schema.Configs,
+				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+				metrics.MiddlewareMapperMetrics.shardMapper,
+				limits,
+			),
+		)
+	}
+
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+			queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+		)
+	}
+
+	return func(next http.RoundTripper) http.RoundTripper {
+		if len(queryRangeMiddleware) > 0 {
+			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+		}
+		return next
+	}, nil
 }

@@ -161,7 +161,7 @@ func TestTailer(t *testing.T) {
 				tailClients["test"] = test.tailClient
 			}
 
-			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle)
+			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, NewMetrics(nil))
 			defer tailer.close()
 
 			test.tester(t, tailer, test.tailClient)

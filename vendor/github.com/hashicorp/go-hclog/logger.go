@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 var (
@@ -38,6 +39,9 @@ const (
 
 	// Error information about unrecoverable events.
 	Error Level = 5
+
+	// Off disables all logging output.
+	Off Level = 6
 )
 
 // Format is a simple convience type for when formatting is required. When
@@ -51,6 +55,24 @@ type Format []interface{}
 func Fmt(str string, args ...interface{}) Format {
 	return append(Format{str}, args...)
 }
+
+// A simple shortcut to format numbers in hex when displayed with the normal
+// text output. For example: L.Info("header value", Hex(17))
+type Hex int
+
+// A simple shortcut to format numbers in octal when displayed with the normal
+// text output. For example: L.Info("perms", Octal(17))
+type Octal int
+
+// A simple shortcut to format numbers in binary when displayed with the normal
+// text output. For example: L.Info("bits", Binary(17))
+type Binary int
+
+// A simple shortcut to format strings with Go quoting. Control and
+// non-printable characters will be escaped with their backslash equivalents in
+// output. Intended for untrusted or multiline strings which should be logged
+// as concisely as possible.
+type Quote string
 
 // ColorOption expresses how the output should be colored, if at all.
 type ColorOption uint8
@@ -84,6 +106,8 @@ func LevelFromString(levelStr string) Level {
 		return Warn
 	case "error":
 		return Error
+	case "off":
+		return Off
 	default:
 		return NoLevel
 	}
@@ -103,6 +127,8 @@ func (l Level) String() string {
 		return "error"
 	case NoLevel:
 		return "none"
+	case Off:
+		return "off"
 	default:
 		return "unknown"
 	}
@@ -167,7 +193,8 @@ type Logger interface {
 	// the current name as well.
 	ResetNamed(name string) Logger
 
-	// Updates the level. This should affect all sub-loggers as well. If an
+	// Updates the level. This should affect all related loggers as well,
+	// unless they were created with IndependentLevels. If an
 	// implementation cannot update the level on the fly, it should no-op.
 	SetLevel(level Level)
 
@@ -186,12 +213,23 @@ type StandardLoggerOptions struct {
 	// [DEBUG] and strip it off before reapplying it.
 	InferLevels bool
 
+	// Indicate that some minimal parsing should be done on strings to try
+	// and detect their level and re-emit them while ignoring possible
+	// timestamp values in the beginning of the string.
+	// This supports the strings like [ERROR], [ERR] [TRACE], [WARN], [INFO],
+	// [DEBUG] and strip it off before reapplying it.
+	// The timestamp detection may result in false positives and incomplete
+	// string outputs.
+	InferLevelsWithTimestamp bool
+
 	// ForceLevel is used to force all output from the standard logger to be at
 	// the specified level. Similar to InferLevels, this will strip any level
 	// prefix contained in the logged string before applying the forced level.
 	// If set, this override InferLevels.
 	ForceLevel Level
 }
+
+type TimeFunction = func() time.Time
 
 // LoggerOptions can be used to configure a new logger.
 type LoggerOptions struct {
@@ -215,12 +253,38 @@ type LoggerOptions struct {
 	// Include file and line information in each log line
 	IncludeLocation bool
 
+	// AdditionalLocationOffset is the number of additional stack levels to skip
+	// when finding the file and line information for the log line
+	AdditionalLocationOffset int
+
 	// The time format to use instead of the default
 	TimeFormat string
+
+	// A function which is called to get the time object that is formatted using `TimeFormat`
+	TimeFn TimeFunction
+
+	// Control whether or not to display the time at all. This is required
+	// because setting TimeFormat to empty assumes the default format.
+	DisableTime bool
 
 	// Color the output. On Windows, colored logs are only avaiable for io.Writers that
 	// are concretely instances of *os.File.
 	Color ColorOption
+
+	// Only color the header, not the body. This can help with readability of long messages.
+	ColorHeaderOnly bool
+
+	// A function which is called with the log information and if it returns true the value
+	// should not be logged.
+	// This is useful when interacting with a system that you wish to suppress the log
+	// message for (because it's too noisy, etc)
+	Exclude func(level Level, msg string, args ...interface{}) bool
+
+	// IndependentLevels causes subloggers to be created with an independent
+	// copy of this logger's level. This means that using SetLevel on this
+	// logger will not effect any subloggers, and SetLevel on any subloggers
+	// will not effect the parent or sibling loggers.
+	IndependentLevels bool
 }
 
 // InterceptLogger describes the interface for using a logger
@@ -249,10 +313,10 @@ type InterceptLogger interface {
 	// the current name as well.
 	ResetNamedIntercept(name string) InterceptLogger
 
-	// Return a value that conforms to the stdlib log.Logger interface
+	// Deprecated: use StandardLogger
 	StandardLoggerIntercept(opts *StandardLoggerOptions) *log.Logger
 
-	// Return a value that conforms to io.Writer, which can be passed into log.SetOutput()
+	// Deprecated: use StandardWriter
 	StandardWriterIntercept(opts *StandardLoggerOptions) io.Writer
 }
 

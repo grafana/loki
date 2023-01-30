@@ -14,7 +14,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/internal/shareddefaults"
+	"github.com/aws/aws-sdk-go/service/sts"
 )
+
+// CredentialsProviderOptions specifies additional options for configuring
+// credentials providers.
+type CredentialsProviderOptions struct {
+	// WebIdentityRoleProviderOptions configures a WebIdentityRoleProvider,
+	// such as setting its ExpiryWindow.
+	WebIdentityRoleProviderOptions func(*stscreds.WebIdentityRoleProvider)
+}
 
 func resolveCredentials(cfg *aws.Config,
 	envCfg envConfig, sharedCfg sharedConfig,
@@ -40,6 +49,7 @@ func resolveCredentials(cfg *aws.Config,
 			envCfg.WebIdentityTokenFilePath,
 			envCfg.RoleARN,
 			envCfg.RoleSessionName,
+			sessOpts.CredentialsProviderOptions,
 		)
 
 	default:
@@ -59,6 +69,7 @@ var WebIdentityEmptyTokenFilePathErr = awserr.New(stscreds.ErrCodeWebIdentity, "
 func assumeWebIdentity(cfg *aws.Config, handlers request.Handlers,
 	filepath string,
 	roleARN, sessionName string,
+	credOptions *CredentialsProviderOptions,
 ) (*credentials.Credentials, error) {
 
 	if len(filepath) == 0 {
@@ -69,17 +80,18 @@ func assumeWebIdentity(cfg *aws.Config, handlers request.Handlers,
 		return nil, WebIdentityEmptyRoleARNErr
 	}
 
-	creds := stscreds.NewWebIdentityCredentials(
-		&Session{
-			Config:   cfg,
-			Handlers: handlers.Copy(),
-		},
-		roleARN,
-		sessionName,
-		filepath,
-	)
+	svc := sts.New(&Session{
+		Config:   cfg,
+		Handlers: handlers.Copy(),
+	})
 
-	return creds, nil
+	var optFns []func(*stscreds.WebIdentityRoleProvider)
+	if credOptions != nil && credOptions.WebIdentityRoleProviderOptions != nil {
+		optFns = append(optFns, credOptions.WebIdentityRoleProviderOptions)
+	}
+
+	p := stscreds.NewWebIdentityRoleProviderWithOptions(svc, roleARN, sessionName, stscreds.FetchTokenPath(filepath), optFns...)
+	return credentials.NewCredentials(p), nil
 }
 
 func resolveCredsFromProfile(cfg *aws.Config,
@@ -101,13 +113,6 @@ func resolveCredsFromProfile(cfg *aws.Config,
 			sharedCfg.Creds,
 		)
 
-	case sharedCfg.hasSSOConfiguration():
-		creds, err = resolveSSOCredentials(cfg, sharedCfg, handlers)
-
-	case len(sharedCfg.CredentialProcess) != 0:
-		// Get credentials from CredentialProcess
-		creds = processcreds.NewCredentials(sharedCfg.CredentialProcess)
-
 	case len(sharedCfg.CredentialSource) != 0:
 		creds, err = resolveCredsFromSource(cfg, envCfg,
 			sharedCfg, handlers, sessOpts,
@@ -121,7 +126,15 @@ func resolveCredsFromProfile(cfg *aws.Config,
 			sharedCfg.WebIdentityTokenFile,
 			sharedCfg.RoleARN,
 			sharedCfg.RoleSessionName,
+			sessOpts.CredentialsProviderOptions,
 		)
+
+	case sharedCfg.hasSSOConfiguration():
+		creds, err = resolveSSOCredentials(cfg, sharedCfg, handlers)
+
+	case len(sharedCfg.CredentialProcess) != 0:
+		// Get credentials from CredentialProcess
+		creds = processcreds.NewCredentials(sharedCfg.CredentialProcess)
 
 	default:
 		// Fallback to default credentials provider, include mock errors for

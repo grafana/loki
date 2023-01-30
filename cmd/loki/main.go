@@ -5,67 +5,37 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
-	_ "github.com/grafana/loki/pkg/build"
-	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
-	logutil "github.com/grafana/loki/pkg/util"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util"
+	_ "github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
-func init() {
-	prometheus.MustRegister(version.NewCollector("loki"))
-}
-
-type Config struct {
-	loki.Config     `yaml:",inline"`
-	printVersion    bool
-	verifyConfig    bool
-	printConfig     bool
-	logConfig       bool
-	configFile      string
-	configExpandEnv bool
-}
-
-func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.printVersion, "version", false, "Print this builds version information")
-	f.BoolVar(&c.verifyConfig, "verify-config", false, "Verify config file and exits")
-	f.BoolVar(&c.printConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
-	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
-		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
-	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
-	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
-	c.Config.RegisterFlags(f)
-}
-
-// Clone takes advantage of pass-by-value semantics to return a distinct *Config.
-// This is primarily used to parse a different flag set without mutating the original *Config.
-func (c *Config) Clone() flagext.Registerer {
-	return func(c Config) *Config {
-		return &c
-	}(*c)
+func exit(code int) {
+	util_log.Flush()
+	os.Exit(code)
 }
 
 func main() {
-	var config Config
+	var config loki.ConfigWrapper
 
-	if err := cfg.Parse(&config); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
-		os.Exit(1)
-	}
-	if config.printVersion {
+	if loki.PrintVersion(os.Args[1:]) {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)
+	}
+	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
+		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
+		os.Exit(1)
 	}
 
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
@@ -76,35 +46,32 @@ func main() {
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &logging.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
-		os.Exit(1)
+		exit(1)
 	}
-	util_log.InitLogger(&config.Server)
+	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
-	err := config.Validate()
-	if err != nil {
+	if err := config.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
-	if config.verifyConfig {
-		level.Info(util_log.Logger).Log("msg", "config is valid")
-		os.Exit(0)
-	}
-
-	if config.printConfig {
-		err := logutil.PrintConfig(os.Stderr, &config)
-		if err != nil {
+	if config.PrintConfig {
+		if err := util.PrintConfig(os.Stderr, &config); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
-	if config.logConfig {
-		err := logutil.LogConfig(&config)
-		if err != nil {
+	if config.LogConfig {
+		if err := util.LogConfig(&config); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
+	}
+
+	if config.VerifyConfig {
+		level.Info(util_log.Logger).Log("msg", "config is valid")
+		exit(0)
 	}
 
 	if config.Tracing.Enabled {
@@ -113,22 +80,33 @@ func main() {
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
+
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {
 					level.Error(util_log.Logger).Log("msg", "error closing tracing", "err", err)
 				}
 			}
-
 		}()
 	}
 
+	// Allocate a block of memory to reduce the frequency of garbage collection.
+	// The larger the ballast, the lower the garbage collection frequency.
+	// https://github.com/grafana/loki/issues/781
+	ballast := make([]byte, config.BallastBytes)
+	runtime.KeepAlive(ballast)
+
 	// Start Loki
 	t, err := loki.New(config.Config)
-	util_log.CheckFatal("initialising loki", err)
+	util_log.CheckFatal("initializing loki", err, util_log.Logger)
+
+	if config.ListTargets {
+		t.ListTargets()
+		exit(0)
+	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
-	err = t.Run()
-	util_log.CheckFatal("running loki", err)
+	err = t.Run(loki.RunOpts{})
+	util_log.CheckFatal("running loki", err, util_log.Logger)
 }

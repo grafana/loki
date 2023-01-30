@@ -44,6 +44,20 @@ func TestRoundToMilliseconds(t *testing.T) {
 			model.Time(1),
 			model.Time(3),
 		},
+		{
+			"rounding large number in nanoseconds",
+			time.Unix(0, 1643958368442000064),
+			time.Unix(0, 1643958368443000064),
+			model.Time(1643958368442),
+			model.Time(1643958368444),
+		},
+		{
+			"already rounded large number in nanoseconds",
+			time.Unix(0, 1643958368442000000),
+			time.Unix(0, 1643958368443000000),
+			model.Time(1643958368442),
+			model.Time(1643958368443),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

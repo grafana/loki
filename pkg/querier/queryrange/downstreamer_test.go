@@ -7,22 +7,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
-func testSampleStreams() []queryrange.SampleStream {
-	return []queryrange.SampleStream{
+func testSampleStreams() []queryrangebase.SampleStream {
+	return []queryrangebase.SampleStream{
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.LegacySample{
 				{
 					Value:       0,
 					TimestampMs: 0,
@@ -38,8 +41,8 @@ func testSampleStreams() []queryrange.SampleStream {
 			},
 		},
 		{
-			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []cortexpb.Sample{
+			Labels: []logproto.LabelAdapter{{Name: "bazz", Value: "buzz"}},
+			Samples: []logproto.LegacySample{
 				{
 					Value:       4,
 					TimestampMs: 4,
@@ -105,9 +108,9 @@ func TestSampleStreamToMatrix(t *testing.T) {
 func TestResponseToResult(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
-		input    queryrange.Response
+		input    queryrangebase.Response
 		err      bool
-		expected logql.Result
+		expected logqlmodel.Result
 	}{
 		{
 			desc: "LokiResponse",
@@ -118,14 +121,14 @@ func TestResponseToResult(t *testing.T) {
 					}},
 				},
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 			},
-			expected: logql.Result{
+			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
-				Data: logql.Streams{{
+				Data: logqlmodel.Streams{{
 					Labels: `{foo="bar"}`,
 				}},
 			},
@@ -142,17 +145,17 @@ func TestResponseToResult(t *testing.T) {
 			desc: "LokiPromResponse",
 			input: &LokiPromResponse{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
-				Response: &queryrange.PrometheusResponse{
-					Data: queryrange.PrometheusData{
+				Response: &queryrangebase.PrometheusResponse{
+					Data: queryrangebase.PrometheusData{
 						Result: testSampleStreams(),
 					},
 				},
 			},
-			expected: logql.Result{
+			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: sampleStreamToMatrix(testSampleStreams()),
 			},
@@ -160,7 +163,7 @@ func TestResponseToResult(t *testing.T) {
 		{
 			desc: "LokiPromResponseError",
 			input: &LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
+				Response: &queryrangebase.PrometheusResponse{
 					Error:     "foo",
 					ErrorType: "bar",
 				},
@@ -186,8 +189,8 @@ func TestResponseToResult(t *testing.T) {
 func TestDownstreamHandler(t *testing.T) {
 	// Pretty poor test, but this is just a passthrough struct, so ensure we create locks
 	// and can consume them
-	h := DownstreamHandler{nil}
-	in := h.Downstreamer().(*instance)
+	h := DownstreamHandler{limits: fakeLimits{}, next: nil}
+	in := h.Downstreamer(context.Background()).(*instance)
 	require.Equal(t, DefaultDownstreamConcurrency, in.parallelism)
 	require.NotNil(t, in.locks)
 	ensureParallelism(t, in, in.parallelism)
@@ -198,7 +201,7 @@ func ensureParallelism(t *testing.T, in *instance, n int) {
 	for i := 0; i < n; i++ {
 		select {
 		case <-in.locks:
-		case <-time.After(time.Millisecond):
+		case <-time.After(time.Second):
 			require.FailNow(t, "lock couldn't be acquired")
 		}
 	}
@@ -211,7 +214,12 @@ func ensureParallelism(t *testing.T, in *instance, n int) {
 }
 
 func TestInstanceFor(t *testing.T) {
-	mkIn := func() *instance { return DownstreamHandler{nil}.Downstreamer().(*instance) }
+	mkIn := func() *instance {
+		return DownstreamHandler{
+			limits: fakeLimits{},
+			next:   nil,
+		}.Downstreamer(context.Background()).(*instance)
+	}
 	in := mkIn()
 
 	queries := make([]logql.DownstreamQuery, in.parallelism+1)
@@ -219,11 +227,11 @@ func TestInstanceFor(t *testing.T) {
 	var ct int
 
 	// ensure we can execute queries that number more than the parallelism parameter
-	_, err := in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
+	_, err := in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
-		return logql.Result{}, nil
+		return logqlmodel.Result{}, nil
 	})
 	require.Nil(t, err)
 	require.Equal(t, len(queries), ct)
@@ -232,11 +240,11 @@ func TestInstanceFor(t *testing.T) {
 	// ensure an early error abandons the other queues queries
 	in = mkIn()
 	ct = 0
-	_, err = in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
+	_, err = in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
-		return logql.Result{}, errors.New("testerr")
+		return logqlmodel.Result{}, errors.New("testerr")
 	})
 	require.NotNil(t, err)
 	mtx.Lock()
@@ -262,9 +270,9 @@ func TestInstanceFor(t *testing.T) {
 				},
 			},
 		},
-		func(qry logql.DownstreamQuery) (logql.Result, error) {
-			return logql.Result{
-				Data: logql.Streams{{
+		func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+			return logqlmodel.Result{
+				Data: logqlmodel.Streams{{
 					Labels: qry.Shards[0].String(),
 				}},
 			}, nil
@@ -273,12 +281,12 @@ func TestInstanceFor(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(
 		t,
-		[]logql.Result{
+		[]logqlmodel.Result{
 			{
-				Data: logql.Streams{{Labels: "0_of_2"}},
+				Data: logqlmodel.Streams{{Labels: "0_of_2"}},
 			},
 			{
-				Data: logql.Streams{{Labels: "1_of_2"}},
+				Data: logqlmodel.Streams{{Labels: "1_of_2"}},
 			},
 		},
 		results,
@@ -297,7 +305,7 @@ func TestInstanceDownstream(t *testing.T) {
 		1000,
 		nil,
 	)
-	expr, err := logql.ParseExpr(`{foo="bar"}`)
+	expr, err := syntax.ParseExpr(`{foo="bar"}`)
 	require.Nil(t, err)
 
 	expectedResp := func() *LokiResponse {
@@ -308,7 +316,7 @@ func TestInstanceDownstream(t *testing.T) {
 				}},
 			},
 			Statistics: stats.Result{
-				Summary: stats.Summary{ExecTime: 1},
+				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 			},
 		}
 	}
@@ -321,14 +329,14 @@ func TestInstanceDownstream(t *testing.T) {
 		},
 	}
 
-	var got queryrange.Request
-	var want queryrange.Request
-	handler := queryrange.HandlerFunc(
-		func(_ context.Context, req queryrange.Request) (queryrange.Response, error) {
+	var got queryrangebase.Request
+	var want queryrangebase.Request
+	handler := queryrangebase.HandlerFunc(
+		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(params).WithShards(logql.Shards{{Shard: 0, Of: 2}}).WithQuery(expr.String())
+			want = ParamsToLokiRequest(params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -337,10 +345,65 @@ func TestInstanceDownstream(t *testing.T) {
 	expected, err := ResponseToResult(expectedResp())
 	require.Nil(t, err)
 
-	results, err := DownstreamHandler{handler}.Downstreamer().Downstream(context.Background(), queries)
+	results, err := DownstreamHandler{
+		limits: fakeLimits{},
+		next:   handler,
+	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
 
 	require.Equal(t, want, got)
 
 	require.Nil(t, err)
-	require.Equal(t, []logql.Result{expected}, results)
+	require.Equal(t, []logqlmodel.Result{expected}, results)
+}
+
+func TestCancelWhileWaitingResponse(t *testing.T) {
+	mkIn := func() *instance {
+		return DownstreamHandler{
+			limits: fakeLimits{},
+			next:   nil,
+		}.Downstreamer(context.Background()).(*instance)
+	}
+	in := mkIn()
+
+	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Launch the For call in a goroutine because it blocks and we need to be able to cancel the context
+	// to prove it will exit when the context is canceled.
+	b := atomic.NewBool(false)
+	go func() {
+		_, _ = in.For(ctx, queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+			// Intended to keep the For method from returning unless the context is canceled.
+			time.Sleep(100 * time.Second)
+			return logqlmodel.Result{}, nil
+		})
+		// Should only reach here if the For method returns after the context is canceled.
+		b.Store(true)
+	}()
+
+	// Cancel the parent call
+	cancel()
+	require.Eventually(t, func() bool {
+		return b.Load()
+	}, 5*time.Second, 10*time.Millisecond,
+		"The parent context calling the Downstreamer For method was canceled "+
+			"but the For method did not return as expected.")
+}
+
+func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	l := fakeLimits{maxQueryParallelism: 4}
+	d := DownstreamHandler{
+		limits: l,
+		next:   nil,
+	}.Downstreamer(ctx)
+
+	i := d.(*instance)
+	close(i.locks)
+	var ct int
+	for range i.locks {
+		ct++
+	}
+	require.Equal(t, l.maxQueryParallelism, ct)
 }

@@ -1,7 +1,9 @@
+local k = import 'ksonnet-util/kausal.libsonnet';
+
 {
   _config+: {
     overrides: {
-      // insert tenant overrides here. see https://github.com/grafana/loki/tree/master/docs/configuration#limits_config
+      // insert tenant overrides here. see https://grafana.com/docs/loki/latest/configuration/#limits_config
       //
       //   'tenant_x': {
       //     ingestion_rate_strategy: 'global',
@@ -13,16 +15,28 @@
       //     max_query_parallelism: 32,
       //   },
     },
+
+    runtimeConfigs: {
+      // insert runtime configs here. see pkg/runtime/config.go
+      //
+      // tenant_x: {
+      //   log_stream_creation: true,
+      //   log_push_request: true,
+      //   log_push_request_streams: true,
+      // },
+    },
   },
-  local configMap = $.core.v1.configMap,
+  local configMap = k.core.v1.configMap,
 
   overrides_config:
-    configMap.new('overrides') +
+    configMap.new($._config.overrides_configmap_name) +
     configMap.withData({
-      'overrides.yaml': $.util.manifestYaml(
+      'overrides.yaml': k.util.manifestYaml(
         {
           overrides: $._config.overrides,
+          configs: $._config.runtimeConfigs,
         }
+        + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
       ),
     }),
 }

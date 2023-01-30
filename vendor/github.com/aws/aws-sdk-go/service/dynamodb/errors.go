@@ -71,6 +71,20 @@ const (
 	// payload but with an idempotent token that was already used.
 	ErrCodeIdempotentParameterMismatchException = "IdempotentParameterMismatchException"
 
+	// ErrCodeImportConflictException for service response error code
+	// "ImportConflictException".
+	//
+	// There was a conflict when importing from the specified S3 source. This can
+	// occur when the current import conflicts with a previous import request that
+	// had the same client token.
+	ErrCodeImportConflictException = "ImportConflictException"
+
+	// ErrCodeImportNotFoundException for service response error code
+	// "ImportNotFoundException".
+	//
+	// The specified import was not found.
+	ErrCodeImportNotFoundException = "ImportNotFoundException"
+
 	// ErrCodeIndexNotFoundException for service response error code
 	// "IndexNotFoundException".
 	//
@@ -108,16 +122,19 @@ const (
 	//
 	// There is no limit to the number of daily on-demand backups that can be taken.
 	//
-	// Up to 50 simultaneous table operations are allowed per account. These operations
-	// include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
-	// and RestoreTableToPointInTime.
+	// For most purposes, up to 500 simultaneous table operations are allowed per
+	// account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+	// RestoreTableFromBackup, and RestoreTableToPointInTime.
 	//
-	// The only exception is when you are creating a table with one or more secondary
-	// indexes. You can have up to 25 such requests running at a time; however,
-	// if the table or index specifications are complex, DynamoDB might temporarily
-	// reduce the number of concurrent operations.
+	// When you are creating a table with one or more secondary indexes, you can
+	// have up to 250 such requests running at a time. However, if the table or
+	// index specifications are complex, then DynamoDB might temporarily reduce
+	// the number of concurrent operations.
 	//
-	// There is a soft account quota of 256 tables.
+	// When importing into DynamoDB, up to 50 simultaneous import table operations
+	// are allowed per account.
+	//
+	// There is a soft account quota of 2,500 tables.
 	ErrCodeLimitExceededException = "LimitExceededException"
 
 	// ErrCodePointInTimeRecoveryUnavailableException for service response error code
@@ -129,11 +146,11 @@ const (
 	// ErrCodeProvisionedThroughputExceededException for service response error code
 	// "ProvisionedThroughputExceededException".
 	//
-	// Your request rate is too high. The AWS SDKs for DynamoDB automatically retry
-	// requests that receive this exception. Your request is eventually successful,
-	// unless your retry queue is too large to finish. Reduce the frequency of requests
-	// and use exponential backoff. For more information, go to Error Retries and
-	// Exponential Backoff (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff)
+	// Your request rate is too high. The Amazon Web Services SDKs for DynamoDB
+	// automatically retry requests that receive this exception. Your request is
+	// eventually successful, unless your retry queue is too large to finish. Reduce
+	// the frequency of requests and use exponential backoff. For more information,
+	// go to Error Retries and Exponential Backoff (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff)
 	// in the Amazon DynamoDB Developer Guide.
 	ErrCodeProvisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 
@@ -153,7 +170,7 @@ const (
 	// "RequestLimitExceeded".
 	//
 	// Throughput exceeds the current throughput quota for your account. Please
-	// contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
+	// contact Amazon Web Services Support (https://aws.amazon.com/support) to request
 	// a quota increase.
 	ErrCodeRequestLimitExceeded = "RequestLimitExceeded"
 
@@ -188,7 +205,8 @@ const (
 	// "TableNotFoundException".
 	//
 	// A source table with the name TableName does not currently exist within the
-	// subscriber's account.
+	// subscriber's account or the subscriber is operating in the wrong Amazon Web
+	// Services Region.
 	ErrCodeTableNotFoundException = "TableNotFoundException"
 
 	// ErrCodeTransactionCanceledException for service response error code
@@ -232,11 +250,11 @@ const (
 	// If using Java, DynamoDB lists the cancellation reasons on the CancellationReasons
 	// property. This property is not set for other languages. Transaction cancellation
 	// reasons are ordered in the order of requested items, if an item has no error
-	// it will have NONE code and Null message.
+	// it will have None code and Null message.
 	//
 	// Cancellation reason codes and possible error messages:
 	//
-	//    * No Errors: Code: NONE Message: null
+	//    * No Errors: Code: None Message: null
 	//
 	//    * Conditional Check Failed: Code: ConditionalCheckFailed Message: The
 	//    conditional request failed.
@@ -305,6 +323,8 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"GlobalTableAlreadyExistsException":        newErrorGlobalTableAlreadyExistsException,
 	"GlobalTableNotFoundException":             newErrorGlobalTableNotFoundException,
 	"IdempotentParameterMismatchException":     newErrorIdempotentParameterMismatchException,
+	"ImportConflictException":                  newErrorImportConflictException,
+	"ImportNotFoundException":                  newErrorImportNotFoundException,
 	"IndexNotFoundException":                   newErrorIndexNotFoundException,
 	"InternalServerError":                      newErrorInternalServerError,
 	"InvalidExportTimeException":               newErrorInvalidExportTimeException,

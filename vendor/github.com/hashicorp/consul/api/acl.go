@@ -52,12 +52,35 @@ type ACLToken struct {
 	// Namespace is the namespace the ACLToken is associated with.
 	// Namespaces are a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLToken is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
+
+	// AuthMethodNamespace is the namespace the token's AuthMethod is associated with.
+	// Namespacing is a Consul Enterprise feature.
+	AuthMethodNamespace string `json:",omitempty"`
+}
+
+type ACLTokenExpanded struct {
+	ExpandedPolicies []ACLPolicy
+	ExpandedRoles    []ACLRole
+
+	NamespaceDefaultPolicyIDs []string
+	NamespaceDefaultRoleIDs   []string
+
+	AgentACLDefaultPolicy string
+	AgentACLDownPolicy    string
+	ResolvedByAgent       string
+
+	ACLToken
 }
 
 type ACLTokenListEntry struct {
 	CreateIndex       uint64
 	ModifyIndex       uint64
 	AccessorID        string
+	SecretID          string
 	Description       string
 	Policies          []*ACLTokenPolicyLink `json:",omitempty"`
 	Roles             []*ACLTokenRoleLink   `json:",omitempty"`
@@ -73,6 +96,14 @@ type ACLTokenListEntry struct {
 	// Namespace is the namespace the ACLTokenListEntry is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLTokenListEntry is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
+
+	// AuthMethodNamespace is the namespace the token's AuthMethod is associated with.
+	// Namespacing is a Consul Enterprise feature.
+	AuthMethodNamespace string `json:",omitempty"`
 }
 
 // ACLEntry is used to represent a legacy ACL token
@@ -97,6 +128,7 @@ type ACLReplicationStatus struct {
 	ReplicatedTokenIndex uint64
 	LastSuccess          time.Time
 	LastError            time.Time
+	LastErrorMessage     string
 }
 
 // ACLServiceIdentity represents a high-level grant of all necessary privileges
@@ -128,6 +160,10 @@ type ACLPolicy struct {
 	// Namespace is the namespace the ACLPolicy is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLPolicy is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
 }
 
 type ACLPolicyListEntry struct {
@@ -142,6 +178,10 @@ type ACLPolicyListEntry struct {
 	// Namespace is the namespace the ACLPolicyListEntry is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLPolicyListEntry is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
 }
 
 type ACLRolePolicyLink = ACLLink
@@ -161,6 +201,10 @@ type ACLRole struct {
 	// Namespace is the namespace the ACLRole is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLRole is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
 }
 
 // BindingRuleBindType is the type of binding rule mechanism used.
@@ -188,6 +232,10 @@ type ACLBindingRule struct {
 	// Namespace is the namespace the ACLBindingRule is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLBindingRule is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
 }
 
 type ACLAuthMethod struct {
@@ -216,6 +264,10 @@ type ACLAuthMethod struct {
 	// Namespace is the namespace the ACLAuthMethod is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLAuthMethod is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
 }
 
 func (m *ACLAuthMethod) MarshalJSON() ([]byte, error) {
@@ -270,14 +322,63 @@ type ACLAuthMethodNamespaceRule struct {
 type ACLAuthMethodListEntry struct {
 	Name        string
 	Type        string
-	DisplayName string `json:",omitempty"`
-	Description string `json:",omitempty"`
-	CreateIndex uint64
-	ModifyIndex uint64
+	DisplayName string        `json:",omitempty"`
+	Description string        `json:",omitempty"`
+	MaxTokenTTL time.Duration `json:",omitempty"`
+
+	// TokenLocality defines the kind of token that this auth method produces.
+	// This can be either 'local' or 'global'. If empty 'local' is assumed.
+	TokenLocality string `json:",omitempty"`
+	CreateIndex   uint64
+	ModifyIndex   uint64
 
 	// Namespace is the namespace the ACLAuthMethodListEntry is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+
+	// Partition is the partition the ACLAuthMethodListEntry is associated with.
+	// Partitions are a Consul Enterprise feature.
+	Partition string `json:",omitempty"`
+}
+
+// This is nearly identical to the ACLAuthMethod MarshalJSON
+func (m *ACLAuthMethodListEntry) MarshalJSON() ([]byte, error) {
+	type Alias ACLAuthMethodListEntry
+	exported := &struct {
+		MaxTokenTTL string `json:",omitempty"`
+		*Alias
+	}{
+		MaxTokenTTL: m.MaxTokenTTL.String(),
+		Alias:       (*Alias)(m),
+	}
+	if m.MaxTokenTTL == 0 {
+		exported.MaxTokenTTL = ""
+	}
+
+	return json.Marshal(exported)
+}
+
+// This is nearly identical to the ACLAuthMethod UnmarshalJSON
+func (m *ACLAuthMethodListEntry) UnmarshalJSON(data []byte) error {
+	type Alias ACLAuthMethodListEntry
+	aux := &struct {
+		MaxTokenTTL string
+		*Alias
+	}{
+		Alias: (*Alias)(m),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	var err error
+	if aux.MaxTokenTTL != "" {
+		if m.MaxTokenTTL, err = time.ParseDuration(aux.MaxTokenTTL); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ParseKubernetesAuthMethodConfig takes a raw config map and returns a parsed
@@ -333,6 +434,7 @@ type OIDCAuthMethodConfig struct {
 	OIDCClientID        string   `json:",omitempty"`
 	OIDCClientSecret    string   `json:",omitempty"`
 	OIDCScopes          []string `json:",omitempty"`
+	OIDCACRValues       []string `json:",omitempty"`
 	AllowedRedirectURIs []string `json:",omitempty"`
 	VerboseOIDCLogging  bool     `json:",omitempty"`
 	// just for type=jwt
@@ -360,6 +462,7 @@ func (c *OIDCAuthMethodConfig) RenderToConfig() map[string]interface{} {
 		"OIDCClientID":        c.OIDCClientID,
 		"OIDCClientSecret":    c.OIDCClientSecret,
 		"OIDCScopes":          c.OIDCScopes,
+		"OIDCACRValues":       c.OIDCACRValues,
 		"AllowedRedirectURIs": c.AllowedRedirectURIs,
 		"VerboseOIDCLogging":  c.VerboseOIDCLogging,
 		// just for type=jwt
@@ -400,12 +503,14 @@ func (c *Client) ACL() *ACL {
 // to get the first management token.
 func (a *ACL) Bootstrap() (*ACLToken, *WriteMeta, error) {
 	r := a.c.newRequest("PUT", "/v1/acl/bootstrap")
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLToken
 	if err := decodeBody(resp, &out); err != nil {
@@ -421,11 +526,14 @@ func (a *ACL) Create(acl *ACLEntry, q *WriteOptions) (string, *WriteMeta, error)
 	r := a.c.newRequest("PUT", "/v1/acl/create")
 	r.setWriteOptions(q)
 	r.obj = acl
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return "", nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return "", nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	var out struct{ ID string }
@@ -442,12 +550,14 @@ func (a *ACL) Update(acl *ACLEntry, q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("PUT", "/v1/acl/update")
 	r.setWriteOptions(q)
 	r.obj = acl
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
 }
@@ -458,11 +568,14 @@ func (a *ACL) Update(acl *ACLEntry, q *WriteOptions) (*WriteMeta, error) {
 func (a *ACL) Destroy(id string, q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("PUT", "/v1/acl/destroy/"+id)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
+	closeResponseBody(resp)
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -474,11 +587,14 @@ func (a *ACL) Destroy(id string, q *WriteOptions) (*WriteMeta, error) {
 func (a *ACL) Clone(id string, q *WriteOptions) (string, *WriteMeta, error) {
 	r := a.c.newRequest("PUT", "/v1/acl/clone/"+id)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return "", nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return "", nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	var out struct{ ID string }
@@ -494,12 +610,14 @@ func (a *ACL) Clone(id string, q *WriteOptions) (string, *WriteMeta, error) {
 func (a *ACL) Info(id string, q *QueryOptions) (*ACLEntry, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/info/"+id)
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -520,12 +638,14 @@ func (a *ACL) Info(id string, q *QueryOptions) (*ACLEntry, *QueryMeta, error) {
 func (a *ACL) List(q *QueryOptions) ([]*ACLEntry, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/list")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -541,12 +661,14 @@ func (a *ACL) List(q *QueryOptions) ([]*ACLEntry, *QueryMeta, error) {
 func (a *ACL) Replication(q *QueryOptions) (*ACLReplicationStatus, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/replication")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -564,12 +686,14 @@ func (a *ACL) TokenCreate(token *ACLToken, q *WriteOptions) (*ACLToken, *WriteMe
 	r := a.c.newRequest("PUT", "/v1/acl/token")
 	r.setWriteOptions(q)
 	r.obj = token
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLToken
 	if err := decodeBody(resp, &out); err != nil {
@@ -589,12 +713,14 @@ func (a *ACL) TokenUpdate(token *ACLToken, q *WriteOptions) (*ACLToken, *WriteMe
 	r := a.c.newRequest("PUT", "/v1/acl/token/"+token.AccessorID)
 	r.setWriteOptions(q)
 	r.obj = token
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLToken
 	if err := decodeBody(resp, &out); err != nil {
@@ -616,12 +742,14 @@ func (a *ACL) TokenClone(tokenID string, description string, q *WriteOptions) (*
 	r := a.c.newRequest("PUT", "/v1/acl/token/"+tokenID+"/clone")
 	r.setWriteOptions(q)
 	r.obj = struct{ Description string }{description}
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLToken
 	if err := decodeBody(resp, &out); err != nil {
@@ -636,11 +764,14 @@ func (a *ACL) TokenClone(tokenID string, description string, q *WriteOptions) (*
 func (a *ACL) TokenDelete(tokenID string, q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("DELETE", "/v1/acl/token/"+tokenID)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
+	closeResponseBody(resp)
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -651,17 +782,45 @@ func (a *ACL) TokenDelete(tokenID string, q *WriteOptions) (*WriteMeta, error) {
 func (a *ACL) TokenRead(tokenID string, q *QueryOptions) (*ACLToken, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/token/"+tokenID)
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
 
 	var out ACLToken
+	if err := decodeBody(resp, &out); err != nil {
+		return nil, nil, err
+	}
+
+	return &out, qm, nil
+}
+
+// TokenReadExpanded retrieves the full token details, as well as the contents of any policies affecting the token.
+// The tokenID parameter must be a valid Accessor ID of an existing token.
+func (a *ACL) TokenReadExpanded(tokenID string, q *QueryOptions) (*ACLTokenExpanded, *QueryMeta, error) {
+	r := a.c.newRequest("GET", "/v1/acl/token/"+tokenID)
+	r.setQueryOptions(q)
+	r.params.Set("expanded", "true")
+	rtt, resp, err := a.c.doRequest(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
+	qm := &QueryMeta{}
+	parseQueryMeta(resp, qm)
+	qm.RequestTime = rtt
+
+	var out ACLTokenExpanded
 	if err := decodeBody(resp, &out); err != nil {
 		return nil, nil, err
 	}
@@ -675,12 +834,14 @@ func (a *ACL) TokenRead(tokenID string, q *QueryOptions) (*ACLToken, *QueryMeta,
 func (a *ACL) TokenReadSelf(q *QueryOptions) (*ACLToken, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/token/self")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -698,12 +859,14 @@ func (a *ACL) TokenReadSelf(q *QueryOptions) (*ACLToken, *QueryMeta, error) {
 func (a *ACL) TokenList(q *QueryOptions) ([]*ACLTokenListEntry, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/tokens")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -724,12 +887,14 @@ func (a *ACL) PolicyCreate(policy *ACLPolicy, q *WriteOptions) (*ACLPolicy, *Wri
 	r := a.c.newRequest("PUT", "/v1/acl/policy")
 	r.setWriteOptions(q)
 	r.obj = policy
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLPolicy
 	if err := decodeBody(resp, &out); err != nil {
@@ -749,12 +914,14 @@ func (a *ACL) PolicyUpdate(policy *ACLPolicy, q *WriteOptions) (*ACLPolicy, *Wri
 	r := a.c.newRequest("PUT", "/v1/acl/policy/"+policy.ID)
 	r.setWriteOptions(q)
 	r.obj = policy
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLPolicy
 	if err := decodeBody(resp, &out); err != nil {
@@ -768,11 +935,14 @@ func (a *ACL) PolicyUpdate(policy *ACLPolicy, q *WriteOptions) (*ACLPolicy, *Wri
 func (a *ACL) PolicyDelete(policyID string, q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("DELETE", "/v1/acl/policy/"+policyID)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -782,12 +952,14 @@ func (a *ACL) PolicyDelete(policyID string, q *WriteOptions) (*WriteMeta, error)
 func (a *ACL) PolicyRead(policyID string, q *QueryOptions) (*ACLPolicy, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/policy/"+policyID)
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -804,11 +976,15 @@ func (a *ACL) PolicyRead(policyID string, q *QueryOptions) (*ACLPolicy, *QueryMe
 func (a *ACL) PolicyReadByName(policyName string, q *QueryOptions) (*ACLPolicy, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/policy/name/"+url.QueryEscape(policyName))
 	r.setQueryOptions(q)
-	found, rtt, resp, err := requireNotFoundOrOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	found, resp, err := requireNotFoundOrOK(resp)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -831,12 +1007,14 @@ func (a *ACL) PolicyReadByName(policyName string, q *QueryOptions) (*ACLPolicy, 
 func (a *ACL) PolicyList(q *QueryOptions) ([]*ACLPolicyListEntry, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/policies")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -855,11 +1033,16 @@ func (a *ACL) PolicyList(q *QueryOptions) ([]*ACLPolicyListEntry, *QueryMeta, er
 func (a *ACL) RulesTranslate(rules io.Reader) (string, error) {
 	r := a.c.newRequest("POST", "/v1/acl/rules/translate")
 	r.body = rules
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	r.header.Set("Content-Type", "text/plain")
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return "", err
+	}
+
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -879,11 +1062,14 @@ func (a *ACL) RulesTranslate(rules io.Reader) (string, error) {
 // when legacy ACL support is removed.
 func (a *ACL) RulesTranslateToken(tokenID string) (string, error) {
 	r := a.c.newRequest("GET", "/v1/acl/rules/translate/"+tokenID)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return "", err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -906,12 +1092,14 @@ func (a *ACL) RoleCreate(role *ACLRole, q *WriteOptions) (*ACLRole, *WriteMeta, 
 	r := a.c.newRequest("PUT", "/v1/acl/role")
 	r.setWriteOptions(q)
 	r.obj = role
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLRole
 	if err := decodeBody(resp, &out); err != nil {
@@ -931,12 +1119,14 @@ func (a *ACL) RoleUpdate(role *ACLRole, q *WriteOptions) (*ACLRole, *WriteMeta, 
 	r := a.c.newRequest("PUT", "/v1/acl/role/"+role.ID)
 	r.setWriteOptions(q)
 	r.obj = role
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLRole
 	if err := decodeBody(resp, &out); err != nil {
@@ -950,11 +1140,14 @@ func (a *ACL) RoleUpdate(role *ACLRole, q *WriteOptions) (*ACLRole, *WriteMeta, 
 func (a *ACL) RoleDelete(roleID string, q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("DELETE", "/v1/acl/role/"+roleID)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
+	closeResponseBody(resp)
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -964,11 +1157,15 @@ func (a *ACL) RoleDelete(roleID string, q *WriteOptions) (*WriteMeta, error) {
 func (a *ACL) RoleRead(roleID string, q *QueryOptions) (*ACLRole, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/role/"+roleID)
 	r.setQueryOptions(q)
-	found, rtt, resp, err := requireNotFoundOrOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	found, resp, err := requireNotFoundOrOK(resp)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -990,11 +1187,15 @@ func (a *ACL) RoleRead(roleID string, q *QueryOptions) (*ACLRole, *QueryMeta, er
 func (a *ACL) RoleReadByName(roleName string, q *QueryOptions) (*ACLRole, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/role/name/"+url.QueryEscape(roleName))
 	r.setQueryOptions(q)
-	found, rtt, resp, err := requireNotFoundOrOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	found, resp, err := requireNotFoundOrOK(resp)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -1018,12 +1219,14 @@ func (a *ACL) RoleReadByName(roleName string, q *QueryOptions) (*ACLRole, *Query
 func (a *ACL) RoleList(q *QueryOptions) ([]*ACLRole, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/roles")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -1044,12 +1247,14 @@ func (a *ACL) AuthMethodCreate(method *ACLAuthMethod, q *WriteOptions) (*ACLAuth
 	r := a.c.newRequest("PUT", "/v1/acl/auth-method")
 	r.setWriteOptions(q)
 	r.obj = method
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLAuthMethod
 	if err := decodeBody(resp, &out); err != nil {
@@ -1068,12 +1273,14 @@ func (a *ACL) AuthMethodUpdate(method *ACLAuthMethod, q *WriteOptions) (*ACLAuth
 	r := a.c.newRequest("PUT", "/v1/acl/auth-method/"+url.QueryEscape(method.Name))
 	r.setWriteOptions(q)
 	r.obj = method
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLAuthMethod
 	if err := decodeBody(resp, &out); err != nil {
@@ -1091,11 +1298,14 @@ func (a *ACL) AuthMethodDelete(methodName string, q *WriteOptions) (*WriteMeta, 
 
 	r := a.c.newRequest("DELETE", "/v1/acl/auth-method/"+url.QueryEscape(methodName))
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
+	closeResponseBody(resp)
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -1109,11 +1319,15 @@ func (a *ACL) AuthMethodRead(methodName string, q *QueryOptions) (*ACLAuthMethod
 
 	r := a.c.newRequest("GET", "/v1/acl/auth-method/"+url.QueryEscape(methodName))
 	r.setQueryOptions(q)
-	found, rtt, resp, err := requireNotFoundOrOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	found, resp, err := requireNotFoundOrOK(resp)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -1137,12 +1351,14 @@ func (a *ACL) AuthMethodRead(methodName string, q *QueryOptions) (*ACLAuthMethod
 func (a *ACL) AuthMethodList(q *QueryOptions) ([]*ACLAuthMethodListEntry, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/auth-methods")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -1165,12 +1381,14 @@ func (a *ACL) BindingRuleCreate(rule *ACLBindingRule, q *WriteOptions) (*ACLBind
 	r := a.c.newRequest("PUT", "/v1/acl/binding-rule")
 	r.setWriteOptions(q)
 	r.obj = rule
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLBindingRule
 	if err := decodeBody(resp, &out); err != nil {
@@ -1190,12 +1408,14 @@ func (a *ACL) BindingRuleUpdate(rule *ACLBindingRule, q *WriteOptions) (*ACLBind
 	r := a.c.newRequest("PUT", "/v1/acl/binding-rule/"+rule.ID)
 	r.setWriteOptions(q)
 	r.obj = rule
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLBindingRule
 	if err := decodeBody(resp, &out); err != nil {
@@ -1209,11 +1429,14 @@ func (a *ACL) BindingRuleUpdate(rule *ACLBindingRule, q *WriteOptions) (*ACLBind
 func (a *ACL) BindingRuleDelete(bindingRuleID string, q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("DELETE", "/v1/acl/binding-rule/"+bindingRuleID)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -1223,11 +1446,15 @@ func (a *ACL) BindingRuleDelete(bindingRuleID string, q *WriteOptions) (*WriteMe
 func (a *ACL) BindingRuleRead(bindingRuleID string, q *QueryOptions) (*ACLBindingRule, *QueryMeta, error) {
 	r := a.c.newRequest("GET", "/v1/acl/binding-rule/"+bindingRuleID)
 	r.setQueryOptions(q)
-	found, rtt, resp, err := requireNotFoundOrOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	found, resp, err := requireNotFoundOrOK(resp)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -1252,12 +1479,14 @@ func (a *ACL) BindingRuleList(methodName string, q *QueryOptions) ([]*ACLBinding
 		r.params.Set("authmethod", methodName)
 	}
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
 	qm.RequestTime = rtt
@@ -1275,12 +1504,14 @@ func (a *ACL) Login(auth *ACLLoginParams, q *WriteOptions) (*ACLToken, *WriteMet
 	r.setWriteOptions(q)
 	r.obj = auth
 
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLToken
 	if err := decodeBody(resp, &out); err != nil {
@@ -1293,11 +1524,14 @@ func (a *ACL) Login(auth *ACLLoginParams, q *WriteOptions) (*ACLToken, *WriteMet
 func (a *ACL) Logout(q *WriteOptions) (*WriteMeta, error) {
 	r := a.c.newRequest("POST", "/v1/acl/logout")
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
+	closeResponseBody(resp)
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -1313,11 +1547,14 @@ func (a *ACL) OIDCAuthURL(auth *ACLOIDCAuthURLParams, q *WriteOptions) (string, 
 	r.setWriteOptions(q)
 	r.obj = auth
 
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return "", nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return "", nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	var out aclOIDCAuthURLResponse
@@ -1348,12 +1585,14 @@ func (a *ACL) OIDCCallback(auth *ACLOIDCCallbackParams, q *WriteOptions) (*ACLTo
 	r.setWriteOptions(q)
 	r.obj = auth
 
-	rtt, resp, err := requireOK(a.c.doRequest(r))
+	rtt, resp, err := a.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
-
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 	wm := &WriteMeta{RequestTime: rtt}
 	var out ACLToken
 	if err := decodeBody(resp, &out); err != nil {

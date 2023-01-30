@@ -1,0 +1,21 @@
+global:
+  scrape_interval:     5s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets:
+          - 'prometheus:9090'
+  - job_name: 'loki'
+    dns_sd_configs:
+      - names:
+          - loki-read
+          - loki-write
+        type: A
+        port: 3100
+  - job_name: 'promtail'
+    dns_sd_configs:
+      - names:
+          - promtail
+        type: A
+        port: 9080

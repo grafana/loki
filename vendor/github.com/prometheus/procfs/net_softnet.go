@@ -30,13 +30,13 @@ import (
 // * Linux 4.17 https://elixir.bootlin.com/linux/v4.17/source/net/core/net-procfs.c#L162
 // and https://elixir.bootlin.com/linux/v4.17/source/include/linux/netdevice.h#L2810.
 
-// SoftnetStat contains a single row of data from /proc/net/softnet_stat
+// SoftnetStat contains a single row of data from /proc/net/softnet_stat.
 type SoftnetStat struct {
-	// Number of processed packets
+	// Number of processed packets.
 	Processed uint32
-	// Number of dropped packets
+	// Number of dropped packets.
 	Dropped uint32
-	// Number of times processing packets ran out of quota
+	// Number of times processing packets ran out of quota.
 	TimeSqueezed uint32
 }
 
@@ -51,7 +51,7 @@ func (fs FS) NetSoftnetStat() ([]SoftnetStat, error) {
 
 	entries, err := parseSoftnet(bytes.NewReader(b))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse /proc/net/softnet_stat: %v", err)
+		return nil, fmt.Errorf("failed to parse /proc/net/softnet_stat: %w", err)
 	}
 
 	return entries, nil

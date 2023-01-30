@@ -1,0 +1,77 @@
+enterprise:
+  enabled: false
+  adminApi:
+    enabled: false
+  useExternalLicense: false
+
+  config: |
+    admin_client:
+      storage:
+        gcs:
+          bucket_name: {YOUR_GCS_BUCKET}
+    auth:
+      type: trust
+    auth_enabled: false
+    cluster_name: loki-logs
+
+loki:
+  auth_enabled: false
+
+  commonConfig:
+    path_prefix: /var/loki
+    replication_factor: 3
+
+  storage:
+    type: gcs
+    bucketNames:
+      chunks: {YOUR_GCS_BUCKET}
+      ruler: {YOUR_GCS_BUCKET}
+      admin: {YOUR_GCS_BUCKET}
+
+minio:
+  enabled: false
+
+write:
+  extraEnv:
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: "/etc/loki_secrets/gcp_service_account.json"
+  extraVolumeMounts:
+    - name: loki-secrets
+      mountPath: "/etc/loki_secrets"
+  extraVolumes:
+    - name: loki-secrets
+      secret:
+        secretName: loki-secrets
+        items:
+        - key: gcp_service_account.json
+          path: gcp_service_account.json
+
+read:
+  extraEnv:
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: "/etc/loki_secrets/gcp_service_account.json"
+  extraVolumeMounts:
+    - name: loki-secrets
+      mountPath: "/etc/loki_secrets"
+  extraVolumes:
+    - name: loki-secrets
+      secret:
+        secretName: loki-secrets
+        items:
+        - key: gcp_service_account.json
+          path: gcp_service_account.json
+
+gateway:
+  extraEnv:
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: "/etc/loki_secrets/gcp_service_account.json"
+  extraVolumeMounts:
+    - name: loki-secrets
+      mountPath: "/etc/loki_secrets"
+  extraVolumes:
+    - name: loki-secrets
+      secret:
+        secretName: loki-secrets
+        items:
+        - key: gcp_service_account.json
+          path: gcp_service_account.json

@@ -41,11 +41,11 @@ func CompressBlockBound(n int) int {
 	return n + n/255 + 16
 }
 
-func UncompressBlock(src, dst []byte) (int, error) {
+func UncompressBlock(src, dst, dict []byte) (int, error) {
 	if len(src) == 0 {
 		return 0, nil
 	}
-	if di := decodeBlock(dst, src); di >= 0 {
+	if di := decodeBlock(dst, src, dict); di >= 0 {
 		return di, nil
 	}
 	return 0, lz4errors.ErrInvalidSourceShortBuffer
@@ -62,7 +62,10 @@ type Compressor struct {
 	// inspecting the input stream.
 	table [htSize]uint16
 
-	needsReset bool
+	// Bitmap indicating which positions in the table are in use.
+	// This allows us to quickly reset the table for reuse,
+	// without having to zero everything.
+	inUse [htSize / 32]uint32
 }
 
 // Get returns the position of a presumptive match for the hash h.
@@ -70,7 +73,10 @@ type Compressor struct {
 // If si < winSize, the return value may be negative.
 func (c *Compressor) get(h uint32, si int) int {
 	h &= htSize - 1
-	i := int(c.table[h])
+	i := 0
+	if c.inUse[h/32]&(1<<(h%32)) != 0 {
+		i = int(c.table[h])
+	}
 	i += si &^ winMask
 	if i >= si {
 		// Try previous 64kiB block (negative when in first block).
@@ -82,7 +88,10 @@ func (c *Compressor) get(h uint32, si int) int {
 func (c *Compressor) put(h uint32, si int) {
 	h &= htSize - 1
 	c.table[h] = uint16(si)
+	c.inUse[h/32] |= 1 << (h % 32)
 }
+
+func (c *Compressor) reset() { c.inUse = [htSize / 32]uint32{} }
 
 var compressorPool = sync.Pool{New: func() interface{} { return new(Compressor) }}
 
@@ -94,11 +103,8 @@ func CompressBlock(src, dst []byte) (int, error) {
 }
 
 func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
-	if c.needsReset {
-		// Zero out reused table to avoid non-deterministic output (issue #65).
-		c.table = [htSize]uint16{}
-	}
-	c.needsReset = true // Only false on first call.
+	// Zero out reused table to avoid non-deterministic output (issue #65).
+	c.reset()
 
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
 	isNotCompressible := len(dst) < CompressBlockBound(len(src))
@@ -126,7 +132,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 		// We check a match at s, s+1 and s+2 and pick the first one we get.
 		// Checking 3 only requires us to load the source one.
 		ref := c.get(h, si)
-		ref2 := c.get(h2, si)
+		ref2 := c.get(h2, si+1)
 		c.put(h, si)
 		c.put(h2, si+1)
 
@@ -175,7 +181,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 		si, mLen = si+mLen, si+minMatch
 
 		// Find the longest match by looking by batches of 8 bytes.
-		for si+8 < sn {
+		for si+8 <= sn {
 			x := binary.LittleEndian.Uint64(src[si:]) ^ binary.LittleEndian.Uint64(src[si-offset:])
 			if x == 0 {
 				si += 8
@@ -187,6 +193,9 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 		}
 
 		mLen = si - mLen
+		if di >= len(dst) {
+			return 0, lz4errors.ErrInvalidSourceShortBuffer
+		}
 		if mLen < 0xF {
 			dst[di] = byte(mLen)
 		} else {
@@ -200,9 +209,12 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 			dst[di] |= 0xF0
 			di++
 			l := lLen - 0xF
-			for ; l >= 0xFF; l -= 0xFF {
+			for ; l >= 0xFF && di < len(dst); l -= 0xFF {
 				dst[di] = 0xFF
 				di++
+			}
+			if di >= len(dst) {
+				return 0, lz4errors.ErrInvalidSourceShortBuffer
 			}
 			dst[di] = byte(l)
 		}

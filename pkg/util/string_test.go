@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStringSliceContains(t *testing.T) {
+func TestStringsContain(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -32,7 +32,7 @@ func TestStringSliceContains(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			actual := StringSliceContains(testData.inputSlice, testData.inputValue)
+			actual := StringsContain(testData.inputSlice, testData.inputValue)
 			assert.Equal(t, testData.expected, actual)
 		})
 	}

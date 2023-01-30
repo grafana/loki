@@ -2,16 +2,17 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -40,6 +41,10 @@ type Tailer struct {
 	currEntry  logproto.Entry
 	currLabels string
 
+	// keep track of the streams for metrics about active streams
+	seenStreams    map[uint64]struct{}
+	seenStreamsMtx sync.Mutex
+
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error)
 
 	querierTailClients    map[string]logproto.Querier_TailClient // addr -> grpc clients for tailing logs from ingesters
@@ -54,6 +59,7 @@ type Tailer struct {
 	// if we are not seeing any response from ingester,
 	// how long do we want to wait by going into sleep
 	waitEntryThrottle time.Duration
+	metrics           *Metrics
 }
 
 func (t *Tailer) readTailClients() {
@@ -94,8 +100,11 @@ func (t *Tailer) loop() {
 
 		// Read as much entries as we can (up to the max allowed) and populate the
 		// tail response we'll send over the response channel
-		tailResponse := new(loghttp.TailResponse)
-		entriesCount := 0
+		var (
+			tailResponse = new(loghttp.TailResponse)
+			entriesCount = 0
+			entriesSize  = 0
+		)
 
 		for ; entriesCount < maxEntriesPerTailResponse && t.next(); entriesCount++ {
 			// If the response channel channel is blocked, we drop the current entry directly
@@ -105,6 +114,7 @@ func (t *Tailer) loop() {
 				continue
 			}
 
+			entriesSize += len(t.currEntry.Line)
 			tailResponse.Streams = append(tailResponse.Streams, logproto.Stream{
 				Labels:  t.currLabels,
 				Entries: []logproto.Entry{t.currEntry},
@@ -150,6 +160,7 @@ func (t *Tailer) loop() {
 
 		select {
 		case t.responseChan <- tailResponse:
+			t.metrics.tailedBytesTotal.Add(float64(entriesSize))
 			if len(droppedEntries) > 0 {
 				droppedEntries = make([]loghttp.DroppedEntry, 0)
 			}
@@ -172,7 +183,7 @@ func (t *Tailer) checkIngesterConnections() error {
 
 	newConnections, err := t.tailDisconnectedIngesters(connectedIngestersAddr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect with one or more ingester(s) during tailing: %w", err)
 	}
 
 	if len(newConnections) != 0 {
@@ -238,12 +249,17 @@ func (t *Tailer) next() bool {
 
 	t.currEntry = t.openStreamIterator.Entry()
 	t.currLabels = t.openStreamIterator.Labels()
+	t.recordStream(t.openStreamIterator.StreamHash())
+
 	return true
 }
 
 func (t *Tailer) close() error {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
+
+	t.metrics.tailsActive.Dec()
+	t.metrics.tailedStreamsActive.Sub(t.activeStreamCount())
 
 	t.stopped = true
 	return t.openStreamIterator.Close()
@@ -263,6 +279,25 @@ func (t *Tailer) getCloseErrorChan() <-chan error {
 	return t.closeErrChan
 }
 
+func (t *Tailer) recordStream(id uint64) {
+	t.seenStreamsMtx.Lock()
+	defer t.seenStreamsMtx.Unlock()
+
+	if _, ok := t.seenStreams[id]; ok {
+		return
+	}
+
+	t.seenStreams[id] = struct{}{}
+	t.metrics.tailedStreamsActive.Inc()
+}
+
+func (t *Tailer) activeStreamCount() float64 {
+	t.seenStreamsMtx.Lock()
+	defer t.seenStreamsMtx.Unlock()
+
+	return float64(len(t.seenStreams))
+}
+
 func newTailer(
 	delayFor time.Duration,
 	querierTailClients map[string]logproto.Querier_TailClient,
@@ -270,18 +305,22 @@ func newTailer(
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error),
 	tailMaxDuration time.Duration,
 	waitEntryThrottle time.Duration,
+	m *Metrics,
 ) *Tailer {
 	t := Tailer{
-		openStreamIterator:        iter.NewHeapIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),
 		closeErrChan:              make(chan error),
+		seenStreams:               make(map[uint64]struct{}),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
 		waitEntryThrottle:         waitEntryThrottle,
+		metrics:                   m,
 	}
 
+	t.metrics.tailsActive.Inc()
 	t.readTailClients()
 	go t.loop()
 	return &t

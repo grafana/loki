@@ -11,42 +11,131 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build go1.8
-
 package config
 
 import (
 	"bytes"
-	"crypto/md5"
+	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mwitkow/go-conntrack"
 	"golang.org/x/net/http2"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	"gopkg.in/yaml.v2"
 )
 
-// DefaultHTTPClientConfig is the default HTTP client configuration.
-var DefaultHTTPClientConfig = HTTPClientConfig{
-	FollowRedirects: true,
-}
+var (
+	// DefaultHTTPClientConfig is the default HTTP client configuration.
+	DefaultHTTPClientConfig = HTTPClientConfig{
+		FollowRedirects: true,
+		EnableHTTP2:     true,
+	}
+
+	// defaultHTTPClientOptions holds the default HTTP client options.
+	defaultHTTPClientOptions = httpClientOptions{
+		keepAlivesEnabled: true,
+		http2Enabled:      true,
+		// 5 minutes is typically above the maximum sane scrape interval. So we can
+		// use keepalive for all configurations.
+		idleConnTimeout: 5 * time.Minute,
+	}
+)
 
 type closeIdler interface {
 	CloseIdleConnections()
 }
 
+type TLSVersion uint16
+
+var TLSVersions = map[string]TLSVersion{
+	"TLS13": (TLSVersion)(tls.VersionTLS13),
+	"TLS12": (TLSVersion)(tls.VersionTLS12),
+	"TLS11": (TLSVersion)(tls.VersionTLS11),
+	"TLS10": (TLSVersion)(tls.VersionTLS10),
+}
+
+func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	err := unmarshal((*string)(&s))
+	if err != nil {
+		return err
+	}
+	if v, ok := TLSVersions[s]; ok {
+		*tv = v
+		return nil
+	}
+	return fmt.Errorf("unknown TLS version: %s", s)
+}
+
+func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
+	if tv == nil || *tv == 0 {
+		return []byte("null"), nil
+	}
+	for s, v := range TLSVersions {
+		if *tv == v {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("unknown TLS version: %d", tv)
+}
+
+// MarshalJSON implements the json.Unmarshaler interface for TLSVersion.
+func (tv *TLSVersion) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if v, ok := TLSVersions[s]; ok {
+		*tv = v
+		return nil
+	}
+	return fmt.Errorf("unknown TLS version: %s", s)
+}
+
+// MarshalJSON implements the json.Marshaler interface for TLSVersion.
+func (tv *TLSVersion) MarshalJSON() ([]byte, error) {
+	if tv == nil || *tv == 0 {
+		return []byte("null"), nil
+	}
+	for s, v := range TLSVersions {
+		if *tv == v {
+			return []byte(s), nil
+		}
+	}
+	return nil, fmt.Errorf("unknown TLS version: %d", tv)
+}
+
+// String implements the fmt.Stringer interface for TLSVersion.
+func (tv *TLSVersion) String() string {
+	if tv == nil || *tv == 0 {
+		return ""
+	}
+	for s, v := range TLSVersions {
+		if *tv == v {
+			return s
+		}
+	}
+	return fmt.Sprintf("%d", tv)
+}
+
 // BasicAuth contains basic HTTP authentication credentials.
 type BasicAuth struct {
-	Username     string `yaml:"username"`
-	Password     Secret `yaml:"password,omitempty"`
-	PasswordFile string `yaml:"password_file,omitempty"`
+	Username     string `yaml:"username" json:"username"`
+	Password     Secret `yaml:"password,omitempty" json:"password,omitempty"`
+	PasswordFile string `yaml:"password_file,omitempty" json:"password_file,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -59,9 +148,9 @@ func (a *BasicAuth) SetDirectory(dir string) {
 
 // Authorization contains HTTP authorization credentials.
 type Authorization struct {
-	Type            string `yaml:"type,omitempty"`
-	Credentials     Secret `yaml:"credentials,omitempty"`
-	CredentialsFile string `yaml:"credentials_file,omitempty"`
+	Type            string `yaml:"type,omitempty" json:"type,omitempty"`
+	Credentials     Secret `yaml:"credentials,omitempty" json:"credentials,omitempty"`
+	CredentialsFile string `yaml:"credentials_file,omitempty" json:"credentials_file,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -95,31 +184,126 @@ func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // MarshalYAML implements the yaml.Marshaler interface for URLs.
 func (u URL) MarshalYAML() (interface{}, error) {
 	if u.URL != nil {
-		return u.String(), nil
+		return u.Redacted(), nil
 	}
 	return nil, nil
+}
+
+// Redacted returns the URL but replaces any password with "xxxxx".
+func (u URL) Redacted() string {
+	if u.URL == nil {
+		return ""
+	}
+
+	ru := *u.URL
+	if _, ok := ru.User.Password(); ok {
+		// We can not use secretToken because it would be escaped.
+		ru.User = url.UserPassword(ru.User.Username(), "xxxxx")
+	}
+	return ru.String()
+}
+
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (u *URL) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	urlp, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	u.URL = urlp
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for URL.
+func (u URL) MarshalJSON() ([]byte, error) {
+	if u.URL != nil {
+		return json.Marshal(u.URL.String())
+	}
+	return []byte("null"), nil
+}
+
+// OAuth2 is the oauth2 client configuration.
+type OAuth2 struct {
+	ClientID         string            `yaml:"client_id" json:"client_id"`
+	ClientSecret     Secret            `yaml:"client_secret" json:"client_secret"`
+	ClientSecretFile string            `yaml:"client_secret_file" json:"client_secret_file"`
+	Scopes           []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	TokenURL         string            `yaml:"token_url" json:"token_url"`
+	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+
+	// HTTP proxy server to use to connect to the targets.
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
+	// TLSConfig is used to connect to the token URL.
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
+}
+
+// SetDirectory joins any relative file paths with dir.
+func (a *OAuth2) SetDirectory(dir string) {
+	if a == nil {
+		return
+	}
+	a.ClientSecretFile = JoinDir(dir, a.ClientSecretFile)
+	a.TLSConfig.SetDirectory(dir)
+}
+
+// LoadHTTPConfig parses the YAML input s into a HTTPClientConfig.
+func LoadHTTPConfig(s string) (*HTTPClientConfig, error) {
+	cfg := &HTTPClientConfig{}
+	err := yaml.UnmarshalStrict([]byte(s), cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// LoadHTTPConfigFile parses the given YAML file into a HTTPClientConfig.
+func LoadHTTPConfigFile(filename string) (*HTTPClientConfig, []byte, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg, err := LoadHTTPConfig(string(content))
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg.SetDirectory(filepath.Dir(filepath.Dir(filename)))
+	return cfg, content, nil
 }
 
 // HTTPClientConfig configures an HTTP client.
 type HTTPClientConfig struct {
 	// The HTTP basic authentication credentials for the targets.
-	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty"`
+	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty" json:"basic_auth,omitempty"`
 	// The HTTP authorization credentials for the targets.
-	Authorization *Authorization `yaml:"authorization,omitempty"`
+	Authorization *Authorization `yaml:"authorization,omitempty" json:"authorization,omitempty"`
+	// The OAuth2 client credentials used to fetch a token for the targets.
+	OAuth2 *OAuth2 `yaml:"oauth2,omitempty" json:"oauth2,omitempty"`
 	// The bearer token for the targets. Deprecated in favour of
 	// Authorization.Credentials.
-	BearerToken Secret `yaml:"bearer_token,omitempty"`
+	BearerToken Secret `yaml:"bearer_token,omitempty" json:"bearer_token,omitempty"`
 	// The bearer token file for the targets. Deprecated in favour of
 	// Authorization.CredentialsFile.
-	BearerTokenFile string `yaml:"bearer_token_file,omitempty"`
+	BearerTokenFile string `yaml:"bearer_token_file,omitempty" json:"bearer_token_file,omitempty"`
 	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty"`
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
+	// ProxyConnectHeader optionally specifies headers to send to
+	// proxies during CONNECT requests. Assume that at least _some_ of
+	// these headers are going to contain secrets and use Secret as the
+	// value type instead of string.
+	ProxyConnectHeader Header `yaml:"proxy_connect_header,omitempty" json:"proxy_connect_header,omitempty"`
 	// TLSConfig to use to connect to the targets.
-	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty" json:"tls_config,omitempty"`
 	// FollowRedirects specifies whether the client should follow HTTP 3xx redirects.
 	// The omitempty flag is not set, because it would be hidden from the
 	// marshalled configuration when set to false.
-	FollowRedirects bool `yaml:"follow_redirects"`
+	FollowRedirects bool `yaml:"follow_redirects" json:"follow_redirects"`
+	// EnableHTTP2 specifies whether the client should configure HTTP2.
+	// The omitempty flag is not set, because it would be hidden from the
+	// marshalled configuration when set to false.
+	EnableHTTP2 bool `yaml:"enable_http2" json:"enable_http2"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -130,18 +314,20 @@ func (c *HTTPClientConfig) SetDirectory(dir string) {
 	c.TLSConfig.SetDirectory(dir)
 	c.BasicAuth.SetDirectory(dir)
 	c.Authorization.SetDirectory(dir)
+	c.OAuth2.SetDirectory(dir)
 	c.BearerTokenFile = JoinDir(dir, c.BearerTokenFile)
 }
 
 // Validate validates the HTTPClientConfig to check only one of BearerToken,
-// BasicAuth and BearerTokenFile is configured.
+// BasicAuth and BearerTokenFile is configured. It also validates that ProxyURL
+// is set if ProxyConnectHeader is set.
 func (c *HTTPClientConfig) Validate() error {
 	// Backwards compatibility with the bearer_token field.
 	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
 		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
 	}
-	if c.BasicAuth != nil && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
-		return fmt.Errorf("at most one of basic_auth, bearer_token & bearer_token_file must be configured")
+	if (c.BasicAuth != nil || c.OAuth2 != nil) && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
+		return fmt.Errorf("at most one of basic_auth, oauth2, bearer_token & bearer_token_file must be configured")
 	}
 	if c.BasicAuth != nil && (string(c.BasicAuth.Password) != "" && c.BasicAuth.PasswordFile != "") {
 		return fmt.Errorf("at most one of basic_auth password & password_file must be configured")
@@ -160,8 +346,8 @@ func (c *HTTPClientConfig) Validate() error {
 		if strings.ToLower(c.Authorization.Type) == "basic" {
 			return fmt.Errorf(`authorization type cannot be set to "basic", use "basic_auth" instead`)
 		}
-		if c.BasicAuth != nil {
-			return fmt.Errorf("at most one of basic_auth & authorization must be configured")
+		if c.BasicAuth != nil || c.OAuth2 != nil {
+			return fmt.Errorf("at most one of basic_auth, oauth2 & authorization must be configured")
 		}
 	} else {
 		if len(c.BearerToken) > 0 {
@@ -174,6 +360,26 @@ func (c *HTTPClientConfig) Validate() error {
 			c.Authorization.Type = "Bearer"
 			c.BearerTokenFile = ""
 		}
+	}
+	if c.OAuth2 != nil {
+		if c.BasicAuth != nil {
+			return fmt.Errorf("at most one of basic_auth, oauth2 & authorization must be configured")
+		}
+		if len(c.OAuth2.ClientID) == 0 {
+			return fmt.Errorf("oauth2 client_id must be configured")
+		}
+		if len(c.OAuth2.ClientSecret) == 0 && len(c.OAuth2.ClientSecretFile) == 0 {
+			return fmt.Errorf("either oauth2 client_secret or client_secret_file must be configured")
+		}
+		if len(c.OAuth2.TokenURL) == 0 {
+			return fmt.Errorf("oauth2 token_url must be configured")
+		}
+		if len(c.OAuth2.ClientSecret) > 0 && len(c.OAuth2.ClientSecretFile) > 0 {
+			return fmt.Errorf("at most one of oauth2 client_secret & client_secret_file must be configured")
+		}
+	}
+	if len(c.ProxyConnectHeader) > 0 && (c.ProxyURL.URL == nil || c.ProxyURL.String() == "") {
+		return fmt.Errorf("if proxy_connect_header is configured proxy_url must also be configured")
 	}
 	return nil
 }
@@ -188,10 +394,70 @@ func (c *HTTPClientConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return c.Validate()
 }
 
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (c *HTTPClientConfig) UnmarshalJSON(data []byte) error {
+	type plain HTTPClientConfig
+	*c = DefaultHTTPClientConfig
+	if err := json.Unmarshal(data, (*plain)(c)); err != nil {
+		return err
+	}
+	return c.Validate()
+}
+
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (a *BasicAuth) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain BasicAuth
 	return unmarshal((*plain)(a))
+}
+
+// DialContextFunc defines the signature of the DialContext() function implemented
+// by net.Dialer.
+type DialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+type httpClientOptions struct {
+	dialContextFunc   DialContextFunc
+	keepAlivesEnabled bool
+	http2Enabled      bool
+	idleConnTimeout   time.Duration
+	userAgent         string
+}
+
+// HTTPClientOption defines an option that can be applied to the HTTP client.
+type HTTPClientOption func(options *httpClientOptions)
+
+// WithDialContextFunc allows you to override func gets used for the actual dialing. The default is `net.Dialer.DialContext`.
+func WithDialContextFunc(fn DialContextFunc) HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.dialContextFunc = fn
+	}
+}
+
+// WithKeepAlivesDisabled allows to disable HTTP keepalive.
+func WithKeepAlivesDisabled() HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.keepAlivesEnabled = false
+	}
+}
+
+// WithHTTP2Disabled allows to disable HTTP2.
+func WithHTTP2Disabled() HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.http2Enabled = false
+	}
+}
+
+// WithIdleConnTimeout allows setting the idle connection timeout.
+func WithIdleConnTimeout(timeout time.Duration) HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.idleConnTimeout = timeout
+	}
+}
+
+// WithUserAgent allows setting the user agent.
+func WithUserAgent(ua string) HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.userAgent = ua
+	}
 }
 
 // NewClient returns a http.Client using the specified http.RoundTripper.
@@ -200,9 +466,10 @@ func newClient(rt http.RoundTripper) *http.Client {
 }
 
 // NewClientFromConfig returns a new HTTP client configured for the
-// given config.HTTPClientConfig. The name is used as go-conntrack metric label.
-func NewClientFromConfig(cfg HTTPClientConfig, name string, disableKeepAlives, enableHTTP2 bool) (*http.Client, error) {
-	rt, err := NewRoundTripperFromConfig(cfg, name, disableKeepAlives, enableHTTP2)
+// given config.HTTPClientConfig and config.HTTPClientOption.
+// The name is used as go-conntrack metric label.
+func NewClientFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HTTPClientOption) (*http.Client, error) {
+	rt, err := NewRoundTripperFromConfig(cfg, name, optFuncs...)
 	if err != nil {
 		return nil, err
 	}
@@ -216,40 +483,55 @@ func NewClientFromConfig(cfg HTTPClientConfig, name string, disableKeepAlives, e
 }
 
 // NewRoundTripperFromConfig returns a new HTTP RoundTripper configured for the
-// given config.HTTPClientConfig. The name is used as go-conntrack metric label.
-func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, disableKeepAlives, enableHTTP2 bool) (http.RoundTripper, error) {
+// given config.HTTPClientConfig and config.HTTPClientOption.
+// The name is used as go-conntrack metric label.
+func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HTTPClientOption) (http.RoundTripper, error) {
+	opts := defaultHTTPClientOptions
+	for _, f := range optFuncs {
+		f(&opts)
+	}
+
+	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+
+	if opts.dialContextFunc != nil {
+		dialContext = conntrack.NewDialContextFunc(
+			conntrack.DialWithDialContextFunc((func(context.Context, string, string) (net.Conn, error))(opts.dialContextFunc)),
+			conntrack.DialWithTracing(),
+			conntrack.DialWithName(name))
+	} else {
+		dialContext = conntrack.NewDialContextFunc(
+			conntrack.DialWithTracing(),
+			conntrack.DialWithName(name))
+	}
+
 	newRT := func(tlsConfig *tls.Config) (http.RoundTripper, error) {
 		// The only timeout we care about is the configured scrape timeout.
 		// It is applied on request. So we leave out any timings here.
 		var rt http.RoundTripper = &http.Transport{
-			Proxy:               http.ProxyURL(cfg.ProxyURL.URL),
-			MaxIdleConns:        20000,
-			MaxIdleConnsPerHost: 1000, // see https://github.com/golang/go/issues/13801
-			DisableKeepAlives:   disableKeepAlives,
-			TLSClientConfig:     tlsConfig,
-			DisableCompression:  true,
-			// 5 minutes is typically above the maximum sane scrape interval. So we can
-			// use keepalive for all configurations.
-			IdleConnTimeout:       5 * time.Minute,
+			Proxy:                 http.ProxyURL(cfg.ProxyURL.URL),
+			ProxyConnectHeader:    cfg.ProxyConnectHeader.HTTPHeader(),
+			MaxIdleConns:          20000,
+			MaxIdleConnsPerHost:   1000, // see https://github.com/golang/go/issues/13801
+			DisableKeepAlives:     !opts.keepAlivesEnabled,
+			TLSClientConfig:       tlsConfig,
+			DisableCompression:    true,
+			IdleConnTimeout:       opts.idleConnTimeout,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
-			DialContext: conntrack.NewDialContextFunc(
-				conntrack.DialWithTracing(),
-				conntrack.DialWithName(name),
-			),
+			DialContext:           dialContext,
 		}
-		if enableHTTP2 {
-			// HTTP/2 support is golang has many problematic cornercases where
+		if opts.http2Enabled && cfg.EnableHTTP2 {
+			// HTTP/2 support is golang had many problematic cornercases where
 			// dead connections would be kept and used in connection pools.
 			// https://github.com/golang/go/issues/32388
 			// https://github.com/golang/go/issues/39337
 			// https://github.com/golang/go/issues/39750
-			// TODO: Re-Enable HTTP/2 once upstream issue is fixed.
-			// TODO: use ForceAttemptHTTP2 when we move to Go 1.13+.
-			err := http2.ConfigureTransport(rt.(*http.Transport))
+
+			http2t, err := http2.ConfigureTransports(rt.(*http.Transport))
 			if err != nil {
 				return nil, err
 			}
+			http2t.ReadIdleTimeout = time.Minute
 		}
 
 		// If a authorization_credentials is provided, create a round tripper that will set the
@@ -270,6 +552,15 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, disableKeepAli
 		if cfg.BasicAuth != nil {
 			rt = NewBasicAuthRoundTripper(cfg.BasicAuth.Username, cfg.BasicAuth.Password, cfg.BasicAuth.PasswordFile, rt)
 		}
+
+		if cfg.OAuth2 != nil {
+			rt = NewOAuth2RoundTripper(cfg.OAuth2, rt, &opts)
+		}
+
+		if opts.userAgent != "" {
+			rt = NewUserAgentRoundTripper(opts.userAgent, rt)
+		}
+
 		// Return a new configured RoundTripper.
 		return rt, nil
 	}
@@ -284,7 +575,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, disableKeepAli
 		return newRT(tlsConfig)
 	}
 
-	return newTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, newRT)
+	return NewTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, cfg.TLSConfig.CertFile, cfg.TLSConfig.KeyFile, newRT)
 }
 
 type authorizationCredentialsRoundTripper struct {
@@ -328,7 +619,7 @@ func NewAuthorizationCredentialsFileRoundTripper(authType, authCredentialsFile s
 
 func (rt *authorizationCredentialsFileRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if len(req.Header.Get("Authorization")) == 0 {
-		b, err := ioutil.ReadFile(rt.authCredentialsFile)
+		b, err := os.ReadFile(rt.authCredentialsFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", rt.authCredentialsFile, err)
 		}
@@ -366,7 +657,7 @@ func (rt *basicAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	}
 	req = cloneRequest(req)
 	if rt.passwordFile != "" {
-		bs, err := ioutil.ReadFile(rt.passwordFile)
+		bs, err := os.ReadFile(rt.passwordFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read basic auth password file %s: %s", rt.passwordFile, err)
 		}
@@ -381,6 +672,127 @@ func (rt *basicAuthRoundTripper) CloseIdleConnections() {
 	if ci, ok := rt.rt.(closeIdler); ok {
 		ci.CloseIdleConnections()
 	}
+}
+
+type oauth2RoundTripper struct {
+	config *OAuth2
+	rt     http.RoundTripper
+	next   http.RoundTripper
+	secret string
+	mtx    sync.RWMutex
+	opts   *httpClientOptions
+	client *http.Client
+}
+
+func NewOAuth2RoundTripper(config *OAuth2, next http.RoundTripper, opts *httpClientOptions) http.RoundTripper {
+	return &oauth2RoundTripper{
+		config: config,
+		next:   next,
+		opts:   opts,
+	}
+}
+
+func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	var (
+		secret  string
+		changed bool
+	)
+
+	if rt.config.ClientSecretFile != "" {
+		data, err := os.ReadFile(rt.config.ClientSecretFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read oauth2 client secret file %s: %s", rt.config.ClientSecretFile, err)
+		}
+		secret = strings.TrimSpace(string(data))
+		rt.mtx.RLock()
+		changed = secret != rt.secret
+		rt.mtx.RUnlock()
+	}
+
+	if changed || rt.rt == nil {
+		if rt.config.ClientSecret != "" {
+			secret = string(rt.config.ClientSecret)
+		}
+
+		config := &clientcredentials.Config{
+			ClientID:       rt.config.ClientID,
+			ClientSecret:   secret,
+			Scopes:         rt.config.Scopes,
+			TokenURL:       rt.config.TokenURL,
+			EndpointParams: mapToValues(rt.config.EndpointParams),
+		}
+
+		tlsConfig, err := NewTLSConfig(&rt.config.TLSConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsTransport := func(tlsConfig *tls.Config) (http.RoundTripper, error) {
+			return &http.Transport{
+				TLSClientConfig:       tlsConfig,
+				Proxy:                 http.ProxyURL(rt.config.ProxyURL.URL),
+				DisableKeepAlives:     !rt.opts.keepAlivesEnabled,
+				MaxIdleConns:          20,
+				MaxIdleConnsPerHost:   1, // see https://github.com/golang/go/issues/13801
+				IdleConnTimeout:       10 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			}, nil
+		}
+
+		var t http.RoundTripper
+		if len(rt.config.TLSConfig.CAFile) == 0 {
+			t, _ = tlsTransport(tlsConfig)
+		} else {
+			t, err = NewTLSRoundTripper(tlsConfig, rt.config.TLSConfig.CAFile, rt.config.TLSConfig.CertFile, rt.config.TLSConfig.KeyFile, tlsTransport)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if ua := req.UserAgent(); ua != "" {
+			t = NewUserAgentRoundTripper(ua, t)
+		}
+
+		client := &http.Client{Transport: t}
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
+		tokenSource := config.TokenSource(ctx)
+
+		rt.mtx.Lock()
+		rt.secret = secret
+		rt.rt = &oauth2.Transport{
+			Base:   rt.next,
+			Source: tokenSource,
+		}
+		if rt.client != nil {
+			rt.client.CloseIdleConnections()
+		}
+		rt.client = client
+		rt.mtx.Unlock()
+	}
+
+	rt.mtx.RLock()
+	currentRT := rt.rt
+	rt.mtx.RUnlock()
+	return currentRT.RoundTrip(req)
+}
+
+func (rt *oauth2RoundTripper) CloseIdleConnections() {
+	if rt.client != nil {
+		rt.client.CloseIdleConnections()
+	}
+	if ci, ok := rt.next.(closeIdler); ok {
+		ci.CloseIdleConnections()
+	}
+}
+
+func mapToValues(m map[string]string) url.Values {
+	v := url.Values{}
+	for name, value := range m {
+		v.Set(name, value)
+	}
+
+	return v
 }
 
 // cloneRequest returns a clone of the provided *http.Request.
@@ -399,7 +811,17 @@ func cloneRequest(r *http.Request) *http.Request {
 
 // NewTLSConfig creates a new tls.Config from the given TLSConfig.
 func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
-	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		MinVersion:         uint16(cfg.MinVersion),
+		MaxVersion:         uint16(cfg.MaxVersion),
+	}
+
+	if cfg.MaxVersion != 0 && cfg.MinVersion != 0 {
+		if cfg.MaxVersion < cfg.MinVersion {
+			return nil, fmt.Errorf("tls_config.max_version must be greater than or equal to tls_config.min_version if both are specified")
+		}
+	}
 
 	// If a CA cert is provided then let's read it in so we can validate the
 	// scrape target's certificate properly.
@@ -435,15 +857,19 @@ func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 // TLSConfig configures the options for TLS connections.
 type TLSConfig struct {
 	// The CA cert to use for the targets.
-	CAFile string `yaml:"ca_file,omitempty"`
+	CAFile string `yaml:"ca_file,omitempty" json:"ca_file,omitempty"`
 	// The client cert file for the targets.
-	CertFile string `yaml:"cert_file,omitempty"`
+	CertFile string `yaml:"cert_file,omitempty" json:"cert_file,omitempty"`
 	// The client key file for the targets.
-	KeyFile string `yaml:"key_file,omitempty"`
+	KeyFile string `yaml:"key_file,omitempty" json:"key_file,omitempty"`
 	// Used to verify the hostname for the targets.
-	ServerName string `yaml:"server_name,omitempty"`
+	ServerName string `yaml:"server_name,omitempty" json:"server_name,omitempty"`
 	// Disable target certificate validation.
-	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
+	// Minimum TLS version.
+	MinVersion TLSVersion `yaml:"min_version,omitempty" json:"min_version,omitempty"`
+	// Maximum TLS version.
+	MaxVersion TLSVersion `yaml:"max_version,omitempty" json:"max_version,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -462,18 +888,39 @@ func (c *TLSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return unmarshal((*plain)(c))
 }
 
+// readCertAndKey reads the cert and key files from the disk.
+func readCertAndKey(certFile, keyFile string) ([]byte, []byte, error) {
+	certData, err := os.ReadFile(certFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	keyData, err := os.ReadFile(keyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return certData, keyData, nil
+}
+
 // getClientCertificate reads the pair of client cert and key from disk and returns a tls.Certificate.
-func (c *TLSConfig) getClientCertificate(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-	cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+func (c *TLSConfig) getClientCertificate(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	certData, keyData, err := readCertAndKey(c.CertFile, c.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read specified client cert (%s) & key (%s): %s", c.CertFile, c.KeyFile, err)
+	}
+
+	cert, err := tls.X509KeyPair(certData, keyData)
 	if err != nil {
 		return nil, fmt.Errorf("unable to use specified client cert (%s) & key (%s): %s", c.CertFile, c.KeyFile, err)
 	}
+
 	return &cert, nil
 }
 
 // readCAFile reads the CA cert file from disk.
 func readCAFile(f string) ([]byte, error) {
-	data, err := ioutil.ReadFile(f)
+	data, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load specified CA cert %s: %s", f, err)
 	}
@@ -493,23 +940,30 @@ func updateRootCA(cfg *tls.Config, b []byte) bool {
 // tlsRoundTripper is a RoundTripper that updates automatically its TLS
 // configuration whenever the content of the CA file changes.
 type tlsRoundTripper struct {
-	caFile string
+	caFile   string
+	certFile string
+	keyFile  string
+
 	// newRT returns a new RoundTripper.
 	newRT func(*tls.Config) (http.RoundTripper, error)
 
-	mtx        sync.RWMutex
-	rt         http.RoundTripper
-	hashCAFile []byte
-	tlsConfig  *tls.Config
+	mtx          sync.RWMutex
+	rt           http.RoundTripper
+	hashCAFile   []byte
+	hashCertFile []byte
+	hashKeyFile  []byte
+	tlsConfig    *tls.Config
 }
 
-func newTLSRoundTripper(
+func NewTLSRoundTripper(
 	cfg *tls.Config,
-	caFile string,
+	caFile, certFile, keyFile string,
 	newRT func(*tls.Config) (http.RoundTripper, error),
 ) (http.RoundTripper, error) {
 	t := &tlsRoundTripper{
 		caFile:    caFile,
+		certFile:  certFile,
+		keyFile:   keyFile,
 		newRT:     newRT,
 		tlsConfig: cfg,
 	}
@@ -519,8 +973,7 @@ func newTLSRoundTripper(
 		return nil, err
 	}
 	t.rt = rt
-
-	_, t.hashCAFile, err = t.getCAWithHash()
+	_, t.hashCAFile, t.hashCertFile, t.hashKeyFile, err = t.getTLSFilesWithHash()
 	if err != nil {
 		return nil, err
 	}
@@ -528,25 +981,36 @@ func newTLSRoundTripper(
 	return t, nil
 }
 
-func (t *tlsRoundTripper) getCAWithHash() ([]byte, []byte, error) {
-	b, err := readCAFile(t.caFile)
+func (t *tlsRoundTripper) getTLSFilesWithHash() ([]byte, []byte, []byte, []byte, error) {
+	b1, err := readCAFile(t.caFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	h := md5.Sum(b)
-	return b, h[:], nil
+	h1 := sha256.Sum256(b1)
 
+	var h2, h3 [32]byte
+	if t.certFile != "" {
+		b2, b3, err := readCertAndKey(t.certFile, t.keyFile)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		h2, h3 = sha256.Sum256(b2), sha256.Sum256(b3)
+	}
+
+	return b1, h1[:], h2[:], h3[:], nil
 }
 
 // RoundTrip implements the http.RoundTrip interface.
 func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	b, h, err := t.getCAWithHash()
+	caData, caHash, certHash, keyHash, err := t.getTLSFilesWithHash()
 	if err != nil {
 		return nil, err
 	}
 
 	t.mtx.RLock()
-	equal := bytes.Equal(h[:], t.hashCAFile)
+	equal := bytes.Equal(caHash[:], t.hashCAFile) &&
+		bytes.Equal(certHash[:], t.hashCertFile) &&
+		bytes.Equal(keyHash[:], t.hashKeyFile)
 	rt := t.rt
 	t.mtx.RUnlock()
 	if equal {
@@ -555,8 +1019,10 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Create a new RoundTripper.
+	// The cert and key files are read separately by the client
+	// using GetClientCertificate.
 	tlsConfig := t.tlsConfig.Clone()
-	if !updateRootCA(tlsConfig, b) {
+	if !updateRootCA(tlsConfig, caData) {
 		return nil, fmt.Errorf("unable to use specified CA cert %s", t.caFile)
 	}
 	rt, err = t.newRT(tlsConfig)
@@ -567,7 +1033,9 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	t.mtx.Lock()
 	t.rt = rt
-	t.hashCAFile = h[:]
+	t.hashCAFile = caHash[:]
+	t.hashCertFile = certHash[:]
+	t.hashKeyFile = keyHash[:]
 	t.mtx.Unlock()
 
 	return rt.RoundTrip(req)
@@ -577,6 +1045,28 @@ func (t *tlsRoundTripper) CloseIdleConnections() {
 	t.mtx.RLock()
 	defer t.mtx.RUnlock()
 	if ci, ok := t.rt.(closeIdler); ok {
+		ci.CloseIdleConnections()
+	}
+}
+
+type userAgentRoundTripper struct {
+	userAgent string
+	rt        http.RoundTripper
+}
+
+// NewUserAgentRoundTripper adds the user agent every request header.
+func NewUserAgentRoundTripper(userAgent string, rt http.RoundTripper) http.RoundTripper {
+	return &userAgentRoundTripper{userAgent, rt}
+}
+
+func (rt *userAgentRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = cloneRequest(req)
+	req.Header.Set("User-Agent", rt.userAgent)
+	return rt.rt.RoundTrip(req)
+}
+
+func (rt *userAgentRoundTripper) CloseIdleConnections() {
+	if ci, ok := rt.rt.(closeIdler); ok {
 		ci.CloseIdleConnections()
 	}
 }

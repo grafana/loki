@@ -109,6 +109,11 @@ func (r *Router) Post(path string, h http.HandlerFunc) {
 	r.rtr.POST(r.prefix+path, r.handle(path, h))
 }
 
+// Head registers a new HEAD route.
+func (r *Router) Head(path string, h http.HandlerFunc) {
+	r.rtr.HEAD(r.prefix+path, r.handle(path, h))
+}
+
 // Redirect takes an absolute path and sends an internal HTTP redirect for it,
 // prefixed by the router's path prefix. Note that this method does not include
 // functionality for handling relative paths or full URL redirects.

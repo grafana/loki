@@ -34,21 +34,21 @@ func (stpf StructTagParserFunc) ParseStructTags(sf reflect.StructField) (StructT
 //
 // The properties are defined below:
 //
-//     OmitEmpty  Only include the field if it's not set to the zero value for the type or to
-//                empty slices or maps.
+//	OmitEmpty  Only include the field if it's not set to the zero value for the type or to
+//	           empty slices or maps.
 //
-//     MinSize    Marshal an integer of a type larger than 32 bits value as an int32, if that's
-//                feasible while preserving the numeric value.
+//	MinSize    Marshal an integer of a type larger than 32 bits value as an int32, if that's
+//	           feasible while preserving the numeric value.
 //
-//     Truncate   When unmarshaling a BSON double, it is permitted to lose precision to fit within
-//                a float32.
+//	Truncate   When unmarshaling a BSON double, it is permitted to lose precision to fit within
+//	           a float32.
 //
-//     Inline     Inline the field, which must be a struct or a map, causing all of its fields
-//                or keys to be processed as if they were part of the outer struct. For maps,
-//                keys must not conflict with the bson keys of other struct fields.
+//	Inline     Inline the field, which must be a struct or a map, causing all of its fields
+//	           or keys to be processed as if they were part of the outer struct. For maps,
+//	           keys must not conflict with the bson keys of other struct fields.
 //
-//     Skip       This struct field should be skipped. This is usually denoted by parsing a "-"
-//                for the name.
+//	Skip       This struct field should be skipped. This is usually denoted by parsing a "-"
+//	           for the name.
 //
 // TODO(skriptble): Add tags for undefined as nil and for null as nil.
 type StructTags struct {
@@ -67,20 +67,20 @@ type StructTags struct {
 // If there is no name in the struct tag fields, the struct field name is lowercased.
 // The tag formats accepted are:
 //
-//     "[<key>][,<flag1>[,<flag2>]]"
+//	"[<key>][,<flag1>[,<flag2>]]"
 //
-//     `(...) bson:"[<key>][,<flag1>[,<flag2>]]" (...)`
+//	`(...) bson:"[<key>][,<flag1>[,<flag2>]]" (...)`
 //
 // An example:
 //
-//     type T struct {
-//         A bool
-//         B int    "myb"
-//         C string "myc,omitempty"
-//         D string `bson:",omitempty" json:"jsonkey"`
-//         E int64  ",minsize"
-//         F int64  "myf,omitempty,minsize"
-//     }
+//	type T struct {
+//	    A bool
+//	    B int    "myb"
+//	    C string "myc,omitempty"
+//	    D string `bson:",omitempty" json:"jsonkey"`
+//	    E int64  ",minsize"
+//	    F int64  "myf,omitempty,minsize"
+//	}
 //
 // A struct tag either consisting entirely of '-' or with a bson key with a
 // value consisting entirely of '-' will return a StructTags with Skip true and
@@ -91,6 +91,10 @@ var DefaultStructTagParser StructTagParserFunc = func(sf reflect.StructField) (S
 	if !ok && !strings.Contains(string(sf.Tag), ":") && len(sf.Tag) > 0 {
 		tag = string(sf.Tag)
 	}
+	return parseTags(key, tag)
+}
+
+func parseTags(key string, tag string) (StructTags, error) {
 	var st StructTags
 	if tag == "-" {
 		st.Skip = true
@@ -116,4 +120,20 @@ var DefaultStructTagParser StructTagParserFunc = func(sf reflect.StructField) (S
 	st.Name = key
 
 	return st, nil
+}
+
+// JSONFallbackStructTagParser has the same behavior as DefaultStructTagParser
+// but will also fallback to parsing the json tag instead on a field where the
+// bson tag isn't available.
+var JSONFallbackStructTagParser StructTagParserFunc = func(sf reflect.StructField) (StructTags, error) {
+	key := strings.ToLower(sf.Name)
+	tag, ok := sf.Tag.Lookup("bson")
+	if !ok {
+		tag, ok = sf.Tag.Lookup("json")
+	}
+	if !ok && !strings.Contains(string(sf.Tag), ":") && len(sf.Tag) > 0 {
+		tag = string(sf.Tag)
+	}
+
+	return parseTags(key, tag)
 }

@@ -83,6 +83,9 @@ type ListOpts struct {
 	// This requires the client to be set to microversion 2.26 or later.
 	// NotTagsAny filters on specific server tags. At least one of the tags must be absent for the server.
 	NotTagsAny string `q:"not-tags-any"`
+
+	// Display servers based on their availability zone (Admin only until microversion 2.82).
+	AvailabilityZone string `q:"availability_zone"`
 }
 
 // ToServerListQuery formats a ListOpts into a query string.
@@ -125,6 +128,13 @@ type Network struct {
 
 	// FixedIP specifies a fixed IPv4 address to be used on this network.
 	FixedIP string
+
+	// Tag may contain an optional device role tag for the server's virtual
+	// network interface. This can be used to identify network interfaces when
+	// multiple networks are connected to one server.
+	//
+	// Requires microversion 2.32 through 2.36 or 2.42 or later.
+	Tag string
 }
 
 // Personality is an array of files that are injected into the server at launch.
@@ -257,6 +267,9 @@ func (opts CreateOpts) ToServerCreateMap() (map[string]interface{}, error) {
 				}
 				if net.FixedIP != "" {
 					networks[i]["fixed_ip"] = net.FixedIP
+				}
+				if net.Tag != "" {
+					networks[i]["tag"] = net.Tag
 				}
 			}
 			b["networks"] = networks
@@ -399,19 +412,19 @@ func (opts RebootOpts) ToServerRebootMap() (map[string]interface{}, error) {
 }
 
 /*
-	Reboot requests that a given server reboot.
+Reboot requests that a given server reboot.
 
-	Two methods exist for rebooting a server:
+Two methods exist for rebooting a server:
 
-	HardReboot (aka PowerCycle) starts the server instance by physically cutting
-	power to the machine, or if a VM, terminating it at the hypervisor level.
-	It's done. Caput. Full stop.
-	Then, after a brief while, power is restored or the VM instance restarted.
+HardReboot (aka PowerCycle) starts the server instance by physically cutting
+power to the machine, or if a VM, terminating it at the hypervisor level.
+It's done. Caput. Full stop.
+Then, after a brief while, power is restored or the VM instance restarted.
 
-	SoftReboot (aka OSReboot) simply tells the OS to restart under its own
-	procedure.
-	E.g., in Linux, asking it to enter runlevel 6, or executing
-	"sudo shutdown -r now", or by asking Windows to rtart the machine.
+SoftReboot (aka OSReboot) simply tells the OS to restart under its own
+procedure.
+E.g., in Linux, asking it to enter runlevel 6, or executing
+"sudo shutdown -r now", or by asking Windows to rtart the machine.
 */
 func Reboot(client *gophercloud.ServiceClient, id string, opts RebootOptsBuilder) (r ActionResult) {
 	b, err := opts.ToServerRebootMap()

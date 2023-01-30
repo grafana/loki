@@ -34,7 +34,10 @@ func (c *EndpointCache) get(endpointKey string) (Endpoint, bool) {
 		return Endpoint{}, false
 	}
 
-	c.endpoints.Store(endpointKey, endpoint)
+	ev := endpoint.(Endpoint)
+	ev.Prune()
+
+	c.endpoints.Store(endpointKey, ev)
 	return endpoint.(Endpoint), true
 }
 

@@ -67,6 +67,7 @@ const (
 	KVLock           KVOp = "lock"
 	KVUnlock         KVOp = "unlock"
 	KVGet            KVOp = "get"
+	KVGetOrEmpty     KVOp = "get-or-empty"
 	KVGetTree        KVOp = "get-tree"
 	KVCheckSession   KVOp = "check-session"
 	KVCheckIndex     KVOp = "check-index"
@@ -82,6 +83,7 @@ type KVTxnOp struct {
 	Index     uint64
 	Session   string
 	Namespace string `json:",omitempty"`
+	Partition string `json:",omitempty"`
 }
 
 // KVTxnOps defines a set of operations to be performed inside a single
@@ -221,7 +223,7 @@ func (c *Client) txn(txn TxnOps, q *QueryOptions) (bool, *TxnResponse, *QueryMet
 	if err != nil {
 		return false, nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)

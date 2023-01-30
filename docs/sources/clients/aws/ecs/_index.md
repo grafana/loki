@@ -1,15 +1,16 @@
 ---
 title: ECS
+description: ending Logs From AWS Elastic Container Service (ECS)
 ---
-# Sending Logs From AWS Elastic Container Service (ECS)
+# ECS
 
-[ECS][ECS] is the fully managed container orchestration service by Amazon. Combined with [Fargate][Fargate] you can run your container workload without the need to provision your own compute resources. In this tutorial we will see how you can leverage [Firelens][Firelens] an AWS log router to forward all your logs and your workload metadata to a Loki instance.
+[ECS][ECS] is the fully managed container orchestration service by Amazon. Combined with [Fargate][Fargate] you can run your container workload without the need to provision your own compute resources. In this tutorial we will see how you can leverage [Firelens][Firelens] an AWS log router to forward all your logs and your workload metadata to a Grafana Loki instance.
 
 After this tutorial you will able to query all your logs in one place using Grafana.
 
 <!-- TOC -->
 
-- [Sending Logs From AWS Elastic Container Service (ECS)](#sending-logs-from-aws-elastic-container-service-ecs)
+- [Sending Logs From AWS Elastic Container Service (ECS)](#ecs)
   - [Requirements](#requirements)
   - [Setting up the ECS cluster](#setting-up-the-ecs-cluster)
   - [Creating your task definition](#creating-your-task-definition)
@@ -73,7 +74,7 @@ aws iam create-role --role-name ecsTaskExecutionRole  --assume-role-policy-docum
 
 Note down the [ARN][arn] of this new role, we'll use it later to create an ECS task.
 
-Finally we'll give the [ECS task execution policy][ecs iam](`AmazonECSTaskExecutionRolePolicy`) to the created role, this will allows us to manage logs with [Firelens][Firelens]:
+Finally we'll give the [ECS task execution policy][ecs iam] `AmazonECSTaskExecutionRolePolicy` to the created role, this will allows us to manage logs with [Firelens][Firelens]:
 
 ```bash
 aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
@@ -83,7 +84,7 @@ aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aw
 
 Amazon [Firelens][Firelens] is a log router (usually `fluentd` or `fluentbit`) you run along the same task definition next to your application containers to route their logs to Loki.
 
-In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
+In this example we will use [fluentbit][fluentbit] with the [fluentbit output plugin][fluentbit loki] installed but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
 
 > We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
 
@@ -119,7 +120,7 @@ curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/
 },
 ```
 
-The `log_router` container image is the [Fluent bit Loki docker image][fluentbit loki image] which contains the Loki plugin pre-installed. As you can see the `firelensConfiguration` type is set to `fluentbit` and we've also added `options` to enable ECS log metadata. This will be useful when querying your logs with Loki [LogQL][logql] label matchers.
+The `log_router` container image is the [Fluent bit Loki docker image][fluentbit loki image] which contains the Loki plugin pre-installed. As you can see the `firelensConfiguration` type is set to `fluentbit` and we've also added `options` to enable ECS log metadata. This will be useful when querying your logs with Loki LogQL label matchers.
 
 > The `logConfiguration` is mostly there for debugging the fluent-bit container, but feel free to remove that part when you're done testing and configuring.
 
@@ -134,8 +135,8 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
     "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-            "Name": "loki",
-            "Url": "https://<userid>:<grafancloud apikey>@logs-prod-us-central1.grafana.net/loki/api/v1/push",
+            "Name": "grafana-loki",
+            "Url": "https://<userid>:<grafancloud apikey>@<grafanacloud host>/loki/api/v1/push",
             "Labels": "{job=\"firelens\"}",
             "RemoveKeys": "container_id,ecs_task_arn",
             "LabelKeys": "container_name,ecs_task_definition,source,ecs_cluster",
@@ -149,6 +150,8 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
 The second container is our `sample-app`, a simple [alpine][alpine] container that prints to stdout welcoming messages. To send those logs to Loki, we will configure this container to use the log driver `awsfirelens`.
 
 Go ahead and replace the `Url` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (e.g `http://my-loki.com:3100/loki/api/v1/push`).
+
+We include plain text credentials in `options` for simplicity. However, this exposes credentials in your ECS task definition and in any version-controlled configuration. Mitigate this issue by using a secret store such as [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html), combined with the `secretOptions` configuration option for [injecting sensitive data in a log configuration](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html#secrets-logconfig).
 
 All `options` of the `logConfiguration` will be automatically translated into [fluentbit ouput][fluentbit ouput]. For example, the above options will produce this fluent bit `OUTPUT` config section:
 
@@ -214,7 +217,7 @@ You can now access the ECS console and you should see your task running. Now let
 
 Using the `Log Labels` dropdown you should be able to discover your workload via the ECS metadata, which is also visible if you expand a log line.
 
-That's it ! Make sure to checkout the [LogQL][logql] to learn more about Loki powerful query language.
+That's it ! Make sure to checkout LogQL to learn more about Loki powerful query language.
 
 [create an vpc]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-subnets-commands-example.html
 [ECS]: https://aws.amazon.com/ecs/
@@ -228,8 +231,8 @@ That's it ! Make sure to checkout the [LogQL][logql] to learn more about Loki po
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://github.com/grafana/loki/tree/master/cmd/fluentd
-[fluentbit loki]: https://github.com/grafana/loki/tree/master/cmd/fluent-bit
+[fluentd loki]: https://grafana.com/docs/loki/latest/clients/fluentd/
+[fluentbit loki]: https://grafana.com/docs/loki/latest/clients/fluentbit/
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki

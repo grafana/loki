@@ -1,8 +1,8 @@
 package log
 
-type nopLogger struct{}
+import "github.com/go-kit/log"
 
 // NewNopLogger returns a logger that doesn't do anything.
-func NewNopLogger() Logger { return nopLogger{} }
-
-func (nopLogger) Log(...interface{}) error { return nil }
+func NewNopLogger() Logger {
+	return log.NewNopLogger()
+}

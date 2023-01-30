@@ -12,25 +12,31 @@ import (
 	"text/tabwriter"
 	"time"
 
-	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/validation"
+	chunk "github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/validation"
 )
+
+const SchemaConfigFilename = "schemaconfig.yaml"
 
 type streamEntryPair struct {
 	entry  loghttp.Entry
@@ -39,28 +45,32 @@ type streamEntryPair struct {
 
 // Query contains all necessary fields to execute instant and range queries and print the results.
 type Query struct {
-	QueryString     string
-	Start           time.Time
-	End             time.Time
-	Limit           int
-	BatchSize       int
-	Forward         bool
-	Step            time.Duration
-	Interval        time.Duration
-	Quiet           bool
-	NoLabels        bool
-	IgnoreLabelsKey []string
-	ShowLabelsKey   []string
-	FixedLabelsLen  int
-	ColoredOutput   bool
-	LocalConfig     string
+	QueryString            string
+	Start                  time.Time
+	End                    time.Time
+	Limit                  int
+	BatchSize              int
+	Forward                bool
+	Step                   time.Duration
+	Interval               time.Duration
+	Quiet                  bool
+	NoLabels               bool
+	IgnoreLabelsKey        []string
+	ShowLabelsKey          []string
+	FixedLabelsLen         int
+	ColoredOutput          bool
+	LocalConfig            string
+	FetchSchemaFromStorage bool
 }
 
 // DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
-
 	if q.LocalConfig != "" {
-		if err := q.DoLocalQuery(out, statistics, c.GetOrgID()); err != nil {
+		orgID := c.GetOrgID()
+		if orgID == "" {
+			orgID = "fake"
+		}
+		if err := q.DoLocalQuery(out, statistics, orgID, q.FetchSchemaFromStorage); err != nil {
 			log.Fatalf("Query failed: %+v", err)
 		}
 		return
@@ -149,14 +159,13 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 
 		}
 	}
-
 }
 
 func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
 	length := -1
 	var entry []*loghttp.Entry
 	switch value.Type() {
-	case logql.ValueTypeStreams:
+	case logqlmodel.ValueTypeStreams:
 		length, entry = q.printStream(value.(loghttp.Streams), out, lastEntry)
 	case loghttp.ResultTypeScalar:
 		q.printScalar(value.(loghttp.Scalar))
@@ -171,15 +180,29 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 }
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
-func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string) error {
-
+func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string, useRemoteSchema bool) error {
 	var conf loki.Config
 	conf.RegisterFlags(flag.CommandLine)
 	if q.LocalConfig == "" {
 		return errors.New("no supplied config file")
 	}
-	if err := cfg.YAML(q.LocalConfig, false)(&conf); err != nil {
+	if err := cfg.YAML(q.LocalConfig, false, true)(&conf); err != nil {
 		return err
+	}
+
+	cm := storage.NewClientMetrics()
+	if useRemoteSchema {
+		client, err := GetObjectClient(conf, cm)
+		if err != nil {
+			return err
+		}
+
+		loadedSchema, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+		if err != nil {
+			return err
+		}
+
+		conf.SchemaConfig = *loadedSchema
 	}
 
 	if err := conf.Validate(); err != nil {
@@ -190,18 +213,15 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
+	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
-	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return err
 	}
 
-	querier, err := storage.NewStore(conf.StorageConfig, conf.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
-	if err != nil {
-		return err
-	}
-
-	eng := logql.NewEngine(conf.Querier.Engine, querier, limits)
+	eng := logql.NewEngine(conf.Querier.Engine, querier, limits, util_log.Logger)
 	var query logql.Query
 
 	if q.isInstant() {
@@ -248,6 +268,42 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	return nil
 }
 
+func GetObjectClient(conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
+	oc, err := storage.NewObjectClient(
+		conf.StorageConfig.BoltDBShipperConfig.SharedStoreType,
+		conf.StorageConfig,
+		cm,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return oc, nil
+}
+
+type schemaConfigSection struct {
+	config.SchemaConfig `yaml:"schema_config"`
+}
+
+func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.SchemaConfig, error) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+	defer cancel()
+	rdr, _, err := oc.GetObject(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rdr.Close()
+
+	decoder := yaml.NewDecoder(rdr)
+	decoder.SetStrict(true)
+	section := schemaConfigSection{}
+	err = decoder.Decode(&section)
+	if err != nil {
+		return nil, err
+	}
+
+	return &section.SchemaConfig, nil
+}
+
 // SetInstant makes the Query an instant type
 func (q *Query) SetInstant(time time.Time) {
 	q.Start = time
@@ -255,7 +311,7 @@ func (q *Query) SetInstant(time time.Time) {
 }
 
 func (q *Query) isInstant() bool {
-	return q.Start == q.End
+	return q.Start == q.End && q.Step == 0
 }
 
 func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
@@ -369,7 +425,6 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
 	bytes, err := json.MarshalIndent(matrix, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling matrix: %v", err)
 	}
@@ -379,7 +434,6 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 
 func (q *Query) printVector(vector loghttp.Vector) {
 	bytes, err := json.MarshalIndent(vector, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling vector: %v", err)
 	}
@@ -389,7 +443,6 @@ func (q *Query) printVector(vector loghttp.Vector) {
 
 func (q *Query) printScalar(scalar loghttp.Scalar) {
 	bytes, err := json.MarshalIndent(scalar, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling scalar: %v", err)
 	}

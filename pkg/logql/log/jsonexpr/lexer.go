@@ -68,7 +68,7 @@ func (sc *Scanner) lex(lval *JSONExprSymType) int {
 			return RSB
 		case r == '.':
 			return DOT
-		case isIdentifier(r):
+		case isStartIdentifier(r):
 			sc.unread()
 			lval.field = sc.scanField()
 			return FIELD
@@ -83,8 +83,12 @@ func (sc *Scanner) lex(lval *JSONExprSymType) int {
 	}
 }
 
-func isIdentifier(r rune) bool {
+func isStartIdentifier(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_'
+}
+
+func isIdentifier(r rune) bool {
+	return isStartIdentifier(r) || (r >= '0' && r <= '9')
 }
 
 func (sc *Scanner) scanField() string {
@@ -92,12 +96,7 @@ func (sc *Scanner) scanField() string {
 
 	for {
 		r := sc.read()
-		if !isIdentifier(r) {
-			sc.unread()
-			break
-		}
-
-		if r == '.' || r == scanner.EOF || r == rune(0) {
+		if !isIdentifier(r) || isEndOfInput(r) {
 			sc.unread()
 			break
 		}
@@ -118,6 +117,10 @@ func (sc *Scanner) scanStr() string {
 
 	for {
 		r := sc.read()
+		if isEndOfInput(r) {
+			break
+		}
+
 		if r == '"' || r == ']' {
 			break
 		}
@@ -148,6 +151,11 @@ func (sc *Scanner) scanInt() (int, error) {
 	}
 
 	return strconv.Atoi(string(number))
+}
+
+// input is either terminated by EOF or null byte
+func isEndOfInput(r rune) bool {
+	return r == scanner.EOF || r == rune(0)
 }
 
 func (sc *Scanner) read() rune {

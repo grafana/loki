@@ -7,6 +7,9 @@
 package bson
 
 import (
+	"bytes"
+	"encoding/json"
+
 	"go.mongodb.org/mongo-driver/bson/bsoncodec"
 	"go.mongodb.org/mongo-driver/bson/bsonrw"
 	"go.mongodb.org/mongo-driver/bson/bsontype"
@@ -52,14 +55,14 @@ func MarshalAppend(dst []byte, val interface{}) ([]byte, error) {
 // MarshalWithRegistry returns the BSON encoding of val as a BSON document. If val is not a type that can be transformed
 // into a document, MarshalValueWithRegistry should be used instead.
 func MarshalWithRegistry(r *bsoncodec.Registry, val interface{}) ([]byte, error) {
-	dst := make([]byte, 0, 256) // TODO: make the default cap a constant
+	dst := make([]byte, 0)
 	return MarshalAppendWithRegistry(r, dst, val)
 }
 
 // MarshalWithContext returns the BSON encoding of val as a BSON document using EncodeContext ec. If val is not a type
 // that can be transformed into a document, MarshalValueWithContext should be used instead.
 func MarshalWithContext(ec bsoncodec.EncodeContext, val interface{}) ([]byte, error) {
-	dst := make([]byte, 0, 256) // TODO: make the default cap a constant
+	dst := make([]byte, 0)
 	return MarshalAppendWithContext(ec, dst, val)
 }
 
@@ -115,13 +118,13 @@ func MarshalValueAppend(dst []byte, val interface{}) (bsontype.Type, []byte, err
 
 // MarshalValueWithRegistry returns the BSON encoding of val using Registry r.
 func MarshalValueWithRegistry(r *bsoncodec.Registry, val interface{}) (bsontype.Type, []byte, error) {
-	dst := make([]byte, 0, defaultDstCap)
+	dst := make([]byte, 0)
 	return MarshalValueAppendWithRegistry(r, dst, val)
 }
 
 // MarshalValueWithContext returns the BSON encoding of val using EncodeContext ec.
 func MarshalValueWithContext(ec bsoncodec.EncodeContext, val interface{}) (bsontype.Type, []byte, error) {
-	dst := make([]byte, 0, defaultDstCap)
+	dst := make([]byte, 0)
 	return MarshalValueAppendWithContext(ec, dst, val)
 }
 
@@ -220,4 +223,26 @@ func MarshalExtJSONAppendWithContext(ec bsoncodec.EncodeContext, dst []byte, val
 	}
 
 	return *sw, nil
+}
+
+// IndentExtJSON will prefix and indent the provided extended JSON src and append it to dst.
+func IndentExtJSON(dst *bytes.Buffer, src []byte, prefix, indent string) error {
+	return json.Indent(dst, src, prefix, indent)
+}
+
+// MarshalExtJSONIndent returns the extended JSON encoding of val with each line with prefixed
+// and indented.
+func MarshalExtJSONIndent(val interface{}, canonical, escapeHTML bool, prefix, indent string) ([]byte, error) {
+	marshaled, err := MarshalExtJSON(val, canonical, escapeHTML)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	err = IndentExtJSON(&buf, marshaled, prefix, indent)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }

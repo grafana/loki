@@ -1,243 +1,201 @@
 local lokiOperational = (import './dashboard-loki-operational.json');
 local utils = import 'mixin-utils/utils.libsonnet';
 
-{
+(import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
 
     'loki-operational.json': {
-      local cfg = self,
+                               local cfg = self,
 
-      showAnnotations:: true,
-      showLinks:: true,
-      showMultiCluster:: true,
-      clusterLabel:: 'cluster',
+                               showAnnotations:: true,
+                               showLinks:: true,
+                               showMultiCluster:: true,
+                               clusterLabel:: $._config.per_cluster_label,
 
-      namespaceType:: 'query',
-      namespaceQuery::
-        if cfg.showMultiCluster then
-          'kube_pod_container_info{cluster="$cluster"}'
-        else
-          'kube_pod_container_info',
+                               hiddenRows:: [
+                                 'Cassandra',
+                               ] + if !$._config.ssd.enabled then [] else [
+                                 'Ingester',
+                               ],
 
-      assert (cfg.namespaceType == 'custom' || cfg.namespaceType == 'query') : "Only types 'query' and 'custom' are allowed for dashboard variable 'namespace'",
+                               jobMatchers:: {
+                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
+                                 distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                                 querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                               },
 
-      matchers:: {
-        cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
-        distributor: [utils.selector.re('job', '($namespace)/distributor')],
-        ingester: [utils.selector.re('job', '($namespace)/ingester')],
-        querier: [utils.selector.re('job', '($namespace)/querier')],
-      },
+                               podMatchers:: {
+                                 cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
+                                 distributor: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'distributor.*'))],
+                                 ingester: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                                 querier: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else 'querier.*'))],
+                               },
+                             }
+                             + lokiOperational + {
+                               annotations:
+                                 if dashboards['loki-operational.json'].showAnnotations
+                                 then super.annotations
+                                 else {},
 
-      templateLabels:: [
-        {
-          name:: 'logs',
-          type:: 'datasource',
-          query:: 'loki',
-        },
-        {
-          name:: 'metrics',
-          type:: 'datasource',
-          query:: 'prometheus',
-        },
-      ]+(
-        if cfg.showMultiCluster then [
-          {
-            variable:: 'cluster',
-            label:: cfg.clusterLabel,
-            query:: 'kube_pod_container_info',
-            datasource:: '$metrics',
-            type:: 'query',
-          },
-        ] else []
-      ) + [
-        {
-          variable:: 'namespace',
-          label:: 'namespace',
-          query:: cfg.namespaceQuery,
-          datasource:: '$metrics',
-          type:: cfg.namespaceType,
-        },
-      ],
-    } + lokiOperational + {
-      annotations:
-        if dashboards['loki-operational.json'].showAnnotations
-        then super.annotations
-        else {},
+                               links:
+                                 if dashboards['loki-operational.json'].showLinks then
+                                   super.links
+                                 else [],
 
-      links:
-        if dashboards['loki-operational.json'].showLinks then
-          super.links
-        else [],
+                               local matcherStr(matcherId, matcher='job', sep=',') =
+                                 if matcher == 'job' then
+                                   if std.length(dashboards['loki-operational.json'].jobMatchers[matcherId]) > 0 then
+                                     std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in dashboards['loki-operational.json'].jobMatchers[matcherId]]) + sep
+                                   else error 'no job matchers'
+                                 else if matcher == 'pod' then
+                                   if std.length(dashboards['loki-operational.json'].podMatchers[matcherId]) > 0 then
+                                     std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in dashboards['loki-operational.json'].podMatchers[matcherId]]) + sep
+                                   else error 'no pod matchers'
+                                 else error 'matcher must be either job or container',
 
-      local matcherStr(matcherId) =
-        if std.length(dashboards['loki-operational.json'].matchers[matcherId]) > 0 then
-          std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in dashboards['loki-operational.json'].matchers[matcherId]]) + ','
-        else '',
+                               local replaceClusterMatchers(expr) =
+                                 if dashboards['loki-operational.json'].showMultiCluster
+                                 then expr
+                                 else
+                                   std.strReplace(
+                                     std.strReplace(
+                                       std.strReplace(
+                                         expr,
+                                         ', ' + $._config.per_cluster_label + '="$cluster"',
+                                         ''
+                                       ),
+                                       ', ' + $._config.per_cluster_label + '=~"$cluster"',
+                                       ''
+                                     ),
+                                     $._config.per_cluster_label + '="$cluster",',
+                                     ''
+                                   ),
 
-      local replaceClusterMatchers(expr) =
-        if dashboards['loki-operational.json'].showMultiCluster
-        then expr
-        else
-          std.strReplace(
-            std.strReplace(
-              std.strReplace(
-                expr,
-                ', cluster="$cluster"',
-                ''
-              ),
-              ', cluster=~"$cluster"',
-              ''
-            ),
-            'cluster="$cluster",',
-            ''
-          ),
+                               local replaceMatchers(expr) =
+                                 std.strReplace(
+                                   std.strReplace(
+                                     std.strReplace(
+                                       std.strReplace(
+                                         std.strReplace(
+                                           std.strReplace(
+                                             std.strReplace(
+                                               std.strReplace(
+                                                 std.strReplace(
+                                                   std.strReplace(
+                                                     std.strReplace(
+                                                       std.strReplace(
+                                                         std.strReplace(
+                                                           std.strReplace(
+                                                             std.strReplace(
+                                                               expr,
+                                                               'pod=~"querier.*"',
+                                                               matcherStr('querier', matcher='pod', sep='')
+                                                             ),
+                                                             'pod=~"ingester.*"',
+                                                             matcherStr('ingester', matcher='pod', sep='')
+                                                           ),
+                                                           'pod=~"distributor.*"',
+                                                           matcherStr('distributor', matcher='pod', sep='')
+                                                         ),
+                                                         'job="$namespace/cortex-gw",',
+                                                         matcherStr('cortexgateway')
+                                                       ),
+                                                       'job="$namespace/cortex-gw"',
+                                                       std.rstripChars(matcherStr('cortexgateway'), ',')
+                                                     ),
+                                                     'job=~"($namespace)/cortex-gw",',
+                                                     matcherStr('cortexgateway')
+                                                   ),
+                                                   'job="$namespace/distributor",',
+                                                   matcherStr('distributor')
+                                                 ),
+                                                 'job="$namespace/distributor"',
+                                                 std.rstripChars(matcherStr('distributor'), ',')
+                                               ),
+                                               'job=~"($namespace)/distributor",',
+                                               matcherStr('distributor')
+                                             ),
+                                             'job=~"($namespace)/distributor"',
+                                             std.rstripChars(matcherStr('distributor'), ',')
+                                           ),
+                                           'job="$namespace/ingester",',
+                                           matcherStr('ingester')
+                                         ),
+                                         'job="$namespace/ingester"',
+                                         std.rstripChars(matcherStr('ingester'), ',')
+                                       ),
+                                       'job=~"($namespace)/ingester",',
+                                       matcherStr('ingester'),
+                                     ),
+                                     'job="$namespace/querier",',
+                                     matcherStr('querier')
+                                   ),
+                                   'job="$namespace/querier"',
+                                   std.rstripChars(matcherStr('querier'), ',')
+                                 ),
 
-      local replaceMatchers(expr) =
-        std.strReplace(
-          std.strReplace(
-            std.strReplace(
-              std.strReplace(
-                std.strReplace(
-                  std.strReplace(
-                    std.strReplace(
-                      std.strReplace(
-                        std.strReplace(
-                          std.strReplace(
-                            std.strReplace(
-                              std.strReplace(
-                                expr,
-                                'job="$namespace/cortex-gw",',
-                                matcherStr('cortexgateway')
-                              ),
-                              'job="$namespace/cortex-gw"',
-                              std.rstripChars(matcherStr('cortexgateway'), ',')
-                            ),
-                            'job=~"($namespace)/cortex-gw",',
-                            matcherStr('cortexgateway')
-                          ),
-                          'job="$namespace/distributor",',
-                          matcherStr('distributor')
-                        ),
-                        'job="$namespace/distributor"',
-                        std.rstripChars(matcherStr('distributor'), ',')
-                      ),
-                      'job=~"($namespace)/distributor",',
-                      matcherStr('distributor')
-                    ),
-                    'job=~"($namespace)/distributor"',
-                    std.rstripChars(matcherStr('distributor'), ',')
-                  ),
-                  'job="$namespace/ingester",',
-                  matcherStr('ingester')
-                ),
-                'job="$namespace/ingester"',
-                std.rstripChars(matcherStr('ingester'), ',')
-              ),
-              'job=~"($namespace)/ingester",',
-              matcherStr('ingester'),
-            ),
-            'job="$namespace/querier",',
-            matcherStr('querier')
-          ),
-          'job="$namespace/querier"',
-          std.rstripChars(matcherStr('querier'), ',')
-        ),
+                               local replaceAllMatchers(expr) =
+                                 replaceMatchers(replaceClusterMatchers(expr)),
 
-      local replaceAllMatchers(expr) =
-        replaceMatchers(replaceClusterMatchers(expr)),
+                               local selectDatasource(ds) =
+                                 if ds == null || ds == '' then ds
+                                 else if ds == '$datasource' then '$datasource'
+                                 else '$loki_datasource',
 
-      local selectDatasource(ds) =
-        if ds == null || ds == "" then ds
-        else if ds == "$datasource" then "$metrics"
-        else "$logs",
+                               local isRowHidden(row) =
+                                 std.member(dashboards['loki-operational.json'].hiddenRows, row),
 
-      panels: [
-        p {
-          datasource: selectDatasource(super.datasource),
-          targets: if std.objectHas(p, 'targets') then [
-            e {
-              expr: replaceAllMatchers(e.expr),
-            }
-            for e in p.targets
-          ] else [],
-          panels: if std.objectHas(p, 'panels') then [
-            sp {
-              datasource: selectDatasource(super.datasource),
-              targets: if std.objectHas(sp, 'targets') then [
-                e {
-                  expr: replaceAllMatchers(e.expr),
-                }
-                for e in sp.targets
-              ] else [],
-              panels: if std.objectHas(sp, 'panels') then [
-                ssp {
-                  datasource: selectDatasource(super.datasource),
-                  targets: if std.objectHas(ssp, 'targets') then [
-                    e {
-                      expr: replaceAllMatchers(e.expr),
-                    }
-                    for e in ssp.targets
-                  ] else [],
-                }
-                for ssp in sp.panels
-              ] else []
-            }
-            for sp in p.panels
-          ] else []
-        }
-        for p in super.panels
-      ],
-      templating: {
-        list+:[
-          {
-            hide: 0,
-            includeAll: false,
-            label: null,
-            multi: false,
-            name: l.name,
-            options: [],
-            query: l.query,
-            refresh: 1,
-            regex: '',
-            skipUrlSync: false,
-            type: l.type,
-          },
-          for l in dashboards['loki-operational.json'].templateLabels
-          if l.type == 'datasource'
-        ] + [
-          {
-            allValue: null,
-            current:
-              if l.type == 'custom' then {
-                text: l.query,
-                value: l.query,
-              } else {},
-            datasource: l.datasource,
-            hide: 0,
-            includeAll: false,
-            label: l.variable,
-            multi: false,
-            name: l.variable,
-            options: [],
-            query:
-              if l.type == 'query' then
-                'label_values(%s, %s)' % [l.query, l.label]
-              else
-                l.query,
-            refresh: 1,
-            regex: '',
-            sort: 2,
-            tagValuesQuery: '',
-            tags: [],
-            tagsQuery: '',
-            type: l.type,
-            useTags: false,
-          }
-          for l in dashboards['loki-operational.json'].templateLabels
-          if l.type == 'query' || l.type == 'custom'
-        ],
-      },
-    },
+                               panels: [
+                                 p {
+                                   datasource: selectDatasource(super.datasource),
+                                   targets: if std.objectHas(p, 'targets') then [
+                                     e {
+                                       expr: replaceAllMatchers(e.expr),
+                                     }
+                                     for e in p.targets
+                                   ] else [],
+                                   panels: if std.objectHas(p, 'panels') then [
+                                     sp {
+                                       datasource: selectDatasource(super.datasource),
+                                       targets: if std.objectHas(sp, 'targets') then [
+                                         e {
+                                           expr: replaceAllMatchers(e.expr),
+                                         }
+                                         for e in sp.targets
+                                       ] else [],
+                                       panels: if std.objectHas(sp, 'panels') then [
+                                         ssp {
+                                           datasource: selectDatasource(super.datasource),
+                                           targets: if std.objectHas(ssp, 'targets') then [
+                                             e {
+                                               expr: replaceAllMatchers(e.expr),
+                                             }
+                                             for e in ssp.targets
+                                           ] else [],
+                                         }
+                                         for ssp in sp.panels
+                                       ] else [],
+                                     }
+                                     for sp in p.panels
+                                   ] else [],
+                                   title: if !($._config.ssd.enabled && p.type == 'row') then p.title else
+                                     if p.title == 'Distributor' then 'Write Path'
+                                     else if p.title == 'Querier' then 'Read Path'
+                                     else p.title,
+                                 }
+                                 for p in super.panels
+                                 if !(p.type == 'row' && isRowHidden(p.title))
+                               ],
+                             } +
+                             $.dashboard('Loki / Operational', uid='operational')
+                             // The queries in this dashboard don't make use of the cluster template label selector
+                             // but we keep it here to allow selecting a namespace specific to a certain cluster, the
+                             // namespace template variable selectors query uses the cluster value.
+                             .addLog()
+                             .addCluster()
+                             .addNamespace()
+                             .addTag(),
   },
 }

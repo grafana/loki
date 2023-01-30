@@ -60,10 +60,30 @@ func (e *Endpoint) GetValidAddress() (WeightedAddress, bool) {
 			continue
 		}
 
+		we.URL = cloneURL(we.URL)
+
 		return we, true
 	}
 
 	return WeightedAddress{}, false
+}
+
+// Prune will prune the expired addresses from the endpoint by allocating a new []WeightAddress.
+// This is not concurrent safe, and should be called from a single owning thread.
+func (e *Endpoint) Prune() bool {
+	validLen := e.Len()
+	if validLen == len(e.Addresses) {
+		return false
+	}
+	wa := make([]WeightedAddress, 0, validLen)
+	for i := range e.Addresses {
+		if e.Addresses[i].HasExpired() {
+			continue
+		}
+		wa = append(wa, e.Addresses[i])
+	}
+	e.Addresses = wa
+	return true
 }
 
 // Discoverer is an interface used to discovery which endpoint hit. This
@@ -96,4 +116,17 @@ func BuildEndpointKey(params map[string]*string) string {
 	}
 
 	return strings.Join(values, ".")
+}
+
+func cloneURL(u *url.URL) (clone *url.URL) {
+	clone = &url.URL{}
+
+	*clone = *u
+
+	if u.User != nil {
+		user := *u.User
+		clone.User = &user
+	}
+
+	return clone
 }

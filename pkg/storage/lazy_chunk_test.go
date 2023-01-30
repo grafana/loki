@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -24,7 +24,8 @@ func TestLazyChunkIterator(t *testing.T) {
 	}{
 		{
 			newLazyChunk(logproto.Stream{
-				Labels: fooLabelsWithName,
+				Labels: fooLabelsWithName.String(),
+				Hash:   fooLabelsWithName.Hash(),
 				Entries: []logproto.Entry{
 					{
 						Timestamp: from,
@@ -34,7 +35,8 @@ func TestLazyChunkIterator(t *testing.T) {
 			}),
 			[]logproto.Stream{
 				{
-					Labels: fooLabels,
+					Labels: fooLabels.String(),
+					Hash:   fooLabels.Hash(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -67,7 +69,6 @@ func TestLazyChunksPop(t *testing.T) {
 		{2, 1, 1, 1},
 		{3, 4, 3, 0},
 	} {
-
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			lc := &lazyChunks{}
 			for i := 0; i < tc.initial; i++ {
@@ -160,8 +161,10 @@ func lazyChunkWithBounds(from, through time.Time) *LazyChunk {
 	fromM, throughM := util.RoundToMilliseconds(from, through)
 	return &LazyChunk{
 		Chunk: chunk.Chunk{
-			From:    fromM,
-			Through: throughM,
+			ChunkRef: logproto.ChunkRef{
+				From:    fromM,
+				Through: throughM,
+			},
 		},
 	}
 }
@@ -177,6 +180,7 @@ func (f fakeBlock) MaxTime() int64 { return f.maxt }
 func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
 	return nil
 }
+
 func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }

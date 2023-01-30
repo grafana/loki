@@ -15,7 +15,7 @@ TAG=$((git describe --exact-match 2> /dev/null || echo "") | sed 's/v//g')
 
 if [ -z "$TAG" ]
 then
-      echo ${BRANCH}-${SHA}${WIP}
+      echo "${BRANCH}"-"${SHA}""${WIP}"
 else
-      echo ${TAG}
+      echo "${TAG}"
 fi

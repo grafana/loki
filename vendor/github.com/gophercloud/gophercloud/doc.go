@@ -3,7 +3,7 @@ Package gophercloud provides a multi-vendor interface to OpenStack-compatible
 clouds. The library has a three-level hierarchy: providers, services, and
 resources.
 
-Authenticating with Providers
+# Authenticating with Providers
 
 Provider structs represent the cloud providers that offer and manage a
 collection of services. You will generally want to create one Provider
@@ -49,7 +49,7 @@ instead of "project".
 	opts, err := openstack.AuthOptionsFromEnv()
 	provider, err := openstack.AuthenticatedClient(opts)
 
-Service Clients
+# Service Clients
 
 Service structs are specific to a provider and handle all of the logic and
 operations for a particular OpenStack service. Examples of services include:
@@ -60,7 +60,7 @@ pass in the parent provider, like so:
 
 	client, err := openstack.NewComputeV2(provider, opts)
 
-Resources
+# Resources
 
 Resource structs are the domain models that services make use of in order
 to work with and represent the state of API resources:
@@ -106,5 +106,43 @@ intermediary processing on each page, you can use the AllPages method:
 This top-level package contains utility functions and data types that are used
 throughout the provider and service packages. Of particular note for end users
 are the AuthOptions and EndpointOpts structs.
+
+An example retry backoff function, which respects the 429 HTTP response code and a "Retry-After" header:
+
+	endpoint := "http://localhost:5000"
+	provider, err := openstack.NewClient(endpoint)
+	if err != nil {
+		panic(err)
+	}
+	provider.MaxBackoffRetries = 3 // max three retries
+	provider.RetryBackoffFunc = func(ctx context.Context, respErr *ErrUnexpectedResponseCode, e error, retries uint) error {
+		retryAfter := respErr.ResponseHeader.Get("Retry-After")
+		if retryAfter == "" {
+			return e
+		}
+
+		var sleep time.Duration
+
+		// Parse delay seconds or HTTP date
+		if v, err := strconv.ParseUint(retryAfter, 10, 32); err == nil {
+			sleep = time.Duration(v) * time.Second
+		} else if v, err := time.Parse(http.TimeFormat, retryAfter); err == nil {
+			sleep = time.Until(v)
+		} else {
+			return e
+		}
+
+		if ctx != nil {
+			select {
+			case <-time.After(sleep):
+			case <-ctx.Done():
+				return e
+			}
+		} else {
+			time.Sleep(sleep)
+		}
+
+		return nil
+	}
 */
 package gophercloud

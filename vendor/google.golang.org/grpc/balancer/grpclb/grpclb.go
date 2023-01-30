@@ -19,18 +19,20 @@
 // Package grpclb defines a grpclb balancer.
 //
 // To install grpclb balancer, import this package as:
-//    import _ "google.golang.org/grpc/balancer/grpclb"
+//
+//	import _ "google.golang.org/grpc/balancer/grpclb"
 package grpclb
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
-	grpclbstate "google.golang.org/grpc/balancer/grpclb/state"
+	"google.golang.org/grpc/balancer/grpclb/grpclbstate"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/grpclog"
@@ -134,6 +136,7 @@ func (b *lbBuilder) Build(cc balancer.ClientConn, opt balancer.BuildOptions) bal
 
 	lb := &lbBalancer{
 		cc:              newLBCacheClientConn(cc),
+		dialTarget:      opt.Target.Endpoint,
 		target:          opt.Target.Endpoint,
 		opt:             opt,
 		fallbackTimeout: b.fallbackTimeout,
@@ -163,9 +166,10 @@ func (b *lbBuilder) Build(cc balancer.ClientConn, opt balancer.BuildOptions) bal
 }
 
 type lbBalancer struct {
-	cc     *lbCacheClientConn
-	target string
-	opt    balancer.BuildOptions
+	cc         *lbCacheClientConn
+	dialTarget string // user's dial target
+	target     string // same as dialTarget unless overridden in service config
+	opt        balancer.BuildOptions
 
 	usePickFirst bool
 
@@ -221,16 +225,18 @@ type lbBalancer struct {
 	// when resolved address updates are received, and read in the goroutine
 	// handling fallback.
 	resolvedBackendAddrs []resolver.Address
+	connErr              error // the last connection error
 }
 
 // regeneratePicker takes a snapshot of the balancer, and generates a picker from
 // it. The picker
-//  - always returns ErrTransientFailure if the balancer is in TransientFailure,
-//  - does two layer roundrobin pick otherwise.
+//   - always returns ErrTransientFailure if the balancer is in TransientFailure,
+//   - does two layer roundrobin pick otherwise.
+//
 // Caller must hold lb.mu.
 func (lb *lbBalancer) regeneratePicker(resetDrop bool) {
 	if lb.state == connectivity.TransientFailure {
-		lb.picker = &errPicker{err: balancer.ErrTransientFailure}
+		lb.picker = &errPicker{err: fmt.Errorf("all SubConns are in TransientFailure, last connection error: %v", lb.connErr)}
 		return
 	}
 
@@ -286,14 +292,14 @@ func (lb *lbBalancer) regeneratePicker(resetDrop bool) {
 // fallback and grpclb). lb.scState contains states for all SubConns, including
 // those in cache (SubConns are cached for 10 seconds after remove).
 //
-// The aggregated state is:
-//  - If at least one SubConn in Ready, the aggregated state is Ready;
-//  - Else if at least one SubConn in Connecting or IDLE, the aggregated state is Connecting;
-//    - It's OK to consider IDLE as Connecting. SubConns never stay in IDLE,
-//    they start to connect immediately. But there's a race between the overall
-//    state is reported, and when the new SubConn state arrives. And SubConns
-//    never go back to IDLE.
-//  - Else the aggregated state is TransientFailure.
+//	The aggregated state is:
+//	- If at least one SubConn in Ready, the aggregated state is Ready;
+//	- Else if at least one SubConn in Connecting or IDLE, the aggregated state is Connecting;
+//	  - It's OK to consider IDLE as Connecting. SubConns never stay in IDLE,
+//	    they start to connect immediately. But there's a race between the overall
+//	    state is reported, and when the new SubConn state arrives. And SubConns
+//	    never go back to IDLE.
+//	- Else the aggregated state is TransientFailure.
 func (lb *lbBalancer) aggregateSubConnStates() connectivity.State {
 	var numConnecting uint64
 
@@ -336,6 +342,8 @@ func (lb *lbBalancer) UpdateSubConnState(sc balancer.SubConn, scs balancer.SubCo
 		// When an address was removed by resolver, b called RemoveSubConn but
 		// kept the sc's state in scStates. Remove state for this sc here.
 		delete(lb.scStates, sc)
+	case connectivity.TransientFailure:
+		lb.connErr = scs.ConnectionError
 	}
 	// Force regenerate picker if
 	//  - this sc became ready from not-ready
@@ -393,6 +401,30 @@ func (lb *lbBalancer) fallbackToBackendsAfter(fallbackTimeout time.Duration) {
 func (lb *lbBalancer) handleServiceConfig(gc *grpclbServiceConfig) {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
+
+	// grpclb uses the user's dial target to populate the `Name` field of the
+	// `InitialLoadBalanceRequest` message sent to the remote balancer. But when
+	// grpclb is used a child policy in the context of RLS, we want the `Name`
+	// field to be populated with the value received from the RLS server. To
+	// support this use case, an optional "target_name" field has been added to
+	// the grpclb LB policy's config.  If specified, it overrides the name of
+	// the target to be sent to the remote balancer; if not, the target to be
+	// sent to the balancer will continue to be obtained from the target URI
+	// passed to the gRPC client channel. Whenever that target to be sent to the
+	// balancer is updated, we need to restart the stream to the balancer as
+	// this target is sent in the first message on the stream.
+	if gc != nil {
+		target := lb.dialTarget
+		if gc.ServiceName != "" {
+			target = gc.ServiceName
+		}
+		if target != lb.target {
+			lb.target = target
+			if lb.ccRemoteLB != nil {
+				lb.ccRemoteLB.cancelRemoteBalancerCall()
+			}
+		}
+	}
 
 	newUsePickFirst := childIsPickFirst(gc)
 	if lb.usePickFirst == newUsePickFirst {
@@ -484,3 +516,5 @@ func (lb *lbBalancer) Close() {
 	}
 	lb.cc.close()
 }
+
+func (lb *lbBalancer) ExitIdle() {}

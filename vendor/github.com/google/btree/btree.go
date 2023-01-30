@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !go1.18
+// +build !go1.18
+
 // Package btree implements in-memory B-Trees of arbitrary degree.
 //
 // btree implements an in-memory B-Tree for use as an ordered data structure.
@@ -796,7 +799,7 @@ func (t *BTree) DescendLessOrEqual(pivot Item, iterator ItemIterator) {
 }
 
 // DescendGreaterThan calls the iterator for every value in the tree within
-// the range (pivot, last], until iterator returns false.
+// the range [last, pivot), until iterator returns false.
 func (t *BTree) DescendGreaterThan(pivot Item, iterator ItemIterator) {
 	if t.root == nil {
 		return

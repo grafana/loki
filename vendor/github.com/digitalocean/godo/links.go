@@ -32,6 +32,16 @@ func (l *Links) CurrentPage() (int, error) {
 	return l.Pages.current()
 }
 
+// NextPageToken is the page token to request the next page of the list
+func (l *Links) NextPageToken() (string, error) {
+	return l.Pages.nextPageToken()
+}
+
+// PrevPageToken is the page token to request the previous page of the list
+func (l *Links) PrevPageToken() (string, error) {
+	return l.Pages.prevPageToken()
+}
+
 func (p *Pages) current() (int, error) {
 	switch {
 	case p == nil:
@@ -48,6 +58,28 @@ func (p *Pages) current() (int, error) {
 	}
 
 	return 0, nil
+}
+
+func (p *Pages) nextPageToken() (string, error) {
+	if p == nil || p.Next == "" {
+		return "", nil
+	}
+	token, err := pageTokenFromURL(p.Next)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (p *Pages) prevPageToken() (string, error) {
+	if p == nil || p.Prev == "" {
+		return "", nil
+	}
+	token, err := pageTokenFromURL(p.Prev)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // IsLastPage returns true if the current page is the last
@@ -75,6 +107,14 @@ func pageForURL(urlText string) (int, error) {
 	}
 
 	return page, nil
+}
+
+func pageTokenFromURL(urlText string) (string, error) {
+	u, err := url.ParseRequestURI(urlText)
+	if err != nil {
+		return "", err
+	}
+	return u.Query().Get("page_token"), nil
 }
 
 // Get a link action by id.

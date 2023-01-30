@@ -1,7 +1,7 @@
 # lz4 : LZ4 compression in pure Go
 
-[![GoDoc](https://godoc.org/github.com/pierrec/lz4?status.svg)](https://godoc.org/github.com/pierrec/lz4)
-[![Build Status](https://travis-ci.org/pierrec/lz4.svg?branch=master)](https://travis-ci.org/pierrec/lz4)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pierrec/lz4/v4.svg)](https://pkg.go.dev/github.com/pierrec/lz4/v4)
+[![CI](https://github.com/pierrec/lz4/workflows/ci/badge.svg)](https://github.com/pierrec/lz4/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pierrec/lz4)](https://goreportcard.com/report/github.com/pierrec/lz4)
 [![GitHub tag (latest SemVer)](https://img.shields.io/github/tag/pierrec/lz4.svg?style=social)](https://github.com/pierrec/lz4/tags)
 
@@ -15,13 +15,13 @@ The implementation is based on the reference C [one](https://github.com/lz4/lz4)
 Assuming you have the go toolchain installed:
 
 ```
-go get github.com/pierrec/lz4
+go get github.com/pierrec/lz4/v4
 ```
 
 There is a command line interface tool to compress and decompress LZ4 files.
 
 ```
-go install github.com/pierrec/lz4/cmd/lz4c
+go install github.com/pierrec/lz4/v4/cmd/lz4c
 ```
 
 Usage
@@ -86,5 +86,7 @@ Contributions are very welcome for bug fixing, performance improvements...!
 Thanks to all [contributors](https://github.com/pierrec/lz4/graphs/contributors)  so far!
 
 Special thanks to [@Zariel](https://github.com/Zariel) for his asm implementation of the decoder.
+
+Special thanks to [@greatroar](https://github.com/greatroar) for his work on the asm implementations of the decoder for amd64 and arm64.
 
 Special thanks to [@klauspost](https://github.com/klauspost) for his work on optimizing the code.

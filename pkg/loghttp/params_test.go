@@ -1,12 +1,12 @@
 package loghttp
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -225,62 +225,143 @@ func Test_parseTimestamp(t *testing.T) {
 	}
 }
 
-func Test_match(t *testing.T) {
-
+func Test_determineBounds(t *testing.T) {
+	type args struct {
+		now         time.Time
+		startString string
+		endString   string
+		sinceString string
+	}
 	tests := []struct {
 		name    string
-		input   []string
-		want    [][]*labels.Matcher
-		wantErr bool
+		args    args
+		start   time.Time
+		end     time.Time
+		wantErr assert.ErrorAssertionFunc
 	}{
-		{"malformed", []string{`{a="1`}, nil, true},
-		{"empty on nil input", nil, [][]*labels.Matcher{}, false},
-		{"empty on empty input", []string{}, [][]*labels.Matcher{}, false},
 		{
-			"single",
-			[]string{`{a="1"}`},
-			[][]*labels.Matcher{
-				{mustMatcher(labels.MatchEqual, "a", "1")},
+			name: "no start, end, since",
+			args: args{
+				now:         time.Unix(3600, 0),
+				startString: "",
+				endString:   "",
+				sinceString: "",
 			},
-			false,
+			start:   time.Unix(0, 0),    // Default start is one hour before 'now' if nothing is provided
+			end:     time.Unix(3600, 0), // Default end is 'now' if nothing is provided
+			wantErr: assert.NoError,
 		},
 		{
-			"multiple groups",
-			[]string{`{a="1"}`, `{b="2", c=~"3", d!="4"}`},
-			[][]*labels.Matcher{
-				{mustMatcher(labels.MatchEqual, "a", "1")},
-				{
-					mustMatcher(labels.MatchEqual, "b", "2"),
-					mustMatcher(labels.MatchRegexp, "c", "3"),
-					mustMatcher(labels.MatchNotEqual, "d", "4"),
-				},
+			name: "no since or no start with end in the future",
+			args: args{
+				now:         time.Unix(3600, 0),
+				startString: "",
+				endString:   "2022-12-18T00:00:00Z",
+				sinceString: "",
 			},
-			false,
+			start:   time.Unix(0, 0), // Default should be one hour before now
+			end:     time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+			wantErr: assert.NoError,
 		},
 		{
-			"errors on empty group",
-			[]string{`{}`},
-			nil,
-			true,
+			name: "no since, valid start and end",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "2022-12-17T00:00:00Z",
+				endString:   "2022-12-18T00:00:00Z",
+				sinceString: "",
+			},
+			start:   time.Date(2022, 12, 17, 0, 0, 0, 0, time.UTC),
+			end:     time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+			wantErr: assert.NoError,
+		},
+		{
+			name: "invalid end",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "2022-12-17T00:00:00Z",
+				endString:   "WHAT TIME IS IT?",
+				sinceString: "",
+			},
+			start: time.Time{},
+			end:   time.Time{},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return assert.ErrorContains(t, err, "could not parse 'end' parameter:", i...)
+			},
+		},
+		{
+			name: "invalid start",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "LET'S GOOO",
+				endString:   "2022-12-18T00:00:00Z",
+				sinceString: "",
+			},
+			start: time.Time{},
+			end:   time.Time{},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return assert.ErrorContains(t, err, "could not parse 'start' parameter:", i...)
+			},
+		},
+		{
+			name: "invalid since",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "2022-12-17T00:00:00Z",
+				endString:   "2022-12-18T00:00:00Z",
+				sinceString: "HI!",
+			},
+			start: time.Time{},
+			end:   time.Time{},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return assert.ErrorContains(t, err, "could not parse 'since' parameter:", i...)
+			},
+		},
+		{
+			name: "since 1h with no start or end",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "",
+				endString:   "",
+				sinceString: "1h",
+			},
+			start:   time.Date(2022, 12, 17, 23, 0, 0, 0, time.UTC),
+			end:     time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+			wantErr: assert.NoError,
+		},
+		{
+			name: "since 1d with no start or end",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "",
+				endString:   "",
+				sinceString: "1d",
+			},
+			start:   time.Date(2022, 12, 17, 0, 0, 0, 0, time.UTC),
+			end:     time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+			wantErr: assert.NoError,
+		},
+		{
+			name: "since 1h with no start and end time in the past",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "",
+				endString:   "2022-12-17T00:00:00Z",
+				sinceString: "1h",
+			},
+			start:   time.Date(2022, 12, 16, 23, 0, 0, 0, time.UTC), // start should be calculated relative to end when end is specified
+			end:     time.Date(2022, 12, 17, 0, 0, 0, 0, time.UTC),
+			wantErr: assert.NoError,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Match(tt.input)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.Equal(t, tt.want, got)
+			got, got1, err := determineBounds(tt.args.now, tt.args.startString, tt.args.endString, tt.args.sinceString)
+			if !tt.wantErr(t, err, fmt.Sprintf("determineBounds(%v, %v, %v, %v)", tt.args.now, tt.args.startString, tt.args.endString, tt.args.sinceString)) {
+				return
 			}
-
+			assert.Equalf(t, tt.start, got, "determineBounds(%v, %v, %v, %v)", tt.args.now, tt.args.startString, tt.args.endString, tt.args.sinceString)
+			assert.Equalf(t, tt.end, got1, "determineBounds(%v, %v, %v, %v)", tt.args.now, tt.args.startString, tt.args.endString, tt.args.sinceString)
 		})
 	}
-}
-
-func mustMatcher(t labels.MatchType, n string, v string) *labels.Matcher {
-	m, err := labels.NewMatcher(t, n, v)
-	if err != nil {
-		panic(err)
-	}
-	return m
 }

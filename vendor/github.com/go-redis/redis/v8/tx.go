@@ -13,7 +13,8 @@ const TxFailedErr = proto.RedisError("redis: transaction failed")
 // Tx implements Redis transactions as described in
 // http://redis.io/topics/transactions. It's NOT safe for concurrent use
 // by multiple goroutines, because Exec resets list of watched keys.
-// If you don't need WATCH it is better to use Pipeline.
+//
+// If you don't need WATCH, use Pipeline instead.
 type Tx struct {
 	baseClient
 	cmdable
@@ -65,16 +66,13 @@ func (c *Tx) Process(ctx context.Context, cmd Cmder) error {
 // The transaction is automatically closed when fn exits.
 func (c *Client) Watch(ctx context.Context, fn func(*Tx) error, keys ...string) error {
 	tx := c.newTx(ctx)
+	defer tx.Close(ctx)
 	if len(keys) > 0 {
 		if err := tx.Watch(ctx, keys...).Err(); err != nil {
-			_ = tx.Close(ctx)
 			return err
 		}
 	}
-
-	err := fn(tx)
-	_ = tx.Close(ctx)
-	return err
+	return fn(tx)
 }
 
 // Close closes the transaction, releasing any open resources.

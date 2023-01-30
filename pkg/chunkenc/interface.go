@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 // Errors returned by the chunk interface.
@@ -21,6 +22,27 @@ var (
 	ErrInvalidFlag     = errors.New("invalid flag")
 	ErrInvalidChecksum = errors.New("invalid chunk checksum")
 )
+
+type errTooFarBehind struct {
+	cutoff time.Time
+}
+
+func IsErrTooFarBehind(err error) bool {
+	_, ok := err.(*errTooFarBehind)
+	return ok
+}
+
+func ErrTooFarBehind(cutoff time.Time) error {
+	return &errTooFarBehind{cutoff: cutoff}
+}
+
+func (m *errTooFarBehind) Error() string {
+	return "entry too far behind, oldest acceptable timestamp is: " + m.cutoff.Format(time.RFC3339)
+}
+
+func IsOutOfOrderErr(err error) bool {
+	return err == ErrOutOfOrder || IsErrTooFarBehind(err)
+}
 
 // Encoding is the identifier for a chunk encoding.
 type Encoding byte
@@ -111,6 +133,7 @@ type Chunk interface {
 	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
+	// Size returns the number of entries in a chunk
 	Size() int
 	Bytes() ([]byte, error)
 	BytesWith([]byte) ([]byte, error) // uses provided []byte for buffer instantiation
@@ -121,6 +144,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() Encoding
+	Rebound(start, end time.Time, filter filter.Func) (Chunk, error)
 }
 
 // Block is a chunk block.

@@ -1,15 +1,17 @@
 ---
-title: Fluentbit
+title: Fluent Bit
+description: Fluent Bit Loki Output 
+weight: 50
 ---
-# Fluentbit Loki Output Plugin
+# Fluent Bit
 
-[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
 ## Usage
 
 ### Docker
 
-You can run a Fluent Bit container with Loki output plugin pre-installed using our [docker hub](https://cloud.docker.com/u/grafana/repository/docker/grafana/fluent-bit-plugin-loki) image:
+You can run a Fluent Bit container with Loki output plugin pre-installed using our [Docker Hub](https://hub.docker.com/r/grafana/fluent-bit-plugin-loki) image:
 
 ```bash
 docker run -v /var/log:/var/log \
@@ -42,11 +44,11 @@ helm upgrade --install loki-stack grafana/loki-stack \
 ### AWS Elastic Container Service (ECS)
 
 You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation](../aws/ecs)
+For more information about this see our [AWS documentation]({{<relref "../aws/ecs">}})
 
 ### Local
 
-First, you need to follow the [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) in order to build the plugin dynamic library.
+First, you need to follow the [instructions](https://github.com/grafana/loki/blob/main/clients/cmd/fluent-bit/README.md) in order to build the plugin dynamic library.
 
 The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
@@ -72,7 +74,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 | Timeout              | Maximum time to wait for loki server to respond to a request.                                                                                                                                                                                                                                                                                                                           | 10s                                    |
 | MinBackoff           | Initial backoff time between retries.                                                                                                                                                                                                                                                                                                                                                   | 500ms                                  |
 | MaxBackoff           | Maximum backoff time between retries.                                                                                                                                                                                                                                                                                                                                                   | 5m                                     |
-| MaxRetries           | Maximum number of retries when sending batches.                                                                                                                                                                                                                                                                                                                                         | 10                                     |
+| MaxRetries           | Maximum number of retries when sending batches. Setting it to `0` will retry indefinitely.                                                                                                                                                                                                                                                                                                                                        | 10                                     |
 | Labels               | labels for API requests.                                                                                                                                                                                                                                                                                                                                                                | {job="fluent-bit"}                     |
 | LogLevel             | LogLevel for plugin logger.                                                                                                                                                                                                                                                                                                                                                             | "info"                                 |
 | RemoveKeys           | Specify removing keys.                                                                                                                                                                                                                                                                                                                                                                  | none                                   |
@@ -85,12 +87,12 @@ You can also adapt your plugins.conf, removing the need to change the command li
 | BufferType           | Specify the buffering mechanism to use (currently only dque is implemented).                                                                                                                                                                                                                                                                                                            | dque                                   |
 | DqueDir              | Path to the directory for queued logs                                                                                                                                                                                                                                                                                                                                                   | /tmp/flb-storage/loki                  |
 | DqueSegmentSize      | Segment size in terms of number of records per segment                                                                                                                                                                                                                                                                                                                                  | 500                                    |
-| DqueSync             | Whether to fsync each queue change                                                                                                                                                                                                                                                                                                                                                      | false                                  |
+| DqueSync             | Whether to fsync each queue change. Specify no fsync with "normal", and fsync with "full".                                                                                                                                                                                                                                                                                                                                                      | "normal"                                  |
 | DqueName             | Queue name, must be uniq per output                                                                                                                                                                                                                                                                                                                                                     | dque                                   |
 
 ### Labels
 
-Labels are used to [query logs](../../logql) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs]({{<relref "../../logql">}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
@@ -101,7 +103,7 @@ If set to true, it will add all Kubernetes labels to Loki labels automatically a
 ### LabelMapPath
 
 When using the `Parser` and `Filter` plugins Fluent Bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
-You can pass a json file that defines how to extract [labels](../../getting-started/labels/) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
+You can pass a JSON file that defines how to extract labels from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
 
 Considering the record below :
 
@@ -112,12 +114,12 @@ Considering the record below :
     "pod_name": "promtail-xxx",
     "namespace_name": "prod",
     "labels" : {
-        "team": "x-men",
-    },
+        "team": "x-men"
+    }
   },
   "HOSTNAME": "docker-desktop",
   "log" : "a log line",
-  "time": "20190926T152206Z",
+  "time": "20190926T152206Z"
 }
 ```
 
@@ -130,9 +132,9 @@ and a LabelMap file as follow :
     "pod_name": "pod",
     "namespace_name": "namespace",
     "labels" : {
-        "team": "team",
-    },
-  },
+        "team": "team"
+    }
+  }
 }
 ```
 
@@ -142,25 +144,27 @@ If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log li
 
 ### Buffering
 
-Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in certain situation can be blocked by loki client because of its design:
+Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. The Loki output plugin can be blocked by the Loki client because of its design:
 
-- BatchSize is over limit, output plugin pause receiving new records until the pending batch is successfully sent to the server
-- Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be available again and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
+- If the BatchSize is over the limit, the output plugin pauses receiving new records until the pending batch is successfully sent to the server
+- If the Loki server is unreachable (retry 429s, 500s and connection-level errors), the output plugin blocks new records until the Loki server is available again, and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
 
-The blocking state with some of the input plugins is not acceptable because it can have a undesirable side effects on the part that generates the logs. Fluent Bit implements buffering mechanism that is based on parallel processing and it cannot send logs in order which is loki requirement (loki logs must be in increasing time order per stream).
+The blocking state with some of the input plugins is not acceptable, because it can have an undesirable side effect on the part that generates the logs. Fluent Bit implements a buffering mechanism that is based on parallel processing. Therefore, it cannot send logs in order. There are two ways of handling the out-of-order logs: 
 
-Loki output plugin has buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque) which is compatible with loki server strict time ordering and can be set up by configuration flag:
+- Configure Loki to [accept out-of-order writes]({{<relref "../../configuration/#accept-out-of-order-writes">}}).
 
-```properties
-[Output]
-    Name grafana-loki
-    Match *
-    Url http://localhost:3100/loki/api/v1/push
-    Buffer true
-    DqueSegmentSize 8096
-    DqueDir /tmp/flb-storage/buffer
-    DqueName loki.0
-```
+- Configure the Loki output plugin to use the buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque), which is compatible with the Loki server strict time ordering:
+
+    ```properties
+    [Output]
+        Name grafana-loki
+        Match *
+        Url http://localhost:3100/loki/api/v1/push
+        Buffer true
+        DqueSegmentSize 8096
+        DqueDir /tmp/flb-storage/buffer
+        DqueName loki.0
+    ```
 
 ### Configuration examples
 
@@ -191,7 +195,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     RemoveKeys key1,key2
 ```
 
-A full [example configuration file](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/fluent-bit.conf) is also available in this repository.
+A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
 
 ### Running multiple plugin instances
 

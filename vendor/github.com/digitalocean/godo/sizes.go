@@ -7,7 +7,7 @@ import (
 
 // SizesService is an interface for interfacing with the size
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#sizes
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Sizes
 type SizesService interface {
 	List(context.Context, *ListOptions) ([]Size, *Response, error)
 }
@@ -31,6 +31,7 @@ type Size struct {
 	Regions      []string `json:"regions,omitempty"`
 	Available    bool     `json:"available,omitempty"`
 	Transfer     float64  `json:"transfer,omitempty"`
+	Description  string   `json:"description,omitempty"`
 }
 
 func (s Size) String() string {

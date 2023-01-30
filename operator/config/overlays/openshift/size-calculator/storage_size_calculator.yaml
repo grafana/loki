@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-size-calculator
+spec:
+  selector:
+    matchLabels:
+      name: log-file-metric-exporter
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: log-file-metric-exporter
+    spec:
+      containers:
+      - command:
+        - /size-calculator
+        image: quay.io/openshift-logging/storage-size-calculator:latest
+        imagePullPolicy: Always
+        name: size-calculator
+        ports:
+        - containerPort: 2112
+          name: logfile-metrics
+        securityContext:
+          allowPrivilegeEscalation: false
+        env:
+        - name: PROMETHEUS_URL
+          valueFrom:
+            secretKeyRef:
+              name: promsecret
+              key: prometheus_url
+        - name: PROMETHEUS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: promsecret
+              key: prometheus_token
+      terminationGracePeriodSeconds: 10
+      serviceAccount: log-file-metric-exporter

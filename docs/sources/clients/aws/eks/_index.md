@@ -1,7 +1,8 @@
 ---
 title: EKS
+description: Sending logs from EKS with Promtail
 ---
-# Sending logs from EKS with Promtail
+# EKS
 
 In this tutorial we'll see how to set up Promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
 
@@ -9,7 +10,7 @@ After this tutorial you will able to query all your logs in one place using Graf
 
 <!-- TOC -->
 
-- [Sending logs from EKS with Promtail](#sending-logs-from-eks-with-promtail)
+- [Sending logs from EKS with Promtail](#eks)
     - [Requirements](#requirements)
     - [Setting up the cluster](#setting-up-the-cluster)
     - [Adding Promtail DaemonSet](#adding-promtail-daemonset)
@@ -25,7 +26,7 @@ Before we start you'll need:
 
 - The [AWS CLI][aws cli] configured (run `aws configure`).
 - [kubectl][kubectl] and [eksctl][eksctl] installed.
-- A Grafana instance with a Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
+- A Grafana instance with a Grafana Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
 
 For the sake of simplicity we'll use a [GrafanaCloud][GrafanaCloud] Loki and Grafana instances, you can get an free account for this tutorial on our [website][GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
 
@@ -51,7 +52,7 @@ Server Version: version.Info{Major:"1", Minor:"16+", GitVersion:"v1.16.8-eks-fd1
 
 ## Adding Promtail DaemonSet
 
-To ship all your pods logs we're going to set up [Promtail](../../promtail/) as a DaemonSet in our cluster. This means it will run on each nodes of the cluster, we will then configure it to find the logs of your containers on the host.
+To ship all your pods logs we're going to set up [Promtail]({{< relref "../../promtail/" >}}) as a DaemonSet in our cluster. This means it will run on each nodes of the cluster, we will then configure it to find the logs of your containers on the host.
 
 What's nice about Promtail is that it uses the same [service discovery as Prometheus][prometheus conf], you should make sure the `scrape_configs` of Promtail matches the Prometheus one. Not only this is simpler to configure, but this also means Metrics and Logs will have the same metadata (labels) attached by the Prometheus service discovery. When querying Grafana you will be able to correlate metrics and logs very quickly, you can read more about this on our [blogpost][correlate].
 
@@ -107,7 +108,7 @@ Verify the application is working by running these commands:
   curl http://127.0.0.1:3101/metrics
 ```
 
-Verify that promtail pods are running. You should see only two since we're running a two nodes cluster.
+Verify that Promtail pods are running. You should see only two since we're running a two nodes cluster.
 
 ```bash
 kubectl get -n monitoring pods
@@ -123,9 +124,9 @@ You can reach your Grafana instance and start exploring your logs. For example i
 
 ## Fetching kubelet logs with systemd
 
-So far we're scrapings logs from containers, but if you want to get more visibility you could also scrape [systemd][systemd] logs from each of your machine. This means you can also get access to `kubelet` logs.
+So far we're scrapings logs from containers, but if you want to get more visibility you could also scrape systemd logs from each of your machine. This means you can also get access to `kubelet` logs.
 
-Let's edit our values file again and `extraScrapeConfigs` to add the [systemd][systemd] job:
+Let's edit our values file again and `extraScrapeConfigs` to add the systemd job:
 
 ```yaml
 extraScrapeConfigs:
@@ -162,7 +163,7 @@ extraVolumeMounts:
     readOnly: true
 ```
 
-Now that we're ready we can update the promtail deployment:
+Now that we're ready we can update the Promtail deployment:
 
 ```bash
 helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
@@ -174,12 +175,12 @@ Let go back to Grafana and type in the query below to fetch all logs related to 
 {unit="kubelet.service"} |= "Volume"
 ```
 
-[Filters][Filters] expressions are powerful in [LogQL][LogQL] they help you scan through your logs, in this case it will filter out all your [kubelet][kubelet] logs not having the `Volume` word in it.
+Filter expressions are powerful in LogQL they help you scan through your logs, in this case it will filter out all your [kubelet][kubelet] logs not having the `Volume` word in it.
 
 The workflow is simple, you always select a set of labels matchers first, this way you reduce the data you're planing to scan.(such as an application, a namespace or even a cluster).
-Then you can apply a set of [Filters][Filters] to find the logs you want.
+Then you can apply a set of filters to find the logs you want.
 
-> Promtail also support [syslog][syslog].
+Promtail also supports syslog.
 
 ## Adding Kubernetes events
 
@@ -244,13 +245,10 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [blog ship log with fargate]: https://aws.amazon.com/blogs/containers/how-to-capture-application-logs-when-using-amazon-eks-on-aws-fargate/
 [correlate]: https://grafana.com/blog/2020/03/31/how-to-successfully-correlate-metrics-logs-and-traces-in-grafana/
 [default value file]: https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
-[systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [grafana logs namespace]: namespace-grafana.png
 [relabel_configs]:https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
 [syslog]: ../../../installation/helm#run-promtail-with-syslog-support
-[Filters]: https://grafana.com/docs/loki/latest/logql/#line-filter-expression
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
-[LogQL]: https://grafana.com/docs/loki/latest/logql/
 [blog events]: https://grafana.com/blog/2019/08/21/how-grafana-labs-effectively-pairs-loki-and-kubernetes-events/
 [labels post]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
 [pipeline]: https://grafana.com/docs/loki/latest/clients/promtail/pipelines/

@@ -3,6 +3,9 @@
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
     http_listen_port: 3100,
+    node_selector: null,
+
+    create_service_monitor: false,
 
     replication_factor: 3,
     memcached_replicas: 3,
@@ -12,9 +15,12 @@
     // flag for tuning things when boltdb-shipper is current or upcoming index type.
     using_boltdb_shipper: true,
 
-    wal_enabled: false,
+    wal_enabled: true,
+    query_scheduler_enabled: false,
+    overrides_exporter_enabled: false,
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
+    // WAL enabled configurations automatically use statefulsets.
     stateful_ingesters: false,
     ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
@@ -30,12 +36,28 @@
     compactor_pvc_size: '10Gi',
     compactor_pvc_class: 'fast',
 
+    // This is the configmap created with `$._config.overrides` data
+    overrides_configmap_name: 'overrides',
+
+    // This is the configmap which will be used by workloads.
+    overrides_configmap_mount_name: 'overrides',
+    overrides_configmap_mount_path: '/etc/loki/overrides',
+
+    jaeger_reporter_max_queue: 1000,
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
       // A higher value will lead to a querier trying to process more requests than there are available
       // cores and will result in scheduling delays.
       concurrency: 4,
+
+      // If use_topology_spread is true, queriers can run on nodes already running queriers but will be
+      // spread through the available nodes using a TopologySpreadConstraints with a max skew
+      // of topology_spread_max_skew.
+      // See: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+      // If use_topology_spread is false, queriers will not be scheduled on nodes already running queriers.
+      use_topology_spread: true,
+      topology_spread_max_skew: 1,
     },
 
     queryFrontend: {
@@ -55,6 +77,15 @@
     index_period_hours: 24,  // 1 day
 
     ruler_enabled: false,
+
+    distributor: {
+      use_topology_spread: true,
+      topology_spread_max_skew: 1,
+    },
+
+    ingester_allow_multiple_replicas_on_same_node: false,
+    ingester_data_disk_size: '10Gi',
+    ingester_data_disk_class: 'fast',
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -80,6 +111,9 @@
     dynamodb_access_key: '',
     dynamodb_secret_access_key: '',
     dynamodb_region: error 'must specify dynamodb_region',
+
+    // DNS Resolver
+    dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
 
     client_configs: {
       dynamo: {
@@ -127,31 +161,34 @@
       'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
+    commonEnvs: [],
+
     loki: {
+      common: {
+        compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+      },
       server: {
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',
         grpc_server_max_recv_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_send_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_concurrent_streams: 1000,
+        grpc_server_ping_without_stream_allowed: true,  // https://github.com/grafana/cortex-jsonnet/pull/233
+        grpc_server_min_time_between_pings: '10s',  // https://github.com/grafana/cortex-jsonnet/pull/233
         http_server_write_timeout: '1m',
         http_listen_port: $._config.http_listen_port,
       },
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        max_outstanding_per_tenant: if $._config.queryFrontend.sharded_queries_enabled then 1024 else 256,
       },
       frontend_worker: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
-        // Limit to N/2 worker threads per frontend, as we have two frontends.
-        parallelism: std.floor($._config.querier.concurrency / $._config.queryFrontend.replicas),
+        match_max_concurrent: true,
         grpc_client_config: {
           max_send_msg_size: $._config.grpc_server_max_msg_size,
         },
       },
       query_range: {
-        split_queries_by_interval: '30m',
         align_queries_with_step: true,
         cache_results: true,
         max_retries: 5,
@@ -171,6 +208,7 @@
         parallelise_shardable_queries: true,
       } else {},
       querier: {
+        max_concurrent: $._config.querier.concurrency,
         query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
       },
       limits_config: {
@@ -190,18 +228,18 @@
         ingestion_rate_mb: 10,
         ingestion_burst_size_mb: 20,
         max_cache_freshness_per_query: '10m',
+        split_queries_by_interval: '30m',
       },
 
       ingester: {
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
-        max_transfer_retries: 60,
 
         lifecycler: {
           ring: {
             heartbeat_timeout: '1m',
             replication_factor: $._config.replication_factor,
-            kvstore: {
+            kvstore: if $._config.memberlist_ring_enabled then {} else {
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -281,7 +319,6 @@
             consistent_hash: true,
           },
         },
-        max_look_back_period: 0,
       },
 
       // Default schema config is boltdb-shipper/gcs, this will need to be overridden for other stores
@@ -308,7 +345,7 @@
       distributor: {
         // Creates a ring between distributors, required by the ingestion rate global limit.
         ring: {
-          kvstore: {
+          kvstore: if $._config.memberlist_ring_enabled then {} else {
             store: 'consul',
             consul: {
               host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -328,7 +365,7 @@
         enable_sharding: true,
         enable_alertmanager_v2: true,
         ring: {
-          kvstore: {
+          kvstore: if $._config.memberlist_ring_enabled then {} else {
             store: 'consul',
             consul: {
               host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
@@ -346,18 +383,20 @@
     },
   },
 
-  local configMap = $.core.v1.configMap,
+  local k = import 'ksonnet-util/kausal.libsonnet',
+  local configMap = k.core.v1.configMap,
 
   config_file:
     configMap.new('loki') +
     configMap.withData({
-      'config.yaml': $.util.manifestYaml($._config.loki),
+      'config.yaml': k.util.manifestYaml($._config.loki),
     }),
 
-  local deployment = $.apps.v1.deployment,
+  local deployment = k.apps.v1.deployment,
 
   config_hash_mixin::
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({
       config_hash: std.md5(std.toString($._config.loki)),
     }),
+
 }

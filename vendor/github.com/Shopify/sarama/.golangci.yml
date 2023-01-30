@@ -1,0 +1,88 @@
+run:
+  timeout: 5m
+  deadline: 10m
+
+linters-settings:
+  govet:
+    check-shadowing: false
+  golint:
+    min-confidence: 0
+  gocyclo:
+    min-complexity: 99
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  misspell:
+    locale: US
+  goimports:
+    local-prefixes: github.com/Shopify/sarama
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      # - experimental
+      # - opinionated
+      # - performance
+      # - style
+    disabled-checks:
+      - assignOp
+      - appendAssign
+      - commentedOutCode
+      - ifElseChain
+      - singleCaseSwitch
+      - sloppyReassign
+      - wrapperFunc
+  funlen:
+    lines: 300
+    statements: 300
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - deadcode
+    - depguard
+    - exportloopref
+    - dogsled
+    # - dupl
+    - errcheck
+    - errorlint
+    - funlen
+    - gochecknoinits
+    # - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    # - golint
+    - gosec
+    # - gosimple
+    - govet
+    # - ineffassign
+    - misspell
+    # - nakedret
+    - nilerr
+    # - paralleltest
+    # - scopelint
+    - staticcheck
+    - structcheck
+    # - stylecheck
+    - typecheck
+    - unconvert
+    - unused
+    - varcheck
+    - whitespace
+
+issues:
+  exclude:
+    - "G404: Use of weak random number generator"
+  exclude-rules:
+    # exclude some linters from running on certains files.
+    - path: functional.*_test\.go
+      linters:
+        - paralleltest
+  # maximum count of issues with the same text. set to 0 for unlimited. default is 3.
+  max-same-issues: 0

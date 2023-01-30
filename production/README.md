@@ -1,14 +1,15 @@
 # Running Loki
 
-Currently there are five ways to try out Loki, in order from easier to hardest:
+Currently there are six ways to try out Loki, in order from easier to hardest:
 
 - [Grafana Cloud: Hosted Logs](#grafana-cloud-logs)
 - [Run Loki locally with Docker](#run-locally-using-docker)
+- [Run Loki with Nomad](#run-with-nomad)
 - [Use Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
 - [Build Loki from source](#build-and-run-from-source)
 - [Get inspired by our production setup](#get-inspired-by-our-production-setup)
 
-For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](../docs/clients/promtail/README.md).
+For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](../docs/sources/clients/promtail/installation.md).
 
 ## Grafana Cloud: Hosted Logs
 
@@ -34,7 +35,7 @@ To test locally, we recommend using the `docker-compose.yaml` file in this direc
    docker-compose up
    ```
 
-1. Grafana should now be available at http://localhost:3000/. Log in with `admin` / `admin` and follow the [steps for configuring the datasource in Grafana](../docs/getting-started/grafana.md), using `http://loki:3100` for the URL field.
+1. Grafana should now be available at http://localhost:3000/.
 
 **Note:** When running locally, Promtail starts before Loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
 Until this is fixed we recommend [building and running from source](#build-and-run-from-source).
@@ -43,13 +44,21 @@ For instructions on how to query Loki, see [our usage docs](https://grafana.com/
 
 To deploy a cluster of loki locally, please refer to this [doc](./docker/)
 
+## Run with Nomad
+
+There are example [Nomad jobs](./nomad) that can be used to deploy Loki with
+[Nomad](https://www.nomadproject.io/) - simple and powerful workload
+orchestrator from HashiCorp.
+
 ## Using Helm to deploy on Kubernetes
 
-There is a [Helm chart](helm) to deploy Loki and Promtail to Kubernetes.
+Here are the Helm charts used to deploy Loki and Promtail to Kubernetes:
+- [Loki](./helm/loki/README.md#loki) 
+- [Promtail](https://github.com/grafana/helm-charts/blob/main/charts/promtail/README.md#promtail) 
 
 ## Build and run from source
 
-Frist, see the [build from source](../README.md) section of the root readme.
+First, see the [build from source](../README.md) section of the root readme.
 
 Once Promtail is built, to run Promtail, use the following command:
 

@@ -56,7 +56,9 @@ type JobTemplateSpec struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:prerelease-lifecycle-gen:introduced=1.8
-// +k8s:prerelease-lifecycle-gen:deprecated=1.22
+// +k8s:prerelease-lifecycle-gen:deprecated=1.21
+// +k8s:prerelease-lifecycle-gen:removed=1.25
+// +k8s:prerelease-lifecycle-gen:replacement=batch,v1,CronJob
 
 // CronJob represents the configuration of a single cron job.
 type CronJob struct {
@@ -79,7 +81,9 @@ type CronJob struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:prerelease-lifecycle-gen:introduced=1.8
-// +k8s:prerelease-lifecycle-gen:deprecated=1.22
+// +k8s:prerelease-lifecycle-gen:deprecated=1.21
+// +k8s:prerelease-lifecycle-gen:removed=1.25
+// +k8s:prerelease-lifecycle-gen:replacement=batch,v1,CronJobList
 
 // CronJobList is a collection of cron jobs.
 type CronJobList struct {
@@ -99,6 +103,19 @@ type CronJobSpec struct {
 
 	// The schedule in Cron format, see https://en.wikipedia.org/wiki/Cron.
 	Schedule string `json:"schedule" protobuf:"bytes,1,opt,name=schedule"`
+
+	// The time zone name for the given schedule, see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones.
+	// If not specified, this will default to the time zone of the kube-controller-manager process.
+	// The set of valid time zone names and the time zone offset is loaded from the system-wide time zone
+	// database by the API server during CronJob validation and the controller manager during execution.
+	// If no system-wide time zone database can be found a bundled version of the database is used instead.
+	// If the time zone name becomes invalid during the lifetime of a CronJob or due to a change in host
+	// configuration, the controller will stop creating new new Jobs and will create a system event with the
+	// reason UnknownTimeZone.
+	// More information can be found in https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/#time-zones
+	// This is beta field and must be enabled via the `CronJobTimeZone` feature gate.
+	// +optional
+	TimeZone *string `json:"timeZone,omitempty" protobuf:"bytes,8,opt,name=timeZone"`
 
 	// Optional deadline in seconds for starting the job if it misses scheduled
 	// time for any reason.  Missed jobs executions will be counted as failed ones.
@@ -156,9 +173,14 @@ const (
 type CronJobStatus struct {
 	// A list of pointers to currently running jobs.
 	// +optional
+	// +listType=atomic
 	Active []v1.ObjectReference `json:"active,omitempty" protobuf:"bytes,1,rep,name=active"`
 
 	// Information when was the last time the job was successfully scheduled.
 	// +optional
 	LastScheduleTime *metav1.Time `json:"lastScheduleTime,omitempty" protobuf:"bytes,4,opt,name=lastScheduleTime"`
+
+	// Information when was the last time the job successfully completed.
+	// +optional
+	LastSuccessfulTime *metav1.Time `json:"lastSuccessfulTime,omitempty" protobuf:"bytes,5,opt,name=lastSuccessfulTime"`
 }

@@ -1,7 +1,8 @@
 ---
 title: drop
+description: drop stage
 ---
-# `drop` stage
+# drop
 
 The `drop` stage is a filtering stage that lets you drop logs based on several options. 
 
@@ -106,7 +107,7 @@ Would drop this log line:
 
 #### Drop old log lines
 
-**NOTE** For `older_than` to work, you must be using the [timestamp](../timestamp) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
+**NOTE** For `older_than` to work, you must be using the [timestamp]({{<relref "timestamp">}}) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
 
 Given the pipeline:
 
@@ -137,7 +138,7 @@ However it would _not_ drop this log line:
 
 In this example the current time is 2020-08-12T12:00:00Z and `older_than` is 24h. All log lines which have a timestamp older than 2020-08-11T12:00:00Z will be dropped.
 
-All lines dropped by this drop stage would also increment the `logentry_drop_lines_total` metric with a label `reason="line_too_old"`
+All lines dropped by this drop stage would also increment the `logentry_dropped_lines_total` metric with a label `reason="line_too_old"`
 
 #### Dropping long log lines
 
@@ -151,7 +152,7 @@ Given the pipeline:
 
 Would drop any log line longer than 8kb bytes, this is useful when Loki would reject a line for being too long.
 
-All lines dropped by this drop stage would also increment the `logentry_drop_lines_total` metric with a label `reason="line_too_long"`
+All lines dropped by this drop stage would also increment the `logentry_dropped_lines_total` metric with a label `reason="line_too_long"`
 
 ### Complex drops
 

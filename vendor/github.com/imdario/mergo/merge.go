@@ -79,7 +79,7 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 		visited[h] = &visit{addr, typ, seen}
 	}
 
-	if config.Transformers != nil && !isEmptyValue(dst) {
+	if config.Transformers != nil && !isReflectNil(dst) && dst.IsValid() {
 		if fn := config.Transformers.Transformer(dst.Type()); fn != nil {
 			err = fn(dst, src)
 			return
@@ -95,13 +95,18 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 				}
 			}
 		} else {
-			if (isReflectNil(dst) || overwrite) && (!isEmptyValue(src) || overwriteWithEmptySrc) {
+			if dst.CanSet() && (isReflectNil(dst) || overwrite) && (!isEmptyValue(src) || overwriteWithEmptySrc) {
 				dst.Set(src)
 			}
 		}
 	case reflect.Map:
 		if dst.IsNil() && !src.IsNil() {
-			dst.Set(reflect.MakeMap(dst.Type()))
+			if dst.CanSet() {
+				dst.Set(reflect.MakeMap(dst.Type()))
+			} else {
+				dst = src
+				return
+			}
 		}
 
 		if src.Kind() != reflect.Map {

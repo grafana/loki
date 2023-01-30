@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/tools/querytee"
 )
 
 func TestCompareStreams(t *testing.T) {
@@ -90,7 +92,7 @@ func TestCompareStreams(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareStreams(tc.expected, tc.actual, 0)
+			err := compareStreams(tc.expected, tc.actual, querytee.SampleComparisonOptions{Tolerance: 0})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return

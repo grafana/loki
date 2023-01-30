@@ -3,9 +3,13 @@ package writer
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 )
 
 const (
@@ -13,26 +17,41 @@ const (
 )
 
 type Writer struct {
-	w         io.Writer
-	sent      chan time.Time
-	interval  time.Duration
-	size      int
-	prevTsLen int
-	pad       string
-	quit      chan struct{}
-	done      chan struct{}
+	w                    io.Writer
+	sent                 chan time.Time
+	interval             time.Duration
+	outOfOrderPercentage int
+	outOfOrderMin        time.Duration
+	outOfOrderMax        time.Duration
+	size                 int
+	prevTsLen            int
+	pad                  string
+	quit                 chan struct{}
+	done                 chan struct{}
+
+	logger log.Logger
 }
 
-func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval time.Duration, entrySize int) *Writer {
+func NewWriter(
+	writer io.Writer,
+	sentChan chan time.Time,
+	entryInterval, outOfOrderMin, outOfOrderMax time.Duration,
+	outOfOrderPercentage, entrySize int,
+	logger log.Logger,
+) *Writer {
 
 	w := &Writer{
-		w:         writer,
-		sent:      sentChan,
-		interval:  entryInterval,
-		size:      entrySize,
-		prevTsLen: 0,
-		quit:      make(chan struct{}),
-		done:      make(chan struct{}),
+		w:                    writer,
+		sent:                 sentChan,
+		interval:             entryInterval,
+		outOfOrderPercentage: outOfOrderPercentage,
+		outOfOrderMin:        outOfOrderMin,
+		outOfOrderMax:        outOfOrderMax,
+		size:                 entrySize,
+		prevTsLen:            0,
+		quit:                 make(chan struct{}),
+		done:                 make(chan struct{}),
+		logger:               logger,
 	}
 
 	go w.run()
@@ -58,6 +77,10 @@ func (w *Writer) run() {
 		select {
 		case <-t.C:
 			t := time.Now()
+			if i := rand.Intn(100); i < w.outOfOrderPercentage {
+				n := rand.Intn(int(w.outOfOrderMax.Seconds()-w.outOfOrderMin.Seconds())) + int(w.outOfOrderMin.Seconds())
+				t = t.Add(-time.Duration(n) * time.Second)
+			}
 			ts := strconv.FormatInt(t.UnixNano(), 10)
 			tsLen := len(ts)
 
@@ -71,9 +94,11 @@ func (w *Writer) run() {
 				w.pad = str.String()
 				w.prevTsLen = tsLen
 			}
-
-			fmt.Fprintf(w.w, LogEntry, ts, w.pad)
 			w.sent <- t
+			_, err := fmt.Fprintf(w.w, LogEntry, ts, w.pad)
+			if err != nil {
+				level.Error(w.logger).Log("msg", "failed to write log entry", "error", err)
+			}
 		case <-w.quit:
 			return
 		}

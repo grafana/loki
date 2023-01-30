@@ -41,6 +41,7 @@ type RetryReaderOptions struct {
 	MaxRetryRequests   int
 	doInjectError      bool
 	doInjectErrorRound int
+	injectedError      error
 
 	// NotifyFailedRead is called, if non-nil, after any failure to read. Expected usage is diagnostic logging.
 	NotifyFailedRead FailedReadNotifier
@@ -55,6 +56,8 @@ type RetryReaderOptions struct {
 	// from the same "thread" (goroutine) as Read.  Concurrent Close calls from other goroutines may instead produce network errors
 	// which will be retried.
 	TreatEarlyCloseAsError bool
+
+	ClientProvidedKeyOptions ClientProvidedKeyOptions
 }
 
 // retryReader implements io.ReaderCloser methods.
@@ -117,7 +120,11 @@ func (s *retryReader) Read(p []byte) (n int, err error) {
 
 		// Injection mechanism for testing.
 		if s.o.doInjectError && try == s.o.doInjectErrorRound {
-			err = &net.DNSError{IsTemporary: true}
+			if s.o.injectedError != nil {
+				err = s.o.injectedError
+			} else {
+				err = &net.DNSError{IsTemporary: true}
+			}
 		}
 
 		// We successfully read data or end EOF.
@@ -134,7 +141,8 @@ func (s *retryReader) Read(p []byte) (n int, err error) {
 		// Check the retry count and error code, and decide whether to retry.
 		retriesExhausted := try >= s.o.MaxRetryRequests
 		_, isNetError := err.(net.Error)
-		willRetry := (isNetError || s.wasRetryableEarlyClose(err)) && !retriesExhausted
+		isUnexpectedEOF := err == io.ErrUnexpectedEOF
+		willRetry := (isNetError || isUnexpectedEOF || s.wasRetryableEarlyClose(err)) && !retriesExhausted
 
 		// Notify, for logging purposes, of any failures
 		if s.o.NotifyFailedRead != nil {

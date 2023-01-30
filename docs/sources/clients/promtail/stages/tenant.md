@@ -1,11 +1,12 @@
 ---
 title: tenant
+description: tenant stage
 ---
-# `tenant` stage
+# tenant
 
 The tenant stage is an action stage that sets the tenant ID for the log entry
 picking it from a field in the extracted data map. If the field is missing, the
-default promtail client [`tenant_id`](../../configuration#client_config) will
+default promtail client [`tenant_id`]({{<relref "../configuration#clients">}}) will
 be used.
 
 
@@ -13,9 +14,13 @@ be used.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID.
-  # Either source or value config option is required, but not both (they
+  # Either label, source or value config option is required, but not all (they
   # are mutually exclusive).
+
+  # Name from labels to whose value should be set as tenant ID.
+  [ label: <string> ]
+
+  # Name from extracted data to whose value should be set as tenant ID.
   [ source: <string> ]
 
   # Value to use to set the tenant ID when this stage is executed. Useful
@@ -81,3 +86,28 @@ The pipeline would:
 1. Process the `match` stage checking if the `{app="api"}` selector matches
    and - whenever it matches - run the sub stages. The `tenant` sub stage
    would override the tenant with the value `"team-api"`.
+
+### Example: extract the tenant ID from kubernetes sd
+
+```yaml
+scrape_configs:
+  - job_name: kubernetes-pods-name
+
+    kubernetes_sd_configs:
+      - role: pod
+
+    relabel_configs:
+      - action: replace
+        source_labels:
+          - __meta_kubernetes_namespace
+        target_label: namespace
+
+    pipeline_stages:
+    - match:
+        selector: '{namespace=".+"}'
+        stages:
+          - tenant:
+              label: "namespace"
+    - output:
+         source: message
+```

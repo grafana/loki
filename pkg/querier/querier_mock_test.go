@@ -6,23 +6,26 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/ring"
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-
+	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -40,17 +43,38 @@ func newQuerierClientMock() *querierClientMock {
 
 func (c *querierClientMock) Query(ctx context.Context, in *logproto.QueryRequest, opts ...grpc.CallOption) (logproto.Querier_QueryClient, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(logproto.Querier_QueryClient), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (logproto.Querier_QueryClient)(nil), args.Error(1)
+	}
+	return res.(logproto.Querier_QueryClient), args.Error(1)
+}
+
+func (c *querierClientMock) QuerySample(ctx context.Context, in *logproto.SampleQueryRequest, opts ...grpc.CallOption) (logproto.Querier_QuerySampleClient, error) {
+	args := c.Called(ctx, in, opts)
+	res := args.Get(0)
+	if res == nil {
+		return (logproto.Querier_QuerySampleClient)(nil), args.Error(1)
+	}
+	return res.(logproto.Querier_QuerySampleClient), args.Error(1)
 }
 
 func (c *querierClientMock) Label(ctx context.Context, in *logproto.LabelRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.LabelResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.LabelResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Tail(ctx context.Context, in *logproto.TailRequest, opts ...grpc.CallOption) (logproto.Querier_TailClient, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(logproto.Querier_TailClient), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (logproto.Querier_TailClient)(nil), args.Error(1)
+	}
+	return res.(logproto.Querier_TailClient), args.Error(1)
 }
 
 func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesRequest, opts ...grpc.CallOption) (*logproto.SeriesResponse, error) {
@@ -64,7 +88,20 @@ func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesReque
 
 func (c *querierClientMock) TailersCount(ctx context.Context, in *logproto.TailersCountRequest, opts ...grpc.CallOption) (*logproto.TailersCountResponse, error) {
 	args := c.Called(ctx, in, opts)
-	return args.Get(0).(*logproto.TailersCountResponse), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.TailersCountResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.TailersCountResponse), args.Error(1)
+}
+
+func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChunkIDsRequest, opts ...grpc.CallOption) (*logproto.GetChunkIDsResponse, error) {
+	args := c.Called(ctx, in, opts)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.GetChunkIDsResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Context() context.Context {
@@ -86,7 +123,7 @@ func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory 
 // mockIngesterClientConfig returns an ingester client config suitable for testing
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
-		PoolConfig: distributor.PoolConfig{
+		PoolConfig: clientpool.PoolConfig{
 			ClientCleanupPeriod:  1 * time.Minute,
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
@@ -138,6 +175,49 @@ func (c *queryClientMock) RecvMsg(m interface{}) error {
 }
 
 func (c *queryClientMock) Context() context.Context {
+	return context.Background()
+}
+
+// queryClientMock is a mockable version of Querier_QueryClient
+type querySampleClientMock struct {
+	util.ExtendedMock
+	logproto.Querier_QueryClient
+}
+
+func newQuerySampleClientMock() *querySampleClientMock {
+	return &querySampleClientMock{}
+}
+
+func (c *querySampleClientMock) Recv() (*logproto.SampleQueryResponse, error) {
+	args := c.Called()
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.SampleQueryResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.SampleQueryResponse), args.Error(1)
+}
+
+func (c *querySampleClientMock) Header() (grpc_metadata.MD, error) {
+	return nil, nil
+}
+
+func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
+	return nil
+}
+
+func (c *querySampleClientMock) CloseSend() error {
+	return nil
+}
+
+func (c *querySampleClientMock) SendMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) RecvMsg(m interface{}) error {
+	return nil
+}
+
+func (c *querySampleClientMock) Context() context.Context {
 	return context.Background()
 }
 
@@ -207,6 +287,8 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
+func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer) {}
+
 func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
@@ -225,14 +307,9 @@ func (s *storeMock) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return res.(iter.SampleIterator), args.Error(1)
 }
 
-func (s *storeMock) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([]chunk.Chunk), args.Error(1)
-}
-
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*chunk.Fetcher), args.Error(2)
+	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*fetcher.Fetcher), args.Error(2)
 }
 
 func (s *storeMock) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -243,7 +320,7 @@ func (s *storeMock) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
-func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
 	return args.Get(0).([]string), args.Error(1)
 }
@@ -253,29 +330,29 @@ func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, 
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+func (s *storeMock) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	panic("don't call me please")
 }
 
-func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+func (s *storeMock) GetSchemaConfigs() []config.PeriodConfig {
 	panic("don't call me please")
 }
 
-func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
-	panic("don't call me please")
-}
-
-func (s *storeMock) GetSchemaConfigs() []chunk.PeriodConfig {
-	panic("don't call me please")
-}
-
-func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *storeMock) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
 	if res == nil {
 		return []logproto.SeriesIdentifier(nil), args.Error(1)
 	}
 	return res.([]logproto.SeriesIdentifier), args.Error(1)
+}
+
+func (s *storeMock) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	panic("don't call me please")
+}
+
+func (s *storeMock) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
 }
 
 func (s *storeMock) Stop() {
@@ -287,11 +364,11 @@ type readRingMock struct {
 	replicationSet ring.ReplicationSet
 }
 
-func newReadRingMock(ingesters []ring.InstanceDesc) *readRingMock {
+func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
 	return &readRingMock{
 		replicationSet: ring.ReplicationSet{
-			Ingesters: ingesters,
-			MaxErrors: 0,
+			Instances: ingesters,
+			MaxErrors: maxErrors,
 		},
 	}
 }
@@ -309,7 +386,7 @@ func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.InstanceDes
 func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
-		r.replicationSet.Ingesters = r.replicationSet.Ingesters[:size]
+		r.replicationSet.Instances = r.replicationSet.Instances[:size]
 		return &r
 	}(*r)
 }
@@ -331,7 +408,7 @@ func (r *readRingMock) ReplicationFactor() int {
 }
 
 func (r *readRingMock) InstancesCount() int {
-	return len(r.replicationSet.Ingesters)
+	return len(r.replicationSet.Instances)
 }
 
 func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
@@ -339,7 +416,7 @@ func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
 }
 
 func (r *readRingMock) HasInstance(instanceID string) bool {
-	for _, ing := range r.replicationSet.Ingesters {
+	for _, ing := range r.replicationSet.Instances {
 		if ing.Addr != instanceID {
 			return true
 		}
@@ -353,10 +430,14 @@ func (r *readRingMock) ShuffleShardWithLookback(identifier string, size int, loo
 
 func (r *readRingMock) CleanupShuffleShardCache(identifier string) {}
 
+func (r *readRingMock) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+	return 0, nil
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
-	})
+	}, 0)
 }
 
 func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
@@ -373,6 +454,13 @@ func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
+}
+
+// mockSampleIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from
+func mockSampleIterator(client iter.QuerySampleClient) iter.SampleIterator {
+	return iter.NewSampleQueryClientIterator(client)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and
@@ -395,4 +483,40 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 		Entries: entries,
 		Labels:  labels,
 	}
+}
+
+type querierMock struct {
+	util.ExtendedMock
+}
+
+func newQuerierMock() *querierMock {
+	return &querierMock{}
+}
+
+func (q *querierMock) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	args := q.Called(ctx, params)
+	return args.Get(0).(func() iter.EntryIterator)(), args.Error(1)
+}
+
+func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	args := q.Called(ctx, params)
+	return args.Get(0).(func() iter.SampleIterator)(), args.Error(1)
+}
+
+func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	args := q.Called(ctx, req)
+	return args.Get(0).(*logproto.LabelResponse), args.Error(1)
+}
+
+func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	args := q.Called(ctx, req)
+	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
+}
+
+func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	return nil, errors.New("querierMock.Tail() has not been mocked")
+}
+
+func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	return nil, nil
 }

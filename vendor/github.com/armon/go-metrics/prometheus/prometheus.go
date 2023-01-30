@@ -1,3 +1,4 @@
+//go:build go1.9
 // +build go1.9
 
 package prometheus
@@ -5,7 +6,6 @@ package prometheus
 import (
 	"fmt"
 	"log"
-	"math"
 	"regexp"
 	"strings"
 	"sync"
@@ -21,6 +21,7 @@ var (
 	// PrometheusSink.
 	DefaultPrometheusOpts = PrometheusOpts{
 		Expiration: 60 * time.Second,
+		Name:       "default_prometheus_sink",
 	}
 )
 
@@ -31,17 +32,16 @@ type PrometheusOpts struct {
 	Expiration time.Duration
 	Registerer prometheus.Registerer
 
-	// Gauges, Summaries, and Counters allow us to pre-declare metrics by giving their Name, Help, and ConstLabels to
-	// the PrometheusSink when it is created. Metrics declared in this way will be initialized at zero and will not be
-	// deleted when their expiry is reached.
-	// - Gauges and Summaries will be set to NaN when they expire.
-	// - Counters continue to Collect their last known value.
-	// Ex:
-	// PrometheusOpts{
+	// Gauges, Summaries, and Counters allow us to pre-declare metrics by giving
+	// their Name, Help, and ConstLabels to the PrometheusSink when it is created.
+	// Metrics declared in this way will be initialized at zero and will not be
+	// deleted or altered when their expiry is reached.
+	//
+	// Ex: PrometheusOpts{
 	//     Expiration: 10 * time.Second,
 	//     Gauges: []GaugeDefinition{
 	//         {
-	//	         Name: []string{ "application", "component", "measurement"},
+	//           Name: []string{ "application", "component", "measurement"},
 	//           Help: "application_component_measurement provides an example of how to declare static metrics",
 	//           ConstLabels: []metrics.Label{ { Name: "my_label", Value: "does_not_change" }, },
 	//         },
@@ -50,6 +50,7 @@ type PrometheusOpts struct {
 	GaugeDefinitions   []GaugeDefinition
 	SummaryDefinitions []SummaryDefinition
 	CounterDefinitions []CounterDefinition
+	Name               string
 }
 
 type PrometheusSink struct {
@@ -59,6 +60,7 @@ type PrometheusSink struct {
 	counters   sync.Map
 	expiration time.Duration
 	help       map[string]string
+	name       string
 }
 
 // GaugeDefinition can be provided to PrometheusOpts to declare a constant gauge that is not deleted on expiry.
@@ -108,12 +110,17 @@ func NewPrometheusSink() (*PrometheusSink, error) {
 
 // NewPrometheusSinkFrom creates a new PrometheusSink using the passed options.
 func NewPrometheusSinkFrom(opts PrometheusOpts) (*PrometheusSink, error) {
+	name := opts.Name
+	if name == "" {
+		name = "default_prometheus_sink"
+	}
 	sink := &PrometheusSink{
 		gauges:     sync.Map{},
 		summaries:  sync.Map{},
 		counters:   sync.Map{},
 		expiration: opts.Expiration,
 		help:       make(map[string]string),
+		name:       name,
 	}
 
 	initGauges(&sink.gauges, opts.GaugeDefinitions, sink.help)
@@ -128,32 +135,39 @@ func NewPrometheusSinkFrom(opts PrometheusOpts) (*PrometheusSink, error) {
 	return sink, reg.Register(sink)
 }
 
-// Describe is needed to meet the Collector interface.
+// Describe sends a Collector.Describe value from the descriptor created around PrometheusSink.Name
+// Note that we cannot describe all the metrics (gauges, counters, summaries) in the sink as
+// metrics can be added at any point during the lifecycle of the sink, which does not respect
+// the idempotency aspect of the Collector.Describe() interface
 func (p *PrometheusSink) Describe(c chan<- *prometheus.Desc) {
-	// We must emit some description otherwise an error is returned. This
-	// description isn't shown to the user!
-	prometheus.NewGauge(prometheus.GaugeOpts{Name: "Dummy", Help: "Dummy"}).Describe(c)
+	// dummy value to be able to register and unregister "empty" sinks
+	// Note this is not actually retained in the PrometheusSink so this has no side effects
+	// on the caller's sink. So it shouldn't show up to any of its consumers.
+	prometheus.NewGauge(prometheus.GaugeOpts{Name: p.name, Help: p.name}).Describe(c)
 }
 
 // Collect meets the collection interface and allows us to enforce our expiration
 // logic to clean up ephemeral metrics if their value haven't been set for a
 // duration exceeding our allowed expiration time.
 func (p *PrometheusSink) Collect(c chan<- prometheus.Metric) {
+	p.collectAtTime(c, time.Now())
+}
+
+// collectAtTime allows internal testing of the expiry based logic here without
+// mocking clocks or making tests timing sensitive.
+func (p *PrometheusSink) collectAtTime(c chan<- prometheus.Metric, t time.Time) {
 	expire := p.expiration != 0
-	now := time.Now()
 	p.gauges.Range(func(k, v interface{}) bool {
 		if v == nil {
 			return true
 		}
 		g := v.(*gauge)
 		lastUpdate := g.updatedAt
-		if expire && lastUpdate.Add(p.expiration).Before(now) {
+		if expire && lastUpdate.Add(p.expiration).Before(t) {
 			if g.canDelete {
 				p.gauges.Delete(k)
 				return true
 			}
-			// We have not observed the gauge this interval so we don't know its value.
-			g.Set(math.NaN())
 		}
 		g.Collect(c)
 		return true
@@ -164,13 +178,11 @@ func (p *PrometheusSink) Collect(c chan<- prometheus.Metric) {
 		}
 		s := v.(*summary)
 		lastUpdate := s.updatedAt
-		if expire && lastUpdate.Add(p.expiration).Before(now) {
+		if expire && lastUpdate.Add(p.expiration).Before(t) {
 			if s.canDelete {
 				p.summaries.Delete(k)
 				return true
 			}
-			// We have observed nothing in this interval.
-			s.Observe(math.NaN())
 		}
 		s.Collect(c)
 		return true
@@ -181,12 +193,11 @@ func (p *PrometheusSink) Collect(c chan<- prometheus.Metric) {
 		}
 		count := v.(*counter)
 		lastUpdate := count.updatedAt
-		if expire && lastUpdate.Add(p.expiration).Before(now) {
+		if expire && lastUpdate.Add(p.expiration).Before(t) {
 			if count.canDelete {
 				p.counters.Delete(k)
 				return true
 			}
-			// Counters remain at their previous value when not observed, so we do not set it to NaN.
 		}
 		count.Collect(c)
 		return true
@@ -400,6 +411,7 @@ func NewPrometheusPushSink(address string, pushInterval time.Duration, name stri
 		summaries:  sync.Map{},
 		counters:   sync.Map{},
 		expiration: 60 * time.Second,
+		name:       "default_prometheus_sink",
 	}
 
 	pusher := push.New(address, name).Collector(promSink)
@@ -435,6 +447,10 @@ func (s *PrometheusPushSink) flushMetrics() {
 	}()
 }
 
+// Shutdown tears down the PrometheusPushSink, and blocks while flushing metrics to the backend.
 func (s *PrometheusPushSink) Shutdown() {
 	close(s.stopChan)
+	// Closing the channel only stops the running goroutine that pushes metrics.
+	// To minimize the chance of data loss pusher.Push is called one last time.
+	s.pusher.Push()
 }

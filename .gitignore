@@ -10,14 +10,16 @@ requirements.lock
 mixin/vendor/
 cmd/loki/loki
 cmd/logcli/logcli
-cmd/promtail/promtail
+clients/cmd/promtail/promtail
 cmd/loki/loki-debug
-cmd/promtail/promtail-debug
-cmd/docker-driver/docker-driver
+clients/cmd/promtail/promtail-debug
+clients/cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
-cmd/fluent-bit/out_loki.so
-cmd/fluent-bit/out_loki.h
+cmd/loki-canary-test/loki-canary-test
+clients/cmd/fluent-bit/out_grafana_loki.so
+clients/cmd/fluent-bit/out_grafana_loki.h
 cmd/migrate/migrate
+cmd/querytee/querytee
 /loki
 /promtail
 /logcli
@@ -26,9 +28,15 @@ dlv
 rootfs/
 dist
 coverage.txt
+test_results.txt
 .DS_Store
 .aws-sam
 .idea
+pkg/loki/wal
+
+# Workspaces
+*.work
+*.work.sum
 
 # emacs
 .#*
@@ -37,3 +45,9 @@ coverage.txt
 .terraform*
 *.tfstate*
 *.tfvars
+
+# vscode
+.vscode
+
+# nix
+result

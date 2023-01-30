@@ -13,6 +13,11 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/bsonrw"
 	"go.mongodb.org/mongo-driver/bson/bsontype"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+var (
+	emptyValue = reflect.Value{}
 )
 
 // Marshaler is an interface implemented by types that can marshal themselves
@@ -39,7 +44,7 @@ type Unmarshaler interface {
 }
 
 // ValueUnmarshaler is an interface implemented by types that can unmarshal a
-// BSON value representaiton of themselves. The BSON bytes and type can be
+// BSON value representation of themselves. The BSON bytes and type can be
 // assumed to be valid. UnmarshalBSONValue must copy the BSON value bytes if it
 // wishes to retain the data after returning.
 type ValueUnmarshaler interface {
@@ -114,11 +119,32 @@ type EncodeContext struct {
 type DecodeContext struct {
 	*Registry
 	Truncate bool
+
 	// Ancestor is the type of a containing document. This is mainly used to determine what type
 	// should be used when decoding an embedded document into an empty interface. For example, if
 	// Ancestor is a bson.M, BSON embedded document values being decoded into an empty interface
 	// will be decoded into a bson.M.
+	//
+	// Deprecated: Use DefaultDocumentM or DefaultDocumentD instead.
 	Ancestor reflect.Type
+
+	// defaultDocumentType specifies the Go type to decode top-level and nested BSON documents into. In particular, the
+	// usage for this field is restricted to data typed as "interface{}" or "map[string]interface{}". If DocumentType is
+	// set to a type that a BSON document cannot be unmarshaled into (e.g. "string"), unmarshalling will result in an
+	// error. DocumentType overrides the Ancestor field.
+	defaultDocumentType reflect.Type
+}
+
+// DefaultDocumentM will decode empty documents using the primitive.M type. This behavior is restricted to data typed as
+// "interface{}" or "map[string]interface{}".
+func (dc *DecodeContext) DefaultDocumentM() {
+	dc.defaultDocumentType = reflect.TypeOf(primitive.M{})
+}
+
+// DefaultDocumentD will decode empty documents using the primitive.D type. This behavior is restricted to data typed as
+// "interface{}" or "map[string]interface{}".
+func (dc *DecodeContext) DefaultDocumentD() {
+	dc.defaultDocumentType = reflect.TypeOf(primitive.D{})
 }
 
 // ValueCodec is the interface that groups the methods to encode and decode
@@ -154,6 +180,55 @@ type ValueDecoderFunc func(DecodeContext, bsonrw.ValueReader, reflect.Value) err
 // DecodeValue implements the ValueDecoder interface.
 func (fn ValueDecoderFunc) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val reflect.Value) error {
 	return fn(dc, vr, val)
+}
+
+// typeDecoder is the interface implemented by types that can handle the decoding of a value given its type.
+type typeDecoder interface {
+	decodeType(DecodeContext, bsonrw.ValueReader, reflect.Type) (reflect.Value, error)
+}
+
+// typeDecoderFunc is an adapter function that allows a function with the correct signature to be used as a typeDecoder.
+type typeDecoderFunc func(DecodeContext, bsonrw.ValueReader, reflect.Type) (reflect.Value, error)
+
+func (fn typeDecoderFunc) decodeType(dc DecodeContext, vr bsonrw.ValueReader, t reflect.Type) (reflect.Value, error) {
+	return fn(dc, vr, t)
+}
+
+// decodeAdapter allows two functions with the correct signatures to be used as both a ValueDecoder and typeDecoder.
+type decodeAdapter struct {
+	ValueDecoderFunc
+	typeDecoderFunc
+}
+
+var _ ValueDecoder = decodeAdapter{}
+var _ typeDecoder = decodeAdapter{}
+
+// decodeTypeOrValue calls decoder.decodeType is decoder is a typeDecoder. Otherwise, it allocates a new element of type
+// t and calls decoder.DecodeValue on it.
+func decodeTypeOrValue(decoder ValueDecoder, dc DecodeContext, vr bsonrw.ValueReader, t reflect.Type) (reflect.Value, error) {
+	td, _ := decoder.(typeDecoder)
+	return decodeTypeOrValueWithInfo(decoder, td, dc, vr, t, true)
+}
+
+func decodeTypeOrValueWithInfo(vd ValueDecoder, td typeDecoder, dc DecodeContext, vr bsonrw.ValueReader, t reflect.Type, convert bool) (reflect.Value, error) {
+	if td != nil {
+		val, err := td.decodeType(dc, vr, t)
+		if err == nil && convert && val.Type() != t {
+			// This conversion step is necessary for slices and maps. If a user declares variables like:
+			//
+			// type myBool bool
+			// var m map[string]myBool
+			//
+			// and tries to decode BSON bytes into the map, the decoding will fail if this conversion is not present
+			// because we'll try to assign a value of type bool to one of type myBool.
+			val = val.Convert(t)
+		}
+		return val, err
+	}
+
+	val := reflect.New(t).Elem()
+	err := vd.DecodeValue(dc, vr, val)
+	return val, err
 }
 
 // CodecZeroer is the interface implemented by Codecs that can also determine if

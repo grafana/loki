@@ -31,7 +31,7 @@ var isInitialism func(string) bool
 // GoNamePrefixFunc sets an optional rule to prefix go names
 // which do not start with a letter.
 //
-// e.g. to help converting "123" into "{prefix}123"
+// e.g. to help convert "123" into "{prefix}123"
 //
 // The default is to prefix with "X"
 var GoNamePrefixFunc func(string) string
@@ -91,7 +91,7 @@ func init() {
 }
 
 const (
-	//collectionFormatComma = "csv"
+	// collectionFormatComma = "csv"
 	collectionFormatSpace = "ssv"
 	collectionFormatTab   = "tsv"
 	collectionFormatPipe  = "pipes"
@@ -99,10 +99,11 @@ const (
 )
 
 // JoinByFormat joins a string array by a known format (e.g. swagger's collectionFormat attribute):
-//		ssv: space separated value
-//		tsv: tab separated value
-//		pipes: pipe (|) separated value
-//		csv: comma separated value (default)
+//
+//	ssv: space separated value
+//	tsv: tab separated value
+//	pipes: pipe (|) separated value
+//	csv: comma separated value (default)
 func JoinByFormat(data []string, format string) []string {
 	if len(data) == 0 {
 		return data
@@ -124,11 +125,11 @@ func JoinByFormat(data []string, format string) []string {
 }
 
 // SplitByFormat splits a string by a known format:
-//		ssv: space separated value
-//		tsv: tab separated value
-//		pipes: pipe (|) separated value
-//		csv: comma separated value (default)
 //
+//	ssv: space separated value
+//	tsv: tab separated value
+//	pipes: pipe (|) separated value
+//	csv: comma separated value (default)
 func SplitByFormat(data, format string) []string {
 	if data == "" {
 		return nil
@@ -370,7 +371,7 @@ func IsZero(data interface{}) bool {
 // AddInitialisms add additional initialisms
 func AddInitialisms(words ...string) {
 	for _, word := range words {
-		//commonInitialisms[upper(word)] = true
+		// commonInitialisms[upper(word)] = true
 		commonInitialisms.add(upper(word))
 	}
 	// sort again

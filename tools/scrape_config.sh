@@ -9,13 +9,13 @@
 # ksonnet library.
 #########################################
 
-BASE=$(dirname $0)
+BASE=$(dirname "$0")
 
 target=${1:-shell}
 
-case $target in
+case "${target}" in
     "shell")
-        (cd $BASE; jsonnet -e '((import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { pipeline_stages: ["<parser>"]}}}).promtail_config' | ytools 2>/dev/null)
+        (cd "${BASE}" || exit; jsonnet -e '((import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { pipeline_stages: ["<parser>"]}}}).promtail_config' | ytools 2>/dev/null)
         ;;
 
     *)

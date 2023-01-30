@@ -2,7 +2,7 @@
 Package client is a Go client for the Docker Engine API.
 
 For more information about the Engine API, see the documentation:
-https://docs.docker.com/engine/reference/api/
+https://docs.docker.com/engine/api/
 
 Usage
 
@@ -135,9 +135,6 @@ func NewClientWithOpts(ops ...Opt) (*Client, error) {
 		}
 	}
 
-	if _, ok := c.client.Transport.(http.RoundTripper); !ok {
-		return nil, fmt.Errorf("unable to verify TLS configuration, invalid transport %v", c.client.Transport)
-	}
 	if c.scheme == "" {
 		c.scheme = "http"
 

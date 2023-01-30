@@ -10,10 +10,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 )
 
 const (
@@ -50,14 +48,40 @@ func shards(r *http.Request) []string {
 
 func bounds(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
-	start, err := parseTimestamp(r.Form.Get("start"), now.Add(-defaultSince))
-	if err != nil {
-		return time.Time{}, time.Time{}, err
+	start := r.Form.Get("start")
+	end := r.Form.Get("end")
+	since := r.Form.Get("since")
+	return determineBounds(now, start, end, since)
+}
+
+func determineBounds(now time.Time, startString, endString, sinceString string) (time.Time, time.Time, error) {
+	since := defaultSince
+	if sinceString != "" {
+		d, err := model.ParseDuration(sinceString)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'since' parameter")
+		}
+		since = time.Duration(d)
 	}
-	end, err := parseTimestamp(r.Form.Get("end"), now)
+
+	end, err := parseTimestamp(endString, now)
 	if err != nil {
-		return time.Time{}, time.Time{}, err
+		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'end' parameter")
 	}
+
+	// endOrNow is used to apply a default for the start time or an offset if 'since' is provided.
+	// we want to use the 'end' time so long as it's not in the future as this should provide
+	// a more intuitive experience when end time is in the future.
+	endOrNow := end
+	if end.After(now) {
+		endOrNow = now
+	}
+
+	start, err := parseTimestamp(startString, endOrNow.Add(-since))
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'start' parameter")
+	}
+
 	return start, end, nil
 }
 
@@ -75,23 +99,6 @@ func interval(r *http.Request) (time.Duration, error) {
 		return 0, nil
 	}
 	return parseSecondsOrDuration(value)
-}
-
-// Match extracts and parses multiple matcher groups from a slice of strings
-func Match(xs []string) ([][]*labels.Matcher, error) {
-	groups := make([][]*labels.Matcher, 0, len(xs))
-	for _, x := range xs {
-		ms, err := logql.ParseMatchers(x)
-		if err != nil {
-			return nil, err
-		}
-		if len(ms) == 0 {
-			return nil, errors.Errorf("0 matchers in group: %s", x)
-		}
-		groups = append(groups, ms)
-	}
-
-	return groups, nil
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,

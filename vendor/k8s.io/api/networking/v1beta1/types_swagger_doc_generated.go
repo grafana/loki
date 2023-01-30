@@ -29,7 +29,7 @@ package v1beta1
 // AUTO-GENERATED FUNCTIONS START HERE. DO NOT EDIT.
 var map_HTTPIngressPath = map[string]string{
 	"":         "HTTPIngressPath associates a path with a backend. Incoming urls matching the path are forwarded to the backend.",
-	"path":     "Path is matched against the path of an incoming request. Currently it can contain characters disallowed from the conventional \"path\" part of a URL as defined by RFC 3986. Paths must begin with a '/'. When unspecified, all paths from incoming requests are matched.",
+	"path":     "Path is matched against the path of an incoming request. Currently it can contain characters disallowed from the conventional \"path\" part of a URL as defined by RFC 3986. Paths must begin with a '/' and must be present when using PathType with value \"Exact\" or \"Prefix\".",
 	"pathType": "PathType determines the interpretation of the Path matching. PathType can be one of the following values: * Exact: Matches the URL path exactly. * Prefix: Matches based on a URL path prefix split by '/'. Matching is\n  done on a path element by element basis. A path element refers is the\n  list of labels in the path split by the '/' separator. A request is a\n  match for path p if every p is an element-wise prefix of p of the\n  request path. Note that if the last element of the path is a substring\n  of the last element in request path, it is not a match (e.g. /foo/bar\n  matches /foo/bar/baz, but does not match /foo/barbaz).\n* ImplementationSpecific: Interpretation of the Path matching is up to\n  the IngressClass. Implementations can treat this as a separate PathType\n  or treat it identically to Prefix or Exact path types.\nImplementations are required to support all path types. Defaults to ImplementationSpecific.",
 	"backend":  "Backend defines the referenced service endpoint to which the traffic will be forwarded to.",
 }
@@ -89,6 +89,19 @@ func (IngressClassList) SwaggerDoc() map[string]string {
 	return map_IngressClassList
 }
 
+var map_IngressClassParametersReference = map[string]string{
+	"":          "IngressClassParametersReference identifies an API object. This can be used to specify a cluster or namespace-scoped resource.",
+	"apiGroup":  "APIGroup is the group for the resource being referenced. If APIGroup is not specified, the specified Kind must be in the core API group. For any other third-party types, APIGroup is required.",
+	"kind":      "Kind is the type of resource being referenced.",
+	"name":      "Name is the name of resource being referenced.",
+	"scope":     "Scope represents if this refers to a cluster or namespace scoped resource. This may be set to \"Cluster\" (default) or \"Namespace\".",
+	"namespace": "Namespace is the namespace of the resource being referenced. This field is required when scope is set to \"Namespace\" and must be unset when scope is set to \"Cluster\".",
+}
+
+func (IngressClassParametersReference) SwaggerDoc() map[string]string {
+	return map_IngressClassParametersReference
+}
+
 var map_IngressClassSpec = map[string]string{
 	"":           "IngressClassSpec provides information about the class of an Ingress.",
 	"controller": "Controller refers to the name of the controller that should handle this class. This allows for different \"flavors\" that are controlled by the same controller. For example, you may have different Parameters for the same implementing controller. This should be specified as a domain-prefixed path no more than 250 characters in length, e.g. \"acme.io/ingress-controller\". This field is immutable.",
@@ -107,6 +120,37 @@ var map_IngressList = map[string]string{
 
 func (IngressList) SwaggerDoc() map[string]string {
 	return map_IngressList
+}
+
+var map_IngressLoadBalancerIngress = map[string]string{
+	"":         "IngressLoadBalancerIngress represents the status of a load-balancer ingress point.",
+	"ip":       "IP is set for load-balancer ingress points that are IP based.",
+	"hostname": "Hostname is set for load-balancer ingress points that are DNS based.",
+	"ports":    "Ports provides information about the ports exposed by this LoadBalancer.",
+}
+
+func (IngressLoadBalancerIngress) SwaggerDoc() map[string]string {
+	return map_IngressLoadBalancerIngress
+}
+
+var map_IngressLoadBalancerStatus = map[string]string{
+	"":        "LoadBalancerStatus represents the status of a load-balancer.",
+	"ingress": "Ingress is a list containing ingress points for the load-balancer.",
+}
+
+func (IngressLoadBalancerStatus) SwaggerDoc() map[string]string {
+	return map_IngressLoadBalancerStatus
+}
+
+var map_IngressPortStatus = map[string]string{
+	"":         "IngressPortStatus represents the error condition of a service port",
+	"port":     "Port is the port number of the ingress port.",
+	"protocol": "Protocol is the protocol of the ingress port. The supported values are: \"TCP\", \"UDP\", \"SCTP\"",
+	"error":    "Error is to record the problem with the service port The format of the error shall comply with the following rules: - built-in error values shall be specified in this file and those shall use\n  CamelCase names\n- cloud provider specific error values must have names that comply with the\n  format foo.example.com/CamelCase.",
+}
+
+func (IngressPortStatus) SwaggerDoc() map[string]string {
+	return map_IngressPortStatus
 }
 
 var map_IngressRule = map[string]string{

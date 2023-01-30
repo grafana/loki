@@ -1,11 +1,10 @@
-FROM golang:1.16.2 as build
+FROM golang:1.19.5 as build
 
-ARG TOUCH_PROTOS
 COPY . /src/loki
 WORKDIR /src/loki
-RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make BUILD_IN_CONTAINER=false logcli
+RUN make clean && make BUILD_IN_CONTAINER=false logcli
 
-FROM alpine:3.13
+FROM alpine:3.16.2
 
 RUN apk add --no-cache ca-certificates
 

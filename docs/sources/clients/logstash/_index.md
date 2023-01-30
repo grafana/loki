@@ -1,11 +1,13 @@
 ---
 title: Logstash
+description: Logstash
+weight: 70
 ---
 # Logstash
 
-Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
+Grafana Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
 `logstash-output-loki` that enables shipping logs to a Loki
-instance or [Grafana Cloud](https://grafana.com/products/cloud/).
+instance or [Grafana Cloud](/products/cloud/).
 
 ## Installation
 
@@ -32,7 +34,7 @@ docker run -v `pwd`/loki-test.conf:/home/logstash/ --rm grafana/logstash-output-
 
 ### Kubernetes
 
-We also provides default helm values for scraping logs with Filebeat and forward them to Loki with logstash in our `loki-stack` umbrella chart.
+We also provide default helm values for scraping logs with Filebeat and forward them to Loki with logstash in our `loki-stack` umbrella chart.
 You can switch from Promtail to logstash by using the following command:
 
 ```bash
@@ -56,6 +58,8 @@ output {
     [tenant_id => string | default = nil | required=false]
 
     [message_field => string | default = "message" | required=false]
+    
+    [include_fields => array | default = [] | required=false]
 
     [batch_wait => number | default = 1(s) | required=false]
 
@@ -77,7 +81,7 @@ output {
 
     [ca_cert => path | default = nil | required=false]
 
-    [insecure_skip_verify => boolean | default = fasle | required=false]
+    [insecure_skip_verify => boolean | default = false | required=false]
   }
 }
 ```
@@ -102,8 +106,10 @@ Contains a `message` and `@timestamp` fields, which are respectively used to for
 
 > You can use a different property for the log line by using the configuration property [`message_field`](#message_field). If you also need to change the timestamp value use the Logstash `date` filter to change the `@timestamp` field.
 
-All other fields (except nested fields) will form the label set (key value pairs) attached to the log line. [This means you're responsible for mutating and dropping high cardinality labels](https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/) such as client IPs.
+All other fields (except nested fields) will form the label set (key value pairs) attached to the log line. [This means you're responsible for mutating and dropping high cardinality labels](/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/) such as client IPs.
 You can usually do so by using a [`mutate`](https://www.elastic.co/guide/en/logstash/current/plugins-filters-mutate.html) filter.
+
+**Note:** In version 1.1.0 and greater of this plugin you can also specify a list of labels to allowlist via the `include_fields` configuration.
 
 For example the configuration below :
 
@@ -192,16 +198,20 @@ filter {
 The url of the Loki server to send logs to.
 When sending data the push path need to also be provided e.g. `http://localhost:3100/loki/api/v1/push`.
 
-If you want to send to [GrafanaCloud](https://grafana.com/products/cloud/) you would use `https://logs-prod-us-central1.grafana.net/loki/api/v1/push`.
+If you want to send to [GrafanaCloud](/products/cloud/) you would use `https://logs-prod-us-central1.grafana.net/loki/api/v1/push`.
 
 #### username / password
 
 Specify a username and password if the Loki server requires basic authentication.
-If using the [GrafanaLab's hosted Loki](https://grafana.com/products/cloud/), the username needs to be set to your instance/user id and the password should be a Grafana.com api key.
+If using the [GrafanaLab's hosted Loki](/products/cloud/), the username needs to be set to your instance/user id and the password should be a Grafana.com api key.
 
 #### message_field
 
 Message field to use for log lines. You can use logstash key accessor language to grab nested property, for example : `[log][message]`.
+
+#### include_fields
+
+An array of fields which will be mapped to labels and sent to Loki, when this list is configured **only** these fields will be sent, all other fields will be ignored.
 
 #### batch_wait
 
@@ -223,7 +233,7 @@ Maximum backoff time between retries
 
 ##### retries => 10
 
-Maximum number of retries to do
+Maximum number of retries to do. Setting it to `0` will retry indefinitely.
 
 #### tenant_id
 
@@ -258,7 +268,7 @@ filter {
     }
   }
   mutate {
-    remove_field => ["tags"]
+    remove_field => ["tags"]  # Note: with include_fields defined below this wouldn't be necessary
   }
 }
 
@@ -272,6 +282,7 @@ output {
     min_delay => 3
     max_delay => 500
     message_field => "message"
+    include_fields => ["container_name","namespace","pod","host"]
   }
   # stdout { codec => rubydebug }
 }

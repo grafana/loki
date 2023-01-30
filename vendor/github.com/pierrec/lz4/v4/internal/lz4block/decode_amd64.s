@@ -2,12 +2,13 @@
 // +build gc
 // +build !noasm
 
+#include "go_asm.h"
 #include "textflag.h"
 
 // AX scratch
 // BX scratch
-// CX scratch
-// DX token
+// CX literal and match lengths
+// DX token, match offset
 //
 // DI &dst
 // SI &src
@@ -16,9 +17,11 @@
 // R11 &dst
 // R12 short output end
 // R13 short input end
-// func decodeBlock(dst, src []byte) int
-// using 50 bytes of stack currently
-TEXT ·decodeBlock(SB), NOSPLIT, $64-56
+// R14 &dict
+// R15 len(dict)
+
+// func decodeBlock(dst, src, dict []byte) int
+TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 	MOVQ dst_base+0(FP), DI
 	MOVQ DI, R11
 	MOVQ dst_len+8(FP), R8
@@ -30,6 +33,9 @@ TEXT ·decodeBlock(SB), NOSPLIT, $64-56
 	JE   err_corrupt
 	ADDQ SI, R9
 
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
+
 	// shortcut ends
 	// short output end
 	MOVQ R8, R12
@@ -38,28 +44,26 @@ TEXT ·decodeBlock(SB), NOSPLIT, $64-56
 	MOVQ R9, R13
 	SUBQ $16, R13
 
-loop:
-	// for si < len(src)
-	CMPQ SI, R9
-	JGE end
+	XORL CX, CX
 
+loop:
 	// token := uint32(src[si])
-	MOVBQZX (SI), DX
+	MOVBLZX (SI), DX
 	INCQ SI
 
 	// lit_len = token >> 4
 	// if lit_len > 0
 	// CX = lit_len
-	MOVQ DX, CX
-	SHRQ $4, CX
+	MOVL DX, CX
+	SHRL $4, CX
 
 	// if lit_len != 0xF
-	CMPQ CX, $0xF
-	JEQ lit_len_loop_pre
+	CMPL CX, $0xF
+	JEQ  lit_len_loop
 	CMPQ DI, R12
-	JGE lit_len_loop_pre
+	JAE  copy_literal
 	CMPQ SI, R13
-	JGE lit_len_loop_pre
+	JAE  copy_literal
 
 	// copy shortcut
 
@@ -78,28 +82,32 @@ loop:
 	ADDQ CX, DI
 	ADDQ CX, SI
 
-	MOVQ DX, CX
-	ANDQ $0xF, CX
+	MOVL DX, CX
+	ANDL $0xF, CX
 
 	// The second stage: prepare for match copying, decode full info.
 	// If it doesn't work out, the info won't be wasted.
 	// offset := uint16(data[:2])
-	MOVWQZX (SI), DX
+	MOVWLZX (SI), DX
+	TESTL DX, DX
+	JE err_corrupt
 	ADDQ $2, SI
+	JC err_short_buf
 
 	MOVQ DI, AX
 	SUBQ DX, AX
+	JC err_corrupt
 	CMPQ AX, DI
-	JGT err_short_buf
+	JA err_short_buf
 
 	// if we can't do the second stage then jump straight to read the
 	// match length, we already have the offset.
-	CMPQ CX, $0xF
+	CMPL CX, $0xF
 	JEQ match_len_loop_pre
-	CMPQ DX, $8
+	CMPL DX, $8
 	JLT match_len_loop_pre
 	CMPQ AX, R11
-	JLT err_short_buf
+	JB match_len_loop_pre
 
 	// memcpy(op + 0, match + 0, 8);
 	MOVQ (AX), BX
@@ -111,68 +119,63 @@ loop:
 	MOVW 16(AX), BX
 	MOVW BX, 16(DI)
 
-	LEAQ 4(DI)(CX*1), DI // minmatch
+	LEAQ const_minMatch(DI)(CX*1), DI
 
 	// shortcut complete, load next token
-	JMP loop
+	JMP loopcheck
 
-lit_len_loop_pre:
-	// if lit_len > 0
-	CMPQ CX, $0
-	JEQ offset
-	CMPQ CX, $0xF
-	JNE copy_literal
-
+	// Read the rest of the literal length:
+	// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
 lit_len_loop:
-	// for src[si] == 0xFF
-	CMPB (SI), $0xFF
-	JNE lit_len_finalise
+	CMPQ SI, R9
+	JAE err_short_buf
 
-	// bounds check src[si+1]
-	LEAQ 1(SI), AX
-	CMPQ AX, R9
-	JGT err_short_buf
-
-	// lit_len += 0xFF
-	ADDQ $0xFF, CX
+	MOVBLZX (SI), BX
 	INCQ SI
-	JMP lit_len_loop
+	ADDQ BX, CX
 
-lit_len_finalise:
-	// lit_len += int(src[si])
-	// si++
-	MOVBQZX (SI), AX
-	ADDQ AX, CX
-	INCQ SI
+	CMPB BX, $0xFF
+	JE lit_len_loop
 
 copy_literal:
 	// bounds check src and dst
-	LEAQ (SI)(CX*1), AX
+	MOVQ SI, AX
+	ADDQ CX, AX
+	JC err_short_buf
 	CMPQ AX, R9
-	JGT err_short_buf
+	JA err_short_buf
 
-	LEAQ (DI)(CX*1), AX
-	CMPQ AX, R8
-	JGT err_short_buf
+	MOVQ DI, BX
+	ADDQ CX, BX
+	JC err_short_buf
+	CMPQ BX, R8
+	JA err_short_buf
 
-	// whats a good cut off to call memmove?
-	CMPQ CX, $16
+	// Copy literals of <=48 bytes through the XMM registers.
+	CMPQ CX, $48
 	JGT memmove_lit
 
-	// if len(dst[di:]) < 16
+	// if len(dst[di:]) < 48
 	MOVQ R8, AX
 	SUBQ DI, AX
-	CMPQ AX, $16
+	CMPQ AX, $48
 	JLT memmove_lit
 
-	// if len(src[si:]) < 16
-	MOVQ R9, AX
-	SUBQ SI, AX
-	CMPQ AX, $16
+	// if len(src[si:]) < 48
+	MOVQ R9, BX
+	SUBQ SI, BX
+	CMPQ BX, $48
 	JLT memmove_lit
 
 	MOVOU (SI), X0
+	MOVOU 16(SI), X1
+	MOVOU 32(SI), X2
 	MOVOU X0, (DI)
+	MOVOU X1, 16(DI)
+	MOVOU X2, 32(DI)
+
+	ADDQ CX, SI
+	ADDQ CX, DI
 
 	JMP finish_lit_copy
 
@@ -181,18 +184,20 @@ memmove_lit:
 	MOVQ DI, 0(SP)
 	MOVQ SI, 8(SP)
 	MOVQ CX, 16(SP)
-	// spill
+
+	// Spill registers. Increment SI, DI now so we don't need to save CX.
+	ADDQ CX, DI
+	ADDQ CX, SI
 	MOVQ DI, 24(SP)
 	MOVQ SI, 32(SP)
-	MOVQ CX, 40(SP) // need len to inc SI, DI after
-	MOVB DX, 48(SP)
+	MOVL DX, 40(SP)
+
 	CALL runtime·memmove(SB)
 
 	// restore registers
 	MOVQ 24(SP), DI
 	MOVQ 32(SP), SI
-	MOVQ 40(SP), CX
-	MOVB 48(SP), DX
+	MOVL 40(SP), DX
 
 	// recalc initial values
 	MOVQ dst_base+0(FP), R8
@@ -200,74 +205,62 @@ memmove_lit:
 	ADDQ dst_len+8(FP), R8
 	MOVQ src_base+24(FP), R9
 	ADDQ src_len+32(FP), R9
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
 	SUBQ $16, R13
 
 finish_lit_copy:
-	ADDQ CX, SI
-	ADDQ CX, DI
-
-	CMPQ SI, R9
-	JGE end
-
-offset:
 	// CX := mLen
 	// free up DX to use for offset
-	MOVQ DX, CX
+	MOVL DX, CX
+	ANDL $0xF, CX
 
-	LEAQ 2(SI), AX
-	CMPQ AX, R9
-	JGT err_short_buf
+	CMPQ SI, R9
+	JAE end
 
 	// offset
-	// DX := int(src[si]) | int(src[si+1])<<8
-	MOVWQZX (SI), DX
+	// si += 2
+	// DX := int(src[si-2]) | int(src[si-1])<<8
 	ADDQ $2, SI
+	JC err_short_buf
+	CMPQ SI, R9
+	JA err_short_buf
+	MOVWQZX -2(SI), DX
 
 	// 0 offset is invalid
-	CMPQ DX, $0
-	JEQ err_corrupt
-
-	ANDB $0xF, CX
+	TESTL DX, DX
+	JEQ   err_corrupt
 
 match_len_loop_pre:
 	// if mlen != 0xF
 	CMPB CX, $0xF
 	JNE copy_match
 
+	// do { BX = src[si++]; mlen += BX } while (BX == 0xFF).
 match_len_loop:
-	// for src[si] == 0xFF
-	// lit_len += 0xFF
-	CMPB (SI), $0xFF
-	JNE match_len_finalise
+	CMPQ SI, R9
+	JAE err_short_buf
 
-	// bounds check src[si+1]
-	LEAQ 1(SI), AX
-	CMPQ AX, R9
-	JGT err_short_buf
-
-	ADDQ $0xFF, CX
+	MOVBLZX (SI), BX
 	INCQ SI
-	JMP match_len_loop
+	ADDQ BX, CX
 
-match_len_finalise:
-	// lit_len += int(src[si])
-	// si++
-	MOVBQZX (SI), AX
-	ADDQ AX, CX
-	INCQ SI
+	CMPB BX, $0xFF
+	JE match_len_loop
 
 copy_match:
-	// mLen += minMatch
-	ADDQ $4, CX
+	ADDQ $const_minMatch, CX
 
 	// check we have match_len bytes left in dst
 	// di+match_len < len(dst)
-	LEAQ (DI)(CX*1), AX
+	MOVQ DI, AX
+	ADDQ CX, AX
+	JC err_short_buf
 	CMPQ AX, R8
-	JGT err_short_buf
+	JA err_short_buf
 
 	// DX = offset
 	// CX = match_len
@@ -277,13 +270,14 @@ copy_match:
 
 	// check BX is within dst
 	// if BX < &dst
+	JC copy_match_from_dict
 	CMPQ BX, R11
-	JLT err_short_buf
+	JBE copy_match_from_dict
 
 	// if offset + match_len < di
 	LEAQ (BX)(CX*1), AX
 	CMPQ DI, AX
-	JGT copy_interior_match
+	JA copy_interior_match
 
 	// AX := len(dst[:di])
 	// MOVQ DI, AX
@@ -303,11 +297,9 @@ copy_match_loop:
 	INCQ DI
 	INCQ BX
 	DECQ CX
+	JNZ copy_match_loop
 
-	CMPQ CX, $0
-	JGT copy_match_loop
-
-	JMP loop
+	JMP loopcheck
 
 copy_interior_match:
 	CMPQ CX, $16
@@ -323,23 +315,97 @@ copy_interior_match:
 	MOVOU X0, (DI)
 
 	ADDQ CX, DI
-	JMP loop
+	XORL CX, CX
+	JMP  loopcheck
+
+copy_match_from_dict:
+	// CX = match_len
+	// BX = &dst + (di - offset)
+
+	// AX = offset - di = dict_bytes_available => count of bytes potentially covered by the dictionary
+	MOVQ R11, AX
+	SUBQ BX, AX
+
+	// BX = len(dict) - dict_bytes_available
+	MOVQ R15, BX
+	SUBQ AX, BX
+	JS err_short_dict
+
+	ADDQ R14, BX
+
+	// if match_len > dict_bytes_available, match fits entirely within external dictionary : just copy
+	CMPQ CX, AX
+	JLT memmove_match
+
+	// The match stretches over the dictionary and our block
+	// 1) copy what comes from the dictionary
+	// AX = dict_bytes_available = copy_size
+	// BX = &dict_end - copy_size
+	// CX = match_len
+
+	// memmove(to, from, len)
+	MOVQ DI, 0(SP)
+	MOVQ BX, 8(SP)
+	MOVQ AX, 16(SP)
+	// store extra stuff we want to recover
+	// spill
+	MOVQ DI, 24(SP)
+	MOVQ SI, 32(SP)
+	MOVQ CX, 40(SP)
+	CALL runtime·memmove(SB)
+
+	// restore registers
+	MOVQ 16(SP), AX // copy_size
+	MOVQ 24(SP), DI
+	MOVQ 32(SP), SI
+	MOVQ 40(SP), CX // match_len
+
+	// recalc initial values
+	MOVQ dst_base+0(FP), R8
+	MOVQ R8, R11 // TODO: make these sensible numbers
+	ADDQ dst_len+8(FP), R8
+	MOVQ src_base+24(FP), R9
+	ADDQ src_len+32(FP), R9
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
+	MOVQ R8, R12
+	SUBQ $32, R12
+	MOVQ R9, R13
+	SUBQ $16, R13
+
+	// di+=copy_size
+	ADDQ AX, DI
+
+	// 2) copy the rest from the current block
+	// CX = match_len - copy_size = rest_size
+	SUBQ AX, CX
+	MOVQ R11, BX
+
+	// check if we have a copy overlap
+	// AX = &dst + rest_size
+	MOVQ CX, AX
+	ADDQ BX, AX
+	// if &dst + rest_size > di, copy byte by byte
+	CMPQ AX, DI
+
+	JA copy_match_loop
 
 memmove_match:
 	// memmove(to, from, len)
 	MOVQ DI, 0(SP)
 	MOVQ BX, 8(SP)
 	MOVQ CX, 16(SP)
-	// spill
+
+	// Spill registers. Increment DI now so we don't need to save CX.
+	ADDQ CX, DI
 	MOVQ DI, 24(SP)
 	MOVQ SI, 32(SP)
-	MOVQ CX, 40(SP) // need len to inc SI, DI after
+
 	CALL runtime·memmove(SB)
 
 	// restore registers
 	MOVQ 24(SP), DI
 	MOVQ 32(SP), SI
-	MOVQ 40(SP), CX
 
 	// recalc initial values
 	MOVQ dst_base+0(FP), R8
@@ -351,19 +417,32 @@ memmove_match:
 	SUBQ $32, R12
 	MOVQ R9, R13
 	SUBQ $16, R13
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
+	XORL CX, CX
 
-	ADDQ CX, DI
-	JMP loop
+loopcheck:
+	// for si < len(src)
+	CMPQ SI, R9
+	JB   loop
+
+end:
+	// Remaining length must be zero.
+	TESTQ CX, CX
+	JNE   err_corrupt
+
+	SUBQ R11, DI
+	MOVQ DI, ret+72(FP)
+	RET
 
 err_corrupt:
-	MOVQ $-1, ret+48(FP)
+	MOVQ $-1, ret+72(FP)
 	RET
 
 err_short_buf:
-	MOVQ $-2, ret+48(FP)
+	MOVQ $-2, ret+72(FP)
 	RET
 
-end:
-	SUBQ R11, DI
-	MOVQ DI, ret+48(FP)
+err_short_dict:
+	MOVQ $-3, ret+72(FP)
 	RET

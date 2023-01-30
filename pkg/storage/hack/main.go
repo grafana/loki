@@ -11,20 +11,19 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	lstore "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/config"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -35,57 +34,41 @@ var (
 
 // fill up the local filesystem store with 1gib of data to run benchmark
 func main() {
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
 	if _, err := os.Stat("/tmp/benchmark/chunks"); os.IsNotExist(err) {
-		if err := fillStore(); err != nil {
+		if err := fillStore(cm); err != nil {
 			log.Fatal("error filling up storage:", err)
 		}
 	}
 }
 
-func getStore() (lstore.Store, error) {
-	storeConfig := lstore.Config{
-		Config: storage.Config{
-			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-			FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
-		},
+func getStore(cm storage.ClientMetrics) (storage.Store, error) {
+	storeConfig := storage.Config{
+		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 	}
 
-	schemaCfg := lstore.SchemaConfig{
-		SchemaConfig: chunk.SchemaConfig{
-			Configs: []chunk.PeriodConfig{
-				{
-					From:       chunk.DayTime{Time: start},
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v9",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 168,
-					},
+	schemaCfg := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: start},
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 168,
 				},
 			},
 		},
 	}
 
-	chunkStore, err := storage.NewStore(
-		storeConfig.Config,
-		chunk.StoreConfig{},
-		schemaCfg.SchemaConfig,
-		&validation.Overrides{},
-		prometheus.DefaultRegisterer,
-		nil,
-		util_log.Logger,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
+	return storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger)
 }
 
-func fillStore() error {
-
-	store, err := getStore()
+func fillStore(cm storage.ClientMetrics) error {
+	store, err := getStore(cm)
 	if err != nil {
 		return err
 	}
@@ -100,15 +83,15 @@ func fillStore() error {
 		wgPush.Add(1)
 		go func(j int) {
 			defer wgPush.Done()
-			lbs, err := logql.ParseLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
+			lbs, err := syntax.ParseLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
 			if err != nil {
 				panic(err)
 			}
 			labelsBuilder := labels.NewBuilder(lbs)
 			labelsBuilder.Set(labels.MetricName, "logs")
-			metric := labelsBuilder.Labels()
+			metric := labelsBuilder.Labels(nil)
 			fp := client.Fingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, 262144, 1572864)
+			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, chunkenc.UnorderedHeadBlockFmt, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
@@ -131,10 +114,9 @@ func fillStore() error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, 262144, 1572864)
+					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, chunkenc.UnorderedHeadBlockFmt, 262144, 1572864)
 				}
 			}
-
 		}(i)
 
 	}

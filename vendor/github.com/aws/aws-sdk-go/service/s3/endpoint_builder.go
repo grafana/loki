@@ -37,27 +37,14 @@ type accessPointEndpointBuilder arn.AccessPointARN
 // - example : myaccesspoint-012345678901.s3-accesspoint.us-west-2.amazonaws.com
 //
 // Access Point Endpoint requests are signed using "s3" as signing name.
-//
 func (a accessPointEndpointBuilder) build(req *request.Request) error {
 	resolveService := arn.AccessPointARN(a).Service
 	resolveRegion := arn.AccessPointARN(a).Region
-	cfgRegion := aws.StringValue(req.Config.Region)
 
-	if s3shared.IsFIPS(cfgRegion) {
-		if aws.BoolValue(req.Config.S3UseARNRegion) && s3shared.IsCrossRegion(req, resolveRegion) {
-			// FIPS with cross region is not supported, the SDK must fail
-			// because there is no well defined method for SDK to construct a
-			// correct FIPS endpoint.
-			return s3shared.NewClientConfiguredForCrossRegionFIPSError(arn.AccessPointARN(a),
-				req.ClientInfo.PartitionID, cfgRegion, nil)
-		}
-		resolveRegion = cfgRegion
-	}
-
-	endpoint, err := resolveRegionalEndpoint(req, resolveRegion, resolveService)
+	endpoint, err := resolveRegionalEndpoint(req, resolveRegion, "", resolveService)
 	if err != nil {
 		return s3shared.NewFailedToResolveEndpointError(arn.AccessPointARN(a),
-			req.ClientInfo.PartitionID, cfgRegion, err)
+			req.ClientInfo.PartitionID, resolveRegion, err)
 	}
 
 	endpoint.URL = endpoints.AddScheme(endpoint.URL, aws.BoolValue(req.Config.DisableSSL))
@@ -66,13 +53,9 @@ func (a accessPointEndpointBuilder) build(req *request.Request) error {
 		if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
 			return err
 		}
-		const serviceEndpointLabel = "s3-accesspoint"
 
 		// dual stack provided by endpoint resolver
-		cfgHost := req.HTTPRequest.URL.Host
-		if strings.HasPrefix(cfgHost, "s3") {
-			req.HTTPRequest.URL.Host = serviceEndpointLabel + cfgHost[2:]
-		}
+		updateS3HostForS3AccessPoint(req)
 	}
 
 	protocol.HostPrefixBuilder{
@@ -98,6 +81,60 @@ func (a accessPointEndpointBuilder) hostPrefixLabelValues() map[string]string {
 	}
 }
 
+// s3ObjectLambdaAccessPointEndpointBuilder represents the endpoint builder for an s3 object lambda access point arn
+type s3ObjectLambdaAccessPointEndpointBuilder arn.S3ObjectLambdaAccessPointARN
+
+// build builds the endpoint for corresponding access point arn
+//
+// For building an endpoint from access point arn, format used is:
+// - Access point endpoint format : {accesspointName}-{accountId}.s3-object-lambda.{region}.{dnsSuffix}
+// - example : myaccesspoint-012345678901.s3-object-lambda.us-west-2.amazonaws.com
+//
+// Access Point Endpoint requests are signed using "s3-object-lambda" as signing name.
+func (a s3ObjectLambdaAccessPointEndpointBuilder) build(req *request.Request) error {
+	resolveRegion := arn.S3ObjectLambdaAccessPointARN(a).Region
+
+	endpoint, err := resolveRegionalEndpoint(req, resolveRegion, "", EndpointsID)
+	if err != nil {
+		return s3shared.NewFailedToResolveEndpointError(arn.S3ObjectLambdaAccessPointARN(a),
+			req.ClientInfo.PartitionID, resolveRegion, err)
+	}
+
+	endpoint.URL = endpoints.AddScheme(endpoint.URL, aws.BoolValue(req.Config.DisableSSL))
+
+	endpoint.SigningName = s3ObjectsLambdaNamespace
+
+	if !hasCustomEndpoint(req) {
+		if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
+			return err
+		}
+
+		updateS3HostPrefixForS3ObjectLambda(req)
+	}
+
+	protocol.HostPrefixBuilder{
+		Prefix:   accessPointPrefixTemplate,
+		LabelsFn: a.hostPrefixLabelValues,
+	}.Build(req)
+
+	// signer redirection
+	redirectSigner(req, endpoint.SigningName, endpoint.SigningRegion)
+
+	err = protocol.ValidateEndpointHost(req.Operation.Name, req.HTTPRequest.URL.Host)
+	if err != nil {
+		return s3shared.NewInvalidARNError(arn.S3ObjectLambdaAccessPointARN(a), err)
+	}
+
+	return nil
+}
+
+func (a s3ObjectLambdaAccessPointEndpointBuilder) hostPrefixLabelValues() map[string]string {
+	return map[string]string{
+		accessPointPrefixLabel: arn.S3ObjectLambdaAccessPointARN(a).AccessPointName,
+		accountIDPrefixLabel:   arn.S3ObjectLambdaAccessPointARN(a).AccountID,
+	}
+}
+
 // outpostAccessPointEndpointBuilder represents the Endpoint builder for outpost access point arn.
 type outpostAccessPointEndpointBuilder arn.OutpostAccessPointARN
 
@@ -108,17 +145,16 @@ type outpostAccessPointEndpointBuilder arn.OutpostAccessPointARN
 // - example : myaccesspoint-012345678901.op-01234567890123456.s3-outposts.us-west-2.amazonaws.com
 //
 // Outpost AccessPoint Endpoint request are signed using "s3-outposts" as signing name.
-//
 func (o outpostAccessPointEndpointBuilder) build(req *request.Request) error {
 	resolveRegion := o.Region
 	resolveService := o.Service
 
 	endpointsID := resolveService
-	if resolveService == "s3-outposts" {
+	if resolveService == s3OutpostsNamespace {
 		endpointsID = "s3"
 	}
 
-	endpoint, err := resolveRegionalEndpoint(req, resolveRegion, endpointsID)
+	endpoint, err := resolveRegionalEndpoint(req, resolveRegion, "", endpointsID)
 	if err != nil {
 		return s3shared.NewFailedToResolveEndpointError(o,
 			req.ClientInfo.PartitionID, resolveRegion, err)
@@ -130,11 +166,7 @@ func (o outpostAccessPointEndpointBuilder) build(req *request.Request) error {
 		if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
 			return err
 		}
-		// add url host as s3-outposts
-		cfgHost := req.HTTPRequest.URL.Host
-		if strings.HasPrefix(cfgHost, endpointsID) {
-			req.HTTPRequest.URL.Host = resolveService + cfgHost[len(endpointsID):]
-		}
+		updateHostPrefix(req, endpointsID, resolveService)
 	}
 
 	protocol.HostPrefixBuilder{
@@ -161,16 +193,20 @@ func (o outpostAccessPointEndpointBuilder) hostPrefixLabelValues() map[string]st
 	}
 }
 
-func resolveRegionalEndpoint(r *request.Request, region string, endpointsID string) (endpoints.ResolvedEndpoint, error) {
+func resolveRegionalEndpoint(r *request.Request, region, resolvedRegion, endpointsID string) (endpoints.ResolvedEndpoint, error) {
 	return r.Config.EndpointResolver.EndpointFor(endpointsID, region, func(opts *endpoints.Options) {
 		opts.DisableSSL = aws.BoolValue(r.Config.DisableSSL)
 		opts.UseDualStack = aws.BoolValue(r.Config.UseDualStack)
+		opts.UseDualStackEndpoint = r.Config.UseDualStackEndpoint
+		opts.UseFIPSEndpoint = r.Config.UseFIPSEndpoint
 		opts.S3UsEast1RegionalEndpoint = endpoints.RegionalS3UsEast1Endpoint
+		opts.ResolvedRegion = resolvedRegion
+		opts.Logger = r.Config.Logger
+		opts.LogDeprecated = r.Config.LogLevel.Matches(aws.LogDebugWithDeprecated)
 	})
 }
 
 func updateRequestEndpoint(r *request.Request, endpoint string) (err error) {
-
 	r.HTTPRequest.URL, err = url.Parse(endpoint + r.Operation.HTTPPath)
 	if err != nil {
 		return awserr.New(request.ErrCodeSerialization,
@@ -184,4 +220,20 @@ func updateRequestEndpoint(r *request.Request, endpoint string) (err error) {
 func redirectSigner(req *request.Request, signingName string, signingRegion string) {
 	req.ClientInfo.SigningName = signingName
 	req.ClientInfo.SigningRegion = signingRegion
+}
+
+func updateS3HostForS3AccessPoint(req *request.Request) {
+	updateHostPrefix(req, "s3", s3AccessPointNamespace)
+}
+
+func updateS3HostPrefixForS3ObjectLambda(req *request.Request) {
+	updateHostPrefix(req, "s3", s3ObjectsLambdaNamespace)
+}
+
+func updateHostPrefix(req *request.Request, oldEndpointPrefix, newEndpointPrefix string) {
+	host := req.HTTPRequest.URL.Host
+	if strings.HasPrefix(host, oldEndpointPrefix) {
+		// replace service hostlabel oldEndpointPrefix to newEndpointPrefix
+		req.HTTPRequest.URL.Host = newEndpointPrefix + host[len(oldEndpointPrefix):]
+	}
 }

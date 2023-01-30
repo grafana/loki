@@ -1,9 +1,10 @@
 ---
 title: Template functions
+description: Template functions
+weight: 30
 ---
 
 # Template functions
-
 
 The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support the usage of functions.
 
@@ -13,6 +14,8 @@ All labels are added as variables in the template engine. They can be referenced
 {{ .path }}
 ```
 
+Additionally you can also access the log line using the [`__line__`](#__line__) function and the timestamp using the [`__timestamp__`](#__timestamp__) function.
+
 You can take advantage of [pipeline](https://golang.org/pkg/text/template/#hdr-Pipelines) to join together multiple functions.
 In a chained pipeline, the result of each command is passed as the last argument of the following command.
 
@@ -21,6 +24,37 @@ Example:
 ```template
 {{ .path | replace " " "_" | trunc 5 | upper }}
 ```
+
+## __line__
+
+This function returns the current log line.
+
+Signature:
+
+`line() string`
+
+Examples:
+
+```template
+"{{ __line__ | lower }}"
+`{{ __line__ }}`
+```
+
+## __timestamp__
+
+This function returns the current log lines timestamp.
+
+Signature:
+
+`timestamp() time.Time`
+
+```template
+"{{ __timestamp__ }}"
+`{{ __timestamp__ | date "2006-01-02T15:04:05.00Z-07:00" }}`
+`{{ __timestamp__ | unixEpoch }}`
+```
+
+See the blog: [Parsing and formatting date/time in Go](https://www.pauladamsmith.com/blog/2011/05/go_time.html) for more information.
 
 ## ToLower and ToUpper
 
@@ -39,7 +73,7 @@ Examples:
 `{{ToUpper "This is a string" | ToLower}}`
 ```
 
-> **Note:** In Loki 2.1 you can also use respectively [`lower`](#lower) and [`upper`](#upper) shortcut, e.g `{{.request_method | lower }}`.
+> **Note:** In Grafana Loki 2.1 you can also use respectively [`lower`](#lower) and [`upper`](#upper) shortcut, e.g `{{.request_method | lower }}`.
 
 ## Replace string
 
@@ -68,7 +102,7 @@ The results in `This-is-a-string`.
 
 ## Trim, TrimLeft, TrimRight, and TrimSpace
 
-> **Note:** In Loki 2.1 [trim](#trim), [trimAll](#trimAll), [trimSuffix](#trimSuffix) and [trimPrefix](trimPrefix) have been added with a different signature for better pipeline chaining.
+> **Note:** In Loki 2.1 [trim](#trim), [trimAll](#trimall), [trimSuffix](#trimsuffix) and [trimPrefix](#trimprefix) have been added with a different signature for better pipeline chaining.
 
 `Trim` returns a slice of the string s with all leading and
 trailing Unicode code points contained in cutset removed.
@@ -108,7 +142,7 @@ Signature:
 `regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [Regexp.replaceAll documentation](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for more examples.
 
 ```template
-`{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
+`{{ regexReplaceAll "(a*)bc" .some_label "${1}a" }}`
 ```
 
 `regexReplaceAllLiteral` function returns a copy of the input string and replaces matches of the Regexp with the replacement string replacement. The replacement string is substituted directly, without using Expand.
@@ -116,8 +150,6 @@ Signature:
 ```template
 `{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
 ```
-
-You can combine multiple functions using pipe. For example, to strip out spaces and make the request method in capital, you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
 
 ## lower
 
@@ -202,7 +234,7 @@ Get a substring from a string.
 
 Signature:
 
-`trunc(start int,end int,value string) string`
+`substr(start int,end int,value string) string`
 
 If start is < 0, this calls value[:end].
 If start is >= 0 and end < 0 or end bigger than s length, this calls value[start:]
@@ -290,7 +322,7 @@ Examples:
 
 Use this function to trim just the prefix from a string.
 
-Signature: `trimPrefix(suffix string, src string) string`
+Signature: `trimPrefix(prefix string, src string) string`
 
 Examples:
 
@@ -594,4 +626,123 @@ Signature: `toFloat64(v interface{}) float64`
 
 ```template
 {{ "3.5" | float64 }} //output 3.5
+```
+
+## fromJson
+
+> **Note:** Added in Loki 2.3.
+
+fromJson decodes a JSON document into a structure. If the input cannot be decoded as JSON the function will return an empty string.
+
+```template
+fromJson "{\"foo\": 55}"
+```
+
+Example of a query to print a newline per queries stored as a json array in the log line:
+
+```logql
+{job="loki/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+```
+
+## now
+
+`now` returns the current local time.
+
+```template
+{{ now }}
+```
+
+## toDate
+
+`toDate` parses a formatted string and returns the time value it represents.
+
+```template
+{{ toDate "2006-01-02" "2021-11-02" }}
+```
+
+## date
+
+`date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants).
+
+```template
+{{ date "2006-01-02" now }}
+```
+
+## unixEpoch
+
+`unixEpoch` returns the number of seconds elapsed since January 1, 1970 UTC.
+
+```template
+{{ unixEpoch now }}
+```
+
+Example of a query to filter Loki querier jobs which create time is 1 day before:
+```logql
+{job="loki/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
+```
+
+## default
+
+`default` checks whether the string(`src`) is set, and returns default(`d`) if not set.
+
+Signature: `default(d string, src string) string`
+
+Examples:
+
+```template
+{{ default "-" "" }} // output: -
+{{ default "-" "foo" }} // output: foo
+```
+
+Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
+```logql
+{job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
+```
+
+## count
+
+`count` counts occurrences of the regex (`regex`) in (`src`).
+
+Signature: `count(regex string, src string) int`
+
+Examples:
+
+```template
+{{ count "a|b" "abab" }} // output: 4
+{{ count "o" "foo" }}    // output: 2
+```
+
+Example of a query to print how many times XYZ occurs in a line:
+```logql
+{job="xyzlog"} | line_format `{{ __line__ | count "XYZ"}}`
+```
+
+## urlencode
+
+Use this function to encode the URL(s) in log messages.
+
+Signature:
+
+`urlencode(string) string`
+
+Examples:
+
+```template
+"{{ .request_url | urlencode }}"
+`{{ urlencode  .request_url}}`
+```
+
+## urldecode
+
+Use this function to decode the URL(s) in log messages.
+
+Signature:
+
+`urldecode(string) string`
+
+Examples:
+
+```template
+"{{ .request_url | urldecode }}"
+`{{ urldecode  .request_url}}`
 ```

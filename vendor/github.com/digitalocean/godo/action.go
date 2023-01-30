@@ -16,14 +16,14 @@ const (
 	ActionCompleted = "completed"
 )
 
-// ActionsService handles communction with action related methods of the
-// DigitalOcean API: https://developers.digitalocean.com/documentation/v2#actions
+// ActionsService handles communication with action related methods of the
+// DigitalOcean API: https://docs.digitalocean.com/reference/api/api-reference/#tag/Actions
 type ActionsService interface {
 	List(context.Context, *ListOptions) ([]Action, *Response, error)
 	Get(context.Context, int) (*Action, *Response, error)
 }
 
-// ActionsServiceOp handles communition with the image action related methods of the
+// ActionsServiceOp handles communication with the image action related methods of the
 // DigitalOcean API.
 type ActionsServiceOp struct {
 	client *Client

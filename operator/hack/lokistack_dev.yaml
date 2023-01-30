@@ -1,0 +1,14 @@
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: lokistack-dev
+spec:
+  size: 1x.extra-small
+  storage:
+    schemas:
+    - version: v12
+      effectiveDate: 2022-06-01
+    secret:
+      name: test
+      type: s3
+  storageClassName: standard

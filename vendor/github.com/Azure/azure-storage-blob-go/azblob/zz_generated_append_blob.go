@@ -34,20 +34,30 @@ func newAppendBlobClient(url url.URL, p pipeline.Pipeline) appendBlobClient {
 // information, see <a
 // href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
 // Timeouts for Blob Service Operations.</a> transactionalContentMD5 is specify the transactional md5 for the body, to
-// be validated by the service. leaseID is if specified, the operation only succeeds if the resource's lease is active
-// and matches this ID. maxSize is optional conditional header. The max length in bytes permitted for the append blob.
-// If the Append Block operation would cause the blob to exceed that limit or if the blob size is already greater than
-// the value specified in this header, the request will fail with MaxBlobSizeConditionNotMet error (HTTP status code
-// 412 - Precondition Failed). appendPosition is optional conditional header, used only for the Append Block operation.
-// A number indicating the byte offset to compare. Append Block will succeed only if the append position is equal to
-// this number. If it is not, the request will fail with the AppendPositionConditionNotMet error (HTTP status code 412
-// - Precondition Failed). ifModifiedSince is specify this header value to operate only on a blob if it has been
-// modified since the specified date/time. ifUnmodifiedSince is specify this header value to operate only on a blob if
-// it has not been modified since the specified date/time. ifMatch is specify an ETag value to operate only on blobs
-// with a matching value. ifNoneMatch is specify an ETag value to operate only on blobs without a matching value.
-// requestID is provides a client-generated, opaque value with a 1 KB character limit that is recorded in the analytics
-// logs when storage analytics logging is enabled.
-func (client appendBlobClient) AppendBlock(ctx context.Context, body io.ReadSeeker, contentLength int64, timeout *int32, transactionalContentMD5 []byte, leaseID *string, maxSize *int64, appendPosition *int64, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, requestID *string) (*AppendBlobAppendBlockResponse, error) {
+// be validated by the service. transactionalContentCrc64 is specify the transactional crc64 for the body, to be
+// validated by the service. leaseID is if specified, the operation only succeeds if the resource's lease is active and
+// matches this ID. maxSize is optional conditional header. The max length in bytes permitted for the append blob. If
+// the Append Block operation would cause the blob to exceed that limit or if the blob size is already greater than the
+// value specified in this header, the request will fail with MaxBlobSizeConditionNotMet error (HTTP status code 412 -
+// Precondition Failed). appendPosition is optional conditional header, used only for the Append Block operation. A
+// number indicating the byte offset to compare. Append Block will succeed only if the append position is equal to this
+// number. If it is not, the request will fail with the AppendPositionConditionNotMet error (HTTP status code 412 -
+// Precondition Failed). encryptionKey is optional. Specifies the encryption key to use to encrypt the data provided in
+// the request. If not specified, encryption is performed with the root account encryption key.  For more information,
+// see Encryption at Rest for Azure Storage Services. encryptionKeySha256 is the SHA-256 hash of the provided
+// encryption key. Must be provided if the x-ms-encryption-key header is provided. encryptionAlgorithm is the algorithm
+// used to produce the encryption key hash. Currently, the only accepted value is "AES256". Must be provided if the
+// x-ms-encryption-key header is provided. encryptionScope is optional. Version 2019-07-07 and later.  Specifies the
+// name of the encryption scope to use to encrypt the data provided in the request. If not specified, encryption is
+// performed with the default account encryption scope.  For more information, see Encryption at Rest for Azure Storage
+// Services. ifModifiedSince is specify this header value to operate only on a blob if it has been modified since the
+// specified date/time. ifUnmodifiedSince is specify this header value to operate only on a blob if it has not been
+// modified since the specified date/time. ifMatch is specify an ETag value to operate only on blobs with a matching
+// value. ifNoneMatch is specify an ETag value to operate only on blobs without a matching value. ifTags is specify a
+// SQL where clause on blob tags to operate only on blobs with a matching value. requestID is provides a
+// client-generated, opaque value with a 1 KB character limit that is recorded in the analytics logs when storage
+// analytics logging is enabled.
+func (client appendBlobClient) AppendBlock(ctx context.Context, body io.ReadSeeker, contentLength int64, timeout *int32, transactionalContentMD5 []byte, transactionalContentCrc64 []byte, leaseID *string, maxSize *int64, appendPosition *int64, encryptionKey *string, encryptionKeySha256 *string, encryptionAlgorithm EncryptionAlgorithmType, encryptionScope *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, ifTags *string, requestID *string) (*AppendBlobAppendBlockResponse, error) {
 	if err := validate([]validation{
 		{targetValue: body,
 			constraints: []constraint{{target: "body", name: null, rule: true, chain: nil}}},
@@ -56,7 +66,7 @@ func (client appendBlobClient) AppendBlock(ctx context.Context, body io.ReadSeek
 				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
 		return nil, err
 	}
-	req, err := client.appendBlockPreparer(body, contentLength, timeout, transactionalContentMD5, leaseID, maxSize, appendPosition, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, requestID)
+	req, err := client.appendBlockPreparer(body, contentLength, timeout, transactionalContentMD5, transactionalContentCrc64, leaseID, maxSize, appendPosition, encryptionKey, encryptionKeySha256, encryptionAlgorithm, encryptionScope, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, ifTags, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +78,7 @@ func (client appendBlobClient) AppendBlock(ctx context.Context, body io.ReadSeek
 }
 
 // appendBlockPreparer prepares the AppendBlock request.
-func (client appendBlobClient) appendBlockPreparer(body io.ReadSeeker, contentLength int64, timeout *int32, transactionalContentMD5 []byte, leaseID *string, maxSize *int64, appendPosition *int64, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, requestID *string) (pipeline.Request, error) {
+func (client appendBlobClient) appendBlockPreparer(body io.ReadSeeker, contentLength int64, timeout *int32, transactionalContentMD5 []byte, transactionalContentCrc64 []byte, leaseID *string, maxSize *int64, appendPosition *int64, encryptionKey *string, encryptionKeySha256 *string, encryptionAlgorithm EncryptionAlgorithmType, encryptionScope *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, ifTags *string, requestID *string) (pipeline.Request, error) {
 	req, err := pipeline.NewRequest("PUT", client.url, body)
 	if err != nil {
 		return req, pipeline.NewError(err, "failed to create request")
@@ -83,6 +93,9 @@ func (client appendBlobClient) appendBlockPreparer(body io.ReadSeeker, contentLe
 	if transactionalContentMD5 != nil {
 		req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(transactionalContentMD5))
 	}
+	if transactionalContentCrc64 != nil {
+		req.Header.Set("x-ms-content-crc64", base64.StdEncoding.EncodeToString(transactionalContentCrc64))
+	}
 	if leaseID != nil {
 		req.Header.Set("x-ms-lease-id", *leaseID)
 	}
@@ -91,6 +104,18 @@ func (client appendBlobClient) appendBlockPreparer(body io.ReadSeeker, contentLe
 	}
 	if appendPosition != nil {
 		req.Header.Set("x-ms-blob-condition-appendpos", strconv.FormatInt(*appendPosition, 10))
+	}
+	if encryptionKey != nil {
+		req.Header.Set("x-ms-encryption-key", *encryptionKey)
+	}
+	if encryptionKeySha256 != nil {
+		req.Header.Set("x-ms-encryption-key-sha256", *encryptionKeySha256)
+	}
+	if encryptionAlgorithm != EncryptionAlgorithmNone {
+		req.Header.Set("x-ms-encryption-algorithm", string(encryptionAlgorithm))
+	}
+	if encryptionScope != nil {
+		req.Header.Set("x-ms-encryption-scope", *encryptionScope)
 	}
 	if ifModifiedSince != nil {
 		req.Header.Set("If-Modified-Since", (*ifModifiedSince).In(gmt).Format(time.RFC1123))
@@ -103,6 +128,9 @@ func (client appendBlobClient) appendBlockPreparer(body io.ReadSeeker, contentLe
 	}
 	if ifNoneMatch != nil {
 		req.Header.Set("If-None-Match", string(*ifNoneMatch))
+	}
+	if ifTags != nil {
+		req.Header.Set("x-ms-if-tags", *ifTags)
 	}
 	req.Header.Set("x-ms-version", ServiceVersion)
 	if requestID != nil {
@@ -128,33 +156,44 @@ func (client appendBlobClient) appendBlockResponder(resp pipeline.Response) (pip
 //
 // sourceURL is specify a URL to the copy source. contentLength is the length of the request. sourceRange is bytes of
 // source data in the specified range. sourceContentMD5 is specify the md5 calculated for the range of bytes that must
-// be read from the copy source. timeout is the timeout parameter is expressed in seconds. For more information, see <a
+// be read from the copy source. sourceContentcrc64 is specify the crc64 calculated for the range of bytes that must be
+// read from the copy source. timeout is the timeout parameter is expressed in seconds. For more information, see <a
 // href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
-// Timeouts for Blob Service Operations.</a> leaseID is if specified, the operation only succeeds if the resource's
-// lease is active and matches this ID. maxSize is optional conditional header. The max length in bytes permitted for
-// the append blob. If the Append Block operation would cause the blob to exceed that limit or if the blob size is
-// already greater than the value specified in this header, the request will fail with MaxBlobSizeConditionNotMet error
-// (HTTP status code 412 - Precondition Failed). appendPosition is optional conditional header, used only for the
-// Append Block operation. A number indicating the byte offset to compare. Append Block will succeed only if the append
-// position is equal to this number. If it is not, the request will fail with the AppendPositionConditionNotMet error
-// (HTTP status code 412 - Precondition Failed). ifModifiedSince is specify this header value to operate only on a blob
-// if it has been modified since the specified date/time. ifUnmodifiedSince is specify this header value to operate
-// only on a blob if it has not been modified since the specified date/time. ifMatch is specify an ETag value to
-// operate only on blobs with a matching value. ifNoneMatch is specify an ETag value to operate only on blobs without a
-// matching value. sourceIfModifiedSince is specify this header value to operate only on a blob if it has been modified
-// since the specified date/time. sourceIfUnmodifiedSince is specify this header value to operate only on a blob if it
-// has not been modified since the specified date/time. sourceIfMatch is specify an ETag value to operate only on blobs
-// with a matching value. sourceIfNoneMatch is specify an ETag value to operate only on blobs without a matching value.
-// requestID is provides a client-generated, opaque value with a 1 KB character limit that is recorded in the analytics
-// logs when storage analytics logging is enabled.
-func (client appendBlobClient) AppendBlockFromURL(ctx context.Context, sourceURL string, contentLength int64, sourceRange *string, sourceContentMD5 []byte, timeout *int32, leaseID *string, maxSize *int64, appendPosition *int64, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, sourceIfModifiedSince *time.Time, sourceIfUnmodifiedSince *time.Time, sourceIfMatch *ETag, sourceIfNoneMatch *ETag, requestID *string) (*AppendBlobAppendBlockFromURLResponse, error) {
+// Timeouts for Blob Service Operations.</a> transactionalContentMD5 is specify the transactional md5 for the body, to
+// be validated by the service. encryptionKey is optional. Specifies the encryption key to use to encrypt the data
+// provided in the request. If not specified, encryption is performed with the root account encryption key.  For more
+// information, see Encryption at Rest for Azure Storage Services. encryptionKeySha256 is the SHA-256 hash of the
+// provided encryption key. Must be provided if the x-ms-encryption-key header is provided. encryptionAlgorithm is the
+// algorithm used to produce the encryption key hash. Currently, the only accepted value is "AES256". Must be provided
+// if the x-ms-encryption-key header is provided. encryptionScope is optional. Version 2019-07-07 and later.  Specifies
+// the name of the encryption scope to use to encrypt the data provided in the request. If not specified, encryption is
+// performed with the default account encryption scope.  For more information, see Encryption at Rest for Azure Storage
+// Services. leaseID is if specified, the operation only succeeds if the resource's lease is active and matches this
+// ID. maxSize is optional conditional header. The max length in bytes permitted for the append blob. If the Append
+// Block operation would cause the blob to exceed that limit or if the blob size is already greater than the value
+// specified in this header, the request will fail with MaxBlobSizeConditionNotMet error (HTTP status code 412 -
+// Precondition Failed). appendPosition is optional conditional header, used only for the Append Block operation. A
+// number indicating the byte offset to compare. Append Block will succeed only if the append position is equal to this
+// number. If it is not, the request will fail with the AppendPositionConditionNotMet error (HTTP status code 412 -
+// Precondition Failed). ifModifiedSince is specify this header value to operate only on a blob if it has been modified
+// since the specified date/time. ifUnmodifiedSince is specify this header value to operate only on a blob if it has
+// not been modified since the specified date/time. ifMatch is specify an ETag value to operate only on blobs with a
+// matching value. ifNoneMatch is specify an ETag value to operate only on blobs without a matching value. ifTags is
+// specify a SQL where clause on blob tags to operate only on blobs with a matching value. sourceIfModifiedSince is
+// specify this header value to operate only on a blob if it has been modified since the specified date/time.
+// sourceIfUnmodifiedSince is specify this header value to operate only on a blob if it has not been modified since the
+// specified date/time. sourceIfMatch is specify an ETag value to operate only on blobs with a matching value.
+// sourceIfNoneMatch is specify an ETag value to operate only on blobs without a matching value. requestID is provides
+// a client-generated, opaque value with a 1 KB character limit that is recorded in the analytics logs when storage
+// analytics logging is enabled.
+func (client appendBlobClient) AppendBlockFromURL(ctx context.Context, sourceURL string, contentLength int64, sourceRange *string, sourceContentMD5 []byte, sourceContentcrc64 []byte, timeout *int32, transactionalContentMD5 []byte, encryptionKey *string, encryptionKeySha256 *string, encryptionAlgorithm EncryptionAlgorithmType, encryptionScope *string, leaseID *string, maxSize *int64, appendPosition *int64, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, ifTags *string, sourceIfModifiedSince *time.Time, sourceIfUnmodifiedSince *time.Time, sourceIfMatch *ETag, sourceIfNoneMatch *ETag, requestID *string) (*AppendBlobAppendBlockFromURLResponse, error) {
 	if err := validate([]validation{
 		{targetValue: timeout,
 			constraints: []constraint{{target: "timeout", name: null, rule: false,
 				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
 		return nil, err
 	}
-	req, err := client.appendBlockFromURLPreparer(sourceURL, contentLength, sourceRange, sourceContentMD5, timeout, leaseID, maxSize, appendPosition, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, sourceIfModifiedSince, sourceIfUnmodifiedSince, sourceIfMatch, sourceIfNoneMatch, requestID)
+	req, err := client.appendBlockFromURLPreparer(sourceURL, contentLength, sourceRange, sourceContentMD5, sourceContentcrc64, timeout, transactionalContentMD5, encryptionKey, encryptionKeySha256, encryptionAlgorithm, encryptionScope, leaseID, maxSize, appendPosition, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, ifTags, sourceIfModifiedSince, sourceIfUnmodifiedSince, sourceIfMatch, sourceIfNoneMatch, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +205,7 @@ func (client appendBlobClient) AppendBlockFromURL(ctx context.Context, sourceURL
 }
 
 // appendBlockFromURLPreparer prepares the AppendBlockFromURL request.
-func (client appendBlobClient) appendBlockFromURLPreparer(sourceURL string, contentLength int64, sourceRange *string, sourceContentMD5 []byte, timeout *int32, leaseID *string, maxSize *int64, appendPosition *int64, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, sourceIfModifiedSince *time.Time, sourceIfUnmodifiedSince *time.Time, sourceIfMatch *ETag, sourceIfNoneMatch *ETag, requestID *string) (pipeline.Request, error) {
+func (client appendBlobClient) appendBlockFromURLPreparer(sourceURL string, contentLength int64, sourceRange *string, sourceContentMD5 []byte, sourceContentcrc64 []byte, timeout *int32, transactionalContentMD5 []byte, encryptionKey *string, encryptionKeySha256 *string, encryptionAlgorithm EncryptionAlgorithmType, encryptionScope *string, leaseID *string, maxSize *int64, appendPosition *int64, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, ifTags *string, sourceIfModifiedSince *time.Time, sourceIfUnmodifiedSince *time.Time, sourceIfMatch *ETag, sourceIfNoneMatch *ETag, requestID *string) (pipeline.Request, error) {
 	req, err := pipeline.NewRequest("PUT", client.url, nil)
 	if err != nil {
 		return req, pipeline.NewError(err, "failed to create request")
@@ -184,7 +223,25 @@ func (client appendBlobClient) appendBlockFromURLPreparer(sourceURL string, cont
 	if sourceContentMD5 != nil {
 		req.Header.Set("x-ms-source-content-md5", base64.StdEncoding.EncodeToString(sourceContentMD5))
 	}
+	if sourceContentcrc64 != nil {
+		req.Header.Set("x-ms-source-content-crc64", base64.StdEncoding.EncodeToString(sourceContentcrc64))
+	}
 	req.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	if transactionalContentMD5 != nil {
+		req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(transactionalContentMD5))
+	}
+	if encryptionKey != nil {
+		req.Header.Set("x-ms-encryption-key", *encryptionKey)
+	}
+	if encryptionKeySha256 != nil {
+		req.Header.Set("x-ms-encryption-key-sha256", *encryptionKeySha256)
+	}
+	if encryptionAlgorithm != EncryptionAlgorithmNone {
+		req.Header.Set("x-ms-encryption-algorithm", string(encryptionAlgorithm))
+	}
+	if encryptionScope != nil {
+		req.Header.Set("x-ms-encryption-scope", *encryptionScope)
+	}
 	if leaseID != nil {
 		req.Header.Set("x-ms-lease-id", *leaseID)
 	}
@@ -205,6 +262,9 @@ func (client appendBlobClient) appendBlockFromURLPreparer(sourceURL string, cont
 	}
 	if ifNoneMatch != nil {
 		req.Header.Set("If-None-Match", string(*ifNoneMatch))
+	}
+	if ifTags != nil {
+		req.Header.Set("x-ms-if-tags", *ifTags)
 	}
 	if sourceIfModifiedSince != nil {
 		req.Header.Set("x-ms-source-if-modified-since", (*sourceIfModifiedSince).In(gmt).Format(time.RFC1123))
@@ -255,20 +315,29 @@ func (client appendBlobClient) appendBlockFromURLResponder(resp pipeline.Respons
 // metadata names must adhere to the naming rules for C# identifiers. See Naming and Referencing Containers, Blobs, and
 // Metadata for more information. leaseID is if specified, the operation only succeeds if the resource's lease is
 // active and matches this ID. blobContentDisposition is optional. Sets the blob's Content-Disposition header.
-// ifModifiedSince is specify this header value to operate only on a blob if it has been modified since the specified
-// date/time. ifUnmodifiedSince is specify this header value to operate only on a blob if it has not been modified
-// since the specified date/time. ifMatch is specify an ETag value to operate only on blobs with a matching value.
-// ifNoneMatch is specify an ETag value to operate only on blobs without a matching value. requestID is provides a
-// client-generated, opaque value with a 1 KB character limit that is recorded in the analytics logs when storage
-// analytics logging is enabled.
-func (client appendBlobClient) Create(ctx context.Context, contentLength int64, timeout *int32, blobContentType *string, blobContentEncoding *string, blobContentLanguage *string, blobContentMD5 []byte, blobCacheControl *string, metadata map[string]string, leaseID *string, blobContentDisposition *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, requestID *string) (*AppendBlobCreateResponse, error) {
+// encryptionKey is optional. Specifies the encryption key to use to encrypt the data provided in the request. If not
+// specified, encryption is performed with the root account encryption key.  For more information, see Encryption at
+// Rest for Azure Storage Services. encryptionKeySha256 is the SHA-256 hash of the provided encryption key. Must be
+// provided if the x-ms-encryption-key header is provided. encryptionAlgorithm is the algorithm used to produce the
+// encryption key hash. Currently, the only accepted value is "AES256". Must be provided if the x-ms-encryption-key
+// header is provided. encryptionScope is optional. Version 2019-07-07 and later.  Specifies the name of the encryption
+// scope to use to encrypt the data provided in the request. If not specified, encryption is performed with the default
+// account encryption scope.  For more information, see Encryption at Rest for Azure Storage Services. ifModifiedSince
+// is specify this header value to operate only on a blob if it has been modified since the specified date/time.
+// ifUnmodifiedSince is specify this header value to operate only on a blob if it has not been modified since the
+// specified date/time. ifMatch is specify an ETag value to operate only on blobs with a matching value. ifNoneMatch is
+// specify an ETag value to operate only on blobs without a matching value. ifTags is specify a SQL where clause on
+// blob tags to operate only on blobs with a matching value. requestID is provides a client-generated, opaque value
+// with a 1 KB character limit that is recorded in the analytics logs when storage analytics logging is enabled.
+// blobTagsString is optional.  Used to set blob tags in various blob operations.
+func (client appendBlobClient) Create(ctx context.Context, contentLength int64, timeout *int32, blobContentType *string, blobContentEncoding *string, blobContentLanguage *string, blobContentMD5 []byte, blobCacheControl *string, metadata map[string]string, leaseID *string, blobContentDisposition *string, encryptionKey *string, encryptionKeySha256 *string, encryptionAlgorithm EncryptionAlgorithmType, encryptionScope *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, ifTags *string, requestID *string, blobTagsString *string) (*AppendBlobCreateResponse, error) {
 	if err := validate([]validation{
 		{targetValue: timeout,
 			constraints: []constraint{{target: "timeout", name: null, rule: false,
 				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
 		return nil, err
 	}
-	req, err := client.createPreparer(contentLength, timeout, blobContentType, blobContentEncoding, blobContentLanguage, blobContentMD5, blobCacheControl, metadata, leaseID, blobContentDisposition, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, requestID)
+	req, err := client.createPreparer(contentLength, timeout, blobContentType, blobContentEncoding, blobContentLanguage, blobContentMD5, blobCacheControl, metadata, leaseID, blobContentDisposition, encryptionKey, encryptionKeySha256, encryptionAlgorithm, encryptionScope, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, ifTags, requestID, blobTagsString)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +349,7 @@ func (client appendBlobClient) Create(ctx context.Context, contentLength int64, 
 }
 
 // createPreparer prepares the Create request.
-func (client appendBlobClient) createPreparer(contentLength int64, timeout *int32, blobContentType *string, blobContentEncoding *string, blobContentLanguage *string, blobContentMD5 []byte, blobCacheControl *string, metadata map[string]string, leaseID *string, blobContentDisposition *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, requestID *string) (pipeline.Request, error) {
+func (client appendBlobClient) createPreparer(contentLength int64, timeout *int32, blobContentType *string, blobContentEncoding *string, blobContentLanguage *string, blobContentMD5 []byte, blobCacheControl *string, metadata map[string]string, leaseID *string, blobContentDisposition *string, encryptionKey *string, encryptionKeySha256 *string, encryptionAlgorithm EncryptionAlgorithmType, encryptionScope *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, ifTags *string, requestID *string, blobTagsString *string) (pipeline.Request, error) {
 	req, err := pipeline.NewRequest("PUT", client.url, nil)
 	if err != nil {
 		return req, pipeline.NewError(err, "failed to create request")
@@ -317,6 +386,18 @@ func (client appendBlobClient) createPreparer(contentLength int64, timeout *int3
 	if blobContentDisposition != nil {
 		req.Header.Set("x-ms-blob-content-disposition", *blobContentDisposition)
 	}
+	if encryptionKey != nil {
+		req.Header.Set("x-ms-encryption-key", *encryptionKey)
+	}
+	if encryptionKeySha256 != nil {
+		req.Header.Set("x-ms-encryption-key-sha256", *encryptionKeySha256)
+	}
+	if encryptionAlgorithm != EncryptionAlgorithmNone {
+		req.Header.Set("x-ms-encryption-algorithm", string(encryptionAlgorithm))
+	}
+	if encryptionScope != nil {
+		req.Header.Set("x-ms-encryption-scope", *encryptionScope)
+	}
 	if ifModifiedSince != nil {
 		req.Header.Set("If-Modified-Since", (*ifModifiedSince).In(gmt).Format(time.RFC1123))
 	}
@@ -329,9 +410,15 @@ func (client appendBlobClient) createPreparer(contentLength int64, timeout *int3
 	if ifNoneMatch != nil {
 		req.Header.Set("If-None-Match", string(*ifNoneMatch))
 	}
+	if ifTags != nil {
+		req.Header.Set("x-ms-if-tags", *ifTags)
+	}
 	req.Header.Set("x-ms-version", ServiceVersion)
 	if requestID != nil {
 		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	if blobTagsString != nil {
+		req.Header.Set("x-ms-tags", *blobTagsString)
 	}
 	req.Header.Set("x-ms-blob-type", "AppendBlob")
 	return req, nil
@@ -346,4 +433,85 @@ func (client appendBlobClient) createResponder(resp pipeline.Response) (pipeline
 	io.Copy(ioutil.Discard, resp.Response().Body)
 	resp.Response().Body.Close()
 	return &AppendBlobCreateResponse{rawResponse: resp.Response()}, err
+}
+
+// Seal the Seal operation seals the Append Blob to make it read-only. Seal is supported only on version 2019-12-12
+// version or later.
+//
+// timeout is the timeout parameter is expressed in seconds. For more information, see <a
+// href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
+// Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
+// character limit that is recorded in the analytics logs when storage analytics logging is enabled. leaseID is if
+// specified, the operation only succeeds if the resource's lease is active and matches this ID. ifModifiedSince is
+// specify this header value to operate only on a blob if it has been modified since the specified date/time.
+// ifUnmodifiedSince is specify this header value to operate only on a blob if it has not been modified since the
+// specified date/time. ifMatch is specify an ETag value to operate only on blobs with a matching value. ifNoneMatch is
+// specify an ETag value to operate only on blobs without a matching value. appendPosition is optional conditional
+// header, used only for the Append Block operation. A number indicating the byte offset to compare. Append Block will
+// succeed only if the append position is equal to this number. If it is not, the request will fail with the
+// AppendPositionConditionNotMet error (HTTP status code 412 - Precondition Failed).
+func (client appendBlobClient) Seal(ctx context.Context, timeout *int32, requestID *string, leaseID *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, appendPosition *int64) (*AppendBlobSealResponse, error) {
+	if err := validate([]validation{
+		{targetValue: timeout,
+			constraints: []constraint{{target: "timeout", name: null, rule: false,
+				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
+		return nil, err
+	}
+	req, err := client.sealPreparer(timeout, requestID, leaseID, ifModifiedSince, ifUnmodifiedSince, ifMatch, ifNoneMatch, appendPosition)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Pipeline().Do(ctx, responderPolicyFactory{responder: client.sealResponder}, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*AppendBlobSealResponse), err
+}
+
+// sealPreparer prepares the Seal request.
+func (client appendBlobClient) sealPreparer(timeout *int32, requestID *string, leaseID *string, ifModifiedSince *time.Time, ifUnmodifiedSince *time.Time, ifMatch *ETag, ifNoneMatch *ETag, appendPosition *int64) (pipeline.Request, error) {
+	req, err := pipeline.NewRequest("PUT", client.url, nil)
+	if err != nil {
+		return req, pipeline.NewError(err, "failed to create request")
+	}
+	params := req.URL.Query()
+	if timeout != nil {
+		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
+	}
+	params.Set("comp", "seal")
+	req.URL.RawQuery = params.Encode()
+	req.Header.Set("x-ms-version", ServiceVersion)
+	if requestID != nil {
+		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	if leaseID != nil {
+		req.Header.Set("x-ms-lease-id", *leaseID)
+	}
+	if ifModifiedSince != nil {
+		req.Header.Set("If-Modified-Since", (*ifModifiedSince).In(gmt).Format(time.RFC1123))
+	}
+	if ifUnmodifiedSince != nil {
+		req.Header.Set("If-Unmodified-Since", (*ifUnmodifiedSince).In(gmt).Format(time.RFC1123))
+	}
+	if ifMatch != nil {
+		req.Header.Set("If-Match", string(*ifMatch))
+	}
+	if ifNoneMatch != nil {
+		req.Header.Set("If-None-Match", string(*ifNoneMatch))
+	}
+	if appendPosition != nil {
+		req.Header.Set("x-ms-blob-condition-appendpos", strconv.FormatInt(*appendPosition, 10))
+	}
+	return req, nil
+}
+
+// sealResponder handles the response to the Seal request.
+func (client appendBlobClient) sealResponder(resp pipeline.Response) (pipeline.Response, error) {
+	err := validateResponse(resp, http.StatusOK)
+	if resp == nil {
+		return nil, err
+	}
+	io.Copy(ioutil.Discard, resp.Response().Body)
+	resp.Response().Body.Close()
+	return &AppendBlobSealResponse{rawResponse: resp.Response()}, err
 }

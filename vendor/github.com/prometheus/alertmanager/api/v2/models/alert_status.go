@@ -20,16 +20,17 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"encoding/json"
 
-	strfmt "github.com/go-openapi/strfmt"
-
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // AlertStatus alert status
+//
 // swagger:model alertStatus
 type AlertStatus struct {
 
@@ -113,7 +114,7 @@ const (
 
 // prop value enum
 func (m *AlertStatus) validateStateEnum(path, location string, value string) error {
-	if err := validate.Enum(path, location, value, alertStatusTypeStatePropEnum); err != nil {
+	if err := validate.EnumCase(path, location, value, alertStatusTypeStatePropEnum, true); err != nil {
 		return err
 	}
 	return nil
@@ -130,6 +131,11 @@ func (m *AlertStatus) validateState(formats strfmt.Registry) error {
 		return err
 	}
 
+	return nil
+}
+
+// ContextValidate validates this alert status based on context it is used
+func (m *AlertStatus) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

@@ -28,29 +28,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
+PATH="${HOME}/go/bin:${GOROOT}/bin:${PATH}"
+go version
 
 if [[ "$1" = "-install" ]]; then
-  # Check for module support
-  if go help mod >& /dev/null; then
-    # Install the pinned versions as defined in module tools.
-    pushd ./test/tools
-    go install \
-      golang.org/x/lint/golint \
-      golang.org/x/tools/cmd/goimports \
-      honnef.co/go/tools/cmd/staticcheck \
-      github.com/client9/misspell/cmd/misspell
-    popd
-  else
-    # Ye olde `go get` incantation.
-    # Note: this gets the latest version of all tools (vs. the pinned versions
-    # with Go modules).
-    go get -u \
-      golang.org/x/lint/golint \
-      golang.org/x/tools/cmd/goimports \
-      honnef.co/go/tools/cmd/staticcheck \
-      github.com/client9/misspell/cmd/misspell
-  fi
+  # Install the pinned versions as defined in module tools.
+  pushd ./test/tools
+  go install \
+    golang.org/x/lint/golint \
+    golang.org/x/tools/cmd/goimports \
+    honnef.co/go/tools/cmd/staticcheck \
+    github.com/client9/misspell/cmd/misspell
+  popd
   if [[ -z "${VET_SKIP_PROTO}" ]]; then
     if [[ "${TRAVIS}" = "true" ]]; then
       PROTOBUF_VERSION=3.14.0
@@ -78,7 +67,9 @@ elif [[ "$#" -ne 0 ]]; then
 fi
 
 # - Ensure all source files contain a copyright message.
-not git grep -L "\(Copyright [0-9]\{4,\} gRPC authors\)\|DO NOT EDIT" -- '*.go'
+# (Done in two parts because Darwin "git grep" has broken support for compound
+# exclusion matches.)
+(grep -L "DO NOT EDIT" $(git grep -L "\(Copyright [0-9]\{4,\} gRPC authors\)" -- '*.go') || true) | fail_on_output
 
 # - Make sure all tests in grpc and grpc/test use leakcheck via Teardown.
 not grep 'func Test[^(]' *_test.go
@@ -92,23 +83,13 @@ not git grep -l 'x/net/context' -- "*.go"
 git grep -l '"math/rand"' -- "*.go" 2>&1 | not grep -v '^examples\|^stress\|grpcrand\|^benchmark\|wrr_test'
 
 # - Do not call grpclog directly. Use grpclog.Component instead.
-git grep -l 'grpclog.I\|grpclog.W\|grpclog.E\|grpclog.F\|grpclog.V' -- "*.go" | not grep -v '^grpclog/component.go\|^internal/grpctest/tlogger_test.go'
+git grep -l -e 'grpclog.I' --or -e 'grpclog.W' --or -e 'grpclog.E' --or -e 'grpclog.F' --or -e 'grpclog.V' -- "*.go" | not grep -v '^grpclog/component.go\|^internal/grpctest/tlogger_test.go'
 
 # - Ensure all ptypes proto packages are renamed when importing.
 not git grep "\(import \|^\s*\)\"github.com/golang/protobuf/ptypes/" -- "*.go"
 
 # - Ensure all xds proto imports are renamed to *pb or *grpc.
 git grep '"github.com/envoyproxy/go-control-plane/envoy' -- '*.go' ':(exclude)*.pb.go' | not grep -v 'pb "\|grpc "'
-
-# - Check imports that are illegal in appengine (until Go 1.11).
-# TODO: Remove when we drop Go 1.10 support
-go list -f {{.Dir}} ./... | xargs go run test/go_vet/vet.go
-
-# - gofmt, goimports, golint (with exceptions for generated code), go vet.
-gofmt -s -d -l . 2>&1 | fail_on_output
-goimports -l . 2>&1 | not grep -vE "\.pb\.go"
-golint ./... 2>&1 | not grep -vE "\.pb\.go:"
-go vet -all ./...
 
 misspell -error .
 
@@ -119,19 +100,30 @@ if [[ -z "${VET_SKIP_PROTO}" ]]; then
     (git status; git --no-pager diff; exit 1)
 fi
 
-# - Check that our modules are tidy.
-if go help mod >& /dev/null; then
-  find . -name 'go.mod' | xargs -IXXX bash -c 'cd $(dirname XXX); go mod tidy'
+# - gofmt, goimports, golint (with exceptions for generated code), go vet,
+# go mod tidy.
+# Perform these checks on each module inside gRPC.
+for MOD_FILE in $(find . -name 'go.mod'); do
+  MOD_DIR=$(dirname ${MOD_FILE})
+  pushd ${MOD_DIR}
+  go vet -all ./... | fail_on_output
+  gofmt -s -d -l . 2>&1 | fail_on_output
+  goimports -l . 2>&1 | not grep -vE "\.pb\.go"
+  golint ./... 2>&1 | not grep -vE "/grpc_testing_not_regenerate/.*\.pb\.go:"
+
+  go mod tidy
   git status --porcelain 2>&1 | fail_on_output || \
     (git status; git --no-pager diff; exit 1)
-fi
+  popd
+done
 
 # - Collection of static analysis checks
 #
 # TODO(dfawley): don't use deprecated functions in examples or first-party
 # plugins.
+# TODO(dfawley): enable ST1019 (duplicate imports) but allow for protobufs.
 SC_OUT="$(mktemp)"
-staticcheck -go 1.9 -checks 'inherit,-ST1015' ./... > "${SC_OUT}" || true
+staticcheck -go 1.19 -checks 'inherit,-ST1015,-ST1019,-SA1019' ./... > "${SC_OUT}" || true
 # Error if anything other than deprecation warnings are printed.
 not grep -v "is deprecated:.*SA1019" "${SC_OUT}"
 # Only ignore the following deprecated types/fields/functions.
@@ -141,8 +133,11 @@ not grep -Fv '.CredsBundle
 .NewAddress
 .NewServiceConfig
 .Type is deprecated: use Attributes
+BuildVersion is deprecated
 balancer.ErrTransientFailure
 balancer.Picker
+extDesc.Filename is deprecated
+github.com/golang/protobuf/jsonpb is deprecated
 grpc.CallCustomCodec
 grpc.Code
 grpc.Compressor
@@ -155,7 +150,6 @@ grpc.NewGZIPDecompressor
 grpc.RPCCompressor
 grpc.RPCDecompressor
 grpc.ServiceConfig
-grpc.WithBalancerName
 grpc.WithCompressor
 grpc.WithDecompressor
 grpc.WithDialer
@@ -164,13 +158,7 @@ grpc.WithServiceConfig
 grpc.WithTimeout
 http.CloseNotifier
 info.SecurityVersion
-resolver.Backend
-resolver.GRPCLB
-extDesc.Filename is deprecated
-BuildVersion is deprecated
-github.com/golang/protobuf/jsonpb is deprecated
 proto is deprecated
-xxx_messageInfo_
 proto.InternalMessageInfo is deprecated
 proto.EnumName is deprecated
 proto.ErrInternalBadWireType is deprecated
@@ -184,7 +172,12 @@ proto.RegisterExtension is deprecated
 proto.RegisteredExtension is deprecated
 proto.RegisteredExtensions is deprecated
 proto.RegisterMapType is deprecated
-proto.Unmarshaler is deprecated' "${SC_OUT}"
+proto.Unmarshaler is deprecated
+resolver.Backend
+resolver.GRPCLB
+Target is deprecated: Use the Target field in the BuildOptions instead.
+xxx_messageInfo_
+' "${SC_OUT}"
 
 # - special golint on package comments.
 lint_package_comment_per_package() {

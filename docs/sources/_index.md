@@ -1,10 +1,11 @@
 ---
-title: Loki Documentation
+title: Grafana Loki documentation
+description: "Technical documentation for Grafana Loki"
 aliases:
   - /docs/loki/
 ---
 
-# Loki Documentation
+# Grafana Loki documentation
 
 <p align="center"> <img src="logo_and_name.png" alt="Loki Logo"> <br>
   <small>Like Prometheus, but for logs!</small> </p>

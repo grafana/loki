@@ -5,6 +5,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/modern-go/reflect2"
 )
@@ -17,6 +18,41 @@ func init() {
 type Entry struct {
 	Timestamp time.Time
 	Line      string
+}
+
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	var (
+		i          int
+		parseError error
+	)
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// assert that both items in array are of type string
+		if t != jsonparser.String {
+			parseError = jsonparser.MalformedStringError
+			return
+		}
+		switch i {
+		case 0: // timestamp
+			ts, err := jsonparser.ParseInt(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Timestamp = time.Unix(0, ts)
+		case 1: // value
+			v, err := jsonparser.ParseString(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Line = v
+		}
+		i++
+	})
+	if parseError != nil {
+		return parseError
+	}
+	return err
 }
 
 type jsonExtension struct {
@@ -75,14 +111,14 @@ func readTimestamp(iter *jsoniter.Iterator) (time.Time, bool) {
 	return time.Unix(0, t), true
 }
 
-type entryEncoder struct{}
+type EntryEncoder struct{}
 
-func (entryEncoder) IsEmpty(ptr unsafe.Pointer) bool {
+func (EntryEncoder) IsEmpty(ptr unsafe.Pointer) bool {
 	// we don't omit-empty with log entries.
 	return false
 }
 
-func (entryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	e := *((*Entry)(ptr))
 	stream.WriteArrayStart()
 	stream.WriteRaw(`"`)
@@ -102,7 +138,7 @@ func (e *jsonExtension) CreateDecoder(typ reflect2.Type) jsoniter.ValDecoder {
 
 func (e *jsonExtension) CreateEncoder(typ reflect2.Type) jsoniter.ValEncoder {
 	if typ == reflect2.TypeOf(Entry{}) {
-		return entryEncoder{}
+		return EntryEncoder{}
 	}
 	return nil
 }

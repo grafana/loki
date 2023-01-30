@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -28,11 +29,33 @@ type Namespace struct {
 	// This is nullable so that we can omit if empty when encoding in JSON
 	DeletedAt *time.Time `json:"DeletedAt,omitempty" alias:"deleted_at"`
 
+	// Partition which contains the Namespace.
+	Partition string `json:"Partition,omitempty"`
+
 	// CreateIndex is the Raft index at which the Namespace was created
 	CreateIndex uint64 `json:"CreateIndex,omitempty"`
 
 	// ModifyIndex is the latest Raft index at which the Namespace was modified.
 	ModifyIndex uint64 `json:"ModifyIndex,omitempty"`
+}
+
+func (n *Namespace) UnmarshalJSON(data []byte) error {
+	type Alias Namespace
+	aux := struct {
+		DeletedAtSnake *time.Time `json:"deleted_at"`
+		*Alias
+	}{
+		Alias: (*Alias)(n),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if n.DeletedAt == nil && aux.DeletedAtSnake != nil {
+		n.DeletedAt = aux.DeletedAtSnake
+	}
+
+	return nil
 }
 
 // NamespaceACLConfig is the Namespace specific ACL configuration container
@@ -45,12 +68,38 @@ type NamespaceACLConfig struct {
 	RoleDefaults []ACLLink `json:"RoleDefaults" alias:"role_defaults"`
 }
 
+func (n *NamespaceACLConfig) UnmarshalJSON(data []byte) error {
+	type Alias NamespaceACLConfig
+	aux := struct {
+		PolicyDefaultsSnake []ACLLink `json:"policy_defaults"`
+		RoleDefaultsSnake   []ACLLink `json:"role_defaults"`
+		*Alias
+	}{
+		Alias: (*Alias)(n),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if n.PolicyDefaults == nil {
+		for _, pd := range aux.PolicyDefaultsSnake {
+			n.PolicyDefaults = append(n.PolicyDefaults, pd)
+		}
+	}
+	if n.RoleDefaults == nil {
+		for _, pd := range aux.RoleDefaultsSnake {
+			n.RoleDefaults = append(n.RoleDefaults, pd)
+		}
+	}
+	return nil
+}
+
 // Namespaces can be used to manage Namespaces in Consul Enterprise..
 type Namespaces struct {
 	c *Client
 }
 
-// Operator returns a handle to the operator endpoints.
+// Namespaces returns a handle to the namespaces endpoints.
 func (c *Client) Namespaces() *Namespaces {
 	return &Namespaces{c}
 }
@@ -63,11 +112,14 @@ func (n *Namespaces) Create(ns *Namespace, q *WriteOptions) (*Namespace, *WriteM
 	r := n.c.newRequest("PUT", "/v1/namespace")
 	r.setWriteOptions(q)
 	r.obj = ns
-	rtt, resp, err := requireOK(n.c.doRequest(r))
+	rtt, resp, err := n.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	var out Namespace
@@ -86,11 +138,14 @@ func (n *Namespaces) Update(ns *Namespace, q *WriteOptions) (*Namespace, *WriteM
 	r := n.c.newRequest("PUT", "/v1/namespace/"+ns.Name)
 	r.setWriteOptions(q)
 	r.obj = ns
-	rtt, resp, err := requireOK(n.c.doRequest(r))
+	rtt, resp, err := n.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	var out Namespace
@@ -105,11 +160,15 @@ func (n *Namespaces) Read(name string, q *QueryOptions) (*Namespace, *QueryMeta,
 	var out Namespace
 	r := n.c.newRequest("GET", "/v1/namespace/"+name)
 	r.setQueryOptions(q)
-	found, rtt, resp, err := requireNotFoundOrOK(n.c.doRequest(r))
+	rtt, resp, err := n.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	found, resp, err := requireNotFoundOrOK(resp)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -128,11 +187,14 @@ func (n *Namespaces) Read(name string, q *QueryOptions) (*Namespace, *QueryMeta,
 func (n *Namespaces) Delete(name string, q *WriteOptions) (*WriteMeta, error) {
 	r := n.c.newRequest("DELETE", "/v1/namespace/"+name)
 	r.setWriteOptions(q)
-	rtt, resp, err := requireOK(n.c.doRequest(r))
+	rtt, resp, err := n.c.doRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, err
+	}
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
@@ -142,11 +204,14 @@ func (n *Namespaces) List(q *QueryOptions) ([]*Namespace, *QueryMeta, error) {
 	var out []*Namespace
 	r := n.c.newRequest("GET", "/v1/namespaces")
 	r.setQueryOptions(q)
-	rtt, resp, err := requireOK(n.c.doRequest(r))
+	rtt, resp, err := n.c.doRequest(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
+	if err := requireOK(resp); err != nil {
+		return nil, nil, err
+	}
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)

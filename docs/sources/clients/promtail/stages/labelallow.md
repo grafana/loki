@@ -1,7 +1,8 @@
 ---
 title: labelallow
+description: labelallow stage
 ---
-# `labelallow` stage
+# labelallow
 
 The labelallow stage is an action stage that allows only the provided labels 
 to be included in the label set that is sent to Loki with the log entry.
@@ -38,4 +39,4 @@ Given the following incoming labels:
 Only the below labels would be sent to `loki`
 
 - `kubernetes_pod_name`: `"loki-pqrs"`
-- `contaikubernetes_container_namener`: `"loki"`
+- `kubernetes_container_name`: `"loki"`

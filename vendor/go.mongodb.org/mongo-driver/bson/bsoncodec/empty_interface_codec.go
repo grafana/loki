@@ -15,14 +15,17 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-var defaultEmptyInterfaceCodec = NewEmptyInterfaceCodec()
-
 // EmptyInterfaceCodec is the Codec used for interface{} values.
 type EmptyInterfaceCodec struct {
 	DecodeBinaryAsSlice bool
 }
 
-var _ ValueCodec = &EmptyInterfaceCodec{}
+var (
+	defaultEmptyInterfaceCodec = NewEmptyInterfaceCodec()
+
+	_ ValueCodec  = defaultEmptyInterfaceCodec
+	_ typeDecoder = defaultEmptyInterfaceCodec
+)
 
 // NewEmptyInterfaceCodec returns a EmptyInterfaceCodec with options opts.
 func NewEmptyInterfaceCodec(opts ...*bsonoptions.EmptyInterfaceCodecOptions) *EmptyInterfaceCodec {
@@ -54,11 +57,18 @@ func (eic EmptyInterfaceCodec) EncodeValue(ec EncodeContext, vw bsonrw.ValueWrit
 
 func (eic EmptyInterfaceCodec) getEmptyInterfaceDecodeType(dc DecodeContext, valueType bsontype.Type) (reflect.Type, error) {
 	isDocument := valueType == bsontype.Type(0) || valueType == bsontype.EmbeddedDocument
-	if isDocument && dc.Ancestor != nil {
-		// Using ancestor information rather than looking up the type map entry forces consistent decoding.
-		// If we're decoding into a bson.D, subdocuments should also be decoded as bson.D, even if a type map entry
-		// has been registered.
-		return dc.Ancestor, nil
+	if isDocument {
+		if dc.defaultDocumentType != nil {
+			// If the bsontype is an embedded document and the DocumentType is set on the DecodeContext, then return
+			// that type.
+			return dc.defaultDocumentType, nil
+		}
+		if dc.Ancestor != nil {
+			// Using ancestor information rather than looking up the type map entry forces consistent decoding.
+			// If we're decoding into a bson.D, subdocuments should also be decoded as bson.D, even if a type map entry
+			// has been registered.
+			return dc.Ancestor, nil
+		}
 	}
 
 	rtype, err := dc.LookupTypeMapEntry(valueType)
@@ -86,38 +96,50 @@ func (eic EmptyInterfaceCodec) getEmptyInterfaceDecodeType(dc DecodeContext, val
 	return nil, err
 }
 
-// DecodeValue is the ValueDecoderFunc for interface{}.
-func (eic EmptyInterfaceCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val reflect.Value) error {
-	if !val.CanSet() || val.Type() != tEmpty {
-		return ValueDecoderError{Name: "EmptyInterfaceDecodeValue", Types: []reflect.Type{tEmpty}, Received: val}
+func (eic EmptyInterfaceCodec) decodeType(dc DecodeContext, vr bsonrw.ValueReader, t reflect.Type) (reflect.Value, error) {
+	if t != tEmpty {
+		return emptyValue, ValueDecoderError{Name: "EmptyInterfaceDecodeValue", Types: []reflect.Type{tEmpty}, Received: reflect.Zero(t)}
 	}
 
 	rtype, err := eic.getEmptyInterfaceDecodeType(dc, vr.Type())
 	if err != nil {
 		switch vr.Type() {
 		case bsontype.Null:
-			val.Set(reflect.Zero(val.Type()))
-			return vr.ReadNull()
+			return reflect.Zero(t), vr.ReadNull()
 		default:
-			return err
+			return emptyValue, err
 		}
 	}
 
 	decoder, err := dc.LookupDecoder(rtype)
 	if err != nil {
-		return err
+		return emptyValue, err
 	}
 
-	elem := reflect.New(rtype).Elem()
-	err = decoder.DecodeValue(dc, vr, elem)
+	elem, err := decodeTypeOrValue(decoder, dc, vr, rtype)
 	if err != nil {
-		return err
+		return emptyValue, err
 	}
+
 	if eic.DecodeBinaryAsSlice && rtype == tBinary {
 		binElem := elem.Interface().(primitive.Binary)
 		if binElem.Subtype == bsontype.BinaryGeneric || binElem.Subtype == bsontype.BinaryBinaryOld {
 			elem = reflect.ValueOf(binElem.Data)
 		}
+	}
+
+	return elem, nil
+}
+
+// DecodeValue is the ValueDecoderFunc for interface{}.
+func (eic EmptyInterfaceCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val reflect.Value) error {
+	if !val.CanSet() || val.Type() != tEmpty {
+		return ValueDecoderError{Name: "EmptyInterfaceDecodeValue", Types: []reflect.Type{tEmpty}, Received: val}
+	}
+
+	elem, err := eic.decodeType(dc, vr, val.Type())
+	if err != nil {
+		return err
 	}
 
 	val.Set(elem)

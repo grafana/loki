@@ -2,12 +2,30 @@ package util
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 
+	"github.com/go-kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/grafana/loki/pkg/util/log"
 )
+
+// LogError logs any error returned by f; useful when deferring Close etc.
+func LogError(message string, f func() error) {
+	if err := f(); err != nil {
+		level.Error(log.Logger).Log("message", message, "error", err)
+	}
+}
+
+// LogError logs any error returned by f; useful when deferring Close etc.
+func LogErrorWithContext(ctx context.Context, message string, f func() error) {
+	if err := f(); err != nil {
+		level.Error(log.WithContext(ctx, log.Logger)).Log("message", message, "error", err)
+	}
+}
 
 // The MultiError type implements the error interface, and contains the
 // Errors used to construct it.
@@ -53,10 +71,31 @@ func (es MultiError) Err() error {
 
 // Is tells if all errors are the same as the target error.
 func (es MultiError) Is(target error) bool {
+	if len(es) == 0 {
+		return false
+	}
 	for _, err := range es {
 		if !errors.Is(err, target) {
 			return false
 		}
+	}
+	return true
+}
+
+// IsDeadlineExceeded tells if all errors are either context.DeadlineExceeded or grpc codes.DeadlineExceeded.
+func (es MultiError) IsDeadlineExceeded() bool {
+	if len(es) == 0 {
+		return false
+	}
+	for _, err := range es {
+		if errors.Is(err, context.DeadlineExceeded) {
+			continue
+		}
+		s, ok := status.FromError(err)
+		if ok && s.Code() == codes.DeadlineExceeded {
+			continue
+		}
+		return false
 	}
 	return true
 }

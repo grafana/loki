@@ -1,10 +1,11 @@
 ---
 title: match
+description: match stage
 ---
-# `match` stage
+# match
 
 The match stage is a filtering stage that conditionally applies a set of stages
-or drop entries when a log entry matches a configurable [LogQL](../../../../logql/)
+or drop entries when a log entry matches a configurable [LogQL]({{<relref "../../../logql">}})
 stream selector and filter expressions.
 
 ## Schema
@@ -47,7 +48,7 @@ match:
       ]
 ```
 
-Refer to the [Promtail Configuration Reference](../../configuration/) for the
+Refer to the [Promtail Configuration Reference]({{<relref "../configuration">}}) for the
 schema on the various other stages referenced here.
 
 ### Example
@@ -104,7 +105,7 @@ label of `app` whose value is `pokey`. This does **not** match in our case, so
 the nested `json` stage is not ran.
 
 The fifth stage will drop any entries from the application `promtail` that matches
-the regex `.*noisy error`. and will also increment the `logentry_drop_lines_total` 
+the regex `.*noisy error`. and will also increment the `logentry_dropped_lines_total` 
 metric with a label `reason="promtail_noisy_error"`
 
 The final `output` stage changes the contents of the log line to be the value of

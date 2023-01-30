@@ -1,24 +1,20 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
+
+	"github.com/prometheus/common/model"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const (
@@ -26,78 +22,155 @@ const (
 	contentType = "application/x-protobuf"
 
 	maxErrMsgLen = 1024
+
+	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
 )
 
-var promtailAddress *url.URL
+var (
+	writeAddress                                              *url.URL
+	username, password, extraLabelsRaw, tenantID, bearerToken string
+	keepStream                                                bool
+	batchSize                                                 int
+	s3Clients                                                 map[string]*s3.Client
+	extraLabels                                               model.LabelSet
+	skipTlsVerify                                             bool
+	printLogLine                                              bool
+)
 
-func init() {
-	addr := os.Getenv("PROMTAIL_ADDRESS")
+func setupArguments() {
+	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
-		panic(errors.New("required environmental variable PROMTAIL_ADDRESS not present"))
+		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
 	}
+
 	var err error
-	promtailAddress, err = url.Parse(addr)
+	writeAddress, err = url.Parse(addr)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("write address: ", writeAddress.String())
+
+	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
+	extraLabels, err = parseExtraLabels(extraLabelsRaw)
+	if err != nil {
+		panic(err)
+	}
+
+	username = os.Getenv("USERNAME")
+	password = os.Getenv("PASSWORD")
+	// If either username or password is set then both must be.
+	if (username != "" && password == "") || (username == "" && password != "") {
+		panic("both username and password must be set if either one is set")
+	}
+
+	bearerToken = os.Getenv("BEARER_TOKEN")
+	// If username and password are set, bearer token is not allowed
+	if username != "" && bearerToken != "" {
+		panic("both username and bearerToken are not allowed")
+	}
+
+	skipTls := os.Getenv("SKIP_TLS_VERIFY")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(skipTls, "true") {
+		skipTlsVerify = true
+	}
+
+	tenantID = os.Getenv("TENANT_ID")
+
+	keep := os.Getenv("KEEP_STREAM")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(keep, "true") {
+		keepStream = true
+	}
+	fmt.Println("keep stream: ", keepStream)
+
+	batch := os.Getenv("BATCH_SIZE")
+	batchSize = 131072
+	if batch != "" {
+		batchSize, _ = strconv.Atoi(batch)
+	}
+
+	print := os.Getenv("PRINT_LOG_LINE")
+	printLogLine = true
+	if strings.EqualFold(print, "false") {
+		printLogLine = false
+	}
+
+	s3Clients = make(map[string]*s3.Client)
 }
 
-func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
+func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
+	var extractedLabels = model.LabelSet{}
+	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
 
-	data, err := ev.AWSLogs.Parse()
+	if len(extraLabelsRaw) < 1 {
+		return extractedLabels, nil
+	}
+
+	if len(extraLabelsSplit)%2 != 0 {
+		return nil, fmt.Errorf(invalidExtraLabelsError)
+	}
+	for i := 0; i < len(extraLabelsSplit); i += 2 {
+		extractedLabels[model.LabelName("__extra_"+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
+	}
+	err := extractedLabels.Validate()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	fmt.Println("extra labels:", extractedLabels)
+	return extractedLabels, nil
+}
 
-	stream := logproto.Stream{
-		Labels: model.LabelSet{
-			model.LabelName("__aws_cloudwatch_log_group"):  model.LabelValue(data.LogGroup),
-			model.LabelName("__aws_cloudwatch_log_stream"): model.LabelValue(data.LogStream),
-			model.LabelName("__aws_cloudwatch_owner"):      model.LabelValue(data.Owner),
-		}.String(),
-		Entries: make([]logproto.Entry, 0, len(data.LogEvents)),
-	}
+func applyExtraLabels(labels model.LabelSet) model.LabelSet {
+	return labels.Merge(extraLabels)
+}
 
-	for _, entry := range data.LogEvents {
-		stream.Entries = append(stream.Entries, logproto.Entry{
-			Line: entry.Message,
-			// It's best practice to ignore timestamps from cloudwatch as promtail is responsible for adding those.
-			Timestamp: util.TimeFromMillis(entry.Timestamp),
-		})
-	}
+func checkEventType(ev map[string]interface{}) (interface{}, error) {
+	var s3Event events.S3Event
+	var cwEvent events.CloudwatchLogsEvent
+	var kinesisEvent events.KinesisEvent
 
-	buf, err := proto.Marshal(&logproto.PushRequest{
-		Streams: []logproto.Stream{stream},
-	})
-	if err != nil {
-		return err
-	}
+	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent}
 
-	// Push to promtail
-	buf = snappy.Encode(nil, buf)
-	req, err := http.NewRequest("POST", promtailAddress.String(), bytes.NewReader(buf))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", contentType)
+	j, _ := json.Marshal(ev)
+	reader := strings.NewReader(string(j))
+	d := json.NewDecoder(reader)
+	d.DisallowUnknownFields()
 
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
-	if err != nil {
-		return err
-	}
+	for _, t := range types {
+		err := d.Decode(t)
 
-	if resp.StatusCode/100 != 2 {
-		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
-		line := ""
-		if scanner.Scan() {
-			line = scanner.Text()
+		if err == nil {
+			return t, nil
 		}
-		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
+
+		reader.Seek(0, 0)
+	}
+
+	return nil, fmt.Errorf("unknown event type!")
+}
+
+func handler(ctx context.Context, ev map[string]interface{}) error {
+	event, err := checkEventType(ev)
+	if err != nil {
+		fmt.Printf("invalid event: %s\n", ev)
+		return err
+	}
+
+	switch evt := event.(type) {
+	case *events.S3Event:
+		return processS3Event(ctx, evt)
+	case *events.CloudwatchLogsEvent:
+		return processCWEvent(ctx, evt)
+	case *events.KinesisEvent:
+		return processKinesisEvent(ctx, evt)
 	}
 
 	return err
 }
 
 func main() {
+	setupArguments()
 	lambda.Start(handler)
 }

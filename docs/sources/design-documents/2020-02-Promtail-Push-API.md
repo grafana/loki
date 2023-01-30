@@ -1,5 +1,7 @@
 ---
 title: Promtail Push API
+description: Promtail Push API
+weight: 20
 ---
 # Promtail Push API
 
@@ -51,7 +53,7 @@ pipelines through different push endpoints.
 
 Users must also be aware about problems with running Promtail with an HTTP
 target behind a load balancer: if payloads are load balanced between multiple
-promtail instances, ordering of logs in Loki will be disrupted leading to
+Promtail instances, ordering of logs in Loki will be disrupted leading to
 rejected pushes. Users are recommended to do one of the following:
 
 1. Have a dedicated Promtail instance for receiving pushes. This also applies to
@@ -62,7 +64,7 @@ rejected pushes. Users are recommended to do one of the following:
 ## Implementation
 
 As discussed in this document, this feature will be implemented by copying the
-existing [Loki Push API](https://grafana.com/docs/loki/latest/api/#post-lokiapiv1push)
+existing [Loki Push API](/docs/loki/latest/api/#post-lokiapiv1push)
 and exposing it via Promtail.
 
 ## Considered Alternatives

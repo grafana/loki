@@ -1,9 +1,10 @@
 ---
 title: Filesystem
+description: Filesystem Object Store
 ---
-# Filesystem Object Store
+# Filesystem
 
-The filesystem object store is the easiest to get started with Loki but there are some pros/cons to this approach.
+The filesystem object store is the easiest to get started with Grafana Loki but there are some pros/cons to this approach.
 
 Very simply it stores all the objects (chunks) in the specified directory:
 
@@ -15,9 +16,9 @@ storage_config:
 
 A folder is created for every tenant all the chunks for one tenant are stored in that directory.
 
-If loki is run in single-tenant mode, all the chunks are put in a folder named `fake` which is the synthesized tenant name used for single tenant mode.
+If Loki is run in single-tenant mode, all the chunks are put in a folder named `fake` which is the synthesized tenant name used for single tenant mode.
 
-See [multi-tenancy](../../multi-tenancy/) for more information.
+See [multi-tenancy]({{<relref "../multi-tenancy">}}) for more information.
 
 ## Pros
 

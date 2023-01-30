@@ -156,8 +156,18 @@ type ErrDefault500 struct {
 	ErrUnexpectedResponseCode
 }
 
+// ErrDefault502 is the default error type returned on a 502 HTTP response code.
+type ErrDefault502 struct {
+	ErrUnexpectedResponseCode
+}
+
 // ErrDefault503 is the default error type returned on a 503 HTTP response code.
 type ErrDefault503 struct {
+	ErrUnexpectedResponseCode
+}
+
+// ErrDefault504 is the default error type returned on a 504 HTTP response code.
+type ErrDefault504 struct {
 	ErrUnexpectedResponseCode
 }
 
@@ -179,7 +189,11 @@ func (e ErrDefault403) Error() string {
 	return e.choseErrString()
 }
 func (e ErrDefault404) Error() string {
-	return "Resource not found"
+	e.DefaultErrString = fmt.Sprintf(
+		"Resource not found: [%s %s], error message: %s",
+		e.Method, e.URL, e.Body,
+	)
+	return e.choseErrString()
 }
 func (e ErrDefault405) Error() string {
 	return "Method not allowed"
@@ -194,9 +208,15 @@ func (e ErrDefault429) Error() string {
 func (e ErrDefault500) Error() string {
 	return "Internal Server Error"
 }
+func (e ErrDefault502) Error() string {
+	return "Bad Gateway"
+}
 func (e ErrDefault503) Error() string {
 	return "The service is currently unable to handle the request due to a temporary" +
 		" overloading or maintenance. This is a temporary condition. Try again later."
+}
+func (e ErrDefault504) Error() string {
+	return "Gateway Timeout"
 }
 
 // Err400er is the interface resource error types implement to override the error message
@@ -253,10 +273,22 @@ type Err500er interface {
 	Error500(ErrUnexpectedResponseCode) error
 }
 
+// Err502er is the interface resource error types implement to override the error message
+// from a 502 error.
+type Err502er interface {
+	Error502(ErrUnexpectedResponseCode) error
+}
+
 // Err503er is the interface resource error types implement to override the error message
 // from a 503 error.
 type Err503er interface {
 	Error503(ErrUnexpectedResponseCode) error
+}
+
+// Err504er is the interface resource error types implement to override the error message
+// from a 504 error.
+type Err504er interface {
+	Error504(ErrUnexpectedResponseCode) error
 }
 
 // ErrTimeOut is the error type returned when an operations times out.
@@ -273,10 +305,11 @@ func (e ErrTimeOut) Error() string {
 type ErrUnableToReauthenticate struct {
 	BaseError
 	ErrOriginal error
+	ErrReauth   error
 }
 
 func (e ErrUnableToReauthenticate) Error() string {
-	e.DefaultErrString = fmt.Sprintf("Unable to re-authenticate: %s", e.ErrOriginal)
+	e.DefaultErrString = fmt.Sprintf("Unable to re-authenticate: %s: %s", e.ErrOriginal, e.ErrReauth)
 	return e.choseErrString()
 }
 

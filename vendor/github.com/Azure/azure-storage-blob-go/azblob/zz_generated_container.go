@@ -259,14 +259,18 @@ func (client containerClient) changeLeaseResponder(resp pipeline.Response) (pipe
 // Containers, Blobs, and Metadata for more information. access is specifies whether data in the container may be
 // accessed publicly and the level of access requestID is provides a client-generated, opaque value with a 1 KB
 // character limit that is recorded in the analytics logs when storage analytics logging is enabled.
-func (client containerClient) Create(ctx context.Context, timeout *int32, metadata map[string]string, access PublicAccessType, requestID *string) (*ContainerCreateResponse, error) {
+// defaultEncryptionScope is optional.  Version 2019-07-07 and later.  Specifies the default encryption scope to set on
+// the container and use for all future writes. preventEncryptionScopeOverride is optional.  Version 2019-07-07 and
+// newer.  If true, prevents any request from specifying a different encryption scope than the scope set on the
+// container.
+func (client containerClient) Create(ctx context.Context, timeout *int32, metadata map[string]string, access PublicAccessType, requestID *string, defaultEncryptionScope *string, preventEncryptionScopeOverride *bool) (*ContainerCreateResponse, error) {
 	if err := validate([]validation{
 		{targetValue: timeout,
 			constraints: []constraint{{target: "timeout", name: null, rule: false,
 				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
 		return nil, err
 	}
-	req, err := client.createPreparer(timeout, metadata, access, requestID)
+	req, err := client.createPreparer(timeout, metadata, access, requestID, defaultEncryptionScope, preventEncryptionScopeOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +282,7 @@ func (client containerClient) Create(ctx context.Context, timeout *int32, metada
 }
 
 // createPreparer prepares the Create request.
-func (client containerClient) createPreparer(timeout *int32, metadata map[string]string, access PublicAccessType, requestID *string) (pipeline.Request, error) {
+func (client containerClient) createPreparer(timeout *int32, metadata map[string]string, access PublicAccessType, requestID *string, defaultEncryptionScope *string, preventEncryptionScopeOverride *bool) (pipeline.Request, error) {
 	req, err := pipeline.NewRequest("PUT", client.url, nil)
 	if err != nil {
 		return req, pipeline.NewError(err, "failed to create request")
@@ -300,6 +304,12 @@ func (client containerClient) createPreparer(timeout *int32, metadata map[string
 	req.Header.Set("x-ms-version", ServiceVersion)
 	if requestID != nil {
 		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	if defaultEncryptionScope != nil {
+		req.Header.Set("x-ms-default-encryption-scope", *defaultEncryptionScope)
+	}
+	if preventEncryptionScopeOverride != nil {
+		req.Header.Set("x-ms-deny-encryption-scope-override", strconv.FormatBool(*preventEncryptionScopeOverride))
 	}
 	return req, nil
 }
@@ -813,6 +823,67 @@ func (client containerClient) releaseLeaseResponder(resp pipeline.Response) (pip
 	return &ContainerReleaseLeaseResponse{rawResponse: resp.Response()}, err
 }
 
+// Rename renames an existing container.
+//
+// sourceContainerName is required.  Specifies the name of the container to rename. timeout is the timeout parameter is
+// expressed in seconds. For more information, see <a
+// href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
+// Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
+// character limit that is recorded in the analytics logs when storage analytics logging is enabled. sourceLeaseID is a
+// lease ID for the source path. If specified, the source path must have an active lease and the lease ID must match.
+func (client containerClient) Rename(ctx context.Context, sourceContainerName string, timeout *int32, requestID *string, sourceLeaseID *string) (*ContainerRenameResponse, error) {
+	if err := validate([]validation{
+		{targetValue: timeout,
+			constraints: []constraint{{target: "timeout", name: null, rule: false,
+				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
+		return nil, err
+	}
+	req, err := client.renamePreparer(sourceContainerName, timeout, requestID, sourceLeaseID)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Pipeline().Do(ctx, responderPolicyFactory{responder: client.renameResponder}, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*ContainerRenameResponse), err
+}
+
+// renamePreparer prepares the Rename request.
+func (client containerClient) renamePreparer(sourceContainerName string, timeout *int32, requestID *string, sourceLeaseID *string) (pipeline.Request, error) {
+	req, err := pipeline.NewRequest("PUT", client.url, nil)
+	if err != nil {
+		return req, pipeline.NewError(err, "failed to create request")
+	}
+	params := req.URL.Query()
+	if timeout != nil {
+		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
+	}
+	params.Set("restype", "container")
+	params.Set("comp", "rename")
+	req.URL.RawQuery = params.Encode()
+	req.Header.Set("x-ms-version", ServiceVersion)
+	if requestID != nil {
+		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	req.Header.Set("x-ms-source-container-name", sourceContainerName)
+	if sourceLeaseID != nil {
+		req.Header.Set("x-ms-source-lease-id", *sourceLeaseID)
+	}
+	return req, nil
+}
+
+// renameResponder handles the response to the Rename request.
+func (client containerClient) renameResponder(resp pipeline.Response) (pipeline.Response, error) {
+	err := validateResponse(resp, http.StatusOK)
+	if resp == nil {
+		return nil, err
+	}
+	io.Copy(ioutil.Discard, resp.Response().Body)
+	resp.Response().Body.Close()
+	return &ContainerRenameResponse{rawResponse: resp.Response()}, err
+}
+
 // RenewLease [Update] establishes and manages a lock on a container for delete operations. The lock duration can be 15
 // to 60 seconds, or can be infinite
 //
@@ -879,6 +950,70 @@ func (client containerClient) renewLeaseResponder(resp pipeline.Response) (pipel
 	io.Copy(ioutil.Discard, resp.Response().Body)
 	resp.Response().Body.Close()
 	return &ContainerRenewLeaseResponse{rawResponse: resp.Response()}, err
+}
+
+// Restore restores a previously-deleted container.
+//
+// timeout is the timeout parameter is expressed in seconds. For more information, see <a
+// href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
+// Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
+// character limit that is recorded in the analytics logs when storage analytics logging is enabled.
+// deletedContainerName is optional.  Version 2019-12-12 and later.  Specifies the name of the deleted container to
+// restore. deletedContainerVersion is optional.  Version 2019-12-12 and later.  Specifies the version of the deleted
+// container to restore.
+func (client containerClient) Restore(ctx context.Context, timeout *int32, requestID *string, deletedContainerName *string, deletedContainerVersion *string) (*ContainerRestoreResponse, error) {
+	if err := validate([]validation{
+		{targetValue: timeout,
+			constraints: []constraint{{target: "timeout", name: null, rule: false,
+				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
+		return nil, err
+	}
+	req, err := client.restorePreparer(timeout, requestID, deletedContainerName, deletedContainerVersion)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Pipeline().Do(ctx, responderPolicyFactory{responder: client.restoreResponder}, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*ContainerRestoreResponse), err
+}
+
+// restorePreparer prepares the Restore request.
+func (client containerClient) restorePreparer(timeout *int32, requestID *string, deletedContainerName *string, deletedContainerVersion *string) (pipeline.Request, error) {
+	req, err := pipeline.NewRequest("PUT", client.url, nil)
+	if err != nil {
+		return req, pipeline.NewError(err, "failed to create request")
+	}
+	params := req.URL.Query()
+	if timeout != nil {
+		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
+	}
+	params.Set("restype", "container")
+	params.Set("comp", "undelete")
+	req.URL.RawQuery = params.Encode()
+	req.Header.Set("x-ms-version", ServiceVersion)
+	if requestID != nil {
+		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	if deletedContainerName != nil {
+		req.Header.Set("x-ms-deleted-container-name", *deletedContainerName)
+	}
+	if deletedContainerVersion != nil {
+		req.Header.Set("x-ms-deleted-container-version", *deletedContainerVersion)
+	}
+	return req, nil
+}
+
+// restoreResponder handles the response to the Restore request.
+func (client containerClient) restoreResponder(resp pipeline.Response) (pipeline.Response, error) {
+	err := validateResponse(resp, http.StatusOK, http.StatusCreated)
+	if resp == nil {
+		return nil, err
+	}
+	io.Copy(ioutil.Discard, resp.Response().Body)
+	resp.Response().Body.Close()
+	return &ContainerRestoreResponse{rawResponse: resp.Response()}, err
 }
 
 // SetAccessPolicy sets the permissions for the specified container. The permissions indicate whether blobs in a
@@ -1034,4 +1169,64 @@ func (client containerClient) setMetadataResponder(resp pipeline.Response) (pipe
 	io.Copy(ioutil.Discard, resp.Response().Body)
 	resp.Response().Body.Close()
 	return &ContainerSetMetadataResponse{rawResponse: resp.Response()}, err
+}
+
+// SubmitBatch the Batch operation allows multiple API calls to be embedded into a single HTTP request.
+//
+// body is initial data body will be closed upon successful return. Callers should ensure closure when receiving an
+// error.contentLength is the length of the request. multipartContentType is required. The value of this header must be
+// multipart/mixed with a batch boundary. Example header value: multipart/mixed; boundary=batch_<GUID> timeout is the
+// timeout parameter is expressed in seconds. For more information, see <a
+// href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
+// Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
+// character limit that is recorded in the analytics logs when storage analytics logging is enabled.
+func (client containerClient) SubmitBatch(ctx context.Context, body io.ReadSeeker, contentLength int64, multipartContentType string, timeout *int32, requestID *string) (*SubmitBatchResponse, error) {
+	if err := validate([]validation{
+		{targetValue: body,
+			constraints: []constraint{{target: "body", name: null, rule: true, chain: nil}}},
+		{targetValue: timeout,
+			constraints: []constraint{{target: "timeout", name: null, rule: false,
+				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
+		return nil, err
+	}
+	req, err := client.submitBatchPreparer(body, contentLength, multipartContentType, timeout, requestID)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Pipeline().Do(ctx, responderPolicyFactory{responder: client.submitBatchResponder}, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*SubmitBatchResponse), err
+}
+
+// submitBatchPreparer prepares the SubmitBatch request.
+func (client containerClient) submitBatchPreparer(body io.ReadSeeker, contentLength int64, multipartContentType string, timeout *int32, requestID *string) (pipeline.Request, error) {
+	req, err := pipeline.NewRequest("POST", client.url, body)
+	if err != nil {
+		return req, pipeline.NewError(err, "failed to create request")
+	}
+	params := req.URL.Query()
+	if timeout != nil {
+		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
+	}
+	params.Set("restype", "container")
+	params.Set("comp", "batch")
+	req.URL.RawQuery = params.Encode()
+	req.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	req.Header.Set("Content-Type", multipartContentType)
+	req.Header.Set("x-ms-version", ServiceVersion)
+	if requestID != nil {
+		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	return req, nil
+}
+
+// submitBatchResponder handles the response to the SubmitBatch request.
+func (client containerClient) submitBatchResponder(resp pipeline.Response) (pipeline.Response, error) {
+	err := validateResponse(resp, http.StatusOK, http.StatusAccepted)
+	if resp == nil {
+		return nil, err
+	}
+	return &SubmitBatchResponse{rawResponse: resp.Response()}, err
 }

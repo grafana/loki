@@ -8,17 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	loki_runtime "github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	loki_runtime "github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type MemoryWALReader struct {
@@ -55,7 +56,7 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 			UserID: user,
 			Series: []record.RefSeries{
 				{
-					Ref: uint64(i),
+					Ref: chunks.HeadSeriesRef(i),
 					Labels: labels.FromMap(
 						map[string]string{
 							"stream": fmt.Sprint(i),
@@ -77,7 +78,7 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 			UserID: user,
 			RefEntries: []RefEntries{
 				{
-					Ref:     uint64(i),
+					Ref:     chunks.HeadSeriesRef(i),
 					Entries: entries,
 				},
 			},
@@ -90,16 +91,15 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 		}
 
 		if len(rec.RefEntries) > 0 {
-			reader.xs = append(reader.xs, rec.encodeEntries(nil))
+			reader.xs = append(reader.xs, rec.encodeEntries(CurrentEntriesRec, nil))
 		}
 	}
 
 	return reader, recs
-
 }
 
 type MemRecoverer struct {
-	users map[string]map[uint64][]logproto.Entry
+	users map[string]map[chunks.HeadSeriesRef][]logproto.Entry
 	done  chan struct{}
 
 	sync.Mutex
@@ -108,7 +108,7 @@ type MemRecoverer struct {
 
 func NewMemRecoverer() *MemRecoverer {
 	return &MemRecoverer{
-		users: make(map[string]map[uint64][]logproto.Entry),
+		users: make(map[string]map[chunks.HeadSeriesRef][]logproto.Entry),
 		done:  make(chan struct{}),
 	}
 }
@@ -122,7 +122,7 @@ func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
 	defer r.Unlock()
 	user, ok := r.users[userID]
 	if !ok {
-		user = make(map[uint64][]logproto.Entry)
+		user = make(map[chunks.HeadSeriesRef][]logproto.Entry)
 		r.users[userID] = user
 		r.usersCt++
 	}
@@ -194,7 +194,6 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func TestSeriesRecoveryNoDuplicates(t *testing.T) {
@@ -263,15 +262,17 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	}, &result)
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
+	lbls := labels.Labels{{Name: "bar", Value: "baz1"}, {Name: "foo", Value: "bar"}}
 	expected := []logproto.Stream{
 		{
-			Labels: `{bar="baz1", foo="bar"}`,
+			Labels: lbls.String(),
 			Entries: []logproto.Entry{
 				{
 					Timestamp: time.Unix(1, 0),
 					Line:      "line 1",
 				},
 			},
+			Hash: lbls.Hash(),
 		},
 	}
 	require.Equal(t, expected, result.resps[0].Streams)

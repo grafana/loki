@@ -1,14 +1,17 @@
 package loki
 
 import (
+	"fmt"
 	"io"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/runtime"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Loki is running.
@@ -21,30 +24,62 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
+func (r runtimeConfigValues) validate() error {
+	for t, c := range r.TenantLimits {
+		if c == nil {
+			level.Warn(util_log.Logger).Log("msg", "skipping empty tenant limit definition", "tenant", t)
+			continue
+		}
+
+		if err := c.Validate(); err != nil {
+			return fmt.Errorf("invalid override for tenant %s: %w", t, err)
+		}
+	}
+	return nil
+}
+
 func loadRuntimeConfig(r io.Reader) (interface{}, error) {
-	var overrides = &runtimeConfigValues{}
+	overrides := &runtimeConfigValues{}
 
 	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
 	if err := decoder.Decode(&overrides); err != nil {
 		return nil, err
 	}
-
+	if err := overrides.validate(); err != nil {
+		return nil, err
+	}
 	return overrides, nil
 }
 
-func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
-	if c == nil {
+type tenantLimitsFromRuntimeConfig struct {
+	c *runtimeconfig.Manager
+}
+
+func (t *tenantLimitsFromRuntimeConfig) AllByUserID() map[string]*validation.Limits {
+	if t.c == nil {
 		return nil
 	}
-	return func(userID string) *validation.Limits {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
-			return nil
-		}
 
-		return cfg.TenantLimits[userID]
+	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
+	if cfg != nil && ok {
+		return cfg.TenantLimits
 	}
+
+	return nil
+}
+
+func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+	allByUserID := t.AllByUserID()
+	if allByUserID == nil {
+		return nil
+	}
+
+	return allByUserID[userID]
+}
+
+func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
+	return &tenantLimitsFromRuntimeConfig{c: c}
 }
 
 func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfig {

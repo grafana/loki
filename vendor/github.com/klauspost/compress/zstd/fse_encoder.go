@@ -62,9 +62,8 @@ func (s symbolTransform) String() string {
 // To indicate that you have populated the histogram call HistogramFinished
 // with the value of the highest populated symbol, as well as the number of entries
 // in the most populated entry. These are accepted at face value.
-// The returned slice will always be length 256.
-func (s *fseEncoder) Histogram() []uint32 {
-	return s.count[:]
+func (s *fseEncoder) Histogram() *[256]uint32 {
+	return &s.count
 }
 
 // HistogramFinished can be called to indicate that the histogram has been populated.
@@ -77,27 +76,12 @@ func (s *fseEncoder) HistogramFinished(maxSymbol uint8, maxCount int) {
 	s.clearCount = maxCount != 0
 }
 
-// prepare will prepare and allocate scratch tables used for both compression and decompression.
-func (s *fseEncoder) prepare() (*fseEncoder, error) {
-	if s == nil {
-		s = &fseEncoder{}
-	}
-	s.useRLE = false
-	if s.clearCount && s.maxCount == 0 {
-		for i := range s.count {
-			s.count[i] = 0
-		}
-		s.clearCount = false
-	}
-	return s, nil
-}
-
 // allocCtable will allocate tables needed for compression.
 // If existing tables a re big enough, they are simply re-used.
 func (s *fseEncoder) allocCtable() {
 	tableSize := 1 << s.actualTableLog
 	// get tableSymbol that is big enough.
-	if cap(s.ct.tableSymbol) < int(tableSize) {
+	if cap(s.ct.tableSymbol) < tableSize {
 		s.ct.tableSymbol = make([]byte, tableSize)
 	}
 	s.ct.tableSymbol = s.ct.tableSymbol[:tableSize]
@@ -202,13 +186,13 @@ func (s *fseEncoder) buildCTable() error {
 			case 0:
 			case -1, 1:
 				symbolTT[i].deltaNbBits = tl
-				symbolTT[i].deltaFindState = int16(total - 1)
+				symbolTT[i].deltaFindState = total - 1
 				total++
 			default:
 				maxBitsOut := uint32(tableLog) - highBit(uint32(v-1))
 				minStatePlus := uint32(v) << maxBitsOut
 				symbolTT[i].deltaNbBits = (maxBitsOut << 16) - minStatePlus
-				symbolTT[i].deltaFindState = int16(total - v)
+				symbolTT[i].deltaFindState = total - v
 				total += v
 			}
 		}
@@ -229,7 +213,7 @@ func (s *fseEncoder) setRLE(val byte) {
 		deltaFindState: 0,
 		deltaNbBits:    0,
 	}
-	if debug {
+	if debugEncoder {
 		println("setRLE: val", val, "symbolTT", s.ct.symbolTT[val])
 	}
 	s.rleVal = val
@@ -353,8 +337,8 @@ func (s *fseEncoder) normalizeCount2(length int) error {
 		distributed  uint32
 		total        = uint32(length)
 		tableLog     = s.actualTableLog
-		lowThreshold = uint32(total >> tableLog)
-		lowOne       = uint32((total * 3) >> (tableLog + 1))
+		lowThreshold = total >> tableLog
+		lowOne       = (total * 3) >> (tableLog + 1)
 	)
 	for i, cnt := range s.count[:s.symbolLen] {
 		if cnt == 0 {
@@ -379,7 +363,7 @@ func (s *fseEncoder) normalizeCount2(length int) error {
 
 	if (total / toDistribute) > lowOne {
 		// risk of rounding to zero
-		lowOne = uint32((total * 3) / (toDistribute * 2))
+		lowOne = (total * 3) / (toDistribute * 2)
 		for i, cnt := range s.count[:s.symbolLen] {
 			if (s.norm[i] == notYetAssigned) && (cnt <= lowOne) {
 				s.norm[i] = 1
@@ -708,15 +692,6 @@ func (c *cState) init(bw *bitWriter, ct *cTable, first symbolTransform) {
 	im := int32((nbBitsOut << 16) - first.deltaNbBits)
 	lu := (im >> nbBitsOut) + int32(first.deltaFindState)
 	c.state = c.stateTable[lu]
-	return
-}
-
-// encode the output symbol provided and write it to the bitstream.
-func (c *cState) encode(symbolTT symbolTransform) {
-	nbBitsOut := (uint32(c.state) + symbolTT.deltaNbBits) >> 16
-	dstState := int32(c.state>>(nbBitsOut&15)) + int32(symbolTT.deltaFindState)
-	c.bw.addBits16NC(c.state, uint8(nbBitsOut))
-	c.state = c.stateTable[dstState]
 }
 
 // flush will write the tablelog to the output and flush the remaining full bytes.

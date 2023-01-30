@@ -42,14 +42,27 @@ func (l *limitListener) acquire() bool {
 func (l *limitListener) release() { <-l.sem }
 
 func (l *limitListener) Accept() (net.Conn, error) {
-	acquired := l.acquire()
-	// If the semaphore isn't acquired because the listener was closed, expect
-	// that this call to accept won't block, but immediately return an error.
+	if !l.acquire() {
+		// If the semaphore isn't acquired because the listener was closed, expect
+		// that this call to accept won't block, but immediately return an error.
+		// If it instead returns a spurious connection (due to a bug in the
+		// Listener, such as https://golang.org/issue/50216), we immediately close
+		// it and try again. Some buggy Listener implementations (like the one in
+		// the aforementioned issue) seem to assume that Accept will be called to
+		// completion, and may otherwise fail to clean up the client end of pending
+		// connections.
+		for {
+			c, err := l.Listener.Accept()
+			if err != nil {
+				return nil, err
+			}
+			c.Close()
+		}
+	}
+
 	c, err := l.Listener.Accept()
 	if err != nil {
-		if acquired {
-			l.release()
-		}
+		l.release()
 		return nil, err
 	}
 	return &limitListenerConn{Conn: c, release: l.release}, nil

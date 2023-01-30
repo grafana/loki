@@ -3,25 +3,26 @@ package util
 import (
 	"context"
 	"sync"
-	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/grafana/dskit/concurrency"
+
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
-const maxQueriesPerGoroutine = 100
+const (
+	maxQueriesBatch = 100
+	maxConcurrency  = 10
+)
 
-type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
-}
+type QueryIndexFunc func(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
 
 // QueriesByTable groups and returns queries by tables.
-func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
-	queriesByTable := make(map[string][]chunk.IndexQuery)
+func QueriesByTable(queries []index.Query) map[string][]index.Query {
+	queriesByTable := make(map[string][]index.Query)
 	for _, query := range queries {
 		if _, ok := queriesByTable[query.TableName]; !ok {
-			queriesByTable[query.TableName] = []chunk.IndexQuery{}
+			queriesByTable[query.TableName] = []index.Query{}
 		}
 
 		queriesByTable[query.TableName] = append(queriesByTable[query.TableName], query)
@@ -30,117 +31,133 @@ func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
 	return queriesByTable
 }
 
-func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
-	errs := make(chan error)
-
-	id := NewIndexDeduper(callback)
-
-	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
-		go func(queries []chunk.IndexQuery) {
-			errs <- tableQuerier.MultiQueries(ctx, queries, id.Callback)
-		}(q)
+func DoParallelQueries(ctx context.Context, queryIndex QueryIndexFunc, queries []index.Query, callback index.QueryPagesCallback) error {
+	if len(queries) == 0 {
+		return nil
+	}
+	if len(queries) <= maxQueriesBatch {
+		return queryIndex(ctx, queries, NewCallbackDeduper(callback, len(queries)))
 	}
 
-	var lastErr error
-	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		err := <-errs
-		if err != nil {
-			lastErr = err
-		}
+	jobsCount := len(queries) / maxQueriesBatch
+	if len(queries)%maxQueriesBatch != 0 {
+		jobsCount++
 	}
-
-	return lastErr
-}
-
-// IndexDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
-// Cortex anyways dedupes entries across tables
-type IndexDeduper struct {
-	callback        chunk_util.Callback
-	seenRangeValues map[string]map[string]struct{}
-	mtx             sync.RWMutex
-}
-
-func NewIndexDeduper(callback chunk_util.Callback) *IndexDeduper {
-	return &IndexDeduper{
-		callback:        callback,
-		seenRangeValues: map[string]map[string]struct{}{},
-	}
-}
-
-func (i *IndexDeduper) Callback(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-	return i.callback(query, &filteringBatch{
-		query:     query,
-		ReadBatch: batch,
-		isSeen:    i.isSeen,
+	callback = NewSyncCallbackDeduper(callback, len(queries))
+	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrency, func(ctx context.Context, idx int) error {
+		return queryIndex(ctx, queries[idx*maxQueriesBatch:util_math.Min((idx+1)*maxQueriesBatch, len(queries))], callback)
 	})
 }
 
-func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
-	i.mtx.RLock()
-
-	// index entries are never modified during query processing so it should be safe to reference a byte slice as a string.
-	rangeValueStr := yoloString(rangeValue)
-
-	if _, ok := i.seenRangeValues[hashValue][rangeValueStr]; ok {
-		i.mtx.RUnlock()
-		return true
+// NewSyncCallbackDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
+// NewSyncCallbackDeduper is safe to used by multiple goroutines
+// Cortex anyways dedupes entries across tables
+func NewSyncCallbackDeduper(callback index.QueryPagesCallback, queries int) index.QueryPagesCallback {
+	syncMap := &syncMap{
+		seen: make(map[string]map[string]struct{}, queries),
 	}
-
-	i.mtx.RUnlock()
-
-	i.mtx.Lock()
-	defer i.mtx.Unlock()
-
-	// re-check if another concurrent call added the values already, if so do not add it again and return true
-	if _, ok := i.seenRangeValues[hashValue][rangeValueStr]; ok {
-		return true
-	}
-
-	// add the hashValue first if missing
-	if _, ok := i.seenRangeValues[hashValue]; !ok {
-		i.seenRangeValues[hashValue] = map[string]struct{}{}
-	}
-
-	// add the rangeValue
-	i.seenRangeValues[hashValue][rangeValueStr] = struct{}{}
-	return false
-}
-
-type isSeen func(hashValue string, rangeValue []byte) bool
-
-type filteringBatch struct {
-	query chunk.IndexQuery
-	chunk.ReadBatch
-	isSeen isSeen
-}
-
-func (f *filteringBatch) Iterator() chunk.ReadBatchIterator {
-	return &filteringBatchIter{
-		query:             f.query,
-		ReadBatchIterator: f.ReadBatch.Iterator(),
-		isSeen:            f.isSeen,
+	return func(q index.Query, rbr index.ReadBatchResult) bool {
+		return callback(q, &readBatchDeduperSync{
+			syncMap:           syncMap,
+			hashValue:         q.HashValue,
+			ReadBatchIterator: rbr.Iterator(),
+		})
 	}
 }
 
-type filteringBatchIter struct {
-	query chunk.IndexQuery
-	chunk.ReadBatchIterator
-	isSeen isSeen
+// NewCallbackDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
+// NewCallbackDeduper is safe not to used by multiple goroutines
+// Cortex anyways dedupes entries across tables
+func NewCallbackDeduper(callback index.QueryPagesCallback, queries int) index.QueryPagesCallback {
+	f := &readBatchDeduper{
+		seen: make(map[string]map[string]struct{}, queries),
+	}
+	return func(q index.Query, rbr index.ReadBatchResult) bool {
+		f.hashValue = q.HashValue
+		f.ReadBatchIterator = rbr.Iterator()
+		return callback(q, f)
+	}
 }
 
-func (f *filteringBatchIter) Next() bool {
+type readBatchDeduper struct {
+	index.ReadBatchIterator
+	hashValue string
+	seen      map[string]map[string]struct{}
+}
+
+func (f *readBatchDeduper) Iterator() index.ReadBatchIterator {
+	return f
+}
+
+func (f *readBatchDeduper) Next() bool {
 	for f.ReadBatchIterator.Next() {
-		if f.isSeen(f.query.HashValue, f.ReadBatchIterator.RangeValue()) {
+		rangeValue := f.RangeValue()
+		hashes, ok := f.seen[f.hashValue]
+		if !ok {
+			hashes = map[string]struct{}{}
+			hashes[GetUnsafeString(rangeValue)] = struct{}{}
+			f.seen[f.hashValue] = hashes
+			return true
+		}
+		h := GetUnsafeString(rangeValue)
+		if _, loaded := hashes[h]; loaded {
 			continue
 		}
-
+		hashes[h] = struct{}{}
 		return true
 	}
 
 	return false
 }
 
-func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+type syncMap struct {
+	seen map[string]map[string]struct{}
+	rw   sync.RWMutex // nolint: structcheck
+}
+
+type readBatchDeduperSync struct {
+	index.ReadBatchIterator
+	hashValue string
+	*syncMap
+}
+
+func (f *readBatchDeduperSync) Iterator() index.ReadBatchIterator {
+	return f
+}
+
+func (f *readBatchDeduperSync) Next() bool {
+	for f.ReadBatchIterator.Next() {
+		rangeValue := f.RangeValue()
+		f.rw.RLock()
+		hashes, ok := f.seen[f.hashValue]
+		if ok {
+			h := GetUnsafeString(rangeValue)
+			if _, loaded := hashes[h]; loaded {
+				f.rw.RUnlock()
+				continue
+			}
+			f.rw.RUnlock()
+			f.rw.Lock()
+			if _, loaded := hashes[h]; loaded {
+				f.rw.Unlock()
+				continue
+			}
+			hashes[h] = struct{}{}
+			f.rw.Unlock()
+			return true
+		}
+		f.rw.RUnlock()
+		f.rw.Lock()
+		if _, ok := f.seen[f.hashValue]; ok {
+			f.rw.Unlock()
+			continue
+		}
+		f.seen[f.hashValue] = map[string]struct{}{
+			GetUnsafeString(rangeValue): {},
+		}
+		f.rw.Unlock()
+		return true
+	}
+
+	return false
 }

@@ -32,6 +32,10 @@ func (c ContainerURL) String() string {
 	return u.String()
 }
 
+func (c ContainerURL) GetAccountInfo(ctx context.Context) (*ContainerGetAccountInfoResponse, error) {
+	return c.client.GetAccountInfo(ctx)
+}
+
 // WithPipeline creates a new ContainerURL object identical to the source but with the specified request policy pipeline.
 func (c ContainerURL) WithPipeline(p pipeline.Pipeline) ContainerURL {
 	return NewContainerURL(c.URL(), p)
@@ -80,7 +84,9 @@ func (c ContainerURL) NewPageBlobURL(blobName string) PageBlobURL {
 // Create creates a new container within a storage account. If a container with the same name already exists, the operation fails.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/create-container.
 func (c ContainerURL) Create(ctx context.Context, metadata Metadata, publicAccessType PublicAccessType) (*ContainerCreateResponse, error) {
-	return c.client.Create(ctx, nil, metadata, publicAccessType, nil)
+	return c.client.Create(ctx, nil, metadata, publicAccessType, nil,
+		nil, nil, // container encryption
+	)
 }
 
 // Delete marks the specified container for deletion. The container and any blobs contained within it are later deleted during garbage collection.
@@ -269,7 +275,7 @@ func (o *ListBlobsSegmentOptions) pointers() (prefix *string, include []ListBlob
 
 // BlobListingDetails indicates what additional information the service should return with each blob.
 type BlobListingDetails struct {
-	Copy, Metadata, Snapshots, UncommittedBlobs, Deleted bool
+	Copy, Metadata, Snapshots, UncommittedBlobs, Deleted, Tags, Versions bool
 }
 
 // string produces the Include query parameter's value.
@@ -290,6 +296,12 @@ func (d *BlobListingDetails) slice() []ListBlobsIncludeItemType {
 	}
 	if d.UncommittedBlobs {
 		items = append(items, ListBlobsIncludeItemUncommittedblobs)
+	}
+	if d.Tags {
+		items = append(items, ListBlobsIncludeItemTags)
+	}
+	if d.Versions {
+		items = append(items, ListBlobsIncludeItemVersions)
 	}
 	return items
 }

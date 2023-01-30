@@ -6,15 +6,15 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const bufferSizeForTailResponse = 5
@@ -28,8 +28,7 @@ type tailer struct {
 	id          uint32
 	orgID       string
 	matchers    []*labels.Matcher
-	pipeline    logql.Pipeline
-	expr        logql.Expr
+	expr        syntax.LogSelectorExpr
 	pipelineMtx sync.Mutex
 
 	sendChan chan *logproto.Stream
@@ -39,34 +38,37 @@ type tailer struct {
 	closeChan chan struct{}
 	closeOnce sync.Once
 
-	blockedAt      *time.Time
-	blockedMtx     sync.RWMutex
-	droppedStreams []*logproto.DroppedStream
+	blockedAt         *time.Time
+	blockedMtx        sync.RWMutex
+	droppedStreams    []*logproto.DroppedStream
+	maxDroppedStreams int
 
 	conn TailServer
 }
 
-func newTailer(orgID, query string, conn TailServer) (*tailer, error) {
-	expr, err := logql.ParseLogSelector(query)
+func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*tailer, error) {
+	expr, err := syntax.ParseLogSelector(query, true)
 	if err != nil {
 		return nil, err
 	}
-	pipeline, err := expr.Pipeline()
+	// Make sure we can build a pipeline. The stream processing code doesn't have a place to handle
+	// this error so make sure we handle it here.
+	_, err = expr.Pipeline()
 	if err != nil {
 		return nil, err
 	}
 	matchers := expr.Matchers()
 
 	return &tailer{
-		orgID:          orgID,
-		matchers:       matchers,
-		pipeline:       pipeline,
-		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
-		conn:           conn,
-		droppedStreams: []*logproto.DroppedStream{},
-		id:             generateUniqueID(orgID, query),
-		closeChan:      make(chan struct{}),
-		expr:           expr,
+		orgID:             orgID,
+		matchers:          matchers,
+		sendChan:          make(chan *logproto.Stream, bufferSizeForTailResponse),
+		conn:              conn,
+		droppedStreams:    make([]*logproto.DroppedStream, 0, maxDroppedStreams),
+		maxDroppedStreams: maxDroppedStreams,
+		id:                generateUniqueID(orgID, query),
+		closeChan:         make(chan struct{}),
+		expr:              expr,
 	}, nil
 }
 
@@ -75,17 +77,11 @@ func (t *tailer) loop() {
 	var err error
 	var ok bool
 
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
-		case <-ticker.C:
-			err := t.conn.Context().Err()
-			if err != nil {
-				t.close()
-				return
-			}
+		case <-t.conn.Context().Done():
+			t.close()
+			return
 		case <-t.closeChan:
 			return
 		case stream, ok = <-t.sendChan:
@@ -139,8 +135,13 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 }
 
 func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
+	// Build a new pipeline for each call because the pipeline builds a cache of labels
+	// and if we don't start with a new pipeline that cache will grow unbounded.
+	// The error is ignored because it would be handled in the constructor of the tailer.
+	pipeline, _ := t.expr.Pipeline()
+
 	// Optimization: skip filtering entirely, if no filter is set
-	if log.IsNoopPipeline(t.pipeline) {
+	if log.IsNoopPipeline(pipeline) {
 		return []*logproto.Stream{&stream}
 	}
 	// pipeline are not thread safe and tailer can process multiple stream at once.
@@ -149,9 +150,9 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	streams := map[uint64]*logproto.Stream{}
 
-	sp := t.pipeline.ForStream(lbs)
+	sp := pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
 		if !ok {
 			continue
 		}
@@ -223,6 +224,11 @@ func (t *tailer) dropStream(stream logproto.Stream) {
 	if t.blockedAt == nil {
 		blockedAt := time.Now()
 		t.blockedAt = &blockedAt
+	}
+
+	if len(t.droppedStreams) >= t.maxDroppedStreams {
+		level.Info(util_log.Logger).Log("msg", "tailer dropped streams is reset", "length", len(t.droppedStreams))
+		t.droppedStreams = nil
 	}
 
 	t.droppedStreams = append(t.droppedStreams, &logproto.DroppedStream{

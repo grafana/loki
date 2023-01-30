@@ -10,84 +10,91 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/grafana/dskit/tenant"
 	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
-var boltBucketName = []byte("index")
-
-func AddRecordsToDB(t *testing.T, path string, dbClient *local.BoltIndexClient, start, numRecords int) {
+func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName []byte) {
+	t.Helper()
 	db, err := local.OpenBoltdbFile(path)
 	require.NoError(t, err)
 
-	batch := dbClient.NewWriteBatch()
+	batch := local.NewWriteBatch()
 	AddRecordsToBatch(batch, "test", start, numRecords)
 
-	require.NoError(t, dbClient.WriteToDB(context.Background(), db, batch.(*local.BoltWriteBatch).Writes["test"]))
+	if len(bucketName) == 0 {
+		bucketName = local.IndexBucketName
+	}
+
+	require.NoError(t, local.WriteToDB(context.Background(), db, bucketName, batch.(*local.BoltWriteBatch).Writes["test"]))
 
 	require.NoError(t, db.Sync())
 	require.NoError(t, db.Close())
 }
 
-func AddRecordsToBatch(batch chunk.WriteBatch, tableName string, start, numRecords int) {
+func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecords int) {
 	for i := 0; i < numRecords; i++ {
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
 	}
 }
 
-type SingleTableQuerier interface {
-	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
+// nolint
+func queryIndexes(t *testing.T, ctx context.Context, queries []index.Query, indexIteratorFunc IndexIteratorFunc, callback index.QueryPagesCallback) {
+	userID, err := tenant.TenantID(ctx)
+	require.NoError(t, err)
+
+	for _, query := range queries {
+		err := indexIteratorFunc(ctx, query.TableName, func(boltdb *bbolt.DB) error {
+			return queryBoltDB(ctx, boltdb, []byte(userID), []index.Query{query}, callback)
+		})
+		require.NoError(t, err)
+	}
 }
 
-func TestSingleTableQuery(t *testing.T, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
+type IndexIteratorFunc func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error
+
+func VerifyIndexes(t *testing.T, userID string, queries []index.Query, indexIteratorFunc IndexIteratorFunc, start, numRecords int) {
+	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.MultiQueries(context.Background(), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
-
-	require.NoError(t, err)
+	queryIndexes(t, user.InjectOrgID(context.Background(), userID), queries, indexIteratorFunc, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 	require.Len(t, fetchedRecords, numRecords)
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query, callback index.QueryPagesCallback) error
 }
 
-func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, querier SingleDBQuerier, start, numRecords int) {
+func VerifySingleIndexFile(t *testing.T, query index.Query, db *bbolt.DB, bucketName []byte, start, numRecords int) {
+	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.QueryDB(context.Background(), db, query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	err := db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketName)
+		require.NotNil(t, b)
+		return local.QueryWithCursor(context.Background(), b.Cursor(), query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	})
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)
 }
 
-type MultiTableQuerier interface {
-	QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
-}
-
-func TestMultiTableQuery(t *testing.T, queries []chunk.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
-	minValue := start
-	maxValue := start + numRecords
-	fetchedRecords := make(map[string]string)
-
-	err := querier.QueryPages(context.Background(), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
-
-	require.NoError(t, err)
-	require.Len(t, fetchedRecords, numRecords)
-}
-
-func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) index.QueryPagesCallback {
+	t.Helper()
 	recordsMtx := sync.Mutex{}
-	return func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	return func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			require.Equal(t, itr.RangeValue(), itr.Value())
@@ -105,74 +112,33 @@ func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]s
 	}
 }
 
-func CompareDBs(t *testing.T, db1, db2 *bbolt.DB) {
-	db1Records := readDB(t, db1)
-	db2Records := readDB(t, db2)
-
-	require.Equal(t, db1Records, db2Records)
-}
-
-func readDB(t *testing.T, db *bbolt.DB) map[string]string {
-	dbRecords := map[string]string{}
-
-	err := db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(boltBucketName)
-		require.NotNil(t, b)
-
-		return b.ForEach(func(k, v []byte) error {
-			dbRecords[string(k)] = string(v)
-			return nil
-		})
-	})
-
-	require.NoError(t, err)
-	return dbRecords
+// ToDo(Sandeep): refactor to remove DBConfig and use DBRecords directly
+type DBConfig struct {
+	DBRecords
 }
 
 type DBRecords struct {
 	Start, NumRecords int
 }
 
-func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DBRecords, compressRandomFiles bool) string {
+func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketName []byte) string {
+	t.Helper()
 	boltIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: path})
 	require.NoError(t, err)
 
 	defer boltIndexClient.Stop()
 
-	tablePath := filepath.Join(path, tableName)
-	require.NoError(t, chunk_util.EnsureDirectory(tablePath))
+	require.NoError(t, chunk_util.EnsureDirectory(path))
 
-	var i int
-	for name, dbRecords := range dbs {
-		AddRecordsToDB(t, filepath.Join(tablePath, name), boltIndexClient, dbRecords.Start, dbRecords.NumRecords)
-		if compressRandomFiles && i%2 == 0 {
-			compressFile(t, filepath.Join(tablePath, name))
-		}
-		i++
+	for name, dbConfig := range dbs {
+		AddRecordsToDB(t, filepath.Join(path, name), dbConfig.Start, dbConfig.NumRecords, bucketName)
 	}
 
-	return tablePath
-}
-
-func compressFile(t *testing.T, filepath string) {
-	uncompressedFile, err := os.Open(filepath)
-	require.NoError(t, err)
-
-	compressedFile, err := os.Create(fmt.Sprintf("%s.gz", filepath))
-	require.NoError(t, err)
-
-	compressedWriter := gzip.NewWriter(compressedFile)
-
-	_, err = io.Copy(compressedWriter, uncompressedFile)
-	require.NoError(t, err)
-
-	require.NoError(t, compressedWriter.Close())
-	require.NoError(t, uncompressedFile.Close())
-	require.NoError(t, compressedFile.Close())
-	require.NoError(t, os.Remove(filepath))
+	return path
 }
 
 func DecompressFile(t *testing.T, src, dest string) {
+	t.Helper()
 	// open compressed file from storage
 	compressedFile, err := os.Open(src)
 	require.NoError(t, err)
@@ -191,4 +157,113 @@ func DecompressFile(t *testing.T, src, dest string) {
 	// close the references
 	require.NoError(t, compressedFile.Close())
 	require.NoError(t, decompressedFile.Close())
+}
+
+type DBsConfig struct {
+	DBRecordsStart                     int
+	NumUnCompactedDBs, NumCompactedDBs int
+}
+
+func (c DBsConfig) String() string {
+	return fmt.Sprintf("Default Bucket DBs - UCDBs: %d, CDBs: %d", c.NumUnCompactedDBs, c.NumCompactedDBs)
+}
+
+type PerUserDBsConfig struct {
+	DBsConfig
+	NumUsers int
+}
+
+func (c PerUserDBsConfig) String() string {
+	return fmt.Sprintf("Per User DBs - UCDBs: %d, CDBs: %d, Users: %d", c.NumUnCompactedDBs, c.NumCompactedDBs, c.NumUsers)
+}
+
+func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBsConfig PerUserDBsConfig) {
+	numRecordsPerDB := 100
+
+	commonDBsWithDefaultBucket := map[string]DBConfig{}
+	commonDBsWithPerUserBucket := map[string]map[string]DBConfig{}
+	perUserDBs := map[string]map[string]DBConfig{}
+
+	for i := 0; i < commonDBsConfig.NumUnCompactedDBs; i++ {
+		commonDBsWithDefaultBucket[fmt.Sprint(i)] = DBConfig{
+			DBRecords: DBRecords{
+				Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+				NumRecords: numRecordsPerDB,
+			},
+		}
+	}
+
+	for i := 0; i < commonDBsConfig.NumCompactedDBs; i++ {
+		commonDBsWithDefaultBucket[fmt.Sprintf("compactor-%d", i)] = DBConfig{
+			DBRecords: DBRecords{
+				Start:      commonDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+				NumRecords: ((i + 1) * numRecordsPerDB) * 2,
+			},
+		}
+	}
+
+	for i := 0; i < perUserDBsConfig.NumUnCompactedDBs; i++ {
+		dbName := fmt.Sprintf("per-user-bucket-db-%d", i)
+		commonDBsWithPerUserBucket[dbName] = map[string]DBConfig{}
+		for j := 0; j < perUserDBsConfig.NumUsers; j++ {
+			commonDBsWithPerUserBucket[dbName][BuildUserID(j)] = DBConfig{
+				DBRecords: DBRecords{
+					Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+					NumRecords: numRecordsPerDB,
+				},
+			}
+		}
+	}
+
+	for i := 0; i < perUserDBsConfig.NumCompactedDBs; i++ {
+		for j := 0; j < perUserDBsConfig.NumUsers; j++ {
+			userID := BuildUserID(j)
+			if i == 0 {
+				perUserDBs[userID] = map[string]DBConfig{}
+			}
+			perUserDBs[userID][fmt.Sprintf("compactor-%d", i)] = DBConfig{
+				DBRecords: DBRecords{
+					Start:      perUserDBsConfig.DBRecordsStart + i*numRecordsPerDB,
+					NumRecords: (i + 1) * numRecordsPerDB,
+				},
+			}
+		}
+	}
+
+	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, local.IndexBucketName)
+
+	for dbName, userRecords := range commonDBsWithPerUserBucket {
+		for userID, dbConfig := range userRecords {
+			SetupDBsAtPath(t, path, map[string]DBConfig{
+				dbName: dbConfig,
+			}, []byte(userID))
+		}
+	}
+
+	for userID, dbRecords := range perUserDBs {
+		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, local.IndexBucketName)
+	}
+}
+
+func BuildUserID(id int) string {
+	return fmt.Sprintf("user-%d", id)
+}
+
+func queryBoltDB(ctx context.Context, db *bbolt.DB, userID []byte, queries []index.Query, callback index.QueryPagesCallback) error {
+	return db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(userID)
+		if bucket == nil {
+			bucket = tx.Bucket(local.IndexBucketName)
+			if bucket == nil {
+				return nil
+			}
+		}
+
+		for _, query := range queries {
+			if err := local.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

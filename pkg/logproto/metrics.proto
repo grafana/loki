@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "pkg/logproto/logproto.proto";
+
+option go_package = "github.com/grafana/loki/pkg/logproto";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message WriteRequest {
+  repeated TimeSeries timeseries = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "PreallocTimeseries"
+  ];
+  enum SourceEnum {
+    API = 0;
+    RULE = 1;
+  }
+  SourceEnum Source = 2;
+  repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
+
+  bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
+}
+
+message WriteResponse {}
+
+message TimeSeries {
+  repeated LegacyLabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter"
+  ];
+  // Sorted by time, oldest sample first.
+  repeated LegacySample samples = 2 [(gogoproto.nullable) = false];
+  // repeated Exemplar exemplars = 3 [(gogoproto.nullable) = false];
+}
+
+message MetricMetadata {
+  enum MetricType {
+    UNKNOWN = 0;
+    COUNTER = 1;
+    GAUGE = 2;
+    HISTOGRAM = 3;
+    GAUGEHISTOGRAM = 4;
+    SUMMARY = 5;
+    INFO = 6;
+    STATESET = 7;
+  }
+
+  MetricType type = 1;
+  string metric_family_name = 2;
+  string help = 4;
+  string unit = 5;
+}
+
+message Metric {
+  repeated LegacyLabelPair labels = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter"
+  ];
+}

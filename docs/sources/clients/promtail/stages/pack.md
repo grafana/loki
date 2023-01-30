@@ -1,7 +1,8 @@
 ---
 title: pack
+description: pack stage
 ---
-# `pack` stage
+# pack
 
 The `pack` stage is a transform stage which lets you embed extracted values and labels into the log line by packing the log line and labels inside a JSON object.
 
@@ -31,7 +32,7 @@ pack:
     - [<string>]
 
   # If the resulting log line should use any existing timestamp or use time.Now() when the line was processed.
-  # To avoid out of order issues with Loki, when combining several log streams (separate source files) into one
+  # To avoid out-of-order issues with Loki, when combining several log streams (separate source files) into one
   # you will want to set a new timestamp on the log line, `ingest_timestamp: true`
   # If you are not combining multiple source files or you know your log lines won't have interlaced timestamps
   # you can set this value to false.
@@ -57,7 +58,7 @@ This would create a log line
 }
 ```
 
-**Loki 2.2 also includes a new [`unpack`](../../../../logql/#unpack) parser to work with the pack stage.**
+**Loki 2.2 also includes a new [`unpack` parser]({{< relref "../../../logql/log_queries/#unpack" >}}) to work with the pack stage.**
 
 For example:
 

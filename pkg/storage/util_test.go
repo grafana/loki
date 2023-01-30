@@ -6,24 +6,32 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
+	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
+	loki_util "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
-var fooLabels = "{foo=\"bar\"}"
+var (
+	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
+	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
+)
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
 
@@ -87,24 +95,18 @@ func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
 }
 
 func newChunk(stream logproto.Stream) chunk.Chunk {
-	lbs, err := logql.ParseLabels(stream.Labels)
+	lbs, err := syntax.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
 	}
 	if !lbs.Has(labels.MetricName) {
 		builder := labels.NewBuilder(lbs)
 		builder.Set(labels.MetricName, "logs")
-		lbs = builder.Labels()
+		lbs = builder.Labels(nil)
 	}
-	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
+	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
-		if e.Timestamp.UnixNano() < from.UnixNano() {
-			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
-		}
-		if e.Timestamp.UnixNano() > through.UnixNano() {
-			through = model.TimeFromUnixNano(e.Timestamp.UnixNano())
-		}
 		_ = chk.Append(&e)
 	}
 	chk.Close()
@@ -117,20 +119,21 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	res, err := logql.ParseMatchers(matchers)
+	res, err := syntax.ParseMatchers(matchers)
 	if err != nil {
 		panic(err)
 	}
 	return res
 }
 
-func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
+func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation, deletes []*logproto.Delete) *logproto.QueryRequest {
 	req := &logproto.QueryRequest{
 		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,
 		Direction: logproto.FORWARD,
+		Deletes:   deletes,
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
@@ -138,42 +141,79 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 	return req
 }
 
-func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryRequest {
+func newSampleQuery(query string, start, end time.Time, deletes []*logproto.Delete) *logproto.SampleQueryRequest {
 	req := &logproto.SampleQueryRequest{
 		Selector: query,
 		Start:    start,
 		End:      end,
+		Deletes:  deletes,
 	}
 	return req
 }
 
 type mockChunkStore struct {
-	chunks []chunk.Chunk
-	client *mockChunkStoreClient
+	schemas config.SchemaConfig
+	chunks  []chunk.Chunk
+	client  *mockChunkStoreClient
+	f       chunk.RequestChunkFilterer
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
 // since there is a conflict in signature for DeleteChunk method.
-var _ chunk.Store = &mockChunkStore{}
-var _ chunk.Client = &mockChunkStoreClient{}
+var (
+	_ stores.Store       = &mockChunkStore{}
+	_ chunkclient.Client = &mockChunkStoreClient{}
+)
 
 func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(*s))
 	}
-	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
+	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
 
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
 func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
 }
-func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+
+func (m *mockChunkStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	result := make([]labels.Labels, 0, len(m.chunks))
+	unique := map[uint64]struct{}{}
+Outer:
+	for _, c := range m.chunks {
+		if _, ok := unique[c.Fingerprint]; !ok {
+			for _, m := range matchers {
+				if !m.Matches(c.Metric.Get(m.Name)) {
+					continue Outer
+				}
+			}
+			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(nil)
+			if m.f != nil {
+				if m.f.ForRequest(ctx).ShouldFilter(l) {
+					continue
+				}
+			}
+
+			result = append(result, l)
+			unique[c.Fingerprint] = struct{}{}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return labels.Compare(result[i], result[j]) < 0 })
+	return result, nil
+}
+
+func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
+
 func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
+}
+
+func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
+	m.f = f
 }
 
 func (m *mockChunkStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
@@ -187,35 +227,41 @@ func (m *mockChunkStore) Stop() {}
 func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
-func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
+
+func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
-		r, err := chunk.ParseExternalKey("fake", c.ExternalKey())
+		r, err := chunk.ParseExternalKey("fake", m.schemas.ExternalKey(c.ChunkRef))
 		if err != nil {
 			panic(err)
 		}
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger)
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache)
 	if err != nil {
 		panic(err)
 	}
 
-	f, err := chunk.NewChunkFetcher(cache, false, m.client)
+	f, err := fetcher.New(cache, false, m.schemas, m.client, 10, 100)
 	if err != nil {
 		panic(err)
 	}
-	return [][]chunk.Chunk{refs}, []*chunk.Fetcher{f}, nil
+	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
+}
+
+func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+	return nil, nil
 }
 
 type mockChunkStoreClient struct {
 	chunks []chunk.Chunk
+	scfg   config.SchemaConfig
 }
 
 func (m mockChunkStoreClient) Stop() {
@@ -231,7 +277,7 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
 			// only returns chunks requested using the external key
-			if c.ExternalKey() == sc.ExternalKey() {
+			if m.scfg.ExternalKey(c.ChunkRef) == m.scfg.ExternalKey(sc.ChunkRef) {
 				res = append(res, sc)
 			}
 		}
@@ -241,6 +287,10 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 
 func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	return nil
+}
+
+func (m mockChunkStoreClient) IsChunkNotFoundErr(_ error) bool {
+	return false
 }
 
 var streamsFixture = []*logproto.Stream{

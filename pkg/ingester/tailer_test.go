@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,7 +26,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 	}
 
 	for run := 0; run < runs; run++ {
-		tailer, err := newTailer("org-id", stream.Labels, nil)
+		tailer, err := newTailer("org-id", stream.Labels, nil, 10)
 		require.NoError(t, err)
 		require.NotNil(t, tailer)
 
@@ -49,13 +49,57 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 	}
 }
 
+func Test_dropstream(t *testing.T) {
+	maxDroppedStreams := 10
+
+	entry := logproto.Entry{Timestamp: time.Now(), Line: "foo"}
+
+	cases := []struct {
+		name     string
+		drop     int
+		expected int
+	}{
+		{
+			name:     "less than maxDroppedStreams",
+			drop:     maxDroppedStreams - 2,
+			expected: maxDroppedStreams - 2,
+		},
+		{
+			name:     "equal to maxDroppedStreams",
+			drop:     maxDroppedStreams,
+			expected: maxDroppedStreams,
+		},
+		{
+			name:     "greater than maxDroppedStreams",
+			drop:     maxDroppedStreams + 2,
+			expected: 2, // should be bounded to maxDroppedStreams
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, maxDroppedStreams)
+			require.NoError(t, err)
+
+			for i := 0; i < c.drop; i++ {
+				tail.dropStream(logproto.Stream{
+					Entries: []logproto.Entry{
+						entry,
+					},
+				})
+			}
+			assert.Equal(t, c.expected, len(tail.droppedStreams))
+		})
+	}
+}
+
 type fakeTailServer struct{}
 
 func (f *fakeTailServer) Send(*logproto.TailResponse) error { return nil }
 func (f *fakeTailServer) Context() context.Context          { return context.Background() }
 
 func Test_TailerSendRace(t *testing.T) {
-	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{})
+	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup

@@ -1,10 +1,11 @@
 ---
 title: Maintaining
+description: Grafana Loki Maintainers' Guide
 weight: 1200
 ---
-# Loki Maintainers Guide
+# Maintaining
 
-This section details information for maintainers of Loki.
+This section details information for maintainers of Grafana Loki.
 
-1. [Releasing Loki](release/)
-1. [Releasing `loki-build-image`](release-loki-build-image/)
+{{< section >}}
+

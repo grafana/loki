@@ -1,5 +1,200 @@
 # Change Log
 
+## [v1.91.1] - 2022-11-23
+
+- #582 - @StephenVarela - Load Balancers: Support new endpoints for http alerts
+
+## [v1.90.0] - 2022-11-16
+
+- #571 - @kraai - Add WaitForAvailable
+- #579 - @bentranter - Deprecate old pointer helpers, use generic one
+- #580 - @StephenVarela - LBAAS Fixup default http idle timeout behaviour
+- #578 - @StephenVarela - LBAAS-2430 Add support for HTTP idle timeout seconds
+- #577 - @ddebarros - Functions api support
+
+## [v1.89.0] - 2022-11-02
+
+- #575 - @ghostlandr - apps: add option to get projects data from Apps List endpoint
+
+## [v1.88.0] - 2022-10-31
+
+- #573 - @kamaln7 - apps: add ListBuildpacks, UpgradeBuildpack
+- #572 - @ghostlandr - Apps: add project id as a parameter to CreateApp and to the App struct
+- #570 - @kraai - Fix copy-and-paste error in comment
+- #568 - @StephenVarela - LBAAS-2321 Add project_id to load balancers structs
+
+## [v1.87.0] - 2022-10-12
+
+- #564 - @DWizGuy58 - Add public monitoring alert policies for dbaas
+- #565 - @dylanrhysscott - CON-5657 (Re-)expose public HA enablement flags in godo
+- #563 - @andrewsomething - Add option to configure a rate.Limiter for the client.
+
+## [v1.86.0] - 2022-09-23
+
+- #561 - @jonfriesen - apps: add docr image deploy on push
+
+## [v1.85.0] - 2022-09-21
+
+- #560 - @andrewsomething - Bump golang.org/x/net (fixes: #557).
+- #559 - @kamaln7 - apps: update component spec interfaces
+- #555 - @kamaln7 - apps: add accessor methods and spec helpers
+- #556 - @kamaln7 - update CI for go 1.18 & 1.19
+
+## [v1.84.1] - 2022-09-16
+
+- #554 - @andrewsomething - reserved IPs: project_id should have omitempty in create req.
+
+## [v1.84.0] - 2022-09-16
+
+- #552 - @andrewsomething - reserved IPs: Expose project_id and locked attributes.
+- #549 - @rpmoore - adding the replica id to the database replica model
+
+## [v1.83.0] - 2022-08-10
+
+- #546 - @DWizGuy58 - Add support for database options
+
+## [v1.82.0] - 2022-08-04
+
+- #544 - @andrewsomething - apps: Add URN() method.
+- #542 - @andrewsomething - databases: Support advanced config endpoints.
+- #543 - @nicktate - Ntate/detection models
+- #541 - @andrewsomething - droplets: Support listing Droplets filtered by name.
+- #540 - @bentranter - Update links to API documentation
+
+## [v1.81.0] - 2022-06-15
+
+- #532 - @senorprogrammer - Add support for Reserved IP addresses
+- #538 - @bentranter - util: update droplet create example
+- #537 - @rpmoore - Adding project_id to databases
+- #536 - @andrewsomething - account: Now may include info on current team.
+- #535 - @ElanHasson - APPS-5636 Update App Platform for functions and Starter Tier App Proposals.
+
+## [v1.80.0] - 2022-05-23
+
+- #533 - @ElanHasson - APPS-5636 - App Platform updates
+
+## [v1.79.0] - 2022-04-29
+
+- #530 - @anitgandhi - monitoring: alerts for Load Balancers TLS conns/s utilization
+- #529 - @ChiefMateStarbuck - Test against Go 1.18
+- #528 - @senorprogrammer - Remove DisablePublicNetworking option from the Create path
+- #527 - @senorprogrammer - Remove the WithFloatingIPAddress create option
+
+## [v1.78.0] - 2022-03-31
+
+- #522 - @jcodybaker - app platform: add support for features field
+
+## [v1.77.0] - 2022-03-16
+
+- #518 - @rcj4747 - apps: Update apps protos
+
+## [v1.76.0] - 2022-03-09
+
+- #516 - @CollinShoop - Add registry region support
+
+## [v1.75.0] - 2022-01-27
+
+- #508 - @ElanHasson - Synchronize public protos and add multiple specs
+
+## [v1.74.0] - 2022-01-20
+
+- #506 - @ZachEddy - Add new component type to apps-related structs
+
+## [v1.73.0] - 2021-12-03
+
+- #501 - @CollinShoop - Add support for Registry ListManifests and ListRepositoriesV2
+
+## [v1.72.0] - 2021-11-29
+
+- #500 - @ElanHasson - APPS-4420: Add PreservePathPrefix to AppRouteSpec
+
+## [v1.71.0] - 2021-11-09
+
+- #498 - @bojand - apps: update spec to include log destinations
+
+## [v1.70.0] - 2021-11-01
+
+- #491 - @andrewsomething - Add support for retrieving Droplet monitoring metrics.
+- #494 - @alexandear - Refactor tests: replace t.Errorf with assert/require
+- #495 - @alexandear - Fix typos and grammar issues in comments
+- #492 - @andrewsomething - Update golang.org/x/net
+- #486 - @abeltay - Fix typo on "DigitalOcean"
+
+## [v1.69.1] - 2021-10-06
+
+- #484 - @sunny-b - k8s/godo: remove ha field from update request
+
+## [v1.69.0] - 2021-10-04
+
+- #482 - @dikshant - godo/load-balancers: add DisableLetsEncryptDNSRecords field for LBaaS
+
+## [v1.68.0] - 2021-09-29
+
+- #480 - @sunny-b - kubernetes: add support for HA control plane
+
+## [v1.67.0] - 2021-09-22
+
+- #478 - @sunny-b - kubernetes: add supported_features field to the kubernetes/options response
+- #477 - @wez470 - Add size unit to LB API.
+
+## [v1.66.0] - 2021-09-21
+
+- #473 - @andrewsomething - Add Go 1.17.x to test matrix and drop unsupported versions.
+- #472 - @bsnyder788 - insights: add private (in/out)bound and public inbound bandwidth aler…
+- #470 - @gottwald - domains: remove invalid json struct tag option
+
+## [v1.65.0] - 2021-08-05
+
+- #468 - @notxarb - New alerts feature for App Platform
+- #467 - @andrewsomething - docs: Update links to API documentation.
+- #466 - @andrewsomething - Mark Response.Monitor as deprecated.
+
+## [v1.64.2] - 2021-07-23
+
+- #464 - @bsnyder788 - insights: update HTTP method for alert policy update
+
+## [v1.64.1] - 2021-07-19
+
+- #462 - @bsnyder788 - insights: fix alert policy update endpoint
+
+## [v1.64.0] - 2021-07-19
+
+- #460 - @bsnyder788 - insights: add CRUD APIs for alert policies
+
+## [v1.63.0] - 2021-07-06
+
+- #458 - @ZachEddy - apps: Add tail_lines query parameter to GetLogs function
+
+## [v1.62.0] - 2021-06-07
+
+- #454 - @house-lee - add with_droplet_agent option to create requests
+
+## [v1.61.0] - 2021-05-12
+
+- #452 - @caiofilipini - Add support for DOKS clusters as peers in Firewall rules
+- #448 - @andrewsomething - flip: Set omitempty for Region in FloatingIPCreateRequest.
+- #451 - @andrewsomething - CheckResponse: Add RequestID from header to ErrorResponse when missing from body.
+- #450 - @nanzhong - dbaas: handle ca certificates as base64 encoded
+- #449 - @nanzhong - dbaas: add support for getting cluster CA
+- #446 - @kamaln7 - app spec: update cors policy
+
+## [v1.60.0] - 2021-04-04
+
+- #443 - @andrewsomething - apps: Support pagination.
+- #442 - @andrewsomething - dbaas: Support restoring from a backup.
+- #441 - @andrewsomething - k8s: Add URN method to KubernetesCluster.
+
+## [v1.59.0] - 2021-03-29
+
+- #439 - @andrewsomething - vpcs: Support listing members of a VPC.
+- #438 - @andrewsomething - Add Go 1.16.x to the testing matrix.
+
+## [v1.58.0] - 2021-02-17
+
+- #436 - @MorrisLaw - kubernetes: add name field to associated resources
+- #434 - @andrewsomething - sizes: Add description field.
+- #433 - @andrewsomething - Deprecate Name field in godo.DropletCreateVolume
+
 ## [v1.57.0] - 2021-01-15
 
 - #429 - @varshavaradarajan - kubernetes: support optional cascading deletes for clusters
@@ -349,16 +544,19 @@
 ## [v1.1.0] - 2017-06-06
 
 ### Added
+
 - #145 Add FirewallsService for managing Firewalls with the DigitalOcean API. - @viola
 - #139 Add TTL field to the Domains. - @xmudrii
 
 ### Fixed
+
 - #143 Fix oauth2.NoContext depreciation. - @jbowens
 - #141 Fix DropletActions on tagged resources. - @xmudrii
 
 ## [v1.0.0] - 2017-03-10
 
 ### Added
+
 - #130 Add Convert to ImageActionsService. - @xmudrii
 - #126 Add CertificatesService for managing certificates with the DigitalOcean API. - @viola
 - #125 Add LoadBalancersService for managing load balancers with the DigitalOcean API. - @viola

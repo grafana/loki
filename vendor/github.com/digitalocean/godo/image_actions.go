@@ -4,18 +4,20 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // ImageActionsService is an interface for interfacing with the image actions
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#image-actions
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Image-Actions
 type ImageActionsService interface {
 	Get(context.Context, int, int) (*Action, *Response, error)
+	GetByURI(context.Context, string) (*Action, *Response, error)
 	Transfer(context.Context, int, *ActionRequest) (*Action, *Response, error)
 	Convert(context.Context, int) (*Action, *Response, error)
 }
 
-// ImageActionsServiceOp handles communition with the image action related methods of the
+// ImageActionsServiceOp handles communication with the image action related methods of the
 // DigitalOcean API.
 type ImageActionsServiceOp struct {
 	client *Client
@@ -86,7 +88,20 @@ func (i *ImageActionsServiceOp) Get(ctx context.Context, imageID, actionID int) 
 	}
 
 	path := fmt.Sprintf("v2/images/%d/actions/%d", imageID, actionID)
+	return i.get(ctx, path)
+}
 
+// GetByURI gets an action for a particular image by URI.
+func (i *ImageActionsServiceOp) GetByURI(ctx context.Context, rawurl string) (*Action, *Response, error) {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return i.get(ctx, u.Path)
+}
+
+func (i *ImageActionsServiceOp) get(ctx context.Context, path string) (*Action, *Response, error) {
 	req, err := i.client.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, nil, err

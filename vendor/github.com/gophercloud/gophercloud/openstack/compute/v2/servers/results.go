@@ -99,7 +99,8 @@ type GetPasswordResult struct {
 // If privateKey != nil the password is decrypted with the private key.
 // If privateKey == nil the encrypted password is returned and can be decrypted
 // with:
-//   echo '<pwd>' | base64 -D | openssl rsautl -decrypt -inkey <private_key>
+//
+//	echo '<pwd>' | base64 -D | openssl rsautl -decrypt -inkey <private_key>
 func (r GetPasswordResult) ExtractPassword(privateKey *rsa.PrivateKey) (string, error) {
 	var s struct {
 		Password string `json:"password"`
@@ -221,6 +222,12 @@ type Server struct {
 	// Tags is a slice/list of string tags in a server.
 	// The requires microversion 2.26 or later.
 	Tags *[]string `json:"tags"`
+
+	// ServerGroups is a slice of strings containing the UUIDs of the
+	// server groups to which the server belongs. Currently this can
+	// contain at most one entry.
+	// New in microversion 2.71
+	ServerGroups *[]string `json:"server_groups"`
 }
 
 type AttachedVolume struct {
