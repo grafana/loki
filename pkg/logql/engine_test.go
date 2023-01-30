@@ -2496,7 +2496,7 @@ func TestHashingStability(t *testing.T) {
 	queryWithEngine := func() string {
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		eng := NewEngine(EngineOpts{}, getLocalQuerier(4), NoLimits, logger)
+		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
 		query := eng.Query(params)
 		_, err := query.Exec(ctx)
 		require.NoError(t, err)
