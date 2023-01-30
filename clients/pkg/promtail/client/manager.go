@@ -44,7 +44,7 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 
 		// Don't allow duplicate clients, we have client specific metrics that need at least one unique label value (name).
 		if _, ok := clientsCheck[client.Name()]; ok {
-			return nil, fmt.Errorf("duplicate client configs are not allowed, found duplicate for URL: %s", cfg.URL)
+			return nil, fmt.Errorf("duplicate client configs are not allowed, found duplicate for name: %s", cfg.Name)
 		}
 
 		clientsCheck[client.Name()] = fake
