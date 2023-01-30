@@ -63,7 +63,7 @@ func WithRegisterer(reg prometheus.Registerer) Option {
 type Promtail struct {
 	client         client.Client
 	walWriter      *wal.Writer
-	multiplexer    api.EntryHandler
+	entriesFanout  api.EntryHandler
 	targetManagers *targets.TargetManagers
 	server         server.Server
 	logger         log.Logger
@@ -168,7 +168,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 	}
 
-	// this is the sink were all scraped log entries should get  to
+	// these are the sinks were all scraped log entries should get to
 	var entryHandlers = []api.EntryHandler{p.client}
 
 	// If WAL is enabled, instantiate the WAL itself, it's writer, and use that as entries sink for all scraping targets
@@ -180,9 +180,9 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		entryHandlers = append(entryHandlers, p.walWriter)
 	}
 
-	p.multiplexer = utils.NewEntryHandlerFanouter(entryHandlers...)
+	p.entriesFanout = utils.NewEntryHandlerFanouter(entryHandlers...)
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.multiplexer, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return err
 	}
@@ -232,8 +232,8 @@ func (p *Promtail) Shutdown() {
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
-	if p.multiplexer != nil {
-		p.multiplexer.Stop()
+	if p.entriesFanout != nil {
+		p.entriesFanout.Stop()
 	}
 	if p.walWriter != nil {
 		p.walWriter.Stop()
