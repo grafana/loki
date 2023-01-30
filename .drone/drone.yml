@@ -148,6 +148,8 @@ steps:
     event:
     - pull_request
 - commands:
+  - total_diff=$(sed 's/%//' diff.txt | awk '{sum+=$3;}END{print sum;}')
+  - if [ $total_diff = 0 ]; then exit 0; fi
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
   - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
@@ -1673,6 +1675,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 5624f951bb85d3ea60019de484eb85a68bb75c1fffc16150bfefd1cfa129d52d
+hmac: fbc93106cac3a989c4b910682f2e08eadc21786d8502f3270bc2f4a5b1996b21
 
 ...
