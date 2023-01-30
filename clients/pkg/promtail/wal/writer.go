@@ -38,6 +38,8 @@ type Writer struct {
 	entryWriter *entryWriter
 	toClients   api.EntryHandler
 
+	reclaimedOldSegmentsSpaceCounter *prometheus.CounterVec
+
 	closeCleaner chan struct{}
 }
 
@@ -59,6 +61,17 @@ func NewWriter(walCfg Config, logger log.Logger, reg prometheus.Registerer) (*Wr
 		wal:          wl,
 		entryWriter:  newEntryWriter(),
 		closeCleaner: make(chan struct{}, 1),
+	}
+
+	wrt.reclaimedOldSegmentsSpaceCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Subsystem: "wal_writer",
+		Name:      "reclaimed_space",
+		Help:      "Number of bytes reclaimed from storage.",
+	}, []string{})
+
+	if reg != nil {
+		reg.Register(wrt.reclaimedOldSegmentsSpaceCounter)
 	}
 
 	wrt.start(walCfg.MaxSegmentAge)
@@ -146,6 +159,7 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 				level.Error(wrt.log).Log("msg", "Error old wal segment", "err", err, "segmentNum", segment.number)
 			}
 			level.Debug(wrt.log).Log("msg", "Deleted old wal segment", "segmentNum", segment.number)
+			wrt.reclaimedOldSegmentsSpaceCounter.WithLabelValues().Add(float64(segment.size))
 		}
 	}
 	return nil
@@ -177,7 +191,7 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
 	defer func() {
 		err := wl.Log(ew.reusableWALRecord)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed to write to WAL", "err", err)
+			level.Error(logger).Log("msg", "Failed to write entry to wal", "err", err)
 		}
 	}()
 
@@ -202,6 +216,7 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
 type segmentRef struct {
 	name         string
 	number       int
+	size         int64
 	lastModified time.Time
 }
 
@@ -221,7 +236,12 @@ func listSegments(dir string) (refs []segmentRef, err error) {
 		if err != nil {
 			continue
 		}
-		refs = append(refs, segmentRef{name: fn, number: k, lastModified: fileInfo.ModTime()})
+		refs = append(refs, segmentRef{
+			name:         fn,
+			number:       k,
+			lastModified: fileInfo.ModTime(),
+			size:         fileInfo.Size(),
+		})
 	}
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].number < refs[j].number
