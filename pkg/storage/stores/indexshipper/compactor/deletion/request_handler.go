@@ -143,7 +143,7 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 func (dm *DeleteRequestHandler) intervalFromStartAndEnd(startTime, endTime model.Time) (time.Duration, error) {
 	interval := endTime.Sub(startTime)
 	if interval < time.Second {
-		return 0, errors.New("difference between start time and end time must be at lest one second")
+		return 0, errors.New("difference between start time and end time must be at least one second")
 	}
 
 	if dm.maxInterval == 0 {
