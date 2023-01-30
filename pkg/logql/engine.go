@@ -317,7 +317,20 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalVector(ctx, vec)
 	}
 
-	expr, err := optimizeSampleExpr(expr)
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	lim := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, q.limits.MaxQueryRange)
+	if lim != 0 {
+		err = q.checkLimits(expr, lim)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	expr, err = optimizeSampleExpr(expr)
 	if err != nil {
 		return nil, err
 	}
@@ -328,10 +341,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
 	seriesIndex := map[uint64]*promql.Series{}
 
@@ -400,6 +409,23 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	sort.Sort(result)
 
 	return result, stepEvaluator.Error()
+}
+
+func (q *query) checkLimits(expr syntax.SampleExpr, limit time.Duration) error {
+	var err error
+	expr.Walk(func(e interface{}) {
+		switch e.(type) {
+		case *syntax.RangeAggregationExpr:
+			l := e.(*syntax.RangeAggregationExpr).Left
+			if l != nil {
+				if l.Interval > limit {
+					err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrRangeLimit, l.Interval, limit)
+				}
+			}
+			return
+		}
+	})
+	return err
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql_parser.Value, error) {
