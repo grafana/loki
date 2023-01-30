@@ -28,8 +28,6 @@ const (
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
 // writes incoming entries to a WAL.
-// Until the WAL reader side is implemented, the WAL writer will also be responsible for forwarding log entries to the
-// remote write clients. This functionality will be removed after.
 type Writer struct {
 	entries     chan api.Entry
 	log         log.Logger
@@ -43,7 +41,7 @@ type Writer struct {
 }
 
 // NewWriter creates a new Writer.
-func NewWriter(walCfg Config, logger log.Logger, reg prometheus.Registerer, toClients api.EntryHandler) (*Writer, error) {
+func NewWriter(walCfg Config, logger log.Logger, reg prometheus.Registerer) (*Writer, error) {
 	// Start WAL
 	wl, err := New(Config{
 		Dir:     walCfg.Dir,
@@ -59,7 +57,6 @@ func NewWriter(walCfg Config, logger log.Logger, reg prometheus.Registerer, toCl
 		wg:           sync.WaitGroup{},
 		wal:          wl,
 		entryWriter:  newEntryWriter(),
-		toClients:    toClients,
 		closeCleaner: make(chan struct{}),
 	}
 
@@ -74,8 +71,6 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
 			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
-			// Also propagate to clients, until WAL reader side is implemented
-			wrt.toClients.Chan() <- e
 		}
 	}()
 	// WAL cleanup routine that cleans old segments

@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"os"
 	"os/signal"
 	"sync"
@@ -62,6 +63,7 @@ func WithRegisterer(reg prometheus.Registerer) Option {
 type Promtail struct {
 	client         client.Client
 	walWriter      *wal.Writer
+	multiplexer    api.EntryHandler
 	targetManagers *targets.TargetManagers
 	server         server.Server
 	logger         log.Logger
@@ -167,18 +169,20 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	}
 
 	// this is the sink were all scraped log entries should get  to
-	var entriesSink api.EntryHandler = p.client
+	var entryHandlers = []api.EntryHandler{p.client}
 
 	// If WAL is enabled, instantiate the WAL itself, it's writer, and use that as entries sink for all scraping targets
 	if cfg.WAL.Enabled {
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg, p.client)
+		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
 		if err != nil {
 			return fmt.Errorf("failed to create wal writer: %w", err)
 		}
-		entriesSink = p.walWriter
+		entryHandlers = append(entryHandlers, p.walWriter)
 	}
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, entriesSink, cfg.ScrapeConfig, &cfg.TargetConfig)
+	p.multiplexer = utils.NewEntryHandlerFanouter(entryHandlers...)
+
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.multiplexer, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return err
 	}
@@ -228,6 +232,9 @@ func (p *Promtail) Shutdown() {
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
+	if p.multiplexer != nil {
+		p.multiplexer.Stop()
+	}
 	if p.walWriter != nil {
 		p.walWriter.Stop()
 	}
@@ -235,7 +242,7 @@ func (p *Promtail) Shutdown() {
 	p.client.Stop()
 }
 
-// ActiveTargets returns active targets per jobs from the target manager
+// ActiveTargets returns active handlers per jobs from the target manager
 func (p *Promtail) ActiveTargets() map[string][]target.Target {
 	return p.targetManagers.ActiveTargets()
 }
