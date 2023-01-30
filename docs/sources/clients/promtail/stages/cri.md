@@ -1,7 +1,8 @@
 ---
 title: cri
+description: cri stage
 ---
-# `cri` stage
+# cri
 
 The `cri` stage is a parsing stage that reads the log line using the standard CRI logging format.
 

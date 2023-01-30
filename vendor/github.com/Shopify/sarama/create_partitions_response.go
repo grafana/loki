@@ -84,6 +84,10 @@ func (t *TopicPartitionError) Error() string {
 	return text
 }
 
+func (t *TopicPartitionError) Unwrap() error {
+	return t.Err
+}
+
 func (t *TopicPartitionError) encode(pe packetEncoder) error {
 	pe.putInt16(int16(t.Err))
 

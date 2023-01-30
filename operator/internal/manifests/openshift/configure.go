@@ -195,7 +195,25 @@ func ConfigureRulerStatefulSet(
 }
 
 // ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
-func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monitorServerName string) error {
+func ConfigureOptions(configOpt *config.Options, am, uwam bool, token, caPath, monitorServerName string) error {
+	if am {
+		err := configureDefaultMonitoringAM(configOpt)
+		if err != nil {
+			return err
+		}
+	}
+
+	if uwam {
+		err := configureUserWorkloadAM(configOpt, token, caPath, monitorServerName)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func configureDefaultMonitoringAM(configOpt *config.Options) error {
 	if configOpt.Ruler.AlertManager == nil {
 		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
 	}
@@ -213,12 +231,10 @@ func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monit
 		}
 	}
 
-	// Check user workload is enbaled.
-	if !uwam {
-		return nil
-	}
+	return nil
+}
 
-	// Configure user-workload alertmanager when.
+func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorServerName string) error {
 	if len(configOpt.Overrides) == 0 {
 		configOpt.Overrides = map[string]config.LokiOverrides{}
 	}

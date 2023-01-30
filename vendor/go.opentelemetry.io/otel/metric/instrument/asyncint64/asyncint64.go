@@ -22,6 +22,8 @@ import (
 )
 
 // InstrumentProvider provides access to individual instruments.
+//
+// Warning: methods may be added to this interface in minor releases.
 type InstrumentProvider interface {
 	// Counter creates an instrument for recording increasing values.
 	Counter(name string, opts ...instrument.Option) (Counter, error)
@@ -34,9 +36,11 @@ type InstrumentProvider interface {
 }
 
 // Counter is an instrument that records increasing values.
+//
+// Warning: methods may be added to this interface in minor releases.
 type Counter interface {
-	// Observe records the state of the instrument to be x. The value of x is
-	// assumed to be the exact Counter value to record.
+	// Observe records the state of the instrument to be x. Implementations
+	// will assume x to be the cumulative sum of the count.
 	//
 	// It is only valid to call this within a callback. If called outside of the
 	// registered callback it should have no effect on the instrument, and an
@@ -47,9 +51,11 @@ type Counter interface {
 }
 
 // UpDownCounter is an instrument that records increasing or decreasing values.
+//
+// Warning: methods may be added to this interface in minor releases.
 type UpDownCounter interface {
-	// Observe records the state of the instrument to be x. The value of x is
-	// assumed to be the exact UpDownCounter value to record.
+	// Observe records the state of the instrument to be x. Implementations
+	// will assume x to be the cumulative sum of the count.
 	//
 	// It is only valid to call this within a callback. If called outside of the
 	// registered callback it should have no effect on the instrument, and an
@@ -60,6 +66,8 @@ type UpDownCounter interface {
 }
 
 // Gauge is an instrument that records independent readings.
+//
+// Warning: methods may be added to this interface in minor releases.
 type Gauge interface {
 	// Observe records the state of the instrument to be x.
 	//

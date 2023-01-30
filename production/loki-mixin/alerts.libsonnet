@@ -39,7 +39,7 @@
           {
             alert: 'LokiRequestLatency',
             expr: |||
-              namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*"} > 1
+              namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
             |||,
             'for': '15m',
             labels: {

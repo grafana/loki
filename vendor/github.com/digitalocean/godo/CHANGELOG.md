@@ -1,5 +1,21 @@
 # Change Log
 
+## [v1.91.1] - 2022-11-23
+
+- #582 - @StephenVarela - Load Balancers: Support new endpoints for http alerts
+
+## [v1.90.0] - 2022-11-16
+
+- #571 - @kraai - Add WaitForAvailable
+- #579 - @bentranter - Deprecate old pointer helpers, use generic one
+- #580 - @StephenVarela - LBAAS Fixup default http idle timeout behaviour
+- #578 - @StephenVarela - LBAAS-2430 Add support for HTTP idle timeout seconds
+- #577 - @ddebarros - Functions api support
+
+## [v1.89.0] - 2022-11-02
+
+- #575 - @ghostlandr - apps: add option to get projects data from Apps List endpoint
+
 ## [v1.88.0] - 2022-10-31
 
 - #573 - @kamaln7 - apps: add ListBuildpacks, UpgradeBuildpack
@@ -528,16 +544,19 @@
 ## [v1.1.0] - 2017-06-06
 
 ### Added
+
 - #145 Add FirewallsService for managing Firewalls with the DigitalOcean API. - @viola
 - #139 Add TTL field to the Domains. - @xmudrii
 
 ### Fixed
+
 - #143 Fix oauth2.NoContext depreciation. - @jbowens
 - #141 Fix DropletActions on tagged resources. - @xmudrii
 
 ## [v1.0.0] - 2017-03-10
 
 ### Added
+
 - #130 Add Convert to ImageActionsService. - @xmudrii
 - #126 Add CertificatesService for managing certificates with the DigitalOcean API. - @viola
 - #125 Add LoadBalancersService for managing load balancers with the DigitalOcean API. - @viola

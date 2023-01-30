@@ -1,5 +1,6 @@
 ---
 title: Build from source
+description: Build from source
 weight: 50
 ---
 # Build from source

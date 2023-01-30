@@ -1,17 +1,33 @@
 ---
+loki:
+  querier:
+    multi_tenant_queries_enabled: true
+
 enterprise:
   enabled: true
-  adminTokenSecret: "gel-admin-token"
+  adminToken:
+    secret: "gel-admin-token"
+    additionalNamespaces:
+      - k3d-helm-cluster
   useExternalLicense: true
   externalLicenseName: gel-license
   provisioner:
     provisionedSecretPrefix: "provisioned-secret"
-    tenants:
-      - loki
+    additionalTenants:
+      - name: team-a
+        namespace: k3d-helm-cluster
 monitoring:
-  selfMonitoring+:
-    tenant: "loki"
+  dashboards:
+    namespace: k3d-helm-cluster
+  selfMonitoring:
+    tenant:
+      name: loki
+      secretNamespace: k3d-helm-cluster
   serviceMonitor:
+    labels:
+      release: "prometheus"
+  rules:
+    namespace: k3d-helm-cluster
     labels:
       release: "prometheus"
 minio:

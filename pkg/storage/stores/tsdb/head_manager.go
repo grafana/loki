@@ -524,11 +524,11 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 				if len(rec.Chks.Chks) > 0 {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
-						return errors.New("found tsdb chunk metas without user in WAL replay")
+						return fmt.Errorf("found tsdb chunk metas without user in WAL replay (period=%s): %+v", id.String(), *rec)
 					}
 					x, ok := tenant[rec.Chks.Ref]
 					if !ok {
-						return errors.New("found tsdb chunk metas without series in WAL replay")
+						return fmt.Errorf("found tsdb chunk metas without series in WAL replay (period=%s): %+v", id.String(), *rec)
 					}
 					_ = heads.Append(rec.UserID, x.ls, x.fp, rec.Chks.Chks)
 				}
@@ -547,6 +547,10 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 
 type WALIdentifier struct {
 	ts time.Time
+}
+
+func (w WALIdentifier) String() string {
+	return fmt.Sprint(w.ts.Unix())
 }
 
 func parseWALPath(p string) (id WALIdentifier, ok bool) {

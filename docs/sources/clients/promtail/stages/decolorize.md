@@ -1,7 +1,8 @@
 ---
 title: decolorize
+description: decolorize stage
 ---
-# `decolorize` stage
+# decolorize
 
 The `decolorize` stage is a transform stage that lets you strip
 ANSI color codes from the log line, thus making it easier to

@@ -1,5 +1,6 @@
 ---
 title: Template functions
+description: Template functions
 weight: 30
 ---
 
@@ -714,4 +715,34 @@ Examples:
 Example of a query to print how many times XYZ occurs in a line:
 ```logql
 {job="xyzlog"} | line_format `{{ __line__ | count "XYZ"}}`
+```
+
+## urlencode
+
+Use this function to encode the URL(s) in log messages.
+
+Signature:
+
+`urlencode(string) string`
+
+Examples:
+
+```template
+"{{ .request_url | urlencode }}"
+`{{ urlencode  .request_url}}`
+```
+
+## urldecode
+
+Use this function to decode the URL(s) in log messages.
+
+Signature:
+
+`urldecode(string) string`
+
+Examples:
+
+```template
+"{{ .request_url | urldecode }}"
+`{{ urldecode  .request_url}}`
 ```

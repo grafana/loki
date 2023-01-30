@@ -1,5 +1,6 @@
 ---
 title: Blocking Queries
+description: Blocking Queries
 weight: 60
 ---
 # Blocking Queries
@@ -8,7 +9,7 @@ In certain situations, you may not be able to control the queries being sent to 
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
 your service.
 
-You can block queries using [per-tenant overrides](../configuration/#runtime-configuration-file), like so:
+You can block queries using [per-tenant overrides]({{<relref "../configuration/#runtime-configuration-file">}}), like so:
 
 ```yaml
 overrides:
@@ -44,4 +45,4 @@ Blocked queries are logged, as well as counted in the `loki_blocked_queries` met
 
 ## Scope
 
-Queries received via the API and executed as [alerting/recording rules](../rules/) will be blocked.
+Queries received via the API and executed as [alerting/recording rules]({{<relref "../rules">}}) will be blocked.

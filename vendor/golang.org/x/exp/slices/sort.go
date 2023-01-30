@@ -30,7 +30,7 @@ func SortFunc[E any](x []E, less func(a, b E) bool) {
 	pdqsortLessFunc(x, 0, n, bits.Len(uint(n)), less)
 }
 
-// SortStable sorts the slice x while keeping the original order of equal
+// SortStableFunc sorts the slice x while keeping the original order of equal
 // elements, using less to compare elements.
 func SortStableFunc[E any](x []E, less func(a, b E) bool) {
 	stableLessFunc(x, len(x), less)

@@ -1,4 +1,12 @@
 {{/*
+Enforce valid label value.
+See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+*/}}
+{{- define "loki.validLabelValue" -}}
+{{- (regexReplaceAllLiteral "[^a-zA-Z0-9._-]" . "-") | trunc 63 | trimSuffix "-" | trimSuffix "_" | trimSuffix "." }}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "loki.name" -}}
@@ -20,6 +28,22 @@ singleBinary fullname
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Resource name template
+Params:
+  ctx = . context
+  component = component name (optional)
+  rolloutZoneName = rollout zone name (optional)
+*/}}
+{{- define "loki.resourceName" -}}
+{{- $resourceName := include "loki.fullname" .ctx -}}
+{{- if .component -}}{{- $resourceName = printf "%s-%s" $resourceName .component -}}{{- end -}}
+{{- if and (not .component) .rolloutZoneName -}}{{- printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail -}}{{- end -}}
+{{- if .rolloutZoneName -}}{{- $resourceName = printf "%s-%s" $resourceName .rolloutZoneName -}}{{- end -}}
+{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install or shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness." $resourceName | fail -}}{{- end -}}
+{{- $resourceName -}}
 {{- end -}}
 
 {{/*
@@ -80,7 +104,7 @@ Common labels
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
-app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
+app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -475,12 +499,17 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
-{{- .Values.enterprise.adminTokenSecret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
+
+{{/* Prefix for provisioned secrets created for each provisioned tenant */}}
+{{- define "enterprise-logs.provisionedSecretPrefix" }}
+{{- .Values.enterprise.provisioner.provisionedSecretPrefix | default (printf "%s-provisioned" (include "loki.name" . )) -}}
 {{- end -}}
 
 {{/* Name of kubernetes secret to persist canary credentials in */}}
-{{- define "enterprise-logs.canarySecret" }}
-{{- .Values.enterprise.canarySecret | default (printf "%s-canary-secret" (include "loki.name" . )) -}}
+{{- define "enterprise-logs.selfMonitoringTenantSecret" }}
+{{- .Values.enterprise.canarySecret | default (printf "%s-%s" (include "enterprise-logs.provisionedSecretPrefix" . ) .Values.monitoring.selfMonitoring.tenant.name) -}}
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
@@ -551,7 +580,7 @@ http {
     location ~ /api/prom/.* {
       proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
     }
-    
+
     {{- if .Values.read.legacyReadTarget }}
     location ~ /prometheus/api/v1/alerts.* {
       proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
@@ -646,3 +675,14 @@ http {
   }
 }
 {{- end }}
+
+{{/* Configure enableServiceLinks in pod */}}
+{{- define "loki.enableServiceLinks" -}}
+{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.Version -}}
+{{- if or (.Values.loki.enableServiceLinks) (ne .Values.loki.enableServiceLinks false) -}}
+enableServiceLinks: true
+{{- else -}}
+enableServiceLinks: false
+{{- end -}}
+{{- end -}}
+{{- end -}}

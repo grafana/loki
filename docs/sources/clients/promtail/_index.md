@@ -1,11 +1,12 @@
 ---
 title: Promtail
+description: Promtail
 weight: 10
 ---
 # Promtail
 
 Promtail is an agent which ships the contents of local logs to a private Grafana Loki
-instance or [Grafana Cloud](https://grafana.com/oss/loki). It is usually
+instance or [Grafana Cloud](/oss/loki). It is usually
 deployed to every machine that has applications needed to be monitored.
 
 It primarily:
@@ -34,7 +35,7 @@ Kubernetes API server while `static` usually covers all other use cases.
 Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 `relabel_configs` allows for fine-grained control of what to ingest, what to
 drop, and the final metadata to attach to the log line. Refer to the docs for
-[configuring Promtail](configuration/) for more details.
+[configuring Promtail]({{<relref "configuration.md">}}) for more details.
 
 ### Support for compressed files
 
@@ -67,8 +68,8 @@ parsed data to Loki. Important details are:
   to resume work from the last scraped line and process the rest of the remaining 55%.
 * Since decompression and pushing can be very fast, depending on the size
   of your compressed file Loki will rate-limit your ingestion. In that case you
-  might configure Promtail's [`limits` stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
-  [ingestion limits on Loki](https://grafana.com/docs/loki/latest/configuration/#limits_config).
+  might configure Promtail's [`limits` stage](/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
+  [ingestion limits on Loki](/docs/loki/latest/configuration/#limits_config).
 * Log rotations **aren't supported as of now**, mostly because it requires us modifying Promtail to
   rely on file inodes instead of file names. If you'd like to see support for it, please create a new
   issue on Github asking for it and explaining your use case.
@@ -78,7 +79,7 @@ parsed data to Loki. Important details are:
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api#post-lokiapiv1push) with the [loki_push_api](configuration#loki_push_api_config) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{<relref "../../api#push-log-entries-to-loki">}}) with the [loki_push_api]({{<relref "configuration#loki_push_api">}}) scrape config.
 
 There are a few instances where this might be helpful:
 
@@ -88,12 +89,12 @@ There are a few instances where this might be helpful:
 
 ## Receiving logs From Syslog
 
-When the [Syslog Target](configuration#syslog_config) is being used, logs
+When the [Syslog Target]({{<relref "configuration#syslog">}}) is being used, logs
 can be written with the syslog protocol to the configured port.
 
 ## AWS
 
-If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](../aws/ec2/).
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial]({{<relref "../aws/ec2/">}}).
 
 ## Labeling and parsing
 
@@ -106,7 +107,7 @@ To allow more sophisticated filtering afterwards, Promtail allows to set labels
 not only from service discovery, but also based on the contents of each log
 line. The `pipeline_stages` can be used to add or update labels, correct the
 timestamp, or re-write log lines entirely. Refer to the documentation for
-[pipelines](pipelines/) for more details.
+[pipelines]({{<relref "pipelines">}}) for more details.
 
 ## Shipping
 
@@ -132,7 +133,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. Refer to
-[Observing Grafana Loki](../../operations/observability/) for the list
+[Observing Grafana Loki]({{<relref "../../operations/observability/">}}) for the list
 of exported metrics.
 
 ### Promtail web server config

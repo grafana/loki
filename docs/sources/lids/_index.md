@@ -1,5 +1,6 @@
 ---
 title: Loki Improvement Documents (LIDs)
+description: Loki Improvement Documents (LIDs)
 weight: 1400
 ---
 
