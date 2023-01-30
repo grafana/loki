@@ -8,6 +8,7 @@
 // Loki services
 (import 'distributor.libsonnet') +
 (import 'ingester.libsonnet') +
+(import 'multi-zone.libsonnet') +
 (import 'querier.libsonnet') +
 (import 'table-manager.libsonnet') +
 (import 'query-frontend.libsonnet') +
