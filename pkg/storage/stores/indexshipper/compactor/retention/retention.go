@@ -339,7 +339,13 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 	}
 }
 
-func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableInterval model.Interval, filterFunc filter.Func) (bool, bool, error) {
+// rewriteChunk rewrites a chunk after filtering out logs using filterFunc.
+// It first builds a newChunk using filterFunc.
+// If the newChunk is same as the original chunk then there is nothing to do here, wroteChunks and linesDeleted both would be false.
+// If the newChunk is different, linesDeleted would be true.
+// The newChunk is indexed and uploaded only if it belongs to the current index table being processed,
+// the status of which is set to wroteChunks.
+func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userID := unsafeGetString(ce.UserID)
 	chunkID := unsafeGetString(ce.ChunkID)
 
@@ -356,9 +362,6 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 	if len(chks) != 1 {
 		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", chunkID, len(chks))
 	}
-
-	wroteChunks := false
-	linesDeleted := false
 
 	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string) bool {
 		if filterFunc(ts, s) {

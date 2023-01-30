@@ -46,24 +46,15 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 	return nil
 }
 
-// FilterFunction returns a filter function that returns true if the given line matches
-// Note: FilterFunction can be nil when the delete request does not have a line filter.
+// FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest
 func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error) {
-	if d.logSelectorExpr == nil {
-		err := d.SetQuery(d.Query)
-		if err != nil {
-			return nil, err
+	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
+	// without having to do conversion of timestamps for each log line we check.
+	if d.timeInterval == nil {
+		d.timeInterval = &timeInterval{
+			start: d.StartTime.Time(),
+			end:   d.EndTime.Time(),
 		}
-	}
-
-	// return a filter func if the delete request has a line filter
-	if !d.logSelectorExpr.HasFilter() {
-		return nil, nil
-	}
-
-	p, err := d.logSelectorExpr.Pipeline()
-	if err != nil {
-		return nil, err
 	}
 
 	if !allMatch(d.matchers, labels) {
@@ -72,8 +63,28 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 		}, nil
 	}
 
+	// if delete request doesn't have a line filter, just do time based filtering
+	if !d.logSelectorExpr.HasFilter() {
+		return func(ts time.Time, s string) bool {
+			if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
+				return false
+			}
+
+			return true
+		}, nil
+	}
+
+	p, err := d.logSelectorExpr.Pipeline()
+	if err != nil {
+		return nil, err
+	}
+
 	f := p.ForStream(labels).ProcessString
-	return func(_ time.Time, s string) bool {
+	return func(ts time.Time, s string) bool {
+		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
+			return false
+		}
+
 		result, _, skip := f(0, s)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
@@ -94,7 +105,8 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 }
 
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
-// It also returns the intervals of the ChunkEntry that will remain before filtering.
+// It returns a filter.Func if the chunk is supposed to be deleted partially or the delete request contains line filters.
+// If the filter.Func is nil, the whole chunk is supposed to be deleted.
 func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func) {
 	if d.UserID != unsafeGetString(entry.UserID) {
 		return false, nil
@@ -114,6 +126,24 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		return false, nil
 	}
 
+	if d.logSelectorExpr == nil {
+		err := d.SetQuery(d.Query)
+		if err != nil {
+			level.Error(util_log.Logger).Log(
+				"msg", "failed to init log selector expr",
+				"delete_request_id", d.RequestID,
+				"user", d.UserID,
+				"err", err,
+			)
+			return false, nil
+		}
+	}
+
+	if d.StartTime <= entry.From && d.EndTime >= entry.Through && !d.logSelectorExpr.HasFilter() {
+		// Delete request covers the whole chunk and there are no line filters in the logSelectorExpr so the whole chunk will be deleted
+		return true, nil
+	}
+
 	ff, err := d.FilterFunction(entry.Labels)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
@@ -127,46 +157,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		return false, nil
 	}
 
-	if d.StartTime <= entry.From && d.EndTime >= entry.Through {
-		// if the logSelectorExpr has a filter part return the chunk boundaries as intervals
-		if d.logSelectorExpr.HasFilter() {
-			level.Info(util_log.Logger).Log("msg", "deleting whole chunk with filter",
-				"delete_request_id", d.RequestID,
-				"chunk_id", string(entry.ChunkID),
-				"chunk_start", entry.From.Time().UTC().String(),
-				"chunk_end", entry.Through.Time().UTC().String(),
-			)
-			return true, ff
-		}
-
-		// No filter in the logSelectorExpr so the whole chunk will be deleted
-		return true, nil
-	}
-
-	// delete request is without a line filter so initialize it to always return true to simplify the code below for partial chunk deletion.
-	// Partial chunk deletion is anyways done by iterating through the logs so this should not add much overhead.
-	if ff == nil {
-		ff = func(_ time.Time, _ string) bool {
-			return true
-		}
-	}
-
-	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
-	// without having to do conversion of timestamps for each log line we check.
-	if d.timeInterval == nil {
-		d.timeInterval = &timeInterval{
-			start: d.StartTime.Time(),
-			end:   d.EndTime.Time(),
-		}
-	}
-
-	return true, func(ts time.Time, s string) bool {
-		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
-			return false
-		}
-
-		return ff(ts, s)
-	}
+	return true, ff
 }
 
 func intervalsOverlap(interval1, interval2 model.Interval) bool {

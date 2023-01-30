@@ -1,6 +1,7 @@
 package deletion
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -223,17 +224,20 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 			Query:        `{foo="bar"} |= "some"`,
 			DeletedLines: 0,
 			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			StartTime:    0,
+			EndTime:      math.MaxInt64,
 		}
 
 		lblStr := `{foo="bar"}`
 		lbls := mustParseLabel(lblStr)
 
+		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
 
-		require.True(t, f(time.Time{}, `some line`))
-		require.False(t, f(time.Time{}, ""))
-		require.False(t, f(time.Time{}, "other line"))
+		require.True(t, f(time.Now(), `some line`))
+		require.False(t, f(time.Now(), ""))
+		require.False(t, f(time.Now(), "other line"))
 		require.Equal(t, int32(1), dr.DeletedLines)
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
 	})
@@ -249,6 +253,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lblStr := `{foo2="buzz"}`
 		lbls := mustParseLabel(lblStr)
 
+		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
 
@@ -261,17 +266,29 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	})
 
 	t.Run("no_line_filter", func(t *testing.T) {
+		now := model.Now()
 		dr := DeleteRequest{
 			Query:        `{namespace="default"}`,
 			DeletedLines: 0,
 			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			StartTime:    now.Add(-time.Hour),
+			EndTime:      now,
 		}
 
 		lblStr := `{namespace="default"}`
 		lbls := mustParseLabel(lblStr)
 
+		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
-		require.Nil(t, f)
+		require.NotNil(t, f)
+
+		require.True(t, f(now.Time(), `some line`))
+		require.False(t, f(now.Time().Add(-2*time.Hour), `some line`))
+		require.True(t, f(now.Time(), "other line"))
+
+		require.Equal(t, int32(0), dr.DeletedLines)
+		// testutil.ToFloat64 panics when there are 0 metrics
+		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 }
