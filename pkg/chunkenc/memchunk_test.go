@@ -1253,7 +1253,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	chkThrough := chkFrom.Add(10 * time.Second)
 	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
 
-	filterFunc := func(in string) bool {
+	filterFunc := func(_ time.Time, in string) bool {
 		return strings.HasPrefix(in, "matching")
 	}
 
