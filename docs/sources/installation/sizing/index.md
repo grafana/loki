@@ -49,12 +49,14 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
       <th>Write Replicas</th>
       <th>Nodes</th>
       <th>Cores</th>
+      <th>Memory</th>
     </tr>
     <tr>
       <td>{{ clusterSize.TotalReadReplicas }}</td>
       <td>{{ clusterSize.TotalWriteReplicas }}</td>
       <td>{{ clusterSize.TotalNodes}}</td>
       <td>{{ clusterSize.TotalCoresRequest}}</td>
+      <td>{{ clusterSize.TotalMemoryRequest}} bytes</td>
     </tr>
     </table>
   </div>
