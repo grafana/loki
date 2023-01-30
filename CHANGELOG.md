@@ -45,6 +45,8 @@
 
 ##### Changes
 
+* [8315](https://github.com/grafana/loki/pull/8315) **thepalbi** Relicense and export `pkg/ingester` WAL code to be used in Promtail's WAL.
+ 
 #### Promtail
 
 ##### Enhancements
