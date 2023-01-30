@@ -26,10 +26,10 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   </select>
 
   <label>Ingest<i class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null"></i></label>
-  <input v-model="ingest" name="ingest" placeholder="Desired ingest in GiB/day" type="number" max="1048576" min="0"/>
+  <input style="width: 95%; padding-right:4.5em;" v-model="ingestInGB" name="ingest" placeholder="Desired ingest in GB/day" type="number" max="1048576" min="0"/><span style="margin-left:-4em;">GB/day</span>
 
   <label>Log retention period<i class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null"></i></label>
-  <input v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
+  <input style="width: 95%; padding-right:4.5em;"  v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/><span style="margin-left:-4em;">days</span>
 
   <label>Query performance<i class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null"></i></label>
   <div id="queryperf" style="display: inline-flex;">
@@ -78,7 +78,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-.<style>
+<style>
 
 #app label.icon.question::after {
   content: '\f29c';
@@ -111,7 +111,7 @@ createApp({
     return {
       nodes: ["Loading..."],
       node: "Loading...",
-      ingest: null,
+      bytesDayIngest: null,
       retention: null,
       queryperf: 'Basic',
       help: null,
@@ -124,8 +124,21 @@ createApp({
       return `${API_URL}/helm?${this.queryString}`
     },
     queryString() {
-      const bytesDayIngest = this.ingest * 1024 * 1024 * 1024
-      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+    },
+    ingestInGB: {
+	get () {
+                if (this.bytesDayIngest == null) {
+                    return null
+                }
+                // Convert to GB
+                return this.bytesDayIngest / 1000 / 1000 / 1000
+	},
+	set (gbDayIngest) {
+		console.log(gbDayIngest)
+		this.bytesDayIngest = gbDayIngest * 1000 * 1000 * 1000
+		console.log(this.bytesDayIngest)
+	}
     }
   },
 
@@ -140,7 +153,7 @@ createApp({
       this.nodes = await (await fetch(url,{mode: 'cors'})).json()
     },
     async calculateClusterSize() {
-      if (this.node == 'Loading...' || this.ingest == null || this.retention == null) {
+      if (this.node == 'Loading...' || this.bytesDayIngest== null || this.retention == null) {
         return
       }
       const url = `${API_URL}/cluster?${this.queryString}`
@@ -149,10 +162,10 @@ createApp({
   },
 
   watch: {
-    node:      'calculateClusterSize',
-    ingest:    'calculateClusterSize',
-    retention: 'calculateClusterSize',
-    queryperf: 'calculateClusterSize'
+    node:           'calculateClusterSize',
+    bytesDayIngest: 'calculateClusterSize',
+    retention:      'calculateClusterSize',
+    queryperf:      'calculateClusterSize'
   }
 }).mount('#app')
 </script>
