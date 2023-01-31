@@ -19,7 +19,7 @@ import (
 	"time"
 
 	ipubsub "cloud.google.com/go/internal/pubsub"
-	pb "google.golang.org/genproto/googleapis/pubsub/v1"
+	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 )
 
 // Message represents a Pub/Sub message.
