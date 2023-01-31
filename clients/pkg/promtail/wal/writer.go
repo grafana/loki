@@ -38,7 +38,6 @@ type Writer struct {
 	once        sync.Once
 	wal         WAL
 	entryWriter *entryWriter
-	toClients   api.EntryHandler
 
 	reclaimedOldSegmentsSpaceCounter *prometheus.CounterVec
 

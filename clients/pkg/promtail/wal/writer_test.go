@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func TestWriter_EntriesAreWrittenToWALAndForwardedToClients(t *testing.T) {
+func TestWriter_EntriesAreWrittenToWAL(t *testing.T) {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	dir := t.TempDir()
 
