@@ -45,6 +45,12 @@ pipeline_stages:
         action:
         service:
         status_code: "status"
+- metrics:
+    debug_metrics:
+      type: Counter
+      source: action
+      config:
+        action: inc
 - match:
     selector: "{match=\"false\"}"
     action: drop
@@ -94,7 +100,7 @@ func TestNewPipeline(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	require.Len(t, p.stages, 2)
+	require.Len(t, p.stages, 3)
 }
 
 func TestPipeline_Process(t *testing.T) {
@@ -409,4 +415,98 @@ pipeline_stages:
 	e1.Stop()
 	c.Stop()
 	t.Log(c.Received())
+}
+
+func TestPipeline_Reload(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	now := time.Now()
+	var config map[string]interface{}
+	err := yaml.Unmarshal([]byte(testMultiStageYaml), &config)
+	if err != nil {
+		panic(err)
+	}
+	p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), nil, registry)
+	if err != nil {
+		panic(err)
+	}
+
+	tt := struct {
+		labels model.LabelSet
+	}{
+		map[model.LabelName]model.LabelValue{
+			"stream":      "stderr",
+			"action":      "GET",
+			"status_code": "200",
+			"match":       "false",
+		},
+	}
+
+	c := fake.New(func() {})
+	handler := p.Wrap(c)
+
+	handler.Chan() <- api.Entry{
+		Labels: tt.labels,
+		Entry: logproto.Entry{
+			Line:      rawTestLine,
+			Timestamp: now,
+		},
+	}
+	handler.Stop()
+	c.Stop()
+
+	//curl "/metrics" endpoint
+	families, err := registry.Gather()
+	if err != nil {
+		assert.NoError(t, err)
+	}
+
+	containMetrics := false
+
+	for _, family := range families {
+		if family.GetName() == "promtail_custom_debug_metrics" {
+			containMetrics = true
+			break
+		}
+	}
+	assert.Equal(t, containMetrics, true)
+
+	p.Close()
+	// reload
+	var config2 map[string]interface{}
+	err = yaml.Unmarshal([]byte(testMultiStageYaml), &config2)
+	if err != nil {
+		panic(err)
+	}
+
+	p2, err := NewPipeline(util_log.Logger, config2["pipeline_stages"].([]interface{}), nil, registry)
+	assert.NoError(t, err)
+	c2 := fake.New(func() {})
+	handler2 := p2.Wrap(c2)
+
+	handler2.Chan() <- api.Entry{
+		Labels: tt.labels,
+		Entry: logproto.Entry{
+			Line:      rawTestLine,
+			Timestamp: now,
+		},
+	}
+	handler2.Stop()
+	c2.Stop()
+
+	//curl "/metrics" endpoint
+	families, err = registry.Gather()
+	if err != nil {
+		assert.NoError(t, err)
+	}
+
+	containMetrics = false
+
+	for _, family := range families {
+		if family.GetName() == "promtail_custom_debug_metrics" {
+			containMetrics = true
+			break
+		}
+	}
+	assert.Equal(t, containMetrics, true)
+	p2.Close()
 }

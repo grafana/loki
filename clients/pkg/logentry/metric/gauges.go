@@ -57,7 +57,7 @@ type Gauges struct {
 }
 
 // NewGauges creates a new gauge vec.
-func NewGauges(name, help string, config interface{}, maxIdleSec int64) (*Gauges, error) {
+func NewGauges(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (UnregisterCollector, error) {
 	cfg, err := parseGaugeConfig(config)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func NewGauges(name, help string, config interface{}, maxIdleSec int64) (*Gauges
 		return nil, err
 	}
 	return &Gauges{
-		metricVec: newMetricVec(func(labels map[string]string) prometheus.Metric {
+		metricVec: newMetricVec(func(labels map[string]string) CollectorMetric {
 			return &expiringGauge{prometheus.NewGauge(prometheus.GaugeOpts{
 				Help:        help,
 				Name:        name,
@@ -75,14 +75,18 @@ func NewGauges(name, help string, config interface{}, maxIdleSec int64) (*Gauges
 			}),
 				0,
 			}
-		}, maxIdleSec),
+		}, maxIdleSec, registry),
 		Cfg: cfg,
 	}, nil
 }
 
 // With returns the gauge associated with a stream labelset.
-func (g *Gauges) With(labels model.LabelSet) prometheus.Gauge {
-	return g.metricVec.With(labels).(prometheus.Gauge)
+func (g *Gauges) With(labels model.LabelSet) (prometheus.Gauge, error) {
+	with, err := g.metricVec.With(labels)
+	if err != nil {
+		return nil, err
+	}
+	return with.(prometheus.Gauge), nil
 }
 
 type expiringGauge struct {

@@ -64,7 +64,7 @@ type Counters struct {
 }
 
 // NewCounters creates a new counter vec.
-func NewCounters(name, help string, config interface{}, maxIdleSec int64) (*Counters, error) {
+func NewCounters(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (UnregisterCollector, error) {
 	cfg, err := parseCounterConfig(config)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func NewCounters(name, help string, config interface{}, maxIdleSec int64) (*Coun
 		return nil, err
 	}
 	return &Counters{
-		metricVec: newMetricVec(func(labels map[string]string) prometheus.Metric {
+		metricVec: newMetricVec(func(labels map[string]string) CollectorMetric {
 			return &expiringCounter{prometheus.NewCounter(prometheus.CounterOpts{
 				Help:        help,
 				Name:        name,
@@ -82,14 +82,18 @@ func NewCounters(name, help string, config interface{}, maxIdleSec int64) (*Coun
 			}),
 				0,
 			}
-		}, maxIdleSec),
+		}, maxIdleSec, registry),
 		Cfg: cfg,
 	}, nil
 }
 
 // With returns the counter associated with a stream labelset.
-func (c *Counters) With(labels model.LabelSet) prometheus.Counter {
-	return c.metricVec.With(labels).(prometheus.Counter)
+func (c *Counters) With(labels model.LabelSet) (prometheus.Counter, error) {
+	with, err := c.metricVec.With(labels)
+	if err != nil {
+		return nil, err
+	}
+	return with.(prometheus.Counter), nil
 }
 
 type expiringCounter struct {

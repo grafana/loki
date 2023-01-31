@@ -95,9 +95,9 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 	if err != nil {
 		return nil, err
 	}
-	metrics := map[string]prometheus.Collector{}
+	metrics := map[string]metric.UnregisterCollector{}
 	for name, cfg := range *cfgs {
-		var collector prometheus.Collector
+		var collector metric.UnregisterCollector
 
 		customPrefix := ""
 		if cfg.Prefix != "" {
@@ -108,23 +108,23 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 
 		switch strings.ToLower(cfg.MetricType) {
 		case MetricTypeCounter:
-			collector, err = metric.NewCounters(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec)
+			collector, err = metric.NewCounters(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec, registry)
 			if err != nil {
 				return nil, err
 			}
 		case MetricTypeGauge:
-			collector, err = metric.NewGauges(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec)
+			collector, err = metric.NewGauges(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec, registry)
 			if err != nil {
 				return nil, err
 			}
 		case MetricTypeHistogram:
-			collector, err = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec)
+			collector, err = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec, registry)
 			if err != nil {
 				return nil, err
 			}
 		}
 		if collector != nil {
-			registry.MustRegister(collector)
+			//registry.MustRegister(collector)
 			metrics[name] = collector
 		}
 	}
@@ -140,13 +140,13 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 type metricStage struct {
 	logger   log.Logger
 	cfg      MetricsConfig
-	metrics  map[string]prometheus.Collector
+	metrics  map[string]metric.UnregisterCollector
 	registry prometheus.Registerer
 }
 
 func (m *metricStage) Close() {
 	for _, collector := range m.metrics {
-		m.registry.Unregister(collector)
+		collector.Unregister()
 	}
 }
 
@@ -206,7 +206,13 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 
 	switch counter.Cfg.Action {
 	case metric.CounterInc:
-		counter.With(labels).Inc()
+		with, err := counter.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to Inc with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Inc()
 	case metric.CounterAdd:
 		f, err := getFloat(v)
 		if err != nil {
@@ -215,7 +221,13 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 			}
 			return
 		}
-		counter.With(labels).Add(f)
+		with, err := counter.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to Add with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Add(f)
 	}
 }
 
@@ -246,11 +258,29 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 			}
 			return
 		}
-		gauge.With(labels).Set(f)
+		with, err := gauge.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "gauge failed to Set with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Set(f)
 	case metric.GaugeInc:
-		gauge.With(labels).Inc()
+		with, err := gauge.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "gauge failed to Inc with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Inc()
 	case metric.GaugeDec:
-		gauge.With(labels).Dec()
+		with, err := gauge.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "gauge failed to Dec with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Dec()
 	case metric.GaugeAdd:
 		f, err := getFloat(v)
 		if err != nil {
@@ -259,7 +289,14 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 			}
 			return
 		}
-		gauge.With(labels).Add(f)
+
+		with, err := gauge.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "gauge failed to Add with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Add(f)
 	case metric.GaugeSub:
 		f, err := getFloat(v)
 		if err != nil {
@@ -268,7 +305,13 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 			}
 			return
 		}
-		gauge.With(labels).Sub(f)
+		with, err := gauge.With(labels)
+		if err != nil {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "gauge failed to Sub with labels", "metric", name, "labels", labels, "err", err)
+			}
+		}
+		with.Sub(f)
 	}
 }
 
@@ -296,7 +339,13 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 		}
 		return
 	}
-	histogram.With(labels).Observe(f)
+	with, err := histogram.With(labels)
+	if err != nil {
+		if Debug {
+			level.Debug(m.logger).Log("msg", "histogram failed to Observe with labels", "metric", name, "labels", labels, "err", err)
+		}
+	}
+	with.Observe(f)
 }
 
 // getFloat will take the provided value and return a float64 if possible
