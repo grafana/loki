@@ -93,7 +93,7 @@ type Limits struct {
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
-	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
+	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout" doc:"description=Timeout when querying backends (ingesters or storage) during the execution of\na query request. If a specific per-tenant timeout is used, this timeout is\nignored.\nOverrides querier:engine:timeout and querier:query_timeout."`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	rt "runtime"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
@@ -249,11 +250,27 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := ValidateConfigTimeouts(c); err != nil {
+		return err
+	}
+
 	// Honor the legacy scalable deployment topology
 	if c.LegacyReadTarget {
 		if c.isModuleEnabled(Backend) {
 			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
 		}
+	}
+
+	return nil
+}
+
+func ValidateConfigTimeouts(c *Config) error {
+	if c.Server.HTTPServerReadTimeout < time.Duration(c.LimitsConfig.QueryTimeout) {
+		return fmt.Errorf("invalid read timeout, the server read timeout (%s) must be larger than the limits timeout (%s)", c.Server.HTTPServerReadTimeout, c.LimitsConfig.QueryTimeout)
+	}
+
+	if c.Server.HTTPServerWriteTimeout < time.Duration(c.LimitsConfig.QueryTimeout) {
+		return fmt.Errorf("invalid write timeout, the server write timeout (%s) must be larger than the limtis timeout (%s)", c.Server.HTTPServerReadTimeout, c.LimitsConfig.QueryTimeout)
 	}
 
 	return nil
