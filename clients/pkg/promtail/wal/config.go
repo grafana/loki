@@ -20,6 +20,8 @@ type Config struct {
 	Dir string `yaml:"dir"`
 
 	// MaxSegmentAge is threshold at which a WAL segment is considered old enough to be cleaned up. Default: 1h.
+	//
+	// Note that this functionality will likely be deprecated in favour of a programmatic cleanup mechanism.
 	MaxSegmentAge time.Duration `yaml:"cleanSegmentsOlderThan"`
 }
 
