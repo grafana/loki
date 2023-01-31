@@ -579,6 +579,46 @@ storage_config:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 		})
 
+		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {
+			namedStoresConfig := `common:
+  storage:
+    s3:
+      endpoint: s3://common-bucket
+      region: us-east1
+      access_key_id: abc123
+      secret_access_key: def789
+storage_config:
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
+        access_key_id: 123abc
+        secret_access_key: 789def
+      store-2:
+        endpoint: s3://bar-bucket
+        region: us-west2
+        access_key_id: 456def
+        secret_access_key: 789abc`
+			config, _ := testContext(namedStoresConfig, nil)
+
+			// should be set by common config
+			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
+
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Endpoint)
+			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Region)
+			assert.Equal(t, "123abc", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.AccessKeyID)
+			assert.Equal(t, "789def", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.SecretAccessKey.String())
+
+			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Endpoint)
+			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Region)
+			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.AccessKeyID)
+			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.SecretAccessKey.String())
+		})
+
 		t.Run("partial ruler config from file is honored for overriding things like bucket names", func(t *testing.T) {
 			specificRulerConfig := `common:
   storage:
@@ -824,20 +864,17 @@ ingester:
 		// ensure they are all false by default
 		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
 		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 
 		configFileString := `---
 query_range:
   results_cache:
     cache:
       embedded_cache:
-        enabled: true
-        distributed: true`
+        enabled: true`
 
 		config, _ = testContext(configFileString, nil)
 
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 	})
 }
 
@@ -865,20 +902,6 @@ chunk_store_config:
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
 			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
-		})
-
-		t.Run("if distributed cache is set for results cache, FIFO cache should be disabled.", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      embedded_cache:
-        enabled: true
-        distributed: true`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.True(t, config.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed())
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {

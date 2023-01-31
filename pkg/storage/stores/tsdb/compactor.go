@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -89,8 +88,9 @@ func newTableCompactor(
 func (t *tableCompactor) CompactTable() error {
 	multiTenantIndexes := t.commonIndexSet.ListSourceFiles()
 
-	var multiTenantIndices []Index
-	indicesMtx := sync.Mutex{}
+	// index reference and download paths would be stored at the same slice index
+	multiTenantIndices := make([]Index, len(multiTenantIndexes))
+	downloadPaths := make([]string, len(multiTenantIndexes))
 
 	// concurrently download and open all the multi-tenant indexes
 	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(ctx context.Context, job int) error {
@@ -99,20 +99,13 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		defer func() {
-			if err := os.Remove(downloadedAt); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadedAt, "err", err)
-			}
-		}()
-
+		downloadPaths[job] = downloadedAt
 		idx, err := OpenShippableTSDB(downloadedAt)
 		if err != nil {
 			return err
 		}
 
-		indicesMtx.Lock()
-		defer indicesMtx.Unlock()
-		multiTenantIndices = append(multiTenantIndices, idx.(Index))
+		multiTenantIndices[job] = idx.(Index)
 
 		return nil
 	})
@@ -120,13 +113,21 @@ func (t *tableCompactor) CompactTable() error {
 		return err
 	}
 
+	defer func() {
+		for i, idx := range multiTenantIndices {
+			if err := idx.Close(); err != nil {
+				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+			}
+
+			if err := os.Remove(downloadPaths[i]); err != nil {
+				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+			}
+		}
+	}()
+
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {
-		var err error
-		multiTenantIndex, err = NewMultiIndex(multiTenantIndices...)
-		if err != nil {
-			return err
-		}
+		multiTenantIndex = NewMultiIndex(IndexSlice(multiTenantIndices))
 	}
 
 	// find all the user ids from the multi-tenant indexes using TenantLabel.

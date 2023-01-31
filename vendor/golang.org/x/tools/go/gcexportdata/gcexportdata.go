@@ -30,7 +30,7 @@ import (
 	"io/ioutil"
 	"os/exec"
 
-	"golang.org/x/tools/go/internal/gcimporter"
+	"golang.org/x/tools/internal/gcimporter"
 )
 
 // Find returns the name of an object (.o) or archive (.a) file
@@ -87,7 +87,11 @@ func NewReader(r io.Reader) (io.Reader, error) {
 
 // Read reads export data from in, decodes it, and returns type
 // information for the package.
-// The package name is specified by path.
+//
+// The package path (effectively its linker symbol prefix) is
+// specified by path, since unlike the package name, this information
+// may not be recorded in the export data.
+//
 // File position information is added to fset.
 //
 // Read may inspect and add to the imports map to ensure that references

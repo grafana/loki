@@ -8,15 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/go-kit/log/level"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -43,8 +42,10 @@ type stream struct {
 	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	chunkMtx sync.RWMutex
 
-	labels       labels.Labels
-	labelsString string
+	labels           labels.Labels
+	labelsString     string
+	labelHash        uint64
+	labelHashNoShard uint64
 
 	// most recently pushed line. This is used to prevent duplicate pushes.
 	// It also determines chunk synchronization when unordered writes are disabled.
@@ -87,12 +88,15 @@ type entryWithError struct {
 }
 
 func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics) *stream {
+	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               labels,
 		labelsString:         labels.String(),
+		labelHash:            labels.Hash(),
+		labelHashNoShard:     hashNoShard,
 		tailers:              map[uint32]*tailer{},
 		metrics:              metrics,
 		tenant:               tenant,
@@ -144,7 +148,7 @@ func (s *stream) Push(
 	entries []logproto.Entry,
 	// WAL record to add push contents to.
 	// May be nil to disable this functionality.
-	record *WALRecord,
+	record *wal.Record,
 	// Counter used in WAL replay to avoid duplicates.
 	// If this is non-zero, the stream will reject entries
 	// with a counter value less than or equal to it's own.
@@ -230,7 +234,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
 	}
 
-	fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), totalEntries)
+	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d", s.tenant, len(failedEntriesWithError), totalEntries)
 
 	return httpgrpc.Errorf(statusCode, buf.String())
 }
@@ -245,7 +249,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.Entry) {
+func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.Entry) {
 	if len(entries) == 0 {
 		return
 	}
@@ -395,7 +399,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		}
 	}
 
-	s.streamRateCalculator.Record(s.labels.Hash(), int64(totalBytes))
+	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }

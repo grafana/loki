@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,16 +35,14 @@ func (r *RulerConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Second}, err
+		return ctrl.Result{}, err
 	}
 
 	err := lokistack.AnnotateForRulerConfig(ctx, r.Client, req.Name, req.Namespace)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
+
 	return ctrl.Result{}, nil
 }
 

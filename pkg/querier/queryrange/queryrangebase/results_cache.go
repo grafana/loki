@@ -68,6 +68,7 @@ func NewResultsCacheMetrics(registerer prometheus.Registerer) *ResultsCacheMetri
 
 type CacheGenNumberLoader interface {
 	GetResultsCacheGenNumber(tenantIDs []string) string
+	Stop()
 }
 
 // ResultsCacheConfig is the config for the results cache.
@@ -135,14 +136,14 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Respons
 // CacheSplitter generates cache keys. This is a useful interface for downstream
 // consumers who wish to implement their own strategies.
 type CacheSplitter interface {
-	GenerateCacheKey(userID string, r Request) string
+	GenerateCacheKey(ctx context.Context, userID string, r Request) string
 }
 
 // constSplitter is a utility for using a constant split interval when determining cache keys
 type constSplitter time.Duration
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
+func (t constSplitter) GenerateCacheKey(_ context.Context, userID string, r Request) string {
 	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
@@ -163,6 +164,8 @@ type resultsCache struct {
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
+	parallelismForReq    func(ctx context.Context, tenantIDs []string, r Request) int
+	retentionEnabled     bool
 	metrics              *ResultsCacheMetrics
 }
 
@@ -181,6 +184,8 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
+	parallelismForReq func(ctx context.Context, tenantIDs []string, r Request) int,
+	retentionEnabled bool,
 	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
@@ -199,6 +204,8 @@ func NewResultsCacheMiddleware(
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
+			parallelismForReq:    parallelismForReq,
+			retentionEnabled:     retentionEnabled,
 			metrics:              metrics,
 		}
 	}), nil
@@ -214,12 +221,12 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return s.next.Do(ctx, r)
 	}
 
-	if s.cacheGenNumberLoader != nil {
+	if s.cacheGenNumberLoader != nil && s.retentionEnabled {
 		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
+		key      = s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
 		response Response
 	)
@@ -399,7 +406,12 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(ctx, tenantIDs, r))
+
 	if err != nil {
 		return nil, nil, err
 	}

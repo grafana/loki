@@ -1,0 +1,30 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+{{- with .Values.monitoring.serviceMonitor.metricsInstance }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.grafana.com/v1alpha1/MetricsInstance") .enabled }}
+apiVersion: monitoring.grafana.com/v1alpha1
+kind: MetricsInstance
+metadata:
+  name: {{ include "loki.fullname" $ }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "loki.labels" $ | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .remoteWrite}}
+  remoteWrite:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  serviceMonitorNamespaceSelector: {}
+
+  serviceMonitorSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" $ | nindent 6 }}
+{{- end -}}
+{{- end -}}
+{{- end -}}

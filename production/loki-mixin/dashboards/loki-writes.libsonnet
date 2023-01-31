@@ -17,7 +17,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               [],
 
                           matchers:: {
-                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
+                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                             distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
                             ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                             ingester_zone: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],

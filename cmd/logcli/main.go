@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/url"
@@ -18,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	_ "github.com/grafana/loki/pkg/util/build"
 )
 
@@ -109,6 +112,8 @@ Use the --analyze-labels flag to get a summary of the labels found in all stream
 This is helpful to find high cardinality labels.
 `)
 	seriesQuery = newSeriesQuery(seriesCmd)
+
+	fmtCmd = app.Command("fmt", "Formats a LogQL query.")
 )
 
 func main() {
@@ -213,7 +218,27 @@ func main() {
 		labelsQuery.DoLabels(queryClient)
 	case seriesCmd.FullCommand():
 		seriesQuery.DoSeries(queryClient)
+	case fmtCmd.FullCommand():
+		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
+			log.Fatalf("unable to format logql: %s", err)
+		}
 	}
+}
+
+func formatLogQL(r io.Reader, w io.Writer) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	expr, err := syntax.ParseExpr(string(b))
+	if err != nil {
+		return fmt.Errorf("failed to parse the query: %w", err)
+	}
+
+	fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
+
+	return nil
 }
 
 func newQueryClient(app *kingpin.Application) client.Client {
@@ -251,6 +276,8 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
+	app.Flag("min-backoff", "Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.").Default("0").Envar("LOKI_CLIENT_MIN_BACKOFF").IntVar(&client.BackoffConfig.MinBackoff)
+	app.Flag("max-backoff", "Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.").Default("0").Envar("LOKI_CLIENT_MAX_BACKOFF").IntVar(&client.BackoffConfig.MaxBackoff)
 	app.Flag("auth-header", "The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.").Default("Authorization").Envar("LOKI_AUTH_HEADER").StringVar(&client.AuthHeader)
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
 

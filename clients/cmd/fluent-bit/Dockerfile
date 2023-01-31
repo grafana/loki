@@ -1,10 +1,24 @@
-FROM golang:1.19.2 as build
-COPY . /src/loki
-WORKDIR /src/loki
-RUN make clean && make BUILD_IN_CONTAINER=false fluent-bit-plugin
+FROM golang:1.19.5@sha256:a0b51fe882f269828b63e7f69e6925f85afc548cf7cf967ecbfbcce6afe6f235 AS builder
 
-FROM fluent/fluent-bit:1.8
-COPY --from=build /src/loki/clients/cmd/fluent-bit/out_grafana_loki.so /fluent-bit/bin
+COPY . /src
+
+WORKDIR /src
+
+ARG LDFLAGS
+ENV CGO_ENABLED=1
+
+RUN go build \
+    -trimpath -ldflags "${LDFLAGS}" \
+    -tags netgo \
+    -buildmode=c-shared \
+    -o clients/cmd/fluent-bit/out_grafana_loki.so \
+    /src/clients/cmd/fluent-bit
+
+FROM fluent/fluent-bit:1.9.9@sha256:3045036b2ef35eae09a5f40273a0f1fbd70ca4d67e80918bfd0676b16ba43a29
+
+COPY --from=builder /src/clients/cmd/fluent-bit/out_grafana_loki.so /fluent-bit/bin
 COPY clients/cmd/fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
+
 EXPOSE 2020
+
 CMD ["/fluent-bit/bin/fluent-bit", "-e","/fluent-bit/bin/out_grafana_loki.so", "-c", "/fluent-bit/etc/fluent-bit.conf"]

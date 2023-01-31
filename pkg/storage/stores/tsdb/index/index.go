@@ -1587,8 +1587,6 @@ func (r *Reader) SymbolTableSize() uint64 {
 }
 
 // SortedLabelValues returns value tuples that exist for the given label name.
-// It is not safe to use the return value beyond the lifetime of the byte slice
-// passed into the Reader.
 func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	values, err := r.LabelValues(name, matchers...)
 	if err == nil && r.version == FormatV1 {
@@ -1598,8 +1596,6 @@ func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]
 }
 
 // LabelValues returns value tuples that exist for the given label name.
-// It is not safe to use the return value beyond the lifetime of the byte slice
-// passed into the Reader.
 // TODO(replay): Support filtering by matchers
 func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
@@ -1643,7 +1639,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 		} else {
 			d.Skip(skip)
 		}
-		s := yoloString(d.UvarintBytes()) // Label value.
+		s := string(d.UvarintBytes()) // Label value.
 		values = append(values, s)
 		if s == lastVal {
 			break

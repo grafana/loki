@@ -283,8 +283,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	require.Nil(t, mgr.Start())
 
 	// Ensure old WAL data is queryable
-	multiIndex, err := NewMultiIndex(mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads)
-	require.Nil(t, err)
+	multiIndex := NewMultiIndex(IndexSlice{mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads})
 
 	for _, c := range cases {
 		refs, err := multiIndex.GetChunkRefs(

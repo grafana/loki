@@ -41,7 +41,7 @@ func (m *mockIndexShipper) AddIndex(tableName, _ string, index shipper_index.Ind
 	return nil
 }
 
-func (m *mockIndexShipper) ForEach(ctx context.Context, tableName, _ string, _ <-chan struct{}, callback shipper_index.ForEachIndexCallback) error {
+func (m *mockIndexShipper) ForEach(ctx context.Context, tableName, _ string, callback shipper_index.ForEachIndexCallback) error {
 	for _, idx := range m.addedIndexes[tableName] {
 		if err := callback(false, idx); err != nil {
 			return err
@@ -228,7 +228,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
-					return indexShipper.ForEach(ctx, table.name, "", nil, func(_ bool, index shipper_index.Index) error {
+					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
 						return callback(index.(*indexfile.IndexFile).GetBoltDB())
 					})
 				},
@@ -248,7 +248,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			require.Len(t, indexShipper.addedIndexes[table.name], 2)
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
-					return indexShipper.ForEach(ctx, table.name, "", nil, func(_ bool, index shipper_index.Index) error {
+					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
 						return callback(index.(*indexfile.IndexFile).GetBoltDB())
 					})
 				},

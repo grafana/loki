@@ -15,3 +15,10 @@ read:
   replicas: 1
 write:
   replicas: 1
+backend:
+  replicas: 1
+monitoring:
+  lokiCanary:
+    enabled: false
+test:
+  enabled: false

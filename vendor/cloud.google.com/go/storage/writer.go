@@ -16,25 +16,12 @@ package storage
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 	"unicode/utf8"
-
-	"google.golang.org/api/googleapi"
-	raw "google.golang.org/api/storage/v1"
-	storagepb "google.golang.org/genproto/googleapis/storage/v2"
-)
-
-const (
-	// Maximum amount of content that can be sent per WriteObjectRequest message.
-	// A buffer reaching this amount will precipitate a flush of the buffer.
-	//
-	// This is only used for the gRPC-based Writer.
-	maxPerMessageWriteSize int = int(storagepb.ServiceConstants_MAX_WRITE_CHUNK_BYTES)
 )
 
 // A Writer writes a Cloud Storage object.
@@ -122,102 +109,6 @@ type Writer struct {
 	err error
 }
 
-func (w *Writer) open() error {
-	if err := w.validateWriteAttrs(); err != nil {
-		return err
-	}
-
-	pr, pw := io.Pipe()
-	w.pw = pw
-	w.opened = true
-
-	go w.monitorCancel()
-
-	attrs := w.ObjectAttrs
-	mediaOpts := []googleapi.MediaOption{
-		googleapi.ChunkSize(w.ChunkSize),
-	}
-	if c := attrs.ContentType; c != "" {
-		mediaOpts = append(mediaOpts, googleapi.ContentType(c))
-	}
-	if w.ChunkRetryDeadline != 0 {
-		mediaOpts = append(mediaOpts, googleapi.ChunkRetryDeadline(w.ChunkRetryDeadline))
-	}
-
-	go func() {
-		defer close(w.donec)
-
-		rawObj := attrs.toRawObject(w.o.bucket)
-		if w.SendCRC32C {
-			rawObj.Crc32c = encodeUint32(attrs.CRC32C)
-		}
-		if w.MD5 != nil {
-			rawObj.Md5Hash = base64.StdEncoding.EncodeToString(w.MD5)
-		}
-		call := w.o.c.raw.Objects.Insert(w.o.bucket, rawObj).
-			Media(pr, mediaOpts...).
-			Projection("full").
-			Context(w.ctx).
-			Name(w.o.object)
-
-		if w.ProgressFunc != nil {
-			call.ProgressUpdater(func(n, _ int64) { w.ProgressFunc(n) })
-		}
-		if attrs.KMSKeyName != "" {
-			call.KmsKeyName(attrs.KMSKeyName)
-		}
-		if attrs.PredefinedACL != "" {
-			call.PredefinedAcl(attrs.PredefinedACL)
-		}
-		if err := setEncryptionHeaders(call.Header(), w.o.encryptionKey, false); err != nil {
-			w.mu.Lock()
-			w.err = err
-			w.mu.Unlock()
-			pr.CloseWithError(err)
-			return
-		}
-		var resp *raw.Object
-		err := applyConds("NewWriter", w.o.gen, w.o.conds, call)
-		if err == nil {
-			if w.o.userProject != "" {
-				call.UserProject(w.o.userProject)
-			}
-			setClientHeader(call.Header())
-
-			// The internals that perform call.Do automatically retry both the initial
-			// call to set up the upload as well as calls to upload individual chunks
-			// for a resumable upload (as long as the chunk size is non-zero). Hence
-			// there is no need to add retries here.
-
-			// Retry only when the operation is idempotent or the retry policy is RetryAlways.
-			isIdempotent := w.o.conds != nil && (w.o.conds.GenerationMatch >= 0 || w.o.conds.DoesNotExist == true)
-			var useRetry bool
-			if (w.o.retry == nil || w.o.retry.policy == RetryIdempotent) && isIdempotent {
-				useRetry = true
-			} else if w.o.retry != nil && w.o.retry.policy == RetryAlways {
-				useRetry = true
-			}
-			if useRetry {
-				if w.o.retry != nil {
-					call.WithRetry(w.o.retry.backoff, w.o.retry.shouldRetry)
-				} else {
-					call.WithRetry(nil, nil)
-				}
-			}
-			resp, err = call.Do()
-		}
-		if err != nil {
-			w.mu.Lock()
-			w.err = err
-			w.mu.Unlock()
-			pr.CloseWithError(err)
-			return
-		}
-		w.obj = newObject(resp)
-	}()
-	return nil
-}
-
 // Write appends to w. It implements the io.Writer interface.
 //
 // Since writes happen asynchronously, Write may return a nil
@@ -235,12 +126,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		return 0, werr
 	}
 	if !w.opened {
-		// gRPC client has been initialized - use gRPC to upload.
-		if w.o.c.tc != nil {
-			if err := w.openWriter(); err != nil {
-				return 0, err
-			}
-		} else if err := w.open(); err != nil {
+		if err := w.openWriter(); err != nil {
 			return 0, err
 		}
 	}
@@ -264,11 +150,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 // can be retrieved by calling Attrs.
 func (w *Writer) Close() error {
 	if !w.opened {
-		if w.o.c.tc != nil {
-			if err := w.openWriter(); err != nil {
-				return err
-			}
-		} else if err := w.open(); err != nil {
+		if err := w.openWriter(); err != nil {
 			return err
 		}
 	}
@@ -288,8 +170,12 @@ func (w *Writer) openWriter() (err error) {
 	if err := w.validateWriteAttrs(); err != nil {
 		return err
 	}
+	if w.o.gen != defaultGen {
+		return fmt.Errorf("storage: generation not supported on Writer, got %v", w.o.gen)
+	}
 
-	go w.monitorCancel()
+	isIdempotent := w.o.conds != nil && (w.o.conds.GenerationMatch >= 0 || w.o.conds.DoesNotExist == true)
+	opts := makeStorageOpts(isIdempotent, w.o.retry, w.o.userProject)
 	params := &openWriterParams{
 		ctx:                w.ctx,
 		chunkSize:          w.ChunkSize,
@@ -304,11 +190,15 @@ func (w *Writer) openWriter() (err error) {
 		progress:           w.progress,
 		setObj:             func(o *ObjectAttrs) { w.obj = o },
 	}
-	w.pw, err = w.o.c.tc.OpenWriter(params)
+	if err := w.ctx.Err(); err != nil {
+		return err // short-circuit
+	}
+	w.pw, err = w.o.c.tc.OpenWriter(params, opts...)
 	if err != nil {
 		return err
 	}
 	w.opened = true
+	go w.monitorCancel()
 
 	return nil
 }

@@ -15,11 +15,19 @@ storage:
   type: local
 read:
   replicas: 1
-  persistence:
-    enabled: true
-    size: 100Mi
 write:
   replicas: 1
   persistence:
     enabled: true
     size: 100Mi
+backend:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 100Mi
+monitoring:
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+test:
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local.:9090"

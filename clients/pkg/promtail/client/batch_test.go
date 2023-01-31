@@ -164,3 +164,23 @@ func TestHashCollisions(t *testing.T) {
 		assert.Equal(t, ls1.String(), req.Streams[1].Labels)
 	}
 }
+
+// store the result to a package level variable
+// so the compiler cannot eliminate the Benchmark itself.
+var result string
+
+func BenchmarkLabelsMapToString(b *testing.B) {
+	labelSet := make(model.LabelSet)
+	labelSet["label"] = "value"
+	labelSet["label1"] = "value2"
+	labelSet["label2"] = "value3"
+	labelSet["__tenant_id__"] = "another_value"
+
+	b.ResetTimer()
+	var r string
+	for i := 0; i < b.N; i++ {
+		// store in r prevent the compiler eliminating the function call.
+		r = labelsMapToString(labelSet, ReservedLabelTenantID)
+	}
+	result = r
+}

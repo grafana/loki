@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -11,28 +10,16 @@ import (
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/crypto/tls"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/notifier"
 
-	"github.com/grafana/loki/pkg/util"
+	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 )
-
-type NotifierConfig struct {
-	TLS        tls.ClientConfig `yaml:",inline"`
-	BasicAuth  util.BasicAuth   `yaml:",inline"`
-	HeaderAuth util.HeaderAuth  `yaml:",inline"`
-}
-
-func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
-	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
-	cfg.HeaderAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
-}
 
 // rulerNotifier bundles a notifier.Manager together with an associated
 // Alertmanager service discovery manager and handles the lifecycle
@@ -88,10 +75,27 @@ func (rn *rulerNotifier) stop() {
 	rn.wg.Wait()
 }
 
+func applyAlertmanagerDefaults(config ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
+	// Use default value if the override values are zero
+	if config.AlertmanagerRefreshInterval == 0 {
+		config.AlertmanagerRefreshInterval = alertmanagerRefreshIntervalDefault
+	}
+
+	if config.NotificationQueueCapacity <= 0 {
+		config.NotificationQueueCapacity = alertmanagerNotificationQueueCapacityDefault
+	}
+
+	if config.NotificationTimeout == 0 {
+		config.NotificationTimeout = alertmanagerNotificationTimeoutDefault
+	}
+
+	return config
+}
+
 // Builds a Prometheus config.Config from a ruler.Config with just the required
 // options to configure notifications to Alertmanager.
-func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
-	amURLs := strings.Split(rulerConfig.AlertmanagerURL, ",")
+func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabels labels.Labels) (*config.Config, error) {
+	amURLs := strings.Split(amConfig.AlertmanagerURL, ",")
 	validURLs := make([]*url.URL, 0, len(amURLs))
 
 	srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
@@ -108,7 +112,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 		// Given we only support SRV lookups as part of service discovery, we need to ensure
 		// hosts provided follow this specification: _service._proto.name
 		// e.g. _http._tcp.alertmanager.com
-		if rulerConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
+		if amConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
 			return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
 		}
 
@@ -120,21 +124,21 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	}
 
 	apiVersion := config.AlertmanagerAPIVersionV1
-	if rulerConfig.AlertmanangerEnableV2API {
+	if amConfig.AlertmanangerEnableV2API {
 		apiVersion = config.AlertmanagerAPIVersionV2
 	}
 
 	amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
 	for _, url := range validURLs {
-		amConfigs = append(amConfigs, amConfigFromURL(rulerConfig, url, apiVersion))
+		amConfigs = append(amConfigs, amConfigFromURL(amConfig, url, apiVersion))
 	}
 
 	promConfig := &config.Config{
 		GlobalConfig: config.GlobalConfig{
-			ExternalLabels: rulerConfig.ExternalLabels,
+			ExternalLabels: externalLabels,
 		},
 		AlertingConfig: config.AlertingConfig{
-			AlertRelabelConfigs: rulerConfig.AlertRelabelConfigs,
+			AlertRelabelConfigs: amConfig.AlertRelabelConfigs,
 			AlertmanagerConfigs: amConfigs,
 		},
 	}
@@ -142,13 +146,13 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
+func amConfigFromURL(cfg *ruler_config.AlertManagerConfig, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
 	var sdConfig discovery.Configs
-	if rulerConfig.AlertmanagerDiscovery {
+	if cfg.AlertmanagerDiscovery {
 		sdConfig = discovery.Configs{
 			&dns.SDConfig{
 				Names:           []string{url.Host},
-				RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
+				RefreshInterval: model.Duration(cfg.AlertmanagerRefreshInterval),
 				Type:            "SRV",
 				Port:            0, // Ignored, because of SRV.
 			},
@@ -168,15 +172,15 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 		APIVersion:              apiVersion,
 		Scheme:                  url.Scheme,
 		PathPrefix:              url.Path,
-		Timeout:                 model.Duration(rulerConfig.NotificationTimeout),
+		Timeout:                 model.Duration(cfg.NotificationTimeout),
 		ServiceDiscoveryConfigs: sdConfig,
 		HTTPClientConfig: config_util.HTTPClientConfig{
 			TLSConfig: config_util.TLSConfig{
-				CAFile:             rulerConfig.Notifier.TLS.CAPath,
-				CertFile:           rulerConfig.Notifier.TLS.CertPath,
-				KeyFile:            rulerConfig.Notifier.TLS.KeyPath,
-				InsecureSkipVerify: rulerConfig.Notifier.TLS.InsecureSkipVerify,
-				ServerName:         rulerConfig.Notifier.TLS.ServerName,
+				CAFile:             cfg.Notifier.TLS.CAPath,
+				CertFile:           cfg.Notifier.TLS.CertPath,
+				KeyFile:            cfg.Notifier.TLS.KeyPath,
+				InsecureSkipVerify: cfg.Notifier.TLS.InsecureSkipVerify,
+				ServerName:         cfg.Notifier.TLS.ServerName,
 			},
 		},
 	}
@@ -193,23 +197,23 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 	}
 
 	// Override URL basic authentication configs with hard coded config values if present
-	if rulerConfig.Notifier.BasicAuth.IsEnabled() {
+	if cfg.Notifier.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
-			Username: rulerConfig.Notifier.BasicAuth.Username,
-			Password: config_util.Secret(rulerConfig.Notifier.BasicAuth.Password),
+			Username: cfg.Notifier.BasicAuth.Username,
+			Password: config_util.Secret(cfg.Notifier.BasicAuth.Password),
 		}
 	}
 
-	if rulerConfig.Notifier.HeaderAuth.IsEnabled() {
-		if rulerConfig.Notifier.HeaderAuth.Credentials != "" {
+	if cfg.Notifier.HeaderAuth.IsEnabled() {
+		if cfg.Notifier.HeaderAuth.Credentials != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
-				Type:        rulerConfig.Notifier.HeaderAuth.Type,
-				Credentials: config_util.Secret(rulerConfig.Notifier.HeaderAuth.Credentials),
+				Type:        cfg.Notifier.HeaderAuth.Type,
+				Credentials: config_util.Secret(cfg.Notifier.HeaderAuth.Credentials),
 			}
-		} else if rulerConfig.Notifier.HeaderAuth.CredentialsFile != "" {
+		} else if cfg.Notifier.HeaderAuth.CredentialsFile != "" {
 			amConfig.HTTPClientConfig.Authorization = &config_util.Authorization{
-				Type:            rulerConfig.Notifier.HeaderAuth.Type,
-				CredentialsFile: rulerConfig.Notifier.HeaderAuth.CredentialsFile,
+				Type:            cfg.Notifier.HeaderAuth.Type,
+				CredentialsFile: cfg.Notifier.HeaderAuth.CredentialsFile,
 			}
 
 		}
