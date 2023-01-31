@@ -1,5 +1,3 @@
-# Additional example schema configuration for Cassandra
-
 schema_config:
   configs:
     # Starting from 2018-04-15 Loki should store indexes on Cassandra
