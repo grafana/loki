@@ -12,10 +12,16 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func TestEntryHandlerFanouter(t *testing.T) {
+func TestFanoutEntryHandler(t *testing.T) {
 	eh1 := newSavingEntryHandler()
 	eh2 := newSavingEntryHandler()
-	fanouter := NewEntryHandlerFanouter(eh1, eh2)
+	fanout := NewFanoutEntryHandler(eh1, eh2)
+
+	defer func() {
+		fanout.Stop()
+		eh2.Stop()
+		eh1.Stop()
+	}()
 
 	var expectedLines = []string{
 		"some line",
@@ -24,9 +30,9 @@ func TestEntryHandlerFanouter(t *testing.T) {
 	}
 
 	for _, line := range expectedLines {
-		fanouter.Chan() <- api.Entry{
+		fanout.Chan() <- api.Entry{
 			Labels: model.LabelSet{
-				"test": "fanouter",
+				"test": "fanout",
 			},
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),
@@ -35,12 +41,9 @@ func TestEntryHandlerFanouter(t *testing.T) {
 		}
 	}
 
-	fanouter.Stop()
-	eh2.Stop()
-	eh1.Stop()
-
-	require.Len(t, eh1.Received, len(expectedLines))
-	require.Len(t, eh2.Received, len(expectedLines))
+	require.Eventually(t, func() bool {
+		return len(eh1.Received) == len(expectedLines) && len(eh2.Received) == len(expectedLines)
+	}, time.Second*10, time.Second, "expected entries to be received by fanned out channels")
 }
 
 type savingEntryHandler struct {
@@ -64,11 +67,11 @@ func newSavingEntryHandler() *savingEntryHandler {
 	return eh
 }
 
-func (x *savingEntryHandler) Chan() chan<- api.Entry {
-	return x.entries
+func (eh *savingEntryHandler) Chan() chan<- api.Entry {
+	return eh.entries
 }
 
-func (x *savingEntryHandler) Stop() {
-	close(x.entries)
-	x.wg.Wait()
+func (eh *savingEntryHandler) Stop() {
+	close(eh.entries)
+	eh.wg.Wait()
 }
