@@ -41,9 +41,12 @@
 * [8120](https://github.com/grafana/loki/pull/8120) **ashwanthgoli** fix panic on hitting /scheduler/ring when ring is disabled.
 * [8251](https://github.com/grafana/loki/pull/8251) **sandeepsukhani** index-store: fix indexing of chunks overlapping multiple schemas.
 * [8120](https://github.com/grafana/loki/pull/8232) **TaehyunHwang** Fix version info issue that shows wrong version.
+* [8151](https://github.com/grafana/loki/pull/8151) **sandeepsukhani** fix log deletion with line filters.
 
 ##### Changes
 
+* [8315](https://github.com/grafana/loki/pull/8315) **thepalbi** Relicense and export `pkg/ingester` WAL code to be used in Promtail's WAL.
+ 
 #### Promtail
 
 ##### Enhancements
@@ -72,6 +75,7 @@
 * [8024](https://github.com/grafana/loki/pull/8024) **jijotj**: Support passing loki address as environment variable
 
 #### Jsonnet
+* [7923](https://github.com/grafana/loki/pull/7923) **manohar-koukuntla**: Add zone aware ingesters in jsonnet deployment
 
 #### Build
 

@@ -19,24 +19,25 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
  [scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment. The storage needs to be configured after generation.
 
 <div id="app">
-
   <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
   <select name="node-type" v-model="node"> 
   <option v-for="node of nodes">{{ node }}</option>
   </select>
-
   <label>Ingest<i class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null"></i></label>
-  <input v-model="ingest" name="ingest" placeholder="Desired ingest in GiB/day" type="number" max="1048576" min="0"/>
-
+  <div style="display: flex;">
+    <input style="padding-right:4.5em;" v-model="ingestInGB" name="ingest" placeholder="Desired ingest in GB/day" type="number" max="1048576" min="0"/>
+    <span style="margin: auto auto auto -4em;">GB/day</span>
+  </div>
   <label>Log retention period<i class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null"></i></label>
-  <input v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
-
+  <div style="display: flex;">
+    <input style="padding-right:4.5em;"  v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
+    <span style="margin: auto auto auto -4em;">days</span>
+  </div>
   <label>Query performance<i class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null"></i></label>
   <div id="queryperf" style="display: inline-flex;">
   <label for="basic">
   <input type="radio" id="basic" value="Basic" v-model="queryperf"/>Basic
   </label>
-
   <label for="super">
   <input type="radio" id="super" value="Super" v-model="queryperf"/>Super
   </label>
@@ -80,7 +81,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-.<style>
+<style>
 
 #app label.icon.question::after {
   content: '\f29c';
@@ -113,7 +114,7 @@ createApp({
     return {
       nodes: ["Loading..."],
       node: "Loading...",
-      ingest: null,
+      bytesDayIngest: null,
       retention: null,
       queryperf: 'Basic',
       help: null,
@@ -126,8 +127,21 @@ createApp({
       return `${API_URL}/helm?${this.queryString}`
     },
     queryString() {
-      const bytesDayIngest = this.ingest * 1024 * 1024 * 1024
-      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
+    },
+    ingestInGB: {
+	get () {
+                if (this.bytesDayIngest == null) {
+                    return null
+                }
+                // Convert to GB
+                return this.bytesDayIngest / 1000 / 1000 / 1000
+	},
+	set (gbDayIngest) {
+		console.log(gbDayIngest)
+		this.bytesDayIngest = gbDayIngest * 1000 * 1000 * 1000
+		console.log(this.bytesDayIngest)
+	}
     }
   },
 
@@ -142,7 +156,7 @@ createApp({
       this.nodes = await (await fetch(url,{mode: 'cors'})).json()
     },
     async calculateClusterSize() {
-      if (this.node == 'Loading...' || this.ingest == null || this.retention == null) {
+      if (this.node == 'Loading...' || this.bytesDayIngest== null || this.retention == null) {
         return
       }
       const url = `${API_URL}/cluster?${this.queryString}`
@@ -151,10 +165,10 @@ createApp({
   },
 
   watch: {
-    node:      'calculateClusterSize',
-    ingest:    'calculateClusterSize',
-    retention: 'calculateClusterSize',
-    queryperf: 'calculateClusterSize'
+    node:           'calculateClusterSize',
+    bytesDayIngest: 'calculateClusterSize',
+    retention:      'calculateClusterSize',
+    queryperf:      'calculateClusterSize'
   }
 }).mount('#app')
 </script>

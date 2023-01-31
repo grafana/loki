@@ -50,3 +50,17 @@ func Test_CoresNodeInvariant(t *testing.T) {
 		}
 	}
 }
+
+func Test_MinimumReplicas(t *testing.T) {
+	for _, queryPerformance := range []QueryPerf{Basic, Super} {
+		for _, ingest := range []float64{1, 1000} {
+			for _, cloud := range NodeTypesByProvider {
+				for _, node := range cloud {
+					size := calculateClusterSize(node, ingest, queryPerformance)
+					require.GreaterOrEqual(t, size.TotalReadReplicas, 3)
+					require.GreaterOrEqual(t, size.TotalWriteReplicas, 3)
+				}
+			}
+		}
+	}
+}
