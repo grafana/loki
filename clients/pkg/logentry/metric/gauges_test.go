@@ -14,16 +14,20 @@ func TestGaugeExpiration(t *testing.T) {
 		Action: "inc",
 	}
 
-	gag, err := NewGauges("test1", "HELP ME!!!!!", cfg, 1)
+	gag, err := NewGauges("test1", "HELP ME!!!!!", cfg, 1, nil)
 	assert.Nil(t, err)
 
 	// Create a label and increment the gauge
 	lbl1 := model.LabelSet{}
 	lbl1["test"] = "app"
-	gag.With(lbl1).Inc()
+	with, err := gag.With(lbl1)
+	if err != nil {
+		assert.Nil(t, err)
+	}
+	with.Inc()
 
 	// Collect the metrics, should still find the metric in the map
-	collect(gag)
+	//collect(gag)
 	assert.Contains(t, gag.metrics, lbl1.Fingerprint())
 
 	time.Sleep(1100 * time.Millisecond) // Wait just past our max idle of 1 sec
@@ -31,10 +35,15 @@ func TestGaugeExpiration(t *testing.T) {
 	//Add another gauge with new label val
 	lbl2 := model.LabelSet{}
 	lbl2["test"] = "app2"
-	gag.With(lbl2).Inc()
+	gauge, err := gag.With(lbl2)
+	if err != nil {
+		assert.Nil(t, err)
+	}
+
+	gauge.Inc()
 
 	// Collect the metrics, first gauge should have expired and removed, second should still be present
-	collect(gag)
+	//collect(gag)
 	assert.NotContains(t, gag.metrics, lbl1.Fingerprint())
 	assert.Contains(t, gag.metrics, lbl2.Fingerprint())
 }

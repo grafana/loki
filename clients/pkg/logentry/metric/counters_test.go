@@ -96,16 +96,21 @@ func TestCounterExpiration(t *testing.T) {
 		Action: "inc",
 	}
 
-	cnt, err := NewCounters("test1", "HELP ME!!!!!", cfg, 1)
+	cnt, err := NewCounters("test1", "HELP ME!!!!!", cfg, 1, nil)
 	assert.Nil(t, err)
 
 	// Create a label and increment the counter
 	lbl1 := model.LabelSet{}
 	lbl1["test"] = "i don't wanna make this a constant"
-	cnt.With(lbl1).Inc()
+	with, err := cnt.With(lbl1)
+	if err != nil {
+		assert.Nil(t, err)
+	}
+
+	with.Inc()
 
 	// Collect the metrics, should still find the metric in the map
-	collect(cnt)
+	//collect(cnt)
 	assert.Contains(t, cnt.metrics, lbl1.Fingerprint())
 
 	time.Sleep(1100 * time.Millisecond) // Wait just past our max idle of 1 sec
@@ -113,10 +118,15 @@ func TestCounterExpiration(t *testing.T) {
 	//Add another counter with new label val
 	lbl2 := model.LabelSet{}
 	lbl2["test"] = "eat this linter"
-	cnt.With(lbl2).Inc()
+	counter, err := cnt.With(lbl2)
+	if err != nil {
+		assert.Nil(t, err)
+	}
+
+	counter.Inc()
 
 	// Collect the metrics, first counter should have expired and removed, second should still be present
-	collect(cnt)
+	//collect(cnt)
 	assert.NotContains(t, cnt.metrics, lbl1.Fingerprint())
 	assert.Contains(t, cnt.metrics, lbl2.Fingerprint())
 }

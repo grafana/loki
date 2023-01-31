@@ -33,7 +33,7 @@ type Histograms struct {
 }
 
 // NewHistograms creates a new histogram vec.
-func NewHistograms(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (UnregisterCollector, error) {
+func NewHistograms(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (*Histograms, error) {
 	cfg, err := parseHistogramConfig(config)
 	if err != nil {
 		return nil, err

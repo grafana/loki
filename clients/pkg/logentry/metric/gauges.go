@@ -57,7 +57,7 @@ type Gauges struct {
 }
 
 // NewGauges creates a new gauge vec.
-func NewGauges(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (UnregisterCollector, error) {
+func NewGauges(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (*Gauges, error) {
 	cfg, err := parseGaugeConfig(config)
 	if err != nil {
 		return nil, err

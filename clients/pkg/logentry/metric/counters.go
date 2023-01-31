@@ -64,7 +64,7 @@ type Counters struct {
 }
 
 // NewCounters creates a new counter vec.
-func NewCounters(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (UnregisterCollector, error) {
+func NewCounters(name, help string, config interface{}, maxIdleSec int64, registry prometheus.Registerer) (*Counters, error) {
 	cfg, err := parseCounterConfig(config)
 	if err != nil {
 		return nil, err
