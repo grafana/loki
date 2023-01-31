@@ -18,6 +18,7 @@ func TestHistogramExpiration(t *testing.T) {
 	// Create a label and increment the histogram
 	lbl1 := model.LabelSet{}
 	lbl1["test"] = "app"
+	gcInterval = 1000 * time.Second
 	with, err := hist.With(lbl1)
 	if err != nil {
 		assert.Nil(t, err)
@@ -30,6 +31,7 @@ func TestHistogramExpiration(t *testing.T) {
 
 	time.Sleep(1100 * time.Millisecond) // Wait just past our max idle of 1 sec
 
+	hist.prune()
 	//Add another histogram with new label val
 	lbl2 := model.LabelSet{}
 	lbl2["test"] = "app2"

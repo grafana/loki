@@ -25,6 +25,8 @@ type Expirable interface {
 	HasExpired(currentTimeSec int64, maxAgeSec int64) bool
 }
 
+var gcInterval = time.Minute
+
 type metricVec struct {
 	factory    func(labels map[string]string) CollectorMetric
 	mtx        sync.Mutex
@@ -64,14 +66,16 @@ func (c *metricVec) With(labels model.LabelSet) (prometheus.Metric, error) {
 	var metric CollectorMetric
 	if metric, ok = c.metrics[fp]; !ok {
 		metric = c.factory(util.ModelLabelSetToMap(cleanLabels(labels)))
-		err := c.registry.Register(metric)
-		if err != nil {
-			return nil, err
+		if c.registry != nil {
+			err := c.registry.Register(metric)
+			if err != nil {
+				return nil, err
+			}
 		}
 		c.metrics[fp] = metric
 	}
 	now := time.Now()
-	if now.Sub(c.lastGcTime) > time.Minute {
+	if now.Sub(c.lastGcTime) > gcInterval {
 		c.prune()
 		c.lastGcTime = now
 	}
@@ -110,7 +114,9 @@ func (c *metricVec) prune() {
 	for fp, m := range c.metrics {
 		if em, ok := m.(Expirable); ok {
 			if em.HasExpired(currentTimeSec, c.maxAgeSec) {
-				c.registry.Unregister(m)
+				if c.registry != nil {
+					c.registry.Unregister(m)
+				}
 				delete(c.metrics, fp)
 			}
 		}
