@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultSource                      = "message"
-	ErrEmptyEvtLogMsgStageConfig       = "empty json stage configuration"
+	ErrEmptyEvtLogMsgStageConfig       = "empty event log message stage configuration"
 	ErrInvalidEvtLogMsgSourceLabelName = "invalid label name: %s"
 )
 
@@ -28,18 +28,6 @@ type eventLogMessageStage struct {
 	logger log.Logger
 }
 
-// Ensure a event log message configuration object is valid, checking that any specified source
-// is a valid label name, and setting default values if a nil config object is provided
-func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
-	if c == nil {
-		return errors.New(ErrEmptyEvtLogMsgStageConfig)
-	}
-	if c.Source != nil && !model.LabelName(*c.Source).IsValid() {
-		return fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, *c.Source)
-	}
-	return nil
-}
-
 // Create a event log message stage, including validating any supplied configuration
 func newEventLogMessageStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseEventLogMessageConfig(config)
@@ -47,7 +35,7 @@ func newEventLogMessageStage(logger log.Logger, config interface{}) (Stage, erro
 		return nil, err
 	}
 	// validate config (i.e., check that source is a valid log label)
-	validateEventLogMessageConfig(cfg)
+	err = validateEventLogMessageConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +53,18 @@ func parseEventLogMessageConfig(config interface{}) (*EventLogMessageConfig, err
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// Ensure a event log message configuration object is valid, checking that any specified source
+// is a valid label name, and setting default values if a nil config object is provided
+func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
+	if c == nil {
+		return errors.New(ErrEmptyEvtLogMsgStageConfig)
+	}
+	if c.Source != nil && !model.LabelName(*c.Source).IsValid() {
+		return fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, *c.Source)
+	}
+	return nil
 }
 
 func (m *eventLogMessageStage) Run(in chan Entry) chan Entry {
@@ -86,12 +86,13 @@ func (m *eventLogMessageStage) Run(in chan Entry) chan Entry {
 	return out
 }
 
-// Process a event log message from extracted with the specified key, adding additional entries into the extracted map
+// Process a event log message from extracted with the specified key, adding additional
+// entries into the extracted map
 func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, key string) error {
 	value, ok := extracted[key]
 	if !ok {
 		if Debug {
-			level.Debug(m.logger).Log("msg", "source does not exist in the set of extracted values", "source", key)
+			level.Debug(m.logger).Log("msg", "source not in the extracted values", "source", key)
 		}
 		return nil
 	}
@@ -119,11 +120,11 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 				}
 				continue
 			}
-			mkey = sanitizeLabelName(mkey)
+			mkey = SanitizeLabelName(mkey)
 		}
 		if _, ok := extracted[mkey]; ok {
 			if Debug {
-				level.Debug(m.logger).Log("msg", "message contained key that already existed, ignoring", "key", mkey)
+				level.Debug(m.logger).Log("msg", "extracted key that already existed, ignoring", "key", mkey)
 			}
 			continue
 		}
@@ -144,12 +145,12 @@ func (m *eventLogMessageStage) Name() string {
 }
 
 // Sanitize a input string to convert it into a valid prometheus label
-func sanitizeLabelName(invalid string) string {
-	if len(invalid) == 0 {
+func SanitizeLabelName(input string) string {
+	if len(input) == 0 {
 		return "_"
 	}
 	var valid_sb strings.Builder
-	for i, b := range invalid {
+	for i, b := range input {
 		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
 			valid_sb.WriteRune('_')
 		} else {

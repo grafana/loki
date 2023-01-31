@@ -6,6 +6,7 @@ import (
 	"time"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
@@ -92,36 +93,37 @@ func TestEventLogMessageConfig_validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config        interface{}
-		wantExprCount int
-		err           error
+		config interface{}
+		err    error
 	}{
+		"invalid config": {
+			map[string]interface{}{
+				"source": 1,
+			},
+			errors.New("'source' expected type 'string', got unconvertible type 'int', value: '1'"),
+		},
 		"invalid source": {
 			map[string]interface{}{
 				"source": "The Message!",
 			},
-			0,
 			fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, "The Message!"),
 		},
 		"empty source": {
 			map[string]interface{}{
 				"source": "",
 			},
-			0,
 			fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, ""),
 		},
 	}
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
-			c, err := parseEventLogMessageConfig(tt.config)
-			assert.NoError(t, err, "failed to create config: %s", err)
-			validateErr := validateEventLogMessageConfig(c)
+			_, err := newEventLogMessageStage(util_log.Logger, tt.config)
 			if tt.err != nil {
-				assert.NotNil(t, validateErr, "JSONConfig.validate() expected error = %v, but got nil", tt.err)
+				assert.NotNil(t, err, "EventLogMessage.validate() expected error = %v, but got nil", tt.err)
 			}
 			if err != nil {
-				assert.Equal(t, tt.err.Error(), validateErr.Error(), "JSONConfig.validate() expected error = %v, actual error = %v", tt.err, validateErr)
+				assert.Equal(t, tt.err.Error(), err.Error(), "EventLogMessage.validate() expected error = %v, actual error = %v", tt.err, err)
 			}
 		})
 	}
