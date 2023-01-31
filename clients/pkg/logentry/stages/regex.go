@@ -137,5 +137,3 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 func (r *regexStage) Name() string {
 	return StageTypeRegex
 }
-
-func (r *regexStage) Close() {}

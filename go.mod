@@ -115,7 +115,6 @@ require (
 require (
 	github.com/Azure/go-autorest/autorest v0.11.28
 	github.com/fsnotify/fsnotify v1.6.0
-	github.com/go-kit/kit v0.12.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.55
 	github.com/prometheus/alertmanager v0.25.0
@@ -186,6 +185,7 @@ require (
 	github.com/envoyproxy/go-control-plane v0.10.3 // indirect
 	github.com/envoyproxy/protoc-gen-validate v0.9.1 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
+	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.21.4 // indirect

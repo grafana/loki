@@ -188,5 +188,3 @@ func (j *jsonStage) processEntry(extracted map[string]interface{}, entry *string
 func (j *jsonStage) Name() string {
 	return StageTypeJSON
 }
-
-func (j *jsonStage) Close() {}

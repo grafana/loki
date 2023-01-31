@@ -244,5 +244,3 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 func (m *dropStage) Name() string {
 	return StageTypeDrop
 }
-
-func (m *dropStage) Stop() {}

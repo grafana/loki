@@ -88,5 +88,3 @@ func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interfa
 func (l *labelStage) Name() string {
 	return StageTypeLabel
 }
-
-func (l *labelStage) Close() {}
