@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. Add your changelog bellow this line. This locator is used by CI pipeline to find the place where to put changelog entry.)
 
+## 4.5.0
+
+- [CHANGE] Changed version of GEL to v1.6.0
+
+
 ## 4.4.2
 
 - [CHANGE] Bump Loki version to 2.7.2 and GEL version to 1.6.1
