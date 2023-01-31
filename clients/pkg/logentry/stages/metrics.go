@@ -211,6 +211,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to Inc with labels", "metric", name, "labels", labels, "err", err)
 			}
+			return
 		}
 		with.Inc()
 	case metric.CounterAdd:
