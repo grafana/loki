@@ -45,7 +45,6 @@ const (
 type Processor interface {
 	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
 	Name() string
-	Close()
 }
 
 type Entry struct {
@@ -57,7 +56,6 @@ type Entry struct {
 type Stage interface {
 	Name() string
 	Run(chan Entry) chan Entry
-	Stop()
 }
 
 func (entry *Entry) copy() *Entry {
@@ -98,10 +96,6 @@ func (s stageProcessor) Run(in chan Entry) chan Entry {
 
 		return e
 	})
-}
-
-func (s stageProcessor) Stop() {
-	s.Close()
 }
 
 func toStage(p Processor) Stage {

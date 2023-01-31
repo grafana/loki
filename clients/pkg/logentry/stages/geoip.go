@@ -91,11 +91,11 @@ func newGeoIPStage(logger log.Logger, configs interface{}) (Stage, error) {
 		return nil, err
 	}
 
-	return toStage(&geoIPStage{
+	return &geoIPStage{
 		db:     db,
 		logger: logger,
 		cfgs:   cfgs,
-	}), nil
+	}, nil
 }
 
 type geoIPStage struct {
@@ -104,8 +104,26 @@ type geoIPStage struct {
 	cfgs   *GeoIPConfig
 }
 
-// Process implements Stage
-func (g *geoIPStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+// Run implements Stage
+func (g *geoIPStage) Run(in chan Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+		defer g.close()
+		for e := range in {
+			g.process(e.Labels, e.Extracted, &e.Timestamp, &e.Entry.Line)
+			out <- e
+		}
+	}()
+	return out
+}
+
+// Name implements Stage
+func (g *geoIPStage) Name() string {
+	return StageTypeGeoIP
+}
+
+func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	var ip net.IP
 	if g.cfgs.Source != nil {
 		if _, ok := extracted[*g.cfgs.Source]; !ok {
@@ -144,13 +162,7 @@ func (g *geoIPStage) Process(labels model.LabelSet, extracted map[string]interfa
 	}
 }
 
-// Name implements Stage
-func (g *geoIPStage) Name() string {
-	return StageTypeGeoIP
-}
-
-// Close implements Stage
-func (g *geoIPStage) Close() {
+func (g *geoIPStage) close() {
 	if err := g.db.Close(); err != nil {
 		level.Error(g.logger).Log("msg", "error while closing geoip db", "err", err)
 	}
@@ -220,7 +232,6 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 func (g *geoIPStage) populateLabelsWithASNData(labels model.LabelSet, record *geoip2.ASN) {
 	autonomousSystemNumber := record.AutonomousSystemNumber
 	autonomousSystemOrganization := record.AutonomousSystemOrganization
-	fmt.Printf("ASN is %v %v\n", autonomousSystemNumber, autonomousSystemOrganization)
 	if autonomousSystemNumber != 0 {
 		labels[model.LabelName("geoip_autonomous_system_number")] = model.LabelValue(fmt.Sprint(autonomousSystemNumber))
 	}

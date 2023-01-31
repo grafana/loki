@@ -206,11 +206,3 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 func (m *matcherStage) Name() string {
 	return StageTypeMatch
 }
-
-func (m *matcherStage) Stop() {
-	switch m.action {
-	case MatchActionKeep:
-		m.stage.Stop()
-	case MatchActionDrop:
-	}
-}
