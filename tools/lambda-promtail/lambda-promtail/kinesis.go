@@ -33,7 +33,7 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 	return nil
 }
 
-func processKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient IPromtailClient) error {
+func processKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
 	batch, _ := newBatch(ctx, pClient)
 
 	err := parseKinesisEvent(ctx, batch, ev)

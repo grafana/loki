@@ -11,11 +11,11 @@ import (
 	"github.com/grafana/dskit/backoff"
 )
 
-type IPromtailClient interface {
+type Client interface {
 	sendToPromtail(ctx context.Context, b *batch) error
 }
 
-// Implements IPromtailClient
+// Implements Client
 type promtailClient struct {
 	config *promtailClientConfig
 	http   *http.Client

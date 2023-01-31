@@ -38,7 +38,7 @@ type entry struct {
 type batch struct {
 	streams map[string]*logproto.Stream
 	size    int
-	client  IPromtailClient
+	client  Client
 }
 
 type batchIf interface {
@@ -48,7 +48,7 @@ type batchIf interface {
 	flushBatch(ctx context.Context) error
 }
 
-func newBatch(ctx context.Context, pClient IPromtailClient, entries ...entry) (*batch, error) {
+func newBatch(ctx context.Context, pClient Client, entries ...entry) (*batch, error) {
 	b := &batch{
 		streams: map[string]*logproto.Stream{},
 		client:  pClient,

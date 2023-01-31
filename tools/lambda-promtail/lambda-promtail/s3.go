@@ -131,7 +131,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	return labels, nil
 }
 
-func processS3Event(ctx context.Context, ev *events.S3Event, pc IPromtailClient, log *log.Logger) error {
+func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log.Logger) error {
 	batch, err := newBatch(ctx, pc)
 	if err != nil {
 		return err
