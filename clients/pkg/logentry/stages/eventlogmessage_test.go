@@ -277,7 +277,6 @@ var testEvtLogMsgInvalidOverwriteMessage = "message: a new message"
 
 func TestEventLogMessage_invalid(t *testing.T) {
 	t.Parallel()
-	Debug = true
 
 	tests := map[string]struct {
 		config          string
