@@ -4,26 +4,24 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-
+	"github.com/grafana/loki/clients/pkg/promtail/utils"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -242,7 +240,7 @@ func (p *Promtail) Shutdown() {
 	p.client.Stop()
 }
 
-// ActiveTargets returns active handlers per jobs from the target manager
+// ActiveTargets returns active targets per jobs from the target manager
 func (p *Promtail) ActiveTargets() map[string][]target.Target {
 	return p.targetManagers.ActiveTargets()
 }

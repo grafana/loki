@@ -1,14 +1,15 @@
 package utils
 
 import (
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestEntryHandlerFanouter(t *testing.T) {

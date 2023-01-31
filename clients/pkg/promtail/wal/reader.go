@@ -2,12 +2,13 @@ package wal
 
 import (
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	walUtils "github.com/grafana/loki/pkg/util/wal"
+
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/util"
+	walUtils "github.com/grafana/loki/pkg/util/wal"
 )
 
 // ReadWAL will read all entries in the WAL located under dir. Mainly used for testing

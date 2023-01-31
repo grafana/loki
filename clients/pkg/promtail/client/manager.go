@@ -6,9 +6,10 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Manager manages remote write client instantiation, and connects the related components to orchestrate the flow of api.Entry

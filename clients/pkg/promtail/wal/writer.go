@@ -2,8 +2,6 @@ package wal
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/prometheus/client_golang/prometheus"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,11 +11,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -28,7 +28,8 @@ const (
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
 // writes incoming entries to a WAL.
-// Also, since Writer is responsible for all changing operations over the WAL, a routine is run for cleaning old segments.
+// Also, since Writer is responsible for all changing operations over the WAL, therefore a routine is run for cleaning
+// old segments.
 type Writer struct {
 	entries     chan api.Entry
 	log         log.Logger
@@ -220,12 +221,13 @@ type segmentRef struct {
 	lastModified time.Time
 }
 
+// listSegments list wal segments under the given directory, alongside with some file system information for each.
 func listSegments(dir string) (refs []segmentRef, err error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	// the following will attempt to get segments info in a best effort manner
+	// the following will attempt to get segments info in a best effort manner, omitting file if error
 	for _, f := range files {
 		fn := f.Name()
 		k, err := strconv.Atoi(fn)

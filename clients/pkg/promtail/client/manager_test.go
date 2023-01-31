@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
-
 	"github.com/grafana/loki/pkg/logproto"
 )
 

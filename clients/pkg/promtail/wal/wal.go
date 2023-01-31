@@ -2,13 +2,14 @@ package wal
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/ingester/wal"
 	"os"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+
+	"github.com/grafana/loki/pkg/ingester/wal"
 )
 
 var (

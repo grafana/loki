@@ -1,8 +1,9 @@
 package utils
 
 import (
-	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"sync"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
 
 // EntryHandlerFanouter implements api.EntryHandler, fanning out received entries to one or multiple channels.
@@ -12,18 +13,6 @@ type EntryHandlerFanouter struct {
 
 	once sync.Once
 	wg   sync.WaitGroup
-}
-
-func (x *EntryHandlerFanouter) Chan() chan<- api.Entry {
-	return x.entries
-}
-
-// Stop only stops the channel EntryHandlerFanouter exposes, not the ones it fans out to.
-func (x *EntryHandlerFanouter) Stop() {
-	x.once.Do(func() {
-		close(x.entries)
-	})
-	x.wg.Wait()
 }
 
 func NewEntryHandlerFanouter(handlers ...api.EntryHandler) *EntryHandlerFanouter {
@@ -41,4 +30,16 @@ func NewEntryHandlerFanouter(handlers ...api.EntryHandler) *EntryHandlerFanouter
 		}
 	}()
 	return multiplex
+}
+
+func (eh *EntryHandlerFanouter) Chan() chan<- api.Entry {
+	return eh.entries
+}
+
+// Stop only stops the channel EntryHandlerFanouter exposes, not the ones it fans out to.
+func (eh *EntryHandlerFanouter) Stop() {
+	eh.once.Do(func() {
+		close(eh.entries)
+	})
+	eh.wg.Wait()
 }

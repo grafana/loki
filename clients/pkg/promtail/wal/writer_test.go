@@ -1,19 +1,18 @@
 package wal
 
 import (
-	"github.com/go-kit/log/level"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-
 	"github.com/grafana/loki/pkg/logproto"
 )
 
