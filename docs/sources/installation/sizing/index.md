@@ -19,24 +19,25 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
  [scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment. The storage needs to be configured after generation.
 
 <div id="app">
-
   <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
   <select name="node-type" v-model="node"> 
   <option v-for="node of nodes">{{ node }}</option>
   </select>
-
   <label>Ingest<i class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null"></i></label>
-  <input style="width: 95%; padding-right:4.5em;" v-model="ingestInGB" name="ingest" placeholder="Desired ingest in GB/day" type="number" max="1048576" min="0"/><span style="margin-left:-4em;">GB/day</span>
-
+  <div style="display: flex;">
+    <input style="padding-right:4.5em;" v-model="ingestInGB" name="ingest" placeholder="Desired ingest in GB/day" type="number" max="1048576" min="0"/>
+    <span style="margin: auto auto auto -4em;">GB/day</span>
+  </div>
   <label>Log retention period<i class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null"></i></label>
-  <input style="width: 95%; padding-right:4.5em;"  v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/><span style="margin-left:-4em;">days</span>
-
+  <div style="display: flex;">
+    <input style="padding-right:4.5em;"  v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
+    <span style="margin: auto auto auto -4em;">days</span>
+  </div>
   <label>Query performance<i class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null"></i></label>
   <div id="queryperf" style="display: inline-flex;">
   <label for="basic">
   <input type="radio" id="basic" value="Basic" v-model="queryperf"/>Basic
   </label>
-
   <label for="super">
   <input type="radio" id="super" value="Super" v-model="queryperf"/>Super
   </label>
