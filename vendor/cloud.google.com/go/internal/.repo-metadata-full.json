@@ -332,15 +332,6 @@
     "release_level": "ga",
     "library_type": "GAPIC_AUTO"
   },
-  "cloud.google.com/go/bigquery/reservation/apiv1beta1": {
-    "distribution_name": "cloud.google.com/go/bigquery/reservation/apiv1beta1",
-    "description": "BigQuery Reservation API",
-    "language": "Go",
-    "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/reservation/apiv1beta1",
-    "release_level": "beta",
-    "library_type": "GAPIC_AUTO"
-  },
   "cloud.google.com/go/bigquery/storage/apiv1": {
     "distribution_name": "cloud.google.com/go/bigquery/storage/apiv1",
     "description": "BigQuery Storage API",
@@ -1048,7 +1039,7 @@
     "description": "Long Running Operations API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/longrunning/autogen",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/longrunning/latest/autogen",
     "release_level": "alpha",
     "library_type": "GAPIC_AUTO"
   },
@@ -1059,6 +1050,24 @@
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/managedidentities/latest/apiv1",
     "release_level": "ga",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/addressvalidation/apiv1": {
+    "distribution_name": "cloud.google.com/go/maps/addressvalidation/apiv1",
+    "description": "Address Validation API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/addressvalidation/apiv1",
+    "release_level": "beta",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/routing/apiv2": {
+    "distribution_name": "cloud.google.com/go/maps/routing/apiv2",
+    "description": "Routes API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/routing/apiv2",
+    "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/mediatranslation/apiv1beta1": {

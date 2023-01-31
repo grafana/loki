@@ -1942,8 +1942,10 @@ The optional `limits_config` block configures global limits for this instance of
 # 0 means it is disabled.
 [max_streams: <int> | default = 0]
 
-Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+# Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
 [max_line_size: <int> | default = 0]
+# Whether to truncate lines that exceed max_line_size. No effect if max_line_size is disabled
+[max_line_size_truncate: <bool> | default = false]
 ```
 
 ## target_config

@@ -62,12 +62,12 @@ type ServingModeChangeArgs struct {
 // to inject a bootstrap configuration used by only this server, instead of the
 // global configuration from the environment variables.
 //
-// Testing Only
+// # Testing Only
 //
 // This function should ONLY be used for testing and may not work with some
 // other features, including the CSDS service.
 //
-// Experimental
+// # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.

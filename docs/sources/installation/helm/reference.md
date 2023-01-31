@@ -697,7 +697,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.0"
+"v1.6.1"
 </pre>
 </td>
 		</tr>
@@ -2188,6 +2188,15 @@ true
 			<td>Additional labels for the rules PrometheusRule resource</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.namespace</td>
+			<td>string</td>
+			<td>Alternative namespace to create PrometheusRule resources in</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

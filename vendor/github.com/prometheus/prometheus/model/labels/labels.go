@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/prometheus/common/model"
 )
 
 // Well-known label names used by Prometheus components.
@@ -134,6 +135,7 @@ func (ls Labels) MatchLabels(on bool, names ...string) Labels {
 }
 
 // Hash returns a hash value for the label set.
+// Note: the result is not guaranteed to be consistent across different runs of Prometheus.
 func (ls Labels) Hash() uint64 {
 	// Use xxhash.Sum64(b) for fast path as it's faster.
 	b := make([]byte, 0, 1024)
@@ -309,6 +311,19 @@ func (ls Labels) WithoutEmpty() Labels {
 		return els
 	}
 	return ls
+}
+
+// IsValid checks if the metric name or label names are valid.
+func (ls Labels) IsValid() bool {
+	for _, l := range ls {
+		if l.Name == model.MetricNameLabel && !model.IsValidMetricName(model.LabelValue(l.Value)) {
+			return false
+		}
+		if !model.LabelName(l.Name).IsValid() || !model.LabelValue(l.Value).IsValid() {
+			return false
+		}
+	}
+	return true
 }
 
 // Equal returns whether the two label sets are equal.

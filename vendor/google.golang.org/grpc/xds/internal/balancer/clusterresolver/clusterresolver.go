@@ -194,7 +194,6 @@ func (b *clusterResolverBalancer) handleWatchUpdate(update *resourceUpdate) {
 		return
 	}
 
-	b.logger.Infof("resource update: %+v", pretty.ToJSON(update.priorities))
 	b.watchUpdateReceived = true
 	b.priorities = update.priorities
 

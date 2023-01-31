@@ -62,7 +62,7 @@ spec:
         {{- end }}
       {{- end }}
       containers:
-        - name: backend
+        - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
