@@ -129,7 +129,7 @@ func TestEventLogMessageConfig_validate(t *testing.T) {
 			map[string]interface{}{
 				"source": 1,
 			},
-			errors.New("'source' expected type 'string', got unconvertible type 'int', value: '1'"),
+			errors.New("1 error(s) decoding:\n\n* 'source' expected type 'string', got unconvertible type 'int', value: '1'"),
 		},
 		"invalid source": {
 			map[string]interface{}{
