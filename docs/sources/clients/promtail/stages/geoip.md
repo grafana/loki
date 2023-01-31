@@ -1,7 +1,8 @@
 ---
 title: geoip
+description: geoip stage
 ---
-# `geoip` stage
+# `geoip`
 
 The `geoip` stage is a parsing stage that reads a ip address and 
 populates the labelset with geoip fields. Maxmind's GeoIP2 databse is used for the lookup.
