@@ -54,21 +54,21 @@ For the given pipeline
 And the log line:
 
 ```
-"81.2.69.142 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+"34.120.177.193 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
 The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. `geoip` stage performs a lookup on the `ip` and populates below labels
 
-- `geoip_city_name`: `Bedmond`
-- `geoip_country_name`: `United Kingdom`
-- `geoip_continet_name`: `Europe`
-- `geoip_continent_code`: `EU`
-- `geoip_location_latitude`: `51.7196`
-- `geoip_location_longitude`: `-0.4144`
-- `geoip_postal_code`: `WD5`
-- `geoip_timezone`: `Europe/London`
-- `geoip_subdivision_name`: `Hertfordshire`
-- `geoip_subdivision_code`: `HRT`
+- `geoip_city_name`: `Kansas City`
+- `geoip_country_name`: `United States`
+- `geoip_continet_name`: `North America`
+- `geoip_continent_code`: `NA`
+- `geoip_location_latitude`: `"39.1027`
+- `geoip_location_longitude`: `-94.5778`
+- `geoip_postal_code`: `64184`
+- `geoip_timezone`: `America/Chicago`
+- `geoip_subdivision_name`: `Missouri`
+- `geoip_subdivision_code`: `MO`
 
 If only a subset of above labels are required. We can chain the above pipeline with `labeldrop` or `labelallow` stage
 
@@ -119,10 +119,10 @@ All the labels except the ones listed under `labeldrop` will be sent to Loki.
 And the log line:
 
 ```
-"81.2.69.142 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+"34.120.177.193 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
 The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. `geoip` stage performs a lookup on the `ip` and populates below labels
 
-- `geoip_autonomous_system_number`: `20712`
-- `geoip_autonomous_system_organization`: `Andrews & Arnold Ltd`
+- `geoip_autonomous_system_number`: `396982`
+- `geoip_autonomous_system_organization`: `GOOGLE-CLOUD-PLATFORM`
