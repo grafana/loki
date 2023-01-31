@@ -27,7 +27,7 @@ var (
 	allIPv6 = &net.IPNet{IP: make(net.IP, 16), Mask: net.CIDRMask(0, 128)}
 )
 
-// NetworksOption are options for Networks and NetworksWithin
+// NetworksOption are options for Networks and NetworksWithin.
 type NetworksOption func(*Networks)
 
 // SkipAliasedNetworks is an option for Networks and NetworksWithin that

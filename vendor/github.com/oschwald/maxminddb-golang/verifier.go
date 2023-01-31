@@ -141,19 +141,30 @@ func (v *verifier) verifyDataSection(offsets map[uint]bool) error {
 		rv := reflect.ValueOf(&data)
 		newOffset, err := decoder.decode(offset, rv, 0)
 		if err != nil {
-			return newInvalidDatabaseError("received decoding error (%v) at offset of %v", err, offset)
+			return newInvalidDatabaseError(
+				"received decoding error (%v) at offset of %v",
+				err,
+				offset,
+			)
 		}
 		if newOffset <= offset {
-			return newInvalidDatabaseError("data section offset unexpectedly went from %v to %v", offset, newOffset)
+			return newInvalidDatabaseError(
+				"data section offset unexpectedly went from %v to %v",
+				offset,
+				newOffset,
+			)
 		}
 
 		pointer := offset
 
-		if _, ok := offsets[pointer]; ok {
-			delete(offsets, pointer)
-		} else {
-			return newInvalidDatabaseError("found data (%v) at %v that the search tree does not point to", data, pointer)
+		if _, ok := offsets[pointer]; !ok {
+			return newInvalidDatabaseError(
+				"found data (%v) at %v that the search tree does not point to",
+				data,
+				pointer,
+			)
 		}
+		delete(offsets, pointer)
 
 		offset = newOffset
 	}

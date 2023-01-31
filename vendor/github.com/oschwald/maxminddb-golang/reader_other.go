@@ -1,3 +1,4 @@
+//go:build !appengine && !plan9
 // +build !appengine,!plan9
 
 package maxminddb
@@ -33,13 +34,15 @@ func Open(file string) (*Reader, error) {
 	}
 
 	if err := mapFile.Close(); err != nil {
-		_ = munmap(mmap)
+		//nolint:errcheck // we prefer to return the original error
+		munmap(mmap)
 		return nil, err
 	}
 
 	reader, err := FromBytes(mmap)
 	if err != nil {
-		_ = munmap(mmap)
+		//nolint:errcheck // we prefer to return the original error
+		munmap(mmap)
 		return nil, err
 	}
 

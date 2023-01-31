@@ -1,3 +1,4 @@
+//go:build !windows && !appengine && !plan9
 // +build !windows,!appengine,!plan9
 
 package maxminddb

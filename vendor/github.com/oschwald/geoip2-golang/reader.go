@@ -74,8 +74,10 @@ type Enterprise struct {
 		IsLegitimateProxy            bool    `maxminddb:"is_legitimate_proxy"`
 		IsSatelliteProvider          bool    `maxminddb:"is_satellite_provider"`
 		ISP                          string  `maxminddb:"isp"`
-		StaticIPScore                float64 `maxminddb:"static_ip_score"`
+		MobileCountryCode            string  `maxminddb:"mobile_country_code"`
+		MobileNetworkCode            string  `maxminddb:"mobile_network_code"`
 		Organization                 string  `maxminddb:"organization"`
+		StaticIPScore                float64 `maxminddb:"static_ip_score"`
 		UserType                     string  `maxminddb:"user_type"`
 	} `maxminddb:"traits"`
 }
@@ -198,6 +200,8 @@ type ISP struct {
 	AutonomousSystemNumber       uint   `maxminddb:"autonomous_system_number"`
 	AutonomousSystemOrganization string `maxminddb:"autonomous_system_organization"`
 	ISP                          string `maxminddb:"isp"`
+	MobileCountryCode            string `maxminddb:"mobile_country_code"`
+	MobileNetworkCode            string `maxminddb:"mobile_network_code"`
 	Organization                 string `maxminddb:"organization"`
 }
 
@@ -241,7 +245,7 @@ type UnknownDatabaseTypeError struct {
 }
 
 func (e UnknownDatabaseTypeError) Error() string {
-	return fmt.Sprintf(`geoip2: reader does not support the "%s" database type`,
+	return fmt.Sprintf(`geoip2: reader does not support the %q database type`,
 		e.DatabaseType)
 }
 
@@ -259,7 +263,7 @@ func Open(file string) (*Reader, error) {
 
 // FromBytes takes a byte slice corresponding to a GeoIP2/GeoLite2 database
 // file and returns a Reader struct or an error. Note that the byte slice is
-// use directly; any modification of it after opening the database will result
+// used directly; any modification of it after opening the database will result
 // in errors while reading from the database.
 func FromBytes(bytes []byte) (*Reader, error) {
 	reader, err := maxminddb.FromBytes(bytes)
@@ -358,7 +362,7 @@ func (r *Reader) AnonymousIP(ipAddress net.IP) (*AnonymousIP, error) {
 }
 
 // ASN takes an IP address as a net.IP struct and returns a ASN struct and/or
-// an error
+// an error.
 func (r *Reader) ASN(ipAddress net.IP) (*ASN, error) {
 	if isASN&r.databaseType == 0 {
 		return nil, InvalidMethodError{"ASN", r.Metadata().DatabaseType}
@@ -369,7 +373,7 @@ func (r *Reader) ASN(ipAddress net.IP) (*ASN, error) {
 }
 
 // ConnectionType takes an IP address as a net.IP struct and returns a
-// ConnectionType struct and/or an error
+// ConnectionType struct and/or an error.
 func (r *Reader) ConnectionType(ipAddress net.IP) (*ConnectionType, error) {
 	if isConnectionType&r.databaseType == 0 {
 		return nil, InvalidMethodError{"ConnectionType", r.Metadata().DatabaseType}
@@ -380,7 +384,7 @@ func (r *Reader) ConnectionType(ipAddress net.IP) (*ConnectionType, error) {
 }
 
 // Domain takes an IP address as a net.IP struct and returns a
-// Domain struct and/or an error
+// Domain struct and/or an error.
 func (r *Reader) Domain(ipAddress net.IP) (*Domain, error) {
 	if isDomain&r.databaseType == 0 {
 		return nil, InvalidMethodError{"Domain", r.Metadata().DatabaseType}
@@ -391,7 +395,7 @@ func (r *Reader) Domain(ipAddress net.IP) (*Domain, error) {
 }
 
 // ISP takes an IP address as a net.IP struct and returns a ISP struct and/or
-// an error
+// an error.
 func (r *Reader) ISP(ipAddress net.IP) (*ISP, error) {
 	if isISP&r.databaseType == 0 {
 		return nil, InvalidMethodError{"ISP", r.Metadata().DatabaseType}
