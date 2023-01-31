@@ -21,6 +21,7 @@ const (
 type EventLogMessageConfig struct {
 	Source            *string `mapstructure:"source"`
 	DropInvalidLabels bool    `mapstructure:"drop_invalid_labels"`
+	OverwriteExisting bool    `mapstructure:"overwrite_existing"`
 }
 
 type eventLogMessageStage struct {
@@ -116,15 +117,15 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 		if !model.LabelName(mkey).IsValid() {
 			if m.cfg.DropInvalidLabels {
 				if Debug {
-					level.Debug(m.logger).Log("msg", "invalid key parsed from message", "key", mkey)
+					level.Debug(m.logger).Log("msg", "invalid label parsed from message", "key", mkey)
 				}
 				continue
 			}
 			mkey = SanitizeLabelName(mkey)
 		}
-		if _, ok := extracted[mkey]; ok {
+		if _, ok := extracted[mkey]; ok && !m.cfg.OverwriteExisting {
 			if Debug {
-				level.Debug(m.logger).Log("msg", "extracted key that already existed, ignoring", "key", mkey)
+				level.Debug(m.logger).Log("msg", "extracted label that already existed, ignoring", "key", mkey)
 			}
 			continue
 		}

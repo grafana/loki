@@ -28,8 +28,15 @@ pipeline_stages:
     drop_invalid_labels: true
 `
 
+var testEvtLogMsgYamlOverwriteExisting = `
+pipeline_stages:
+- eventlogmessage:
+    overwrite_existing: true
+`
+
 var testEvtLogMsgSimple = "Key1: Value 1\r\nKey2: Value 2\r\nKey3: Value: 3"
 var testEvtLogMsgInvalidLabels = "Key 1: Value 1\r\n0Key2: Value 2\r\nKey@3: Value 3\r\n: Value 4"
+var testEvtLogMsgOverwriteTest = "test: new value"
 
 func TestEventLogMessage_simple(t *testing.T) {
 	t.Parallel()
@@ -48,6 +55,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 				"Key1": "Value 1",
 				"Key2": "Value 2",
 				"Key3": "Value: 3",
+				"test": "existing value",
 			},
 		},
 		"successfully ran a pipeline with sample event log message stage using custom source": {
@@ -58,6 +66,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 				"Key1": "Value 1",
 				"Key2": "Value 2",
 				"Key3": "Value: 3",
+				"test": "existing value",
 			},
 		},
 		"successfully ran a pipeline with sample event log message stage containing invalid labels": {
@@ -69,6 +78,23 @@ func TestEventLogMessage_simple(t *testing.T) {
 				"_Key2": "Value 2",
 				"Key_3": "Value 3",
 				"_":     "Value 4",
+				"test":  "existing value",
+			},
+		},
+		"successfully ran a pipeline with sample event log message stage without overwriting existing labels": {
+			testEvtLogMsgYamlDefaults,
+			"message",
+			testEvtLogMsgOverwriteTest,
+			map[string]interface{}{
+				"test": "existing value",
+			},
+		},
+		"successfully ran a pipeline with sample event log message stage overwriting existing labels": {
+			testEvtLogMsgYamlOverwriteExisting,
+			"message",
+			testEvtLogMsgOverwriteTest,
+			map[string]interface{}{
+				"test": "new value",
 			},
 		},
 	}
@@ -83,7 +109,10 @@ func TestEventLogMessage_simple(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			assert.NoError(t, err, "Expected pipeline creation to not result in error")
 			out := processEntries(pl,
-				newEntry(map[string]interface{}{testData.sourcekey: testData.msgdata}, nil, testData.msgdata, time.Now()))[0]
+				newEntry(map[string]interface{}{
+					testData.sourcekey: testData.msgdata,
+					"test":             "existing value",
+				}, nil, testData.msgdata, time.Now()))[0]
 			assert.Equal(t, testData.extractedValues, out.Extracted)
 		})
 	}
