@@ -12,10 +12,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func TestFanoutEntryHandler(t *testing.T) {
+func TestFanoutEntryHandler_SuccessfulFanout(t *testing.T) {
 	eh1 := newSavingEntryHandler()
 	eh2 := newSavingEntryHandler()
-	fanout := NewFanoutEntryHandler(eh1, eh2)
+	fanout := NewFanoutEntryHandler(time.Second*10, eh1, eh2)
 
 	defer func() {
 		fanout.Stop()
@@ -44,6 +44,44 @@ func TestFanoutEntryHandler(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return len(eh1.Received) == len(expectedLines) && len(eh2.Received) == len(expectedLines)
 	}, time.Second*10, time.Second, "expected entries to be received by fanned out channels")
+}
+
+type blockingEntryHanlder struct {
+	entries chan api.Entry
+}
+
+func (b *blockingEntryHanlder) Chan() chan<- api.Entry {
+	return b.entries
+}
+
+func (b *blockingEntryHanlder) Stop() {
+	close(b.entries)
+}
+
+func TestFanoutEntryHandler_TimeoutWaitingForEntriesToBeSent(t *testing.T) {
+	eh1 := &blockingEntryHanlder{make(chan api.Entry)}
+	controlEH := newSavingEntryHandler()
+	fanout := NewFanoutEntryHandler(time.Second*2, eh1, controlEH)
+
+	go func() {
+		fanout.Chan() <- api.Entry{
+			Labels: model.LabelSet{
+				"test": "fanout",
+			},
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      "holis",
+			},
+		}
+	}()
+
+	require.Eventually(t, func() bool {
+		return len(controlEH.Received) == 1
+	}, time.Second*5, time.Second, "expected control entry handler to receive an entry")
+
+	now := time.Now()
+	fanout.Stop()
+	require.InDelta(t, time.Second*2, time.Since(now), float64(time.Millisecond*100), "expected fanout entry handler to stop before")
 }
 
 type savingEntryHandler struct {

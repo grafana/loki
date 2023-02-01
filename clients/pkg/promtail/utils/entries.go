@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
@@ -11,23 +13,31 @@ type FanoutEntryHandler struct {
 	entries  chan api.Entry
 	handlers []api.EntryHandler
 
-	once sync.Once
-	wg   sync.WaitGroup
+	once            sync.Once
+	mainRoutineDone chan struct{}
+	cancelTimeout   time.Duration
+	cancel          context.CancelFunc
 }
 
-func NewFanoutEntryHandler(handlers ...api.EntryHandler) *FanoutEntryHandler {
+func NewFanoutEntryHandler(sendTimeoutOnStop time.Duration, handlers ...api.EntryHandler) *FanoutEntryHandler {
+	ctx, cancel := context.WithCancel(context.Background())
 	eh := &FanoutEntryHandler{
-		entries:  make(chan api.Entry),
-		handlers: handlers,
+		entries:         make(chan api.Entry),
+		handlers:        handlers,
+		mainRoutineDone: make(chan struct{}),
+		cancelTimeout:   sendTimeoutOnStop,
+		cancel:          cancel,
 	}
-	eh.start()
+	eh.start(ctx)
 	return eh
 }
 
-func (eh *FanoutEntryHandler) start() {
-	eh.wg.Add(1)
+func (eh *FanoutEntryHandler) start(ctx context.Context) {
 	go func() {
-		defer eh.wg.Done()
+		defer func() {
+			close(eh.mainRoutineDone)
+		}()
+
 		for e := range eh.entries {
 			// To prevent a single channel from blocking all others, we run each channel send in a separate go routine.
 			// This cause each entry to be sent in |eh.handlers| routines concurrently. When all finish, we know the entry
@@ -35,10 +45,13 @@ func (eh *FanoutEntryHandler) start() {
 			var entryWG sync.WaitGroup
 			entryWG.Add(len(eh.handlers))
 			for _, handler := range eh.handlers {
-				go func(eh api.EntryHandler) {
+				go func(ctx context.Context, eh api.EntryHandler) {
 					defer entryWG.Done()
-					eh.Chan() <- e
-				}(handler)
+					select {
+					case <-ctx.Done():
+					case eh.Chan() <- e:
+					}
+				}(ctx, handler)
 			}
 			entryWG.Wait()
 		}
@@ -54,5 +67,12 @@ func (eh *FanoutEntryHandler) Stop() {
 	eh.once.Do(func() {
 		close(eh.entries)
 	})
-	eh.wg.Wait()
+	// after closing channel, if the main go-routine was sending entries, wait for them to be sent, or a timeout fires
+	select {
+	case <-eh.mainRoutineDone:
+		// graceful stop
+	case <-time.After(eh.cancelTimeout):
+		// sending pending entries timed out, cancel
+		eh.cancel()
+	}
 }

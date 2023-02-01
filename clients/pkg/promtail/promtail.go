@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,6 +24,10 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 	util_log "github.com/grafana/loki/pkg/util/log"
+)
+
+const (
+	timeoutOnFanoutStop = time.Second * 30
 )
 
 var reloadSuccessTotal = prometheus.NewCounter(prometheus.CounterOpts{
@@ -178,7 +183,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		entryHandlers = append(entryHandlers, p.walWriter)
 	}
 
-	p.entriesFanout = utils.NewFanoutEntryHandler(entryHandlers...)
+	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutOnFanoutStop, entryHandlers...)
 
 	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
