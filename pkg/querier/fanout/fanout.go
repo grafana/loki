@@ -2,6 +2,8 @@ package fanout
 
 import (
 	"context"
+	
+	"github.com/grafana/dskit/concurrency"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -10,6 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
+
+const readConcurrency = 5
 
 func NewQuerier(primary querier.Querier, secondaries ...querier.Querier) querier.Querier {
 	return &Querier{Querier: primary, secondaries: secondaries}
@@ -30,11 +34,21 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		return nil, err
 	}
 	iters = append(iters, localIter)
-	for _, remoteStore := range q.secondaries {
+
+	resps := make([]iter.EntryIterator, len(q.secondaries))
+	err = concurrency.ForEachJob(ctx, len(q.secondaries), readConcurrency, func(ctx context.Context, idx int) error {
+		remoteStore := q.secondaries[idx]
 		iter, err := remoteStore.SelectLogs(ctx, params)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		resps[idx] = iter
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, iter := range resps {
 		iters = append(iters, iter)
 	}
 	return iter.NewSortEntryIterator(iters, params.Direction), nil
@@ -50,11 +64,21 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		return nil, err
 	}
 	iters = append(iters, localIter)
-	for _, remoteStore := range q.secondaries {
+
+	resps := make([]iter.SampleIterator, len(q.secondaries))
+	err = concurrency.ForEachJob(ctx, len(q.secondaries), readConcurrency, func(ctx context.Context, idx int) error {
+		remoteStore := q.secondaries[idx]
 		iter, err := remoteStore.SelectSamples(ctx, params)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		resps[idx] = iter
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, iter := range resps {
 		iters = append(iters, iter)
 	}
 	return iter.NewSortSampleIterator(iters), nil
