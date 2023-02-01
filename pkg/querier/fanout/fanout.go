@@ -2,7 +2,7 @@ package fanout
 
 import (
 	"context"
-	
+
 	"github.com/grafana/dskit/concurrency"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -48,9 +48,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	if err != nil {
 		return nil, err
 	}
-	for _, iter := range resps {
-		iters = append(iters, iter)
-	}
+	iters = append(iters, resps...)
 	return iter.NewSortEntryIterator(iters, params.Direction), nil
 }
 
@@ -78,9 +76,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	if err != nil {
 		return nil, err
 	}
-	for _, iter := range resps {
-		iters = append(iters, iter)
-	}
+	iters = append(iters, resps...)
 	return iter.NewSortSampleIterator(iters), nil
 }
 
