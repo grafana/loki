@@ -9,6 +9,7 @@ metadata:
   labels:
     {{- include "loki.labels" . | nindent 4 }}
     variant: headless
+    prometheus.io/service-monitor: "false"
 spec:
   clusterIP: None
   ports:

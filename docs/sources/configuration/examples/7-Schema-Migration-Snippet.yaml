@@ -1,0 +1,22 @@
+schema_config:
+  configs:
+    # Starting from 2018-04-15 Loki should store indexes on Cassandra
+    # using weekly periodic tables and chunks on filesystem.
+    # The index tables will be prefixed with "index_".
+  - from: "2018-04-15"
+    store: cassandra
+    object_store: filesystem
+    schema: v11
+    index:
+        period: 168h
+        prefix: index_
+
+  # Starting from 2020-6-15 we moved from filesystem to AWS S3 for storing the chunks.
+  - from: "2020-06-15"
+    store: cassandra
+    object_store: s3
+    schema: v11
+    index:
+        period: 168h
+        prefix: index_
+        

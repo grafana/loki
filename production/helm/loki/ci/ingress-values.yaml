@@ -15,9 +15,10 @@ read:
   replicas: 1
 write:
   replicas: 1
+backend:
+  replicas: 1
 monitoring:
-  selfMonitoring:
-    lokiCanary:
-      enabled: false
+  lokiCanary:
+    enabled: false
 test:
   enabled: false

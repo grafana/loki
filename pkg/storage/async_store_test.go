@@ -263,6 +263,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+
 			store := newStoreMock()
 			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 

@@ -5,6 +5,10 @@ metadata:
   creationTimestamp: null
   name: lokistack-manager
 rules:
+- nonResourceURLs:
+  - /api/v2/alerts
+  verbs:
+  - create
 - apiGroups:
   - ""
   resources:
@@ -57,6 +61,7 @@ rules:
   resources:
   - apiservers
   - dnses
+  - proxies
   verbs:
   - get
   - list

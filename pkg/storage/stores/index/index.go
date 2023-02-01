@@ -26,7 +26,7 @@ type Reader interface {
 }
 
 type Writer interface {
-	IndexChunk(ctx context.Context, chk chunk.Chunk) error
+	IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error
 }
 
 type ReaderWriter interface {
@@ -117,8 +117,8 @@ func (m monitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFi
 	m.rw.SetChunkFilterer(chunkFilter)
 }
 
-func (m monitoredReaderWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (m monitoredReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
 	return instrument.CollectedRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
-		return m.rw.IndexChunk(ctx, chk)
+		return m.rw.IndexChunk(ctx, from, through, chk)
 	})
 }

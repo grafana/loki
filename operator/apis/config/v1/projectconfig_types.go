@@ -46,6 +46,10 @@ type OpenShiftFeatureGates struct {
 	// ClusterTLSPolicy enables usage of TLS policies set in the API Server.
 	// More details: https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html
 	ClusterTLSPolicy bool `json:"clusterTLSPolicy,omitempty"`
+
+	// ClusterProxy enables usage of the proxy variables set in the proxy resource.
+	// More details: https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy
+	ClusterProxy bool `json:"clusterProxy,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.
@@ -106,6 +110,8 @@ type FeatureGates struct {
 	AlertingRuleWebhook bool `json:"alertingRuleWebhook,omitempty"`
 	// RecordingRuleWebhook enables the RecordingRule CR validation webhook.
 	RecordingRuleWebhook bool `json:"recordingRuleWebhook,omitempty"`
+	// RulerConfigWebhook enables the RulerConfig CR validation webhook.
+	RulerConfigWebhook bool `json:"rulerConfigWebhook,omitempty"`
 
 	// When DefaultNodeAffinity is enabled the operator will set a default node affinity on all pods.
 	// This will limit scheduling of the pods to Nodes with Linux.

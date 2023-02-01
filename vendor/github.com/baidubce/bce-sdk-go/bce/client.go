@@ -89,6 +89,11 @@ func (c *BceClient) buildHttpRequest(request *BceRequest) {
 	request.SetHeader(http.USER_AGENT, c.Config.UserAgent)
 	request.SetHeader(http.BCE_DATE, util.FormatISO8601Date(util.NowUTCSeconds()))
 
+	//set default content-type if null
+	if request.Header(http.CONTENT_TYPE) == "" {
+		request.SetHeader(http.CONTENT_TYPE, DEFAULT_CONTENT_TYPE)
+	}
+
 	// Generate the auth string if needed
 	if c.Config.Credentials != nil {
 		c.Signer.Sign(&request.Request, c.Config.Credentials, c.Config.SignOption)

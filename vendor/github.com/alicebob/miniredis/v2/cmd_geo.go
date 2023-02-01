@@ -226,28 +226,28 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 	}
 	args = args[5:]
 
-	var (
-		withDist      = false
-		withCoord     = false
-		direction     = unsorted
-		count         = 0
-		withStore     = false
-		storeKey      = ""
-		withStoredist = false
-		storedistKey  = ""
-	)
+	var opts struct {
+		withDist      bool
+		withCoord     bool
+		direction     direction // unsorted
+		count         int
+		withStore     bool
+		storeKey      string
+		withStoredist bool
+		storedistKey  string
+	}
 	for len(args) > 0 {
 		arg := args[0]
 		args = args[1:]
 		switch strings.ToUpper(arg) {
 		case "WITHCOORD":
-			withCoord = true
+			opts.withCoord = true
 		case "WITHDIST":
-			withDist = true
+			opts.withDist = true
 		case "ASC":
-			direction = asc
+			opts.direction = asc
 		case "DESC":
-			direction = desc
+			opts.direction = desc
 		case "COUNT":
 			if len(args) == 0 {
 				setDirty(c)
@@ -266,15 +266,15 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 				return
 			}
 			args = args[1:]
-			count = n
+			opts.count = n
 		case "STORE":
 			if len(args) == 0 {
 				setDirty(c)
 				c.WriteError("ERR syntax error")
 				return
 			}
-			withStore = true
-			storeKey = args[0]
+			opts.withStore = true
+			opts.storeKey = args[0]
 			args = args[1:]
 		case "STOREDIST":
 			if len(args) == 0 {
@@ -282,8 +282,8 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 				c.WriteError("ERR syntax error")
 				return
 			}
-			withStoredist = true
-			storedistKey = args[0]
+			opts.withStoredist = true
+			opts.storedistKey = args[0]
 			args = args[1:]
 		default:
 			setDirty(c)
@@ -292,14 +292,14 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 		}
 	}
 
-	if strings.ToUpper(cmd) == "GEORADIUS_RO" && (withStore || withStoredist) {
+	if strings.ToUpper(cmd) == "GEORADIUS_RO" && (opts.withStore || opts.withStoredist) {
 		setDirty(c)
 		c.WriteError("ERR syntax error")
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		if (withStore || withStoredist) && (withDist || withCoord) {
+		if (opts.withStore || opts.withStoredist) && (opts.withDist || opts.withCoord) {
 			c.WriteError("ERR STORE option in GEORADIUS is not compatible with WITHDIST, WITHHASH and WITHCOORDS options")
 			return
 		}
@@ -310,9 +310,9 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 		matches := withinRadius(members, longitude, latitude, radius*toMeter)
 
 		// deal with ASC/DESC
-		if direction != unsorted {
+		if opts.direction != unsorted {
 			sort.Slice(matches, func(i, j int) bool {
-				if direction == desc {
+				if opts.direction == desc {
 					return matches[i].Distance > matches[j].Distance
 				}
 				return matches[i].Distance < matches[j].Distance
@@ -320,25 +320,25 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 		}
 
 		// deal with COUNT
-		if count > 0 && len(matches) > count {
-			matches = matches[:count]
+		if opts.count > 0 && len(matches) > opts.count {
+			matches = matches[:opts.count]
 		}
 
 		// deal with "STORE x"
-		if withStore {
-			db.del(storeKey, true)
+		if opts.withStore {
+			db.del(opts.storeKey, true)
 			for _, member := range matches {
-				db.ssetAdd(storeKey, member.Score, member.Name)
+				db.ssetAdd(opts.storeKey, member.Score, member.Name)
 			}
 			c.WriteInt(len(matches))
 			return
 		}
 
 		// deal with "STOREDIST x"
-		if withStoredist {
-			db.del(storedistKey, true)
+		if opts.withStoredist {
+			db.del(opts.storedistKey, true)
 			for _, member := range matches {
-				db.ssetAdd(storedistKey, member.Distance/toMeter, member.Name)
+				db.ssetAdd(opts.storedistKey, member.Distance/toMeter, member.Name)
 			}
 			c.WriteInt(len(matches))
 			return
@@ -346,24 +346,24 @@ func (m *Miniredis) cmdGeoradius(c *server.Peer, cmd string, args []string) {
 
 		c.WriteLen(len(matches))
 		for _, member := range matches {
-			if !withDist && !withCoord {
+			if !opts.withDist && !opts.withCoord {
 				c.WriteBulk(member.Name)
 				continue
 			}
 
 			len := 1
-			if withDist {
+			if opts.withDist {
 				len++
 			}
-			if withCoord {
+			if opts.withCoord {
 				len++
 			}
 			c.WriteLen(len)
 			c.WriteBulk(member.Name)
-			if withDist {
+			if opts.withDist {
 				c.WriteBulk(fmt.Sprintf("%.4f", member.Distance/toMeter))
 			}
-			if withCoord {
+			if opts.withCoord {
 				c.WriteLen(2)
 				c.WriteBulk(fmt.Sprintf("%f", member.Longitude))
 				c.WriteBulk(fmt.Sprintf("%f", member.Latitude))
@@ -386,45 +386,53 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 		return
 	}
 
-	key := args[0]
-	member := args[1]
+	opts := struct {
+		key     string
+		member  string
+		radius  float64
+		toMeter float64
 
-	radius, err := strconv.ParseFloat(args[2], 64)
-	if err != nil || radius < 0 {
+		withDist      bool
+		withCoord     bool
+		direction     direction // unsorted
+		count         int
+		withStore     bool
+		storeKey      string
+		withStoredist bool
+		storedistKey  string
+	}{
+		key:    args[0],
+		member: args[1],
+	}
+
+	r, err := strconv.ParseFloat(args[2], 64)
+	if err != nil || r < 0 {
 		setDirty(c)
 		c.WriteError(errWrongNumber(cmd))
 		return
 	}
-	toMeter := parseUnit(args[3])
-	if toMeter == 0 {
+	opts.radius = r
+
+	opts.toMeter = parseUnit(args[3])
+	if opts.toMeter == 0 {
 		setDirty(c)
 		c.WriteError(errWrongNumber(cmd))
 		return
 	}
 	args = args[4:]
 
-	var (
-		withDist      = false
-		withCoord     = false
-		direction     = unsorted
-		count         = 0
-		withStore     = false
-		storeKey      = ""
-		withStoredist = false
-		storedistKey  = ""
-	)
 	for len(args) > 0 {
 		arg := args[0]
 		args = args[1:]
 		switch strings.ToUpper(arg) {
 		case "WITHCOORD":
-			withCoord = true
+			opts.withCoord = true
 		case "WITHDIST":
-			withDist = true
+			opts.withDist = true
 		case "ASC":
-			direction = asc
+			opts.direction = asc
 		case "DESC":
-			direction = desc
+			opts.direction = desc
 		case "COUNT":
 			if len(args) == 0 {
 				setDirty(c)
@@ -443,15 +451,15 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 				return
 			}
 			args = args[1:]
-			count = n
+			opts.count = n
 		case "STORE":
 			if len(args) == 0 {
 				setDirty(c)
 				c.WriteError("ERR syntax error")
 				return
 			}
-			withStore = true
-			storeKey = args[0]
+			opts.withStore = true
+			opts.storeKey = args[0]
 			args = args[1:]
 		case "STOREDIST":
 			if len(args) == 0 {
@@ -459,8 +467,8 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 				c.WriteError("ERR syntax error")
 				return
 			}
-			withStoredist = true
-			storedistKey = args[0]
+			opts.withStoredist = true
+			opts.storedistKey = args[0]
 			args = args[1:]
 		default:
 			setDirty(c)
@@ -469,44 +477,44 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 		}
 	}
 
-	if strings.ToUpper(cmd) == "GEORADIUSBYMEMBER_RO" && (withStore || withStoredist) {
+	if strings.ToUpper(cmd) == "GEORADIUSBYMEMBER_RO" && (opts.withStore || opts.withStoredist) {
 		setDirty(c)
 		c.WriteError("ERR syntax error")
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		if (withStore || withStoredist) && (withDist || withCoord) {
+		if (opts.withStore || opts.withStoredist) && (opts.withDist || opts.withCoord) {
 			c.WriteError("ERR STORE option in GEORADIUS is not compatible with WITHDIST, WITHHASH and WITHCOORDS options")
 			return
 		}
 
 		db := m.db(ctx.selectedDB)
-		if !db.exists(key) {
+		if !db.exists(opts.key) {
 			c.WriteNull()
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(opts.key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
 		// get position of member
-		if !db.ssetExists(key, member) {
+		if !db.ssetExists(opts.key, opts.member) {
 			c.WriteError("ERR could not decode requested zset member")
 			return
 		}
-		score := db.ssetScore(key, member)
+		score := db.ssetScore(opts.key, opts.member)
 		longitude, latitude := fromGeohash(uint64(score))
 
-		members := db.ssetElements(key)
-		matches := withinRadius(members, longitude, latitude, radius*toMeter)
+		members := db.ssetElements(opts.key)
+		matches := withinRadius(members, longitude, latitude, opts.radius*opts.toMeter)
 
 		// deal with ASC/DESC
-		if direction != unsorted {
+		if opts.direction != unsorted {
 			sort.Slice(matches, func(i, j int) bool {
-				if direction == desc {
+				if opts.direction == desc {
 					return matches[i].Distance > matches[j].Distance
 				}
 				return matches[i].Distance < matches[j].Distance
@@ -514,25 +522,25 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 		}
 
 		// deal with COUNT
-		if count > 0 && len(matches) > count {
-			matches = matches[:count]
+		if opts.count > 0 && len(matches) > opts.count {
+			matches = matches[:opts.count]
 		}
 
 		// deal with "STORE x"
-		if withStore {
-			db.del(storeKey, true)
+		if opts.withStore {
+			db.del(opts.storeKey, true)
 			for _, member := range matches {
-				db.ssetAdd(storeKey, member.Score, member.Name)
+				db.ssetAdd(opts.storeKey, member.Score, member.Name)
 			}
 			c.WriteInt(len(matches))
 			return
 		}
 
 		// deal with "STOREDIST x"
-		if withStoredist {
-			db.del(storedistKey, true)
+		if opts.withStoredist {
+			db.del(opts.storedistKey, true)
 			for _, member := range matches {
-				db.ssetAdd(storedistKey, member.Distance/toMeter, member.Name)
+				db.ssetAdd(opts.storedistKey, member.Distance/opts.toMeter, member.Name)
 			}
 			c.WriteInt(len(matches))
 			return
@@ -540,24 +548,24 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 
 		c.WriteLen(len(matches))
 		for _, member := range matches {
-			if !withDist && !withCoord {
+			if !opts.withDist && !opts.withCoord {
 				c.WriteBulk(member.Name)
 				continue
 			}
 
 			len := 1
-			if withDist {
+			if opts.withDist {
 				len++
 			}
-			if withCoord {
+			if opts.withCoord {
 				len++
 			}
 			c.WriteLen(len)
 			c.WriteBulk(member.Name)
-			if withDist {
-				c.WriteBulk(fmt.Sprintf("%.4f", member.Distance/toMeter))
+			if opts.withDist {
+				c.WriteBulk(fmt.Sprintf("%.4f", member.Distance/opts.toMeter))
 			}
-			if withCoord {
+			if opts.withCoord {
 				c.WriteLen(2)
 				c.WriteBulk(fmt.Sprintf("%f", member.Longitude))
 				c.WriteBulk(fmt.Sprintf("%f", member.Latitude))

@@ -74,12 +74,14 @@ var (
 		regexp.MustCompile(`(?i)^sts\.googleapis\.com$`),
 		regexp.MustCompile(`(?i)^sts\.[^\.\s\/\\]+\.googleapis\.com$`),
 		regexp.MustCompile(`(?i)^[^\.\s\/\\]+-sts\.googleapis\.com$`),
+		regexp.MustCompile(`(?i)^sts-[^\.\s\/\\]+\.p\.googleapis\.com$`),
 	}
 	validImpersonateURLPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`^[^\.\s\/\\]+\.iamcredentials\.googleapis\.com$`),
 		regexp.MustCompile(`^iamcredentials\.googleapis\.com$`),
 		regexp.MustCompile(`^iamcredentials\.[^\.\s\/\\]+\.googleapis\.com$`),
 		regexp.MustCompile(`^[^\.\s\/\\]+-iamcredentials\.googleapis\.com$`),
+		regexp.MustCompile(`^iamcredentials-[^\.\s\/\\]+\.p\.googleapis\.com$`),
 	}
 	validWorkforceAudiencePattern *regexp.Regexp = regexp.MustCompile(`//iam\.googleapis\.com/locations/[^/]+/workforcePools/`)
 )
@@ -209,6 +211,10 @@ func (c *Config) parse(ctx context.Context) (baseCredentialSource, error) {
 			}
 			if c.CredentialSource.IMDSv2SessionTokenURL != "" {
 				awsCredSource.IMDSv2SessionTokenURL = c.CredentialSource.IMDSv2SessionTokenURL
+			}
+
+			if err := awsCredSource.validateMetadataServers(); err != nil {
+				return nil, err
 			}
 
 			return awsCredSource, nil

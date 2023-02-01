@@ -1,28 +1,25 @@
 ---
 title: Install the Single Binary Helm Chart
-menuTitle: Install Single Binary Loki
+menuTitle: Install single binary Loki
 description: Install Loki in single binary mode.
 aliases:
-  - /docs/writers-toolkit/latest/templates/task-template
+  - /docs/installation/helm/monolithic
 weight: 100
-keywords:
-  - keyword
-  - key
-  - word
+keywords: []
 ---
 
-# Install the single binary Helm Chart
+# Install the Single Binary Helm Chart
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 
-If the filesyste is set to `filesystem`, this chart configures Loki to run the `all` target in a [monolothic](../../fundamentals/architecture/deployment-modes/#monolithic-mode), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
+If the storage type is set to `filesystem`, this chart configures Loki to run the `all` target in a [monolithic mode]({{<relref "../../../fundamentals/architecture/deployment-modes#monolithic-mode">}}), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
 
 It is not possible to install the single binary with a different storage type.
 
-**Before you begin:**
+**Before you begin: Software Requirements**
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster.
+- A running Kubernetes cluster
 
 **To deploy Loki in monolithic mode:**
 

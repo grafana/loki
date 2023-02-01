@@ -46,6 +46,7 @@ featureGates:
   lokiStackWebhook: true
   alertingRuleWebhook: true
   recordingRuleWebhook: true
+  rulerConfigWebhook: true
   #
   # OpenShift feature gates
   #
@@ -54,3 +55,4 @@ featureGates:
     gatewayRoute: true
     ruleExtendedValidation: true
     clusterTLSPolicy: true
+    clusterProxy: true
