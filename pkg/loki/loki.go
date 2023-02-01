@@ -138,7 +138,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
 		"The default will be flipped to false in the next Loki release.")
 
-	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report not-ready status via /ready endpoint.")
+	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
