@@ -205,7 +205,7 @@ local tenant = 'loki';
                       + k.core.v1.secret.metadata.withNamespace('loki'),
     grafana+: grafana.withEnterpriseLicenseText(importstr '../../secrets/grafana.jwt')
               + grafana.addPlugin(
-                'https://dl.grafana.com/gel/releases/grafana-enterprise-logs-app-v2.6.0.zip;grafana-enterprise-logs-app'
+                'https://storage.googleapis.com/grafana-enterprise-logs/dev/grafana-enterprise-logs-app-9515528.zip'
               ) + {
       grafana_deployment+:
         k.apps.v1.deployment.spec.template.spec.withInitContainersMixin([
