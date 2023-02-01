@@ -2302,6 +2302,37 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	require.EqualError(t, err, expectEvalSampleErr.Error())
 }
 
+func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	now := time.Now()
+	queueTime := 2 * time.Nanosecond
+	logqlVector := `vector(5)`
+	q := eng.Query(LiteralParams{
+		qs:        logqlVector,
+		start:     now,
+		end:       now,
+		step:      0,
+		interval:  time.Second * 30,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+
+	require.NoError(t, err)
+
+	qry, ok := q.(*query)
+	require.Equal(t, ok, true)
+	vectorExpr := syntax.NewVectorExpr("5")
+
+	data, err := qry.evalSample(ctx, vectorExpr)
+	require.NoError(t, err)
+	result, ok := data.(promql.Vector)
+	require.Equal(t, ok, true)
+	require.Equal(t, result[0].V, float64(5))
+	require.Equal(t, result[0].T, now.UnixNano()/int64(time.Millisecond))
+}
+
 type errorIteratorQuerier struct {
 	samples []iter.SampleIterator
 	entries []iter.EntryIterator
