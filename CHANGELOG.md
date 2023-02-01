@@ -8,8 +8,6 @@
 
 ##### Fixes
 
-* [8120](https://github.com/grafana/loki/pull/8232) **TaehyunHwang** Fix version info issue that shows wrong version.
-
 ##### Changes
 
 #### Promtail
@@ -30,6 +28,18 @@
 
 ### Dependencies
 
+## 2.7.3 (2023-02-01)
+
+#### Loki
+
+##### Fixes
+
+* [8340](https://github.com/grafana/loki/pull/8340) **MasslessParticle** Fix bug in compactor that caused panics when `startTime` and `endTime` of a delete request are equal.
+
+#### Build
+
+* [8120](https://github.com/grafana/loki/pull/8232) **TaehyunHwang** Fix build issue that caused `--version` to show wrong version for Loki and Promtail binaries.
+
 ## 2.7.2 (2023-01-25)
 
 #### Loki
@@ -39,12 +49,6 @@
 * [7926](https://github.com/grafana/loki/pull/7926) **MichelHollands**: Fix bug in validation of `pattern` and `regexp` parsers where missing or empty parameters caused panics.
 * [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: Fix bugs in processing delete requests with line filters.
 * [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix bug in multi-tenant querying.
-
-### Notes
-
-This release was created from a branch starting at commit `706c22e9e40b0156031f214b63dc6ed4e210abc1` but it may also contain backported changes from main.
-
-Check the history of the branch `release-2.7.x`.
 
 ### Dependencies
 
