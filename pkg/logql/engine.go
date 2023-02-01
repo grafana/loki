@@ -431,7 +431,7 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 
 	if GetRangeType(q.params) == InstantType {
 		return promql.Vector{promql.Sample{
-			Point:  promql.Point{T: s.T, V: value},
+			Point:  promql.Point{T: q.params.Start().UnixNano() / int64(time.Millisecond), V: value},
 			Metric: labels.Labels{},
 		}}, nil
 	}

@@ -643,7 +643,10 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			time.Unix(60, 0), logproto.FORWARD, 100,
 			nil,
 			nil,
-			promql.Scalar{T: 60 * 1000, V: 2},
+			promql.Vector{promql.Sample{
+				Point:  promql.Point{T: 60 * 1000, V: 2},
+				Metric: labels.Labels{},
+			}},
 		},
 		{
 			// single comparison
