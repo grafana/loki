@@ -135,13 +135,13 @@ func TestEventLogMessageConfig_validate(t *testing.T) {
 			map[string]interface{}{
 				"source": "The Message!",
 			},
-			fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, "The Message!"),
+			fmt.Errorf(ErrInvalidLabelName, "The Message!"),
 		},
 		"empty source": {
 			map[string]interface{}{
 				"source": "",
 			},
-			fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, ""),
+			fmt.Errorf(ErrInvalidLabelName, ""),
 		},
 	}
 	for tName, tt := range tests {

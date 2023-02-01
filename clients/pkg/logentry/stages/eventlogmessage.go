@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	defaultSource                      = "message"
-	ErrEmptyEvtLogMsgStageConfig       = "empty event log message stage configuration"
-	ErrInvalidEvtLogMsgSourceLabelName = "invalid label name: %s"
+	defaultSource                = "message"
+	ErrEmptyEvtLogMsgStageConfig = "empty event log message stage configuration"
 )
 
 type EventLogMessageConfig struct {
@@ -63,7 +62,7 @@ func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
 		return errors.New(ErrEmptyEvtLogMsgStageConfig)
 	}
 	if c.Source != nil && !model.LabelName(*c.Source).IsValid() {
-		return fmt.Errorf(ErrInvalidEvtLogMsgSourceLabelName, *c.Source)
+		return fmt.Errorf(ErrInvalidLabelName, *c.Source)
 	}
 	return nil
 }
@@ -124,9 +123,8 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			mkey = SanitizeLabelName(mkey)
 		}
 		if _, ok := extracted[mkey]; ok && !m.cfg.OverwriteExisting {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "extracted label that already existed, ignoring", "key", mkey)
-			}
+			level.Info(m.logger).Log("msg", "extracted label that already existed, ignoring value from source",
+				"key", mkey, "oldval", extracted[mkey], "newval", parts[1])
 			continue
 		}
 		mval := parts[1]
@@ -137,6 +135,10 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			continue
 		}
 		extracted[mkey] = mval
+	}
+	if Debug {
+		level.Debug(m.logger).Log("msg", "extracted data debug in event_log_message stage",
+			"extracted data", fmt.Sprintf("%v", extracted))
 	}
 	return nil
 }
