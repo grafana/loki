@@ -201,7 +201,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [common: <common>]
 
 # How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki
-# will report not-ready status via /ready endpoint.
+# will report 503 Service Unavailable status via /ready endpoint.
 # CLI flag: -shutdown-delay
 [shutdown_delay: <duration> | default = 0s]
 ```
