@@ -5,6 +5,7 @@ package multierror
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 )
 
@@ -59,4 +60,16 @@ func (es nonNilMultiError) Error() string {
 	}
 
 	return buf.String()
+}
+
+// Is attempts to match the provided error against errors in the error list.
+//
+// This function allows errors.Is to traverse the values stored in the MultiError.
+func (es nonNilMultiError) Is(target error) bool {
+	for _, err := range es {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
 }

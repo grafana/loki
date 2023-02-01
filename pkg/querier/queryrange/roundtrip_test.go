@@ -437,6 +437,7 @@ func TestPostQueries(t *testing.T) {
 	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 	require.NoError(t, err)
 	_, err = newRoundTripper(
+		util_log.Logger,
 		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected default roundtripper called")
 			return nil, nil
