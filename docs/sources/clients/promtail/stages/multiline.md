@@ -1,8 +1,9 @@
 ---
-title: multiline 
+title: multiline
+description: multiline stage
 ---
 
-# `multiline` stage
+# multiline
 
 The `multiline` stage merges multiple lines into a multiline block before passing it on to the next stage in the pipeline.
 

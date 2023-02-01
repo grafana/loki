@@ -26,7 +26,7 @@ var StandardWrite = NodePod{
 
 var StandardRead = NodePod{
 	cpuRequest:      3,
-	cpuLimit:        0, // Undefined
+	cpuLimit:        3, // Undefined TODO: Is this a bug
 	memoryRequest:   6,
 	memoryLimit:     8,
 	rateBytesSecond: 768 * 1024 * 1024,

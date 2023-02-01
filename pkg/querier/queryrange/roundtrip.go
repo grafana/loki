@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,11 +17,13 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -100,19 +103,22 @@ func NewTripperware(
 		seriesRT := seriesTripperware(next)
 		labelsRT := labelsTripperware(next)
 		instantRT := instantMetricTripperware(next)
-		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, limits)
+		return newRoundTripper(log, next, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, limits)
 	}, c, nil
 }
 
 type roundTripper struct {
+	logger log.Logger
+
 	next, log, metric, series, labels, instantMetric http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric, series, labels, instantMetric http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, log, metric, series, labels, instantMetric http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
+		logger:        logger,
 		log:           log,
 		limits:        limits,
 		metric:        metric,
@@ -139,6 +145,10 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		queryHash := logql.HashedQuery(rangeQuery.Query)
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
+
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
 			return r.metric.RoundTrip(req)
@@ -157,16 +167,22 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return r.next.RoundTrip(req)
 		}
 	case SeriesOp:
-		_, err := loghttp.ParseAndValidateSeriesQuery(req)
+		sr, err := loghttp.ParseAndValidateSeriesQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
+
 		return r.series.RoundTrip(req)
 	case LabelNamesOp:
-		_, err := loghttp.ParseLabelQuery(req)
+		lr, err := loghttp.ParseLabelQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start))
+
 		return r.labels.RoundTrip(req)
 	case InstantQueryOp:
 		instantQuery, err := loghttp.ParseInstantQuery(req)
@@ -177,6 +193,10 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		queryHash := logql.HashedQuery(instantQuery.Query)
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
+
 		switch expr.(type) {
 		case syntax.SampleExpr:
 			return r.instantMetric.RoundTrip(req)

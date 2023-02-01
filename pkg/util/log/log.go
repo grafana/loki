@@ -169,8 +169,9 @@ func CheckFatal(location string, err error, logger log.Logger) {
 	fmt.Fprintln(os.Stderr, errStr)
 
 	logger.Log("err", errStr)
-	err = Flush()
-	fmt.Fprintln(os.Stderr, "Could not flush logger", err)
+	if err = Flush(); err != nil {
+		fmt.Fprintln(os.Stderr, "Could not flush logger", err)
+	}
 	os.Exit(1)
 }
 

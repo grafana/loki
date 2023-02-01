@@ -1,5 +1,12 @@
 # Changes
 
+## [0.8.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.7.0...iam/v0.8.0) (2022-12-05)
+
+
+### Features
+
+* **iam:** Start generating and refresh some libraries ([#7089](https://github.com/googleapis/google-cloud-go/issues/7089)) ([a9045ff](https://github.com/googleapis/google-cloud-go/commit/a9045ff191a711089c37f1d94a63522d9939ce38))
+
 ## [0.7.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.6.0...iam/v0.7.0) (2022-11-03)
 
 

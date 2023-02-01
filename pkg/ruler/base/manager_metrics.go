@@ -9,8 +9,9 @@ import (
 // ManagerMetrics aggregates metrics exported by the Prometheus
 // rules package and returns them as Cortex metrics
 type ManagerMetrics struct {
-	regs                  *util.UserRegistries
-	disableRuleGroupLabel bool
+	regs                   *util.UserRegistries
+	disableRuleGroupLabel  bool
+	metricLabelTransformer util.MetricLabelTransformFunc
 
 	EvalDuration         *prometheus.Desc
 	IterationDuration    *prometheus.Desc
@@ -25,15 +26,19 @@ type ManagerMetrics struct {
 	GroupLastEvalSamples *prometheus.Desc
 }
 
+// RuleGroupLabel is the label added by Prometheus, the value of which comes from the GroupKey function
+const RuleGroupLabel = "rule_group"
+
 // NewManagerMetrics returns a ManagerMetrics struct
-func NewManagerMetrics(disableRuleGroupLabel bool) *ManagerMetrics {
+func NewManagerMetrics(disableRuleGroupLabel bool, tf util.MetricLabelTransformFunc) *ManagerMetrics {
 	commonLabels := []string{"user"}
 	if !disableRuleGroupLabel {
-		commonLabels = append(commonLabels, "rule_group")
+		commonLabels = append(commonLabels, RuleGroupLabel)
 	}
 	return &ManagerMetrics{
-		regs:                  util.NewUserRegistries(),
-		disableRuleGroupLabel: disableRuleGroupLabel,
+		regs:                   util.NewUserRegistries(),
+		disableRuleGroupLabel:  disableRuleGroupLabel,
+		metricLabelTransformer: tf,
 
 		EvalDuration: prometheus.NewDesc(
 			"cortex_prometheus_rule_evaluation_duration_seconds",
@@ -131,10 +136,10 @@ func (m *ManagerMetrics) Describe(out chan<- *prometheus.Desc) {
 
 // Collect implements the Collector interface
 func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
-	data := m.regs.BuildMetricFamiliesPerUser()
+	data := m.regs.BuildMetricFamiliesPerUser(m.metricLabelTransformer)
 	labels := []string{}
 	if !m.disableRuleGroupLabel {
-		labels = append(labels, "rule_group")
+		labels = append(labels, RuleGroupLabel)
 	}
 	// WARNING: It is important that all metrics generated in this method are "Per User".
 	// Thanks to that we can actually *remove* metrics for given user (see RemoveUserRegistry).

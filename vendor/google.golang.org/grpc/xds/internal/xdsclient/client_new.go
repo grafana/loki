@@ -20,6 +20,7 @@ package xdsclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -55,10 +56,14 @@ func NewWithConfig(config *bootstrap.Config) (XDSClient, error) {
 
 // newWithConfig returns a new xdsClient with the given config.
 func newWithConfig(config *bootstrap.Config, watchExpiryTimeout time.Duration, idleAuthorityDeleteTimeout time.Duration) (*clientImpl, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &clientImpl{
 		done:               grpcsync.NewEvent(),
 		config:             config,
 		watchExpiryTimeout: watchExpiryTimeout,
+		serializer:         newCallbackSerializer(ctx),
+		serializerClose:    cancel,
+		resourceTypes:      newResourceTypeRegistry(),
 		authorities:        make(map[string]*authority),
 		idleAuthorities:    cache.NewTimeoutCache(idleAuthorityDeleteTimeout),
 	}
@@ -72,11 +77,11 @@ func newWithConfig(config *bootstrap.Config, watchExpiryTimeout time.Duration, i
 // NewWithConfigForTesting returns an xDS client for the specified bootstrap
 // config, separate from the global singleton.
 //
-// Testing Only
+// # Testing Only
 //
 // This function should ONLY be used for testing purposes.
-func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout time.Duration) (XDSClient, error) {
-	cl, err := newWithConfig(config, watchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
+func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout, authorityIdleTimeout time.Duration) (XDSClient, error) {
+	cl, err := newWithConfig(config, watchExpiryTimeout, authorityIdleTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +91,7 @@ func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout time.D
 // NewWithBootstrapContentsForTesting returns an xDS client for this config,
 // separate from the global singleton.
 //
-//
-// Testing Only
+// # Testing Only
 //
 // This function should ONLY be used for testing purposes.
 func NewWithBootstrapContentsForTesting(contents []byte) (XDSClient, error) {

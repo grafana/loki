@@ -1,12 +1,13 @@
 ---
 title: Fluentd
+description: Fluentd Loki Output Plugin 
 weight: 60
 ---
-# Fluentd Loki Output Plugin
+# Fluentd
 
 Grafana Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
-instance or [Grafana Cloud](https://grafana.com/products/cloud/).
+instance or [Grafana Cloud](/products/cloud/).
 
 The plugin source code is in the [fluentd directory of the repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
@@ -26,7 +27,7 @@ The Docker image `grafana/fluent-plugin-loki:master` contains [default configura
 
 This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
-This image will start an instance of Fluentd to forward incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin](../docker-driver/) to ship logs without needing Fluentd.
+This image will start an instance of Fluentd to forward incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin]({{<relref "../docker-driver/">}}) to ship logs without needing Fluentd.
 
 ### Example
 
@@ -146,7 +147,7 @@ Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
 
 ### Multi-worker usage
 
-Out-of-order inserts are enabled by default in Loki; refer to [accept out-of-order writes](../../configuration/#accept-out-of-order-writes).
+Out-of-order inserts are enabled by default in Loki; refer to [accept out-of-order writes]({{<relref "../../configuration/#accept-out-of-order-writes">}}).
 If out-of-order inserts are _disabled_, attempting to insert a log entry with an earlier timestamp after a log entry with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels or otherwise [ensure log streams are always sent to the same worker](https://docs.fluentd.org/deployment/multi-process-workers#less-than-worker-n-greater-than-directive).
 
 For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly/fluent-plugin-record-modifier):
@@ -182,7 +183,7 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 ### `url`
 
 The URL of the Loki server to send logs to.  When sending data, the publish path (`../api/loki/v1/push`) will automatically be appended.
-By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](https://grafana.com/products/cloud/) service.
+By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](/products/cloud/) service.
 
 #### Proxy Support
 

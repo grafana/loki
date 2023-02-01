@@ -1,20 +1,27 @@
 package sarama
 
-import "runtime/debug"
+import (
+	"runtime/debug"
+	"sync"
+)
 
-var v string
+var (
+	v     string
+	vOnce sync.Once
+)
 
 func version() string {
-	if v == "" {
+	vOnce.Do(func() {
 		bi, ok := debug.ReadBuildInfo()
 		if ok {
 			v = bi.Main.Version
-		} else {
+		}
+		if v == "" || v == "(devel)" {
 			// if we can't read a go module version then they're using a git
 			// clone or vendored module so all we can do is report "dev" for
-			// the version
+			// the version to make a valid ApiVersions request
 			v = "dev"
 		}
-	}
+	})
 	return v
 }

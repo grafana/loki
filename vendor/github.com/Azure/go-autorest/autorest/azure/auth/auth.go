@@ -250,6 +250,17 @@ func NewAuthorizerFromFile(resourceBaseURI string) (autorest.Authorizer, error) 
 	if err != nil {
 		return nil, err
 	}
+	return settings.GetAuthorizer(resourceBaseURI)
+}
+
+// GetAuthorizer create an Authorizer in the following order.
+// 1. Client credentials
+// 2. Client certificate
+// resourceBaseURI - used to determine the resource type
+func (settings FileSettings) GetAuthorizer(resourceBaseURI string) (autorest.Authorizer, error) {
+	if resourceBaseURI == "" {
+		resourceBaseURI = azure.PublicCloud.ServiceManagementEndpoint
+	}
 	if a, err := settings.ClientCredentialsAuthorizer(resourceBaseURI); err == nil {
 		return a, err
 	}
@@ -559,7 +570,7 @@ func NewDeviceFlowConfig(clientID string, tenantID string) DeviceFlowConfig {
 	}
 }
 
-//AuthorizerConfig provides an authorizer from the configuration provided.
+// AuthorizerConfig provides an authorizer from the configuration provided.
 type AuthorizerConfig interface {
 	Authorizer() (autorest.Authorizer, error)
 }

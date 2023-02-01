@@ -45,7 +45,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
 
 func TestPromtail(t *testing.T) {
 	// Setup.

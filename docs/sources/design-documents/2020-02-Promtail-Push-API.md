@@ -1,5 +1,6 @@
 ---
 title: Promtail Push API
+description: Promtail Push API
 weight: 20
 ---
 # Promtail Push API
@@ -63,7 +64,7 @@ rejected pushes. Users are recommended to do one of the following:
 ## Implementation
 
 As discussed in this document, this feature will be implemented by copying the
-existing [Loki Push API](https://grafana.com/docs/loki/latest/api/#post-lokiapiv1push)
+existing [Loki Push API](/docs/loki/latest/api/#post-lokiapiv1push)
 and exposing it via Promtail.
 
 ## Considered Alternatives

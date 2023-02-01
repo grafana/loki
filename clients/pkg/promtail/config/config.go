@@ -24,7 +24,7 @@ import (
 
 // Options contains cross-cutting promtail configurations
 type Options struct {
-	StreamLagLabels dskit_flagext.StringSliceCSV `mapstructure:"stream_lag_labels,omitempty" yaml:"stream_lag_labels,omitempty"`
+	StreamLagLabels dskit_flagext.StringSliceCSV `mapstructure:"stream_lag_labels,omitempty" yaml:"stream_lag_labels,omitempty" doc:"deprecated"`
 }
 
 // Config for promtail, describing what files to watch.

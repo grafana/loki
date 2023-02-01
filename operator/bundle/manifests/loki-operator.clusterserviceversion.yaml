@@ -1458,7 +1458,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.7.1
+                  value: quay.io/openshift-logging/loki:v2.7.2
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1491,9 +1491,6 @@ spec:
                     drop:
                     - ALL
                 volumeMounts:
-                - mountPath: /tmp/k8s-webhook-server/serving-certs
-                  name: webhook-cert
-                  readOnly: true
                 - mountPath: /controller_manager_config.yaml
                   name: manager-config
                   subPath: controller_manager_config.yaml
@@ -1526,10 +1523,6 @@ spec:
                 runAsNonRoot: true
               terminationGracePeriodSeconds: 10
               volumes:
-              - name: webhook-cert
-                secret:
-                  defaultMode: 420
-                  secretName: loki-operator-webhook-service
               - configMap:
                   name: loki-operator-manager-config
                 name: manager-config
@@ -1586,7 +1579,7 @@ spec:
   provider:
     name: Grafana.com
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.7.1
+  - image: quay.io/openshift-logging/loki:v2.7.2
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

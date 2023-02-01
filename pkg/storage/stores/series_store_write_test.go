@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/require"
 )
 
 type mockCache struct {
@@ -45,7 +46,7 @@ type mockIndexWriter struct {
 	called int
 }
 
-func (m *mockIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	m.called++
 	return nil
 }

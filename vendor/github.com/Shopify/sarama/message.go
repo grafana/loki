@@ -42,6 +42,28 @@ func (cc CompressionCodec) String() string {
 	}[int(cc)]
 }
 
+// UnmarshalText returns a CompressionCodec from its string representation.
+func (cc *CompressionCodec) UnmarshalText(text []byte) error {
+	codecs := map[string]CompressionCodec{
+		"none":   CompressionNone,
+		"gzip":   CompressionGZIP,
+		"snappy": CompressionSnappy,
+		"lz4":    CompressionLZ4,
+		"zstd":   CompressionZSTD,
+	}
+	codec, ok := codecs[string(text)]
+	if !ok {
+		return fmt.Errorf("cannot parse %q as a compression codec", string(text))
+	}
+	*cc = codec
+	return nil
+}
+
+// MarshalText transforms a CompressionCodec into its string representation.
+func (cc CompressionCodec) MarshalText() ([]byte, error) {
+	return []byte(cc.String()), nil
+}
+
 // Message is a kafka message type
 type Message struct {
 	Codec            CompressionCodec // codec used to compress the message contents
