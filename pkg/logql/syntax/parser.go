@@ -65,7 +65,7 @@ func (p *parser) Parse() (Expr, error) {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
@@ -169,14 +169,30 @@ func validateSampleExpr(expr SampleExpr) error {
 		return validateSampleExpr(e.RHS)
 	case *LiteralExpr, *VectorExpr:
 		return nil
+	case *VectorAggregationExpr:
+		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
+			if err := validateSortGrouping(e.Grouping); err != nil {
+				return err
+			}
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		return validateMatchers(expr.Selector().Matchers())
 	}
 }
 
+// validateSortGrouping prevent by|without groupings on sort operations.
+// This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
+func validateSortGrouping(grouping *Grouping) error {
+	if grouping != nil && len(grouping.Groups) > 0 {
+		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+	}
+	return nil
+}
+
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}

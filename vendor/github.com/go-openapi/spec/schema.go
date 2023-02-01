@@ -17,7 +17,6 @@ package spec
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/go-openapi/jsonpointer"
@@ -145,7 +144,7 @@ func (r *SchemaURL) fromMap(v map[string]interface{}) error {
 	}
 	if vv, ok := v["$schema"]; ok {
 		if str, ok := vv.(string); ok {
-			u, err := url.Parse(str)
+			u, err := parseURL(str)
 			if err != nil {
 				return err
 			}

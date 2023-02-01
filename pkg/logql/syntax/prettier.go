@@ -110,6 +110,10 @@ func (e *LabelParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
+func (e *DropLabelsExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g: | level!="error"
 func (e *LabelFilterExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
@@ -327,7 +331,7 @@ func (e *VectorExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
-// Grouping is techincally not expression type. But used in both range and vector aggregations (`by` and `without` clause)
+// Grouping is technically not expression type. But used in both range and vector aggregations (`by` and `without` clause)
 // So by implenting `Pretty` for Grouping, we can re use it for both.
 // NOTE: indent is ignored for `Grouping`, because grouping always stays in the same line of it's parent expression.
 

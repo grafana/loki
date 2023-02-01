@@ -1,8 +1,9 @@
 ---
 title: Labels
+description: Labels from Logs
 weight: 10
 ---
-# Labels from Logs
+# Labels
 Author: Ed Welch
 Date: February 2019
 

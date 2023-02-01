@@ -77,7 +77,7 @@ func newASTMapperware(
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:  limits,
 		next:    next,
-		ng:      logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		ng:      logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics: metrics,
 	}
 }

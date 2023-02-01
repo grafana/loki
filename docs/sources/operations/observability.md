@@ -1,8 +1,9 @@
 ---
 title: Observability
+description: Observing Grafana Loki
 weight: 20
 ---
-# Observing Grafana Loki
+# Observability
 
 Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
 metrics (the default port is 3100 for Loki and 80 for Promtail). You will need
@@ -90,10 +91,10 @@ Most of these metrics are counters and should continuously increase during norma
 
 If Promtail uses any pipelines with metrics stages, those metrics will also be
 exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
-[Pipelines](../../clients/promtail/pipelines/) for more information.
+[Pipelines]({{<relref "../clients/promtail/pipelines">}}) for more information.
 
 An example Grafana dashboard was built by the community and is available as
-dashboard [10004](https://grafana.com/dashboards/10004).
+dashboard [10004](/dashboards/10004).
 
 ## Metrics cardinality
 

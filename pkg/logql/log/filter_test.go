@@ -57,6 +57,10 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"(?i)界", true, newContainsFilter([]byte("界"), true), true},
 		{"(?i)ïB", true, newContainsFilter([]byte("ïB"), true), true},
 		{"(?:)foo|fatal|exception", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("fatal"), false)), newContainsFilter([]byte("exception"), false)), true},
+		{"(?i)foo|fatal|exception", true, newOrFilter(newOrFilter(newContainsFilter([]byte("FOO"), true), newContainsFilter([]byte("FATAL"), true)), newContainsFilter([]byte("exception"), true)), true},
+		{"(?i)f|foo|foobar", true, newOrFilter(newContainsFilter([]byte("F"), true), newOrFilter(newContainsFilter([]byte("FOO"), true), newContainsFilter([]byte("FOOBAR"), true))), true},
+		{"(?i)f|fatal|e.*", true, newOrFilter(newOrFilter(newContainsFilter([]byte("F"), true), newContainsFilter([]byte("FATAL"), true)), newContainsFilter([]byte("E"), true)), true},
+		{"(?i).*foo.*", true, newContainsFilter([]byte("FOO"), true), true},
 
 		// regex we are not supporting.
 		{"[a-z]+foo", true, nil, false},
@@ -72,6 +76,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{`foo|fo\d+`, true, nil, false},
 		{`(\w\d+)`, true, nil, false},
 		{`.*f.*oo|fo{1,2}`, true, nil, false},
+		{"f|f(?i)oo", true, nil, false},
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			d, err := newRegexpFilter(test.re, test.match)

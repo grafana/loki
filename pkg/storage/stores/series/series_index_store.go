@@ -82,8 +82,8 @@ func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.Ser
 	}
 }
 
-func (c *indexReaderWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
-	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, chk.From, chk.Through, chk)
+func (c *indexReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
+	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chk)
 	if err != nil {
 		return err
 	}
@@ -316,15 +316,15 @@ func (c *indexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID
 		return nil, err
 	}
 
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries := entriesPool.Get().(*[]series_index.Entry)
+	defer entriesPool.Put(entries)
+	err = c.lookupEntriesByQueries(ctx, queries, entries)
 	if err != nil {
 		return nil, err
 	}
-	// nolint:staticcheck
-	defer entriesPool.Put(entries)
 
 	var result util.UniqueStrings
-	for _, entry := range entries {
+	for _, entry := range *entries {
 		_, labelValue, err := series_index.ParseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
@@ -356,15 +356,15 @@ func (c *indexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries := entriesPool.Get().(*[]series_index.Entry)
+	defer entriesPool.Put(entries)
+	err = c.lookupEntriesByQueries(ctx, queries, entries)
 	if err != nil {
 		return nil, err
 	}
-	// nolint:staticcheck
-	defer entriesPool.Put(entries)
 
-	result := util.NewUniqueStrings(len(entries))
-	for _, entry := range entries {
+	result := util.NewUniqueStrings(len(*entries))
+	for _, entry := range *entries {
 		seriesID, labelValue, err := series_index.ParseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
@@ -487,7 +487,9 @@ func (c *indexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, fr
 		queries = filter(queries)
 	}
 
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries := entriesPool.Get().(*[]series_index.Entry)
+	defer entriesPool.Put(entries)
+	err = c.lookupEntriesByQueries(ctx, queries, entries)
 	if e, ok := err.(series_index.CardinalityExceededError); ok {
 		e.MetricName = metricName
 		e.LabelName = labelName
@@ -495,10 +497,8 @@ func (c *indexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, fr
 	} else if err != nil {
 		return nil, err
 	}
-	// nolint:staticcheck
-	defer entriesPool.Put(entries)
 
-	ids, err := parseIndexEntries(ctx, entries, matcher)
+	ids, err := parseIndexEntries(ctx, *entries, matcher)
 	if err != nil {
 		return nil, err
 	}
@@ -553,23 +553,24 @@ func parseIndexEntries(_ context.Context, entries []series_index.Entry, matcher 
 
 var entriesPool = sync.Pool{
 	New: func() interface{} {
-		return make([]series_index.Entry, 0, 1024)
+		s := make([]series_index.Entry, 0, 1024)
+		return &s
 	},
 }
 
-func (c *indexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries []series_index.Query) ([]series_index.Entry, error) {
+func (c *indexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries []series_index.Query, entries *[]series_index.Entry) error {
+	*entries = (*entries)[:0]
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	var lock sync.Mutex
-	entries := entriesPool.Get().([]series_index.Entry)[:0]
 	err := c.index.QueryPages(ctx, queries, func(query series_index.Query, resp series_index.ReadBatchResult) bool {
 		iter := resp.Iterator()
 		lock.Lock()
 		for iter.Next() {
-			entries = append(entries, series_index.Entry{
+			*entries = append(*entries, series_index.Entry{
 				TableName:  query.TableName,
 				HashValue:  query.HashValue,
 				RangeValue: iter.RangeValue(),
@@ -582,7 +583,7 @@ func (c *indexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries 
 	if err != nil {
 		level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "error querying storage", "err", err)
 	}
-	return entries, err
+	return err
 }
 
 func (c *indexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
@@ -599,17 +600,17 @@ func (c *indexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 		queries = append(queries, qs...)
 	}
 	level.Debug(log).Log("queries", len(queries))
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries := entriesPool.Get().(*[]series_index.Entry)
+	defer entriesPool.Put(entries)
+	err := c.lookupEntriesByQueries(ctx, queries, entries)
 	if err != nil {
 		return nil, err
 	}
-	// nolint:staticcheck
-	defer entriesPool.Put(entries)
 
-	level.Debug(log).Log("entries", len(entries))
+	level.Debug(log).Log("entries", len(*entries))
 
 	var result util.UniqueStrings
-	for _, entry := range entries {
+	for _, entry := range *entries {
 		lbs := []string{}
 		err := jsoniter.ConfigFastest.Unmarshal(entry.Value, &lbs)
 		if err != nil {
@@ -664,14 +665,14 @@ func (c *indexReaderWriter) lookupChunksBySeries(ctx context.Context, from, thro
 		queries = append(queries, qs...)
 	}
 
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	entries := entriesPool.Get().(*[]series_index.Entry)
+	defer entriesPool.Put(entries)
+	err := c.lookupEntriesByQueries(ctx, queries, entries)
 	if err != nil {
 		return nil, err
 	}
-	// nolint:staticcheck
-	defer entriesPool.Put(entries)
 
-	result, err := parseIndexEntries(ctx, entries, nil)
+	result, err := parseIndexEntries(ctx, *entries, nil)
 	return result, err
 }
 

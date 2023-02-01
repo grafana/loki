@@ -78,6 +78,14 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 			req.SetBody(body) // re-assign body
 		}
 
+		//set traffic-limit
+		if args.TrafficLimit > 0 {
+			if args.TrafficLimit > TRAFFIC_LIMIT_MAX || args.TrafficLimit < TRAFFIC_LIMIT_MIN {
+				return "", bce.NewBceClientError(fmt.Sprintf("TrafficLimit must between %d ~ %d, current value:%d", TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit))
+			}
+			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
+		}
+
 		// Reset the contentMD5 if set by user
 		if len(args.ContentMD5) != 0 {
 			req.SetHeader(http.CONTENT_MD5, args.ContentMD5)
@@ -99,6 +107,10 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 		if len(args.Process) != 0 {
 			req.SetHeader(http.BCE_PROCESS, args.Process)
 		}
+	}
+	// add content-type if not assigned by user
+	if req.Header(http.CONTENT_TYPE) == "" {
+		req.SetHeader(http.CONTENT_TYPE, getDefaultContentType(object))
 	}
 
 	resp := &bce.BceResponse{}
@@ -173,6 +185,15 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 					args.StorageClass)
 			}
 		}
+
+		//set traffic-limit
+		if args.TrafficLimit > 0 {
+			if args.TrafficLimit > TRAFFIC_LIMIT_MAX || args.TrafficLimit < TRAFFIC_LIMIT_MIN {
+				return nil, bce.NewBceClientError(fmt.Sprintf("TrafficLimit must between %d ~ %d, current value:%d", TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit))
+			}
+			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
+		}
+
 		if err := setUserMetadata(req, args.UserMeta); err != nil {
 			return nil, err
 		}
@@ -549,6 +570,13 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 		if err := setUserMetadata(req, args.UserMeta); err != nil {
 			return nil, err
 		}
+		//set traffic-limit
+		if args.TrafficLimit > 0 {
+			if args.TrafficLimit > TRAFFIC_LIMIT_MAX || args.TrafficLimit < TRAFFIC_LIMIT_MIN {
+				return nil, bce.NewBceClientError(fmt.Sprintf("TrafficLimit must between %d ~ %d, current value:%d", TRAFFIC_LIMIT_MIN, TRAFFIC_LIMIT_MAX, args.TrafficLimit))
+			}
+			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
+		}
 	}
 
 	// Send request and get the result
@@ -719,6 +747,11 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	if expire != 0 {
 		option.ExpireSeconds = expire
 	}
+
+	if conf.Credentials.SessionToken != "" {
+		req.SetParam(http.BCE_SECURITY_TOKEN, conf.Credentials.SessionToken)
+	}
+
 	// Generate the authorization string and return the signed url.
 	signer.Sign(&req.Request, conf.Credentials, &option)
 	req.SetParam("authorization", req.Header(http.AUTHORIZATION))

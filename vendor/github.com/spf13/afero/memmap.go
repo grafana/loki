@@ -142,6 +142,11 @@ func (m *MemMapFs) Mkdir(name string, perm os.FileMode) error {
 	}
 
 	m.mu.Lock()
+	// Dobule check that it doesn't exist.
+	if _, ok := m.getData()[name]; ok {
+		m.mu.Unlock()
+		return &os.PathError{Op: "mkdir", Path: name, Err: ErrFileExists}
+	}
 	item := mem.CreateDir(name)
 	mem.SetMode(item, os.ModeDir|perm)
 	m.getData()[name] = item

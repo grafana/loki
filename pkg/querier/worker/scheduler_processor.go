@@ -12,6 +12,7 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
@@ -178,6 +179,8 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		}
 	}
 
+	logger = log.With(logger, "frontend", frontendAddress)
+
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= sp.maxMessageSize {
 		level.Error(logger).Log("msg", "response larger than max message size", "size", len(response.Body), "maxMessageSize", sp.maxMessageSize)
@@ -189,17 +192,71 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		}
 	}
 
-	c, err := sp.frontendPool.GetClientFor(frontendAddress)
-	if err == nil {
-		// Response is empty and uninteresting.
-		_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-			QueryID:      queryID,
-			HttpResponse: response,
-			Stats:        stats,
-		})
-	}
-	if err != nil {
-		level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err, "frontend", frontendAddress)
+	runPoolWithBackoff(
+		ctx,
+		logger,
+		sp.frontendPool,
+		frontendAddress,
+		func(c client.PoolClient) error {
+			// Response is empty and uninteresting.
+			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
+				QueryID:      queryID,
+				HttpResponse: response,
+				Stats:        stats,
+			})
+			if err != nil {
+				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
+			}
+			return err
+		},
+	)
+}
+
+var defaultBackoff = backoff.Config{
+	MinBackoff: 100 * time.Millisecond,
+	MaxBackoff: 10 * time.Second,
+	MaxRetries: 5,
+}
+
+func runPoolWithBackoff(
+	ctx context.Context,
+	logger log.Logger,
+	pool *client.Pool,
+	addr string,
+	f func(client.PoolClient) error,
+) {
+	var (
+		backoff = backoff.New(ctx, defaultBackoff)
+		errs    = multierror.New()
+	)
+
+	for backoff.Ongoing() {
+		c, err := pool.GetClientFor(addr)
+		if err != nil {
+			level.Error(logger).Log("msg", "error acquiring client", "err", err)
+			errs.Add(err)
+			pool.RemoveClientFor(addr)
+			backoff.Wait()
+			continue
+		}
+
+		if err = f(c); err != nil {
+			errs.Add(err)
+
+			// copied from dskit. I'm assuming we need an org_id here.
+			hCtx := user.InjectOrgID(ctx, "0")
+			_, err := c.Check(hCtx, &grpc_health_v1.HealthCheckRequest{})
+
+			// If health check fails, remove client from pool.
+			if err != nil {
+				level.Error(logger).Log("msg", "error health checking", "err", err)
+				pool.RemoveClientFor(addr)
+			}
+
+			backoff.Wait()
+			continue
+		}
+		return
 	}
 }
 

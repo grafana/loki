@@ -11,6 +11,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	annotationRulerConfigDiscoveredAt = "loki.grafana.com/rulerConfigDiscoveredAt"
+)
+
 // AnnotateForRulerConfig adds/updates the `loki.grafana.com/rulerConfigDiscoveredAt` annotation
 // to the named Lokistack in the same namespace of the RulerConfig. If no LokiStack is found, then
 // skip reconciliation.
@@ -28,13 +32,8 @@ func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace s
 	}
 
 	ss := s.DeepCopy()
-	if ss.Annotations == nil {
-		ss.Annotations = make(map[string]string)
-	}
-
-	ss.Annotations["loki.grafana.com/rulerConfigDiscoveredAt"] = time.Now().UTC().Format(time.RFC3339)
-
-	if err := k.Update(ctx, ss); err != nil {
+	timeStamp := time.Now().UTC().Format(time.RFC3339)
+	if err := updateAnnotation(ctx, k, ss, annotationRulerConfigDiscoveredAt, timeStamp); err != nil {
 		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
 	}
 
