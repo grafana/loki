@@ -23,6 +23,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster.
 - A Prometheus operator installation in case meta-monitoring should be used.
+- Optionally a Memcached deployment for better performance. Consult the [caching section]({{<relref "../../../operations/caching">}}) on how to configure Memcached.
 
 **To deploy Loki in scalable mode:**
 
