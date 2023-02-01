@@ -279,7 +279,7 @@ github.com/baidubce/bce-sdk-go/util/log
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/bmatcuk/doublestar v1.2.2
+# github.com/bmatcuk/doublestar v1.3.4
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
 # github.com/buger/jsonparser v1.1.1
