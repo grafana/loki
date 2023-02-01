@@ -299,16 +299,15 @@ var (
 	fmtRaw           = func(s string) string { return s }
 )
 
-
 // A fake client for benchmarking. This is based on the `fake` client but it
 // doesn't save any of the data received.
 // The API is a little weird because it's using a WaitGroup. The number of
 // messages to wait for needs to be given before any messages are received.
 // Then Wait() will block until that many messages are received. Doing those in
 // the wrong order could make the WaitGroup panic.
-type FastNopClient struct{
-	message_counter sync.WaitGroup
-	entries chan api.Entry
+type FastNopClient struct {
+	messageCounter sync.WaitGroup
+	entries        chan api.Entry
 }
 
 func NewFastNopClient() *FastNopClient {
@@ -317,7 +316,7 @@ func NewFastNopClient() *FastNopClient {
 	}
 	go func() {
 		for range c.entries {
-			c.message_counter.Done()
+			c.messageCounter.Done()
 		}
 	}()
 	return c
@@ -328,14 +327,14 @@ func (c *FastNopClient) Stop() {
 }
 
 func (c *FastNopClient) IncreaseCounter(n int) {
-	c.message_counter.Add(n)
+	c.messageCounter.Add(n)
 }
 
 func (c *FastNopClient) Wait(timeout time.Duration, b *testing.B) {
 	timer := time.NewTimer(timeout)
 	success := make(chan int)
 	go func() {
-		c.message_counter.Wait()
+		c.messageCounter.Wait()
 		success <- 0
 	}()
 	select {
@@ -349,7 +348,6 @@ func (c *FastNopClient) Wait(timeout time.Duration, b *testing.B) {
 func (c *FastNopClient) Chan() chan<- api.Entry {
 	return c.entries
 }
-
 
 func Benchmark_SyslogTarget(b *testing.B) {
 	for _, tt := range []struct {
@@ -402,7 +400,7 @@ func Benchmark_SyslogTarget(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				_ = writeMessagesToStream(c, messages, tt.formatFunc)
 			}
-			client.Wait(8 * time.Second, b)
+			client.Wait(8*time.Second, b)
 			b.StopTimer()
 
 			c.Close()
