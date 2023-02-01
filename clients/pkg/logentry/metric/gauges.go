@@ -73,7 +73,7 @@ func NewGauges(name, help string, config interface{}, maxIdleSec int64, registry
 				Name:        name,
 				ConstLabels: labels,
 			}),
-				0,
+				time.Now().Unix(),
 			}
 		}, maxIdleSec, registry),
 		Cfg: cfg,

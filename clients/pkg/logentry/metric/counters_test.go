@@ -95,6 +95,7 @@ func TestCounterExpiration(t *testing.T) {
 	cfg := CounterConfig{
 		Action: "inc",
 	}
+	gcInterval = 100 * time.Millisecond
 
 	cnt, err := NewCounters("test1", "HELP ME!!!!!", cfg, 1, nil)
 	assert.Nil(t, err)

@@ -50,7 +50,7 @@ func NewHistograms(name, help string, config interface{}, maxIdleSec int64, regi
 				ConstLabels: labels,
 				Buckets:     cfg.Buckets,
 			}),
-				0,
+				time.Now().Unix(),
 			}
 		}, maxIdleSec, registry),
 		Cfg: cfg,

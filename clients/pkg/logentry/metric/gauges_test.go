@@ -13,6 +13,7 @@ func TestGaugeExpiration(t *testing.T) {
 	cfg := GaugeConfig{
 		Action: "inc",
 	}
+	gcInterval = 100 * time.Millisecond
 
 	gag, err := NewGauges("test1", "HELP ME!!!!!", cfg, 1, nil)
 	assert.Nil(t, err)

@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -114,6 +115,7 @@ func (c *metricVec) prune() {
 	for fp, m := range c.metrics {
 		if em, ok := m.(Expirable); ok {
 			if em.HasExpired(currentTimeSec, c.maxAgeSec) {
+				fmt.Println(em, "delete")
 				if c.registry != nil {
 					c.registry.Unregister(m)
 				}

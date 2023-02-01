@@ -80,7 +80,7 @@ func NewCounters(name, help string, config interface{}, maxIdleSec int64, regist
 				Name:        name,
 				ConstLabels: labels,
 			}),
-				0,
+				time.Now().Unix(),
 			}
 		}, maxIdleSec, registry),
 		Cfg: cfg,
