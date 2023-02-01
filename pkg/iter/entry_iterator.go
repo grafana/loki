@@ -328,7 +328,7 @@ func (i *mergeEntryIterator) Len() int {
 }
 
 type entrySortIterator struct {
-	tree      *loser.LoserTree[sortFields, EntryIterator]
+	tree      *loser.Tree[sortFields, EntryIterator]
 	currEntry entryWithLabels
 	errs      []error
 }
