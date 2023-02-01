@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -83,13 +85,18 @@ func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePar
 		return nil, errors.Errorf("remote read Querier selectSamples fail,response.Status %v", response.Status)
 	}
 
-	matrix, ok := response.Data.Result.(loghttp.Matrix)
-	if !ok {
-		return nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail")
+	value := response.Data.Result
+	switch value.Type() {
+	case logqlmodel.ValueTypeStreams:
+		return nil, fmt.Errorf("remote read Querier selectLogs fail,Unable to parse unsupported type: %s ", value.Type())
+	case loghttp.ResultTypeMatrix:
+		return iter.NewSampleQueryResponseIterator(toSampleQueryResponse(value.(loghttp.Matrix))), nil
+	case loghttp.ResultTypeVector:
+		return iter.NewSampleQueryResponseIterator(vectorToSampleQueryResponse(value.(loghttp.Vector))), nil
+	default:
+		return nil, fmt.Errorf("Unable to parse unsupported type: %s ", value.Type())
 	}
-
-	iterator := iter.NewSampleQueryResponseIterator(toSampleQueryResponse(matrix))
-	return iterator, nil
+	return nil, fmt.Errorf("Unable to parse unsupported type: %s ", value.Type())
 }
 
 func toSampleQueryResponse(m loghttp.Matrix) *logproto.SampleQueryResponse {
@@ -111,6 +118,30 @@ func toSampleQueryResponse(m loghttp.Matrix) *logproto.SampleQueryResponse {
 		series := logproto.Series{
 			Samples: samples,
 			Labels:  stream.Metric.String(),
+		}
+		res.Series = append(res.Series, series)
+	}
+	return res
+}
+
+func vectorToSampleQueryResponse(v loghttp.Vector) *logproto.SampleQueryResponse {
+	res := &logproto.SampleQueryResponse{
+		Series: make([]logproto.Series, 0, len(v)),
+	}
+	if len(v) == 0 {
+		return res
+	}
+	for _, s := range v {
+
+		samples := make([]logproto.Sample, 0)
+		samples = append(samples, logproto.Sample{
+			Value:     float64(s.Value),
+			Timestamp: int64(s.Timestamp),
+		})
+
+		series := logproto.Series{
+			Samples: samples,
+			Labels:  s.Metric.String(),
 		}
 		res.Series = append(res.Series, series)
 	}
