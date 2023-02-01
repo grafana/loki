@@ -13,20 +13,22 @@ type FanoutEntryHandler struct {
 	entries  chan api.Entry
 	handlers []api.EntryHandler
 
-	once            sync.Once
-	mainRoutineDone chan struct{}
-	cancelTimeout   time.Duration
-	cancel          context.CancelFunc
+	// using a single channel instead of a 1-valued wait group, to be able to wait on it
+	mainRoutineDone   chan struct{}
+	once              sync.Once
+	sendOnStopTimeout time.Duration
+	hardStop          context.CancelFunc
 }
 
+// NewFanoutEntryHandler creates a new FanoutEntryHandler.
 func NewFanoutEntryHandler(sendTimeoutOnStop time.Duration, handlers ...api.EntryHandler) *FanoutEntryHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 	eh := &FanoutEntryHandler{
-		entries:         make(chan api.Entry),
-		handlers:        handlers,
-		mainRoutineDone: make(chan struct{}),
-		cancelTimeout:   sendTimeoutOnStop,
-		cancel:          cancel,
+		entries:           make(chan api.Entry),
+		handlers:          handlers,
+		mainRoutineDone:   make(chan struct{}),
+		sendOnStopTimeout: sendTimeoutOnStop,
+		hardStop:          cancel,
 	}
 	eh.start(ctx)
 	return eh
@@ -47,6 +49,7 @@ func (eh *FanoutEntryHandler) start(ctx context.Context) {
 			for _, handler := range eh.handlers {
 				go func(ctx context.Context, eh api.EntryHandler) {
 					defer entryWG.Done()
+					// just doing a single select block here, since these routines are short-lived
 					select {
 					case <-ctx.Done():
 					case eh.Chan() <- e:
@@ -62,7 +65,8 @@ func (eh *FanoutEntryHandler) Chan() chan<- api.Entry {
 	return eh.entries
 }
 
-// Stop only stops the channel FanoutEntryHandler exposes, not the ones it fans out to.
+// Stop only stops the channel FanoutEntryHandler exposes. It then waits for the entry being processed to be sent succesfully.
+// If it times out, it hard stops all sending routines.
 func (eh *FanoutEntryHandler) Stop() {
 	eh.once.Do(func() {
 		close(eh.entries)
@@ -71,8 +75,10 @@ func (eh *FanoutEntryHandler) Stop() {
 	select {
 	case <-eh.mainRoutineDone:
 		// graceful stop
-	case <-time.After(eh.cancelTimeout):
-		// sending pending entries timed out, cancel
-		eh.cancel()
+		return
+	case <-time.After(eh.sendOnStopTimeout):
 	}
+	// sending pending entries timed out, hard stop
+	eh.hardStop()
+	<-eh.mainRoutineDone
 }
