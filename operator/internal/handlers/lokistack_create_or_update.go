@@ -250,6 +250,19 @@ func CreateOrUpdateLokiStack(
 			ll.Error(err, "failed to check OCP User Workload AlertManager")
 			return err
 		}
+	} else {
+		// Clean up ruler resources
+		err = rules.RemoveRulesConfigMap(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove rules configmap")
+			return err
+		}
+
+		err = rules.RemoveRuler(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove ruler statefulset")
+			return err
+		}
 	}
 
 	certRotationRequiredAt := ""

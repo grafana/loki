@@ -9,6 +9,7 @@ type ClusterSize struct {
 	TotalReadReplicas  int
 	TotalWriteReplicas int
 	TotalCoresRequest  float64
+	TotalMemoryRequest int
 
 	expectedMaxReadThroughputBytesSec float64
 	expectedMaxIngestBytesDay         float64
@@ -71,12 +72,15 @@ func calculateClusterSize(nt NodeType, bytesDayIngest float64, qperf QueryPerf) 
 	totalReadThroughputBytesSec := totalReadReplicas * nt.readPod.rateBytesSecond
 
 	totalNodesNeeded := nodesNeededForWrites + actualNodesAddedForReads
-	totalCoresLimit := numWriteReplicasNeeded*nt.writePod.cpuRequest + totalReadReplicas*nt.readPod.cpuRequest
+	totalCoresRequest := numWriteReplicasNeeded*nt.writePod.cpuRequest + totalReadReplicas*nt.readPod.cpuRequest
+	totalMemoryRequest := numWriteReplicasNeeded*float64(nt.writePod.memoryRequest) + totalReadReplicas*float64(nt.readPod.memoryRequest)
+
 	return ClusterSize{
 		TotalNodes:         int(totalNodesNeeded),
 		TotalReadReplicas:  int(totalReadReplicas),
 		TotalWriteReplicas: int(numWriteReplicasNeeded),
-		TotalCoresRequest:  totalCoresLimit,
+		TotalCoresRequest:  totalCoresRequest,
+		TotalMemoryRequest: int(totalMemoryRequest),
 
 		expectedMaxReadThroughputBytesSec: totalReadThroughputBytesSec,
 		expectedMaxIngestBytesDay:         (nt.writePod.rateBytesSecond * numWriteReplicasNeeded) * 86400,

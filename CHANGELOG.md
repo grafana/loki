@@ -40,7 +40,6 @@
 * [7925](https://github.com/grafana/loki/pull/7925) **sandeepsukhani**: Fix bugs in logs results caching causing query-frontend to return logs outside of query window.
 * [8120](https://github.com/grafana/loki/pull/8120) **ashwanthgoli** fix panic on hitting /scheduler/ring when ring is disabled.
 * [8251](https://github.com/grafana/loki/pull/8251) **sandeepsukhani** index-store: fix indexing of chunks overlapping multiple schemas.
-* [8120](https://github.com/grafana/loki/pull/8232) **TaehyunHwang** Fix version info issue that shows wrong version.
 * [8151](https://github.com/grafana/loki/pull/8151) **sandeepsukhani** fix log deletion with line filters.
 
 ##### Changes
@@ -84,6 +83,18 @@
 ### Notes
 
 ### Dependencies
+
+## 2.7.3 (2023-02-01)
+
+#### Loki
+
+##### Fixes
+
+* [8340](https://github.com/grafana/loki/pull/8340) **MasslessParticle** Fix bug in compactor that caused panics when `startTime` and `endTime` of a delete request are equal.
+
+#### Build
+
+* [8232](https://github.com/grafana/loki/pull/8232) **TaehyunHwang** Fix build issue that caused `--version` to show wrong version for Loki and Promtail binaries.
 
 ## 2.7.2 (2023-01-25)
 

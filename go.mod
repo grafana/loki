@@ -17,7 +17,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.30.0
 	github.com/aws/aws-sdk-go v1.44.187
 	github.com/baidubce/bce-sdk-go v0.9.141
-	github.com/bmatcuk/doublestar v1.2.2
+	github.com/bmatcuk/doublestar v1.3.4
 	github.com/buger/jsonparser v1.1.1
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cespare/xxhash v1.1.0
@@ -48,7 +48,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20230109170026-7242706251b9
+	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230105173749-11f792309e1f
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
