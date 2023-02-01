@@ -113,7 +113,7 @@ func TestMerge(t *testing.T) {
 			for _, s := range tt.args {
 				lt.Add(s)
 			}
-			at2 := func(s *loser.LoserTree[uint64, *List]) uint64 { return s.Winner().At() }
+			at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
 			checkIterablesEqual(t, tt.want, lt, at, at2, less)
 			if numCloses != len(tt.args) {
 				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)

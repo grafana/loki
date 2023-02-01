@@ -8,8 +8,8 @@ type Sequence interface {
 	Next() bool // Advances and returns true if there is a value at this new position.
 }
 
-func NewMerge[E Value, S Sequence](nElements int, maxVal E, at func(S) E, less func(E, E) bool, close func(S)) *LoserTree[E, S] {
-	t := LoserTree[E, S]{
+func NewMerge[E Value, S Sequence](nElements int, maxVal E, at func(S) E, less func(E, E) bool, close func(S)) *Tree[E, S] {
+	t := Tree[E, S]{
 		maxVal: maxVal,
 		at:     at,
 		less:   less,
@@ -23,12 +23,12 @@ func NewMerge[E Value, S Sequence](nElements int, maxVal E, at func(S) E, less f
 }
 
 // Must be called exactly nElements times after calling NewMerge.
-func (t *LoserTree[E, S]) Add(e S) {
+func (t *Tree[E, S]) Add(e S) {
 	t.nodes = append(t.nodes, node[E, S]{items: e})
 }
 
 // Call the close function on all sequences that are still open.
-func (t *LoserTree[E, S]) Close() {
+func (t *Tree[E, S]) Close() {
 	for _, e := range t.nodes[len(t.nodes)/2 : len(t.nodes)] {
 		if e.index == -1 {
 			continue
@@ -40,7 +40,7 @@ func (t *LoserTree[E, S]) Close() {
 // A loser tree is a binary tree laid out such that nodes N and N+1 have parent N/2.
 // We store M leaf nodes in positions M...2M-1, and M-1 internal nodes in positions 1..M-1.
 // Node 0 is a special node, containing the winner of the contest.
-type LoserTree[E Value, S Sequence] struct {
+type Tree[E Value, S Sequence] struct {
 	maxVal E
 	at     func(S) E
 	less   func(E, E) bool
@@ -54,7 +54,7 @@ type node[E Value, S Sequence] struct {
 	items S   // Only populated for leaf nodes.
 }
 
-func (t *LoserTree[E, S]) moveNext(index int) bool {
+func (t *Tree[E, S]) moveNext(index int) bool {
 	n := &t.nodes[index]
 	ret := n.items.Next()
 	if ret {
@@ -67,11 +67,11 @@ func (t *LoserTree[E, S]) moveNext(index int) bool {
 	return ret
 }
 
-func (t *LoserTree[E, S]) Winner() S {
+func (t *Tree[E, S]) Winner() S {
 	return t.nodes[t.nodes[0].index].items
 }
 
-func (t *LoserTree[E, S]) Next() bool {
+func (t *Tree[E, S]) Next() bool {
 	if len(t.nodes) == 0 {
 		return false
 	}
@@ -84,7 +84,7 @@ func (t *LoserTree[E, S]) Next() bool {
 	return t.nodes[t.nodes[0].index].index != -1
 }
 
-func (t *LoserTree[E, S]) initialize() {
+func (t *Tree[E, S]) initialize() {
 	winners := make([]int, len(t.nodes))
 	// Initialize leaf nodes as winners to start.
 	for i := len(t.nodes) / 2; i < len(t.nodes); i++ {
@@ -104,7 +104,7 @@ func (t *LoserTree[E, S]) initialize() {
 }
 
 // Starting at pos, re-consider all values up to the root.
-func (t *LoserTree[E, S]) replayGames(pos int) {
+func (t *Tree[E, S]) replayGames(pos int) {
 	// At the start, pos is a leaf node, and is the winner at that level.
 	n := parent(pos)
 	for n != 0 {
@@ -122,7 +122,7 @@ func (t *LoserTree[E, S]) replayGames(pos int) {
 	t.nodes[0].value = t.nodes[pos].value
 }
 
-func (t *LoserTree[E, S]) playGame(a, b int) (loser, winner int) {
+func (t *Tree[E, S]) playGame(a, b int) (loser, winner int) {
 	if t.less(t.nodes[a].value, t.nodes[b].value) {
 		return b, a
 	}
