@@ -96,7 +96,6 @@ func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePar
 	default:
 		return nil, fmt.Errorf("Unable to parse unsupported type: %s ", value.Type())
 	}
-	return nil, fmt.Errorf("Unable to parse unsupported type: %s ", value.Type())
 }
 
 func toSampleQueryResponse(m loghttp.Matrix) *logproto.SampleQueryResponse {
