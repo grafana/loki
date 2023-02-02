@@ -275,7 +275,6 @@ func TestEventLogMessage_Real(t *testing.T) {
 
 var testEvtLogMsgInvalidStructure = "\n\rwhat; is this?\n\r"
 var testEvtLogMsgInvalidValue = "Key1: " + string([]byte{0xff, 0xfe, 0xfd})
-var testEvtLogMsgInvalidOverwriteMessage = "message: a new message"
 
 func TestEventLogMessage_invalid(t *testing.T) {
 	t.Parallel()

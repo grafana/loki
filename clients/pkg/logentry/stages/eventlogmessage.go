@@ -98,18 +98,14 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 	}
 	s, err := getString(value)
 	if err != nil {
-		if Debug {
-			level.Debug(m.logger).Log("msg", "invalid label value parsed", "value", value)
-		}
+		level.Warn(m.logger).Log("msg", "invalid label value parsed", "value", value)
 		return err
 	}
 	lines := strings.Split(s, "\r\n")
 	for _, line := range lines {
 		parts := regexp.MustCompile(": ?").Split(line, 2)
 		if len(parts) < 2 {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "invalid line parsed from message", "line", line)
-			}
+			level.Warn(m.logger).Log("msg", "invalid line parsed from message", "line", line)
 			continue
 		}
 		mkey := parts[0]
