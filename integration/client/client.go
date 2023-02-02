@@ -258,7 +258,7 @@ type DeleteRequest struct {
 	Status    string `json:"status"`
 }
 
-// GetDeleteRequest gets a delete request using the request ID
+// GetDeleteRequests returns all delete requests
 func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 	resp, err := c.Get("/loki/api/v1/delete")
 	if err != nil {
