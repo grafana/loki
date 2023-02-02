@@ -294,7 +294,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	for _, tableName := range tables {
 		tableNumber, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
-			return err
+			continue
 		}
 
 		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, tableName) {
@@ -396,7 +396,7 @@ func (tm *tableManager) loadLocalTables() error {
 
 		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
 		if err != nil {
-			continue
+			return err
 		}
 		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, entry.Name()) {
 			continue
