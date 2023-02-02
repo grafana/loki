@@ -520,8 +520,8 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"replication 2 b",
 			[]EntryIterator{
-				NewStreamIterator(stream),
-				NewStreamIterator(stream),
+				mustReverseStreamIterator(NewStreamIterator(stream)),
+				mustReverseStreamIterator(NewStreamIterator(stream)),
 			},
 			logproto.BACKWARD,
 			3,
@@ -556,9 +556,9 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"replication 3 b",
 			[]EntryIterator{
-				NewStreamIterator(stream),
-				NewStreamIterator(stream),
-				NewStreamIterator(stream),
+				mustReverseStreamIterator(NewStreamIterator(stream)),
+				mustReverseStreamIterator(NewStreamIterator(stream)),
+				mustReverseStreamIterator(NewStreamIterator(stream)),
 				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
