@@ -41,8 +41,8 @@ For the given pipeline:
 ```yaml
 - json:
     expressions:
-	  message:
-	  Overwritten:
+      message:
+      Overwritten:
 - eventlogmessage:
     source: message
     overwrite_existing: true
