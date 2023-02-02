@@ -194,7 +194,7 @@ resuming the target without skipping logs.
 
 Read the [configuration]({{< relref "configuration#windows_events" >}}) section for more information.
 
-See the [eventlogmessage]({{<relref "stages/eventlogmessage/>}}) stage for extracting
+See the [eventlogmessage]({{<relref "stages/eventlogmessage/">}}) stage for extracting
 data from the `message`.
 
 ## GCP Log scraping
