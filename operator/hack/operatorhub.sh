@@ -2,7 +2,7 @@
 
 COMMUNITY_OPERATORS_REPOSITORY="k8s-operatorhub/community-operators"
 UPSTREAM_REPOSITORY="redhat-openshift-ecosystem/community-operators-prod"
-LOCAL_REPOSITORIES_PATH=${LOCAL_REPOSITORIES_PATH:-"$(dirname $(dirname $(dirname $(pwd))))"}
+LOCAL_REPOSITORIES_PATH=${LOCAL_REPOSITORIES_PATH:-"$(dirname "$(dirname "$(dirname "$(pwd)")")")"}
 
 if [[ ! -d "${LOCAL_REPOSITORIES_PATH}/${COMMUNITY_OPERATORS_REPOSITORY}" ]]; then
     echo "${LOCAL_REPOSITORIES_PATH}/${COMMUNITY_OPERATORS_REPOSITORY} doesn't exist, aborting."
@@ -35,7 +35,7 @@ for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
         cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${VERSION}/"
         rm "operators/loki-operator/${VERSION}/bundle.Dockerfile"
 
-        if [[ "$dest" = "${UPSTREAM_REPOSITORY}" ]]; then
+        if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
             python3 - << END
 import os, yaml
 with open("./operators/loki-operator/${VERSION}/metadata/annotations.yaml", 'r') as f:
