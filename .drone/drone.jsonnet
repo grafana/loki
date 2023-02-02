@@ -3,6 +3,8 @@ local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
 
+local drone_updater_plugin_image = 'us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b';
+
 local onPRs = {
   event: ['pull_request'],
 };
@@ -668,7 +670,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+        image: drone_updater_plugin_image,
         settings: {
           github_token: { from_secret: github_secret.name },
           config_file: configFileName,
@@ -714,7 +716,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       {
         name: 'trigger-helm-chart-update',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+        image: drone_updater_plugin_image,
         settings: {
           github_token: {
             from_secret: github_secret.name,

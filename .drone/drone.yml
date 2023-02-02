@@ -1252,7 +1252,7 @@ steps:
       from_secret: updater_config_template
 - depends_on:
   - prepare-updater-config
-  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b
   name: trigger
   settings:
     config_file: updater-config.json
@@ -1302,7 +1302,7 @@ steps:
       from_secret: helm-chart-update-config-template
 - depends_on:
   - prepare-helm-chart-update-config
-  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b
   name: trigger-helm-chart-update
   settings:
     config_file: updater-config.json
@@ -1723,6 +1723,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 50fde7c7f452adbbc1f9d6ff8c22289a92c0317854ca442bd5775e186366f3f6
+hmac: 588ab5bf774595c6e54534495b6d0f9077d268979e3b113ddf80479e926087d7
 
 ...
