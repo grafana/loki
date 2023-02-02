@@ -886,15 +886,21 @@ func TestDedupeMergeEntryIterator(t *testing.T) {
 			}),
 		}, logproto.FORWARD)
 	require.True(t, it.Next())
-	require.Equal(t, "0", it.Entry().Line)
+	lines := []string{it.Entry().Line}
 	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
 	require.True(t, it.Next())
-	require.Equal(t, "2", it.Entry().Line)
+	lines = append(lines, it.Entry().Line)
 	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
 	require.True(t, it.Next())
-	require.Equal(t, "1", it.Entry().Line)
+	lines = append(lines, it.Entry().Line)
 	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
 	require.True(t, it.Next())
-	require.Equal(t, "3", it.Entry().Line)
+	lines = append(lines, it.Entry().Line)
 	require.Equal(t, time.Unix(2, 0), it.Entry().Timestamp)
+	// Two orderings are consistent with the inputs.
+	if lines[0] == "1" {
+		require.Equal(t, []string{"1", "0", "2", "3"}, lines)
+	} else {
+		require.Equal(t, []string{"0", "2", "1", "3"}, lines)
+	}
 }
