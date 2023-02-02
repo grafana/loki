@@ -1,4 +1,12 @@
 {{/*
+Enforce valid label value.
+See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+*/}}
+{{- define "loki.validLabelValue" -}}
+{{- (regexReplaceAllLiteral "[^a-zA-Z0-9._-]" . "-") | trunc 63 | trimSuffix "-" | trimSuffix "_" | trimSuffix "." }}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "loki.name" -}}
@@ -20,6 +28,22 @@ singleBinary fullname
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Resource name template
+Params:
+  ctx = . context
+  component = component name (optional)
+  rolloutZoneName = rollout zone name (optional)
+*/}}
+{{- define "loki.resourceName" -}}
+{{- $resourceName := include "loki.fullname" .ctx -}}
+{{- if .component -}}{{- $resourceName = printf "%s-%s" $resourceName .component -}}{{- end -}}
+{{- if and (not .component) .rolloutZoneName -}}{{- printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail -}}{{- end -}}
+{{- if .rolloutZoneName -}}{{- $resourceName = printf "%s-%s" $resourceName .rolloutZoneName -}}{{- end -}}
+{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install or shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness." $resourceName | fail -}}{{- end -}}
+{{- $resourceName -}}
 {{- end -}}
 
 {{/*
@@ -80,7 +104,7 @@ Common labels
 helm.sh/chart: {{ include "loki.chart" . }}
 {{ include "loki.selectorLabels" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
-app.kubernetes.io/version: {{ .Values.loki.image.tag | default .Chart.AppVersion | quote }}
+app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -506,6 +530,12 @@ http {
   uwsgi_temp_path       /tmp/uwsgi_temp;
   scgi_temp_path        /tmp/scgi_temp;
 
+  client_max_body_size 4M;
+
+  proxy_read_timeout    600; ## 6 minutes
+  proxy_send_timeout    600;
+  proxy_connect_timeout 600;
+
   proxy_http_version    1.1;
 
   default_type application/octet-stream;
@@ -556,7 +586,7 @@ http {
     location ~ /api/prom/.* {
       proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
     }
-    
+
     {{- if .Values.read.legacyReadTarget }}
     location ~ /prometheus/api/v1/alerts.* {
       proxy_pass       http://{{ include "loki.readFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;

@@ -307,7 +307,7 @@ enterprise:
   enabled: false
 
   # Default verion of GEL to deploy
-  version: v1.6.0
+  version: v1.6.1
 
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
@@ -510,8 +510,9 @@ monitoring:
     namespace: null
     # -- Additional annotations for the dashboards ConfigMap
     annotations: {}
-    # -- Additional labels for the dashboards ConfigMap
-    labels: {}
+    # -- Labels for the dashboards ConfigMap
+    labels:
+      grafana_dashboard: "1"
 
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
@@ -519,6 +520,8 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
+    # -- Alternative namespace to create PrometheusRule resources in
+    namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
@@ -662,7 +665,7 @@ write:
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
@@ -674,13 +677,15 @@ write:
   extraEnvFrom: []
   # -- Lifecycle for the write container
   lifecycle: {}
+  # -- Init containers to add to the write pods
+  initContainers: []
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
   extraVolumes: []
   # -- Resource requests and limits for the write
   resources: {}
-  # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingestor,
+  # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
@@ -698,6 +703,8 @@ write:
   # -- Tolerations for write pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -865,7 +872,7 @@ backend:
   podAnnotations: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "backend"
@@ -875,13 +882,15 @@ backend:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the backend pods
   extraEnvFrom: []
+  # -- Init containers to add to the backend pods
+  initContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods
   extraVolumes: []
   # -- Resource requests and limits for the backend
   resources: {}
-  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor,
+  # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
@@ -950,6 +959,8 @@ singleBinary:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the single binary pods
   extraEnvFrom: []
+  # -- Init containers to add to the single binary pods
+  initContainers: []
   # -- Volume mounts to add to the single binary pods
   extraVolumeMounts: []
   # -- Volumes to add to the single binary pods
@@ -972,6 +983,8 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
     # -- Size of persistent disk

@@ -102,12 +102,7 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 	}
 	numLabelNames := len(ls)
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
-		validation.DiscardedSamples.WithLabelValues(validation.MaxLabelNamesPerSeries, ctx.userID).Inc()
-		bytes := 0
-		for _, e := range stream.Entries {
-			bytes += len(e.Line)
-		}
-		validation.DiscardedBytes.WithLabelValues(validation.MaxLabelNamesPerSeries, ctx.userID).Add(float64(bytes))
+		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)
 		return httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
 	}
 

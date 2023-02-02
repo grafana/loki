@@ -54,7 +54,13 @@ func (t *Controller) RemoveWatch(rType xdsresource.ResourceType, resourceName st
 // stream failed without receiving a single reply) and runs the sender and
 // receiver routines to send and receive data from the stream respectively.
 func (t *Controller) run(ctx context.Context) {
-	go t.send(ctx)
+	sendDoneCh := make(chan struct{})
+	defer func() {
+		<-sendDoneCh
+		close(t.runDoneCh)
+	}()
+	go t.send(ctx, sendDoneCh)
+
 	// TODO: start a goroutine monitoring ClientConn's connectivity state, and
 	// report error (and log) when stats is transient failure.
 
@@ -109,7 +115,9 @@ func (t *Controller) run(ctx context.Context) {
 // Note that this goroutine doesn't do anything to the old stream when there's a
 // new one. In fact, there should be only one stream in progress, and new one
 // should only be created when the old one fails (recv returns an error).
-func (t *Controller) send(ctx context.Context) {
+func (t *Controller) send(ctx context.Context, doneCh chan struct{}) {
+	defer func() { close(doneCh) }()
+
 	var stream grpc.ClientStream
 	for {
 		select {

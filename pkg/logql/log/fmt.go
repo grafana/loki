@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -57,6 +58,8 @@ var (
 			matches := r.FindAllStringIndex(s, -1)
 			return len(matches), nil
 		},
+		"urldecode": url.QueryUnescape,
+		"urlencode": url.QueryEscape,
 	}
 
 	// sprig template functions

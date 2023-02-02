@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,11 +39,13 @@ type ConfigWrapper struct {
 }
 
 func PrintVersion(args []string) bool {
-	var printVersion bool
-	f := flag.NewFlagSet("version parsing", flag.ContinueOnError)
-	f.BoolVar(&printVersion, versionFlag, false, "Print this builds version information")
-	_ = f.Parse(args)
-	return printVersion
+	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
+	for _, a := range args {
+		if pattern.MatchString(a) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {

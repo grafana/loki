@@ -44,8 +44,7 @@ type Config struct {
 	// prevent HOL blocking in multitenant deployments.
 	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
 
-	// deprecated use StreamLagLabels from config.Config instead
-	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
+	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels" doc:"deprecated"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by

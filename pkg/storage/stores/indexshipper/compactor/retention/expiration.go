@@ -22,7 +22,7 @@ type IntervalFilter struct {
 }
 
 type ExpirationChecker interface {
-	Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter)
+	Expired(ref ChunkEntry, now model.Time) (bool, filter.Func)
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
@@ -50,7 +50,7 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
 	return now.Sub(ref.Through) > period, nil
@@ -99,7 +99,7 @@ func NeverExpiringExpirationChecker(limits Limits) ExpirationChecker {
 
 type neverExpiringExpirationChecker struct{}
 
-func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
 	return false, nil
 }
 func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {

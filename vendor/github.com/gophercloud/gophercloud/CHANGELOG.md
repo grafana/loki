@@ -1,3 +1,30 @@
+## v1.1.1 (2022-12-07)
+
+The GOPROXY cache for v1.1.0 was corrupted with a tag pointing to the wrong commit. This release fixes the problem by exposing a new release with the same content.
+
+Please use `v1.1.1` instead of `v1.1.0` to avoid cache issues.
+
+## v1.1.0 (2022-11-24)
+
+* [GH-2513](https://github.com/gophercloud/gophercloud/pull/2513) objectstorage: Do not parse NoContent responses
+* [GH-2503](https://github.com/gophercloud/gophercloud/pull/2503) Bump golang.org/x/crypto
+* [GH-2501](https://github.com/gophercloud/gophercloud/pull/2501) Staskraev/l3 agent scheduler
+* [GH-2496](https://github.com/gophercloud/gophercloud/pull/2496) Manila: add Get for share-access-rules API
+* [GH-2491](https://github.com/gophercloud/gophercloud/pull/2491) Add VipQosPolicyID to loadbalancer Create and Update
+* [GH-2488](https://github.com/gophercloud/gophercloud/pull/2488) Add Persistance for octavia pools.UpdateOpts
+* [GH-2487](https://github.com/gophercloud/gophercloud/pull/2487) Add Prometheus protocol for octavia listeners
+* [GH-2482](https://github.com/gophercloud/gophercloud/pull/2482) Add createdAt, updatedAt and provisionUpdatedAt fields in Baremetal V1 nodes
+* [GH-2479](https://github.com/gophercloud/gophercloud/pull/2479) Add service_types support for neutron subnet
+* [GH-2477](https://github.com/gophercloud/gophercloud/pull/2477) Port CreatedAt and UpdatedAt: add back JSON tags
+* [GH-2475](https://github.com/gophercloud/gophercloud/pull/2475) Support old time format for port CreatedAt and UpdatedAt
+* [GH-2474](https://github.com/gophercloud/gophercloud/pull/2474) Implementing re-image volumeaction
+* [GH-2470](https://github.com/gophercloud/gophercloud/pull/2470) keystone: add v3 limits GetEnforcementModel operation
+* [GH-2468](https://github.com/gophercloud/gophercloud/pull/2468) keystone: add v3 OS-FEDERATION extension List Mappings
+* [GH-2458](https://github.com/gophercloud/gophercloud/pull/2458) Fix typo in blockstorage/v3/attachments docs
+* [GH-2456](https://github.com/gophercloud/gophercloud/pull/2456) Add support for Update for flavors
+* [GH-2453](https://github.com/gophercloud/gophercloud/pull/2453) Add description to flavor
+* [GH-2417](https://github.com/gophercloud/gophercloud/pull/2417) Neutron v2: ScheduleBGPSpeakerOpts, RemoveBGPSpeaker, Lis…
+
 ## 1.0.0 (2022-08-29)
 
 UPGRADE NOTES + PROMISE OF COMPATIBILITY
