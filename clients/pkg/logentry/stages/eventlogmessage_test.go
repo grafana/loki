@@ -87,7 +87,8 @@ func TestEventLogMessage_simple(t *testing.T) {
 			"message",
 			testEvtLogMsgOverwriteTest,
 			map[string]interface{}{
-				"test": "existing value",
+				"test":           "existing value",
+				"test_extracted": "new value",
 			},
 		},
 		"successfully ran a pipeline with sample event log message stage overwriting existing labels": {
@@ -307,12 +308,6 @@ func TestEventLogMessage_invalid(t *testing.T) {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgInvalidValue,
-			map[string]interface{}{},
-		},
-		"successfully ran a pipeline with an invalid event log message overwriting an existing key": {
-			testEvtLogMsgYamlDefaults,
-			"message",
-			testEvtLogMsgInvalidOverwriteMessage,
 			map[string]interface{}{},
 		},
 	}

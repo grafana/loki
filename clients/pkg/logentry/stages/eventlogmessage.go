@@ -123,9 +123,9 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			mkey = SanitizeLabelName(mkey)
 		}
 		if _, ok := extracted[mkey]; ok && !m.cfg.OverwriteExisting {
-			level.Info(m.logger).Log("msg", "extracted label that already existed, ignoring value from source",
-				"key", mkey, "oldval", extracted[mkey], "newval", parts[1])
-			continue
+			level.Info(m.logger).Log("msg", "extracted key that already existed, appending _extracted to key",
+				"key", mkey)
+			mkey += "_extracted"
 		}
 		mval := parts[1]
 		if !model.LabelValue(mval).IsValid() {
