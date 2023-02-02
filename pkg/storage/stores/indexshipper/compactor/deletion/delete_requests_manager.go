@@ -3,16 +3,17 @@ package deletion
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
-
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -22,7 +23,7 @@ const (
 )
 
 type userDeleteRequests struct {
-	requests []DeleteRequest
+	requests []*DeleteRequest
 	// requestsInterval holds the earliest start time and latest end time considering all the delete requests
 	requestsInterval model.Interval
 }
@@ -31,10 +32,7 @@ type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration
 
-	deleteRequestsToProcess map[string]*userDeleteRequests
-	chunkIntervalsToRetain  []retention.IntervalFilter
-	// WARN: If by any chance we change deleteRequestsToProcessMtx to sync.RWMutex to be able to check multiple chunks at a time,
-	// please take care of chunkIntervalsToRetain which should be unique per chunk.
+	deleteRequestsToProcess    map[string]*userDeleteRequests
 	deleteRequestsToProcessMtx sync.Mutex
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
@@ -122,12 +120,13 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	// Reset this first so any errors result in a clear map
 	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
 
-	deleteRequests, err := d.filteredDeleteRequests()
+	deleteRequests, err := d.filteredSortedDeleteRequests()
 	if err != nil {
 		return err
 	}
 
-	for i, deleteRequest := range deleteRequests {
+	for i := range deleteRequests {
+		deleteRequest := deleteRequests[i]
 		if i >= d.batchSize {
 			logBatchTruncation(i, len(deleteRequests))
 			break
@@ -142,7 +141,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		deleteRequest.Metrics = d.metrics
 
 		ur := d.requestsForUser(deleteRequest)
-		ur.requests = append(ur.requests, deleteRequest)
+		ur.requests = append(ur.requests, &deleteRequest)
 		if deleteRequest.StartTime < ur.requestsInterval.Start {
 			ur.requestsInterval.Start = deleteRequest.StartTime
 		}
@@ -154,13 +153,22 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	return nil
 }
 
-func (d *DeleteRequestsManager) filteredDeleteRequests() ([]DeleteRequest, error) {
+func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
 	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return nil, err
 	}
 
-	return d.filteredRequests(deleteRequests)
+	deleteRequests, err = d.filteredRequests(deleteRequests)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(deleteRequests, func(i, j int) bool {
+		return deleteRequests[i].StartTime < deleteRequests[j].StartTime
+	})
+
+	return deleteRequests, nil
 }
 
 func (d *DeleteRequestsManager) filteredRequests(reqs []DeleteRequest) ([]DeleteRequest, error) {
@@ -221,7 +229,7 @@ func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, er
 	return mode == deletionmode.FilterAndDelete, nil
 }
 
-func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []retention.IntervalFilter) {
+func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, filter.Func) {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
@@ -233,47 +241,42 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
-	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
-		Interval: model.Interval{
-			Start: ref.From,
-			End:   ref.Through,
-		},
-	})
+	var filterFuncs []filter.Func
 
 	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
-		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
-		for _, ivf := range d.chunkIntervalsToRetain {
-			entry := ref
-			entry.From = ivf.Interval.Start
-			entry.Through = ivf.Interval.End
-			isDeleted, newIntervalsToRetain := deleteRequest.IsDeleted(entry)
-			if !isDeleted {
-				rebuiltIntervals = append(rebuiltIntervals, ivf)
-			} else {
-				rebuiltIntervals = append(rebuiltIntervals, newIntervalsToRetain...)
-			}
+		isDeleted, ff := deleteRequest.IsDeleted(ref)
+		if !isDeleted {
+			continue
 		}
 
-		d.chunkIntervalsToRetain = rebuiltIntervals
-		if len(d.chunkIntervalsToRetain) == 0 {
+		if ff == nil {
 			level.Info(util_log.Logger).Log(
 				"msg", "no chunks to retain: the whole chunk is deleted",
 				"delete_request_id", deleteRequest.RequestID,
+				"sequence_num", deleteRequest.SequenceNum,
 				"user", deleteRequest.UserID,
 				"chunkID", string(ref.ChunkID),
 			)
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
+		filterFuncs = append(filterFuncs, ff)
 	}
 
-	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Interval.Start == ref.From && d.chunkIntervalsToRetain[0].Interval.End == ref.Through {
+	if len(filterFuncs) == 0 {
 		return false, nil
 	}
 
 	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-	return true, d.chunkIntervalsToRetain
+	return true, func(ts time.Time, s string) bool {
+		for _, ff := range filterFuncs {
+			if ff(ts, s) {
+				return true
+			}
+		}
+
+		return false
+	}
 }
 
 func (d *DeleteRequestsManager) MarkPhaseStarted() {
@@ -311,10 +314,11 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
+			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), *deleteRequest, StatusProcessed); err != nil {
 				level.Error(util_log.Logger).Log(
 					"msg", "failed to mark delete request for user as processed",
 					"delete_request_id", deleteRequest.RequestID,
+					"sequence_num", deleteRequest.SequenceNum,
 					"user", deleteRequest.UserID,
 					"err", err,
 					"deleted_lines", deleteRequest.DeletedLines,
@@ -323,6 +327,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 				level.Info(util_log.Logger).Log(
 					"msg", "delete request for user marked as processed",
 					"delete_request_id", deleteRequest.RequestID,
+					"sequence_num", deleteRequest.SequenceNum,
 					"user", deleteRequest.UserID,
 					"deleted_lines", deleteRequest.DeletedLines,
 				)

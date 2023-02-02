@@ -79,6 +79,9 @@ type Error struct {
 	Header http.Header
 
 	Errors []ErrorItem
+	// err is typically a wrapped apierror.APIError, see
+	// google-api-go-client/internal/gensupport/error.go.
+	err error
 }
 
 // ErrorItem is a detailed error code & message from the Google API frontend.
@@ -120,6 +123,15 @@ func (e *Error) Error() string {
 		fmt.Fprintf(&buf, "Reason: %s, Message: %s\n", v.Reason, v.Message)
 	}
 	return buf.String()
+}
+
+// Wrap allows an existing Error to wrap another error. See also [Error.Unwrap].
+func (e *Error) Wrap(err error) {
+	e.err = err
+}
+
+func (e *Error) Unwrap() error {
+	return e.err
 }
 
 type errorReply struct {
@@ -174,8 +186,9 @@ func CheckMediaResponse(res *http.Response) error {
 	}
 	slurp, _ := ioutil.ReadAll(io.LimitReader(res.Body, 1<<20))
 	return &Error{
-		Code: res.StatusCode,
-		Body: string(slurp),
+		Code:   res.StatusCode,
+		Body:   string(slurp),
+		Header: res.Header,
 	}
 }
 
@@ -382,11 +395,11 @@ func ConvertVariant(v map[string]interface{}, dst interface{}) bool {
 // For example, if your response has a "NextPageToken" and a slice of "Items" with "Id" fields,
 // you could request just those fields like this:
 //
-//     svc.Events.List().Fields("nextPageToken", "items/id").Do()
+//	svc.Events.List().Fields("nextPageToken", "items/id").Do()
 //
 // or if you were also interested in each Item's "Updated" field, you can combine them like this:
 //
-//     svc.Events.List().Fields("nextPageToken", "items(id,updated)").Do()
+//	svc.Events.List().Fields("nextPageToken", "items(id,updated)").Do()
 //
 // Another way to find field names is through the Google API explorer:
 // https://developers.google.com/apis-explorer/#p/

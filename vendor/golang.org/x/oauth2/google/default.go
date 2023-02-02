@@ -54,11 +54,14 @@ type CredentialsParams struct {
 	// Optional.
 	Subject string
 
-	// AuthHandler is the AuthorizationHandler used for 3-legged OAuth flow. Optional.
+	// AuthHandler is the AuthorizationHandler used for 3-legged OAuth flow. Required for 3LO flow.
 	AuthHandler authhandler.AuthorizationHandler
 
-	// State is a unique string used with AuthHandler. Optional.
+	// State is a unique string used with AuthHandler. Required for 3LO flow.
 	State string
+
+	// PKCE is used to support PKCE flow. Optional for 3LO flow.
+	PKCE *authhandler.PKCEParams
 }
 
 func (params CredentialsParams) deepCopy() CredentialsParams {
@@ -176,7 +179,7 @@ func CredentialsFromJSONWithParams(ctx context.Context, jsonData []byte, params 
 	if config != nil {
 		return &Credentials{
 			ProjectID:   "",
-			TokenSource: authhandler.TokenSource(ctx, config, params.State, params.AuthHandler),
+			TokenSource: authhandler.TokenSourceWithPKCE(ctx, config, params.State, params.AuthHandler, params.PKCE),
 			JSON:        jsonData,
 		}, nil
 	}
@@ -190,6 +193,7 @@ func CredentialsFromJSONWithParams(ctx context.Context, jsonData []byte, params 
 	if err != nil {
 		return nil, err
 	}
+	ts = newErrWrappingTokenSource(ts)
 	return &DefaultCredentials{
 		ProjectID:   f.ProjectID,
 		TokenSource: ts,

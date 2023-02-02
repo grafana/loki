@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/relabel"
+	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -26,10 +27,11 @@ func NewGCPLogTarget(
 	relabel []*relabel.Config,
 	jobName string,
 	config *scrapeconfig.GcplogTargetConfig,
+	clientOptions ...option.ClientOption,
 ) (Target, error) {
 	switch config.SubscriptionType {
 	case "pull", "":
-		return newPullTarget(metrics, logger, handler, relabel, jobName, config)
+		return newPullTarget(metrics, logger, handler, relabel, jobName, config, clientOptions...)
 	case "push":
 		return newPushTarget(metrics, logger, handler, jobName, config, relabel)
 	default:

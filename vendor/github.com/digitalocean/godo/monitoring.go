@@ -27,10 +27,21 @@ const (
 	DropletFiveMinuteLoadAverage        = "v1/insights/droplet/load_5"
 	DropletFifteenMinuteLoadAverage     = "v1/insights/droplet/load_15"
 
-	LoadBalancerCPUUtilizationPercent        = "v1/insights/lbaas/avg_cpu_utilization_percent"
-	LoadBalancerConnectionUtilizationPercent = "v1/insights/lbaas/connection_utilization_percent"
-	LoadBalancerDropletHealth                = "v1/insights/lbaas/droplet_health"
-	LoadBalancerTLSUtilizationPercent        = "v1/insights/lbaas/tls_connections_per_second_utilization_percent"
+	LoadBalancerCPUUtilizationPercent             = "v1/insights/lbaas/avg_cpu_utilization_percent"
+	LoadBalancerConnectionUtilizationPercent      = "v1/insights/lbaas/connection_utilization_percent"
+	LoadBalancerDropletHealth                     = "v1/insights/lbaas/droplet_health"
+	LoadBalancerTLSUtilizationPercent             = "v1/insights/lbaas/tls_connections_per_second_utilization_percent"
+	LoadBalancerIncreaseInHTTPErrorRatePercentage = "v1/insights/lbaas/increase_in_http_error_rate_percentage"
+	LoadBalancerIncreaseInHTTPErrorRateCount      = "v1/insights/lbaas/increase_in_http_error_rate_count"
+	LoadBalancerHighHttpResponseTime              = "v1/insights/lbaas/high_http_request_response_time"
+	LoadBalancerHighHttpResponseTime50P           = "v1/insights/lbaas/high_http_request_response_time_50p"
+	LoadBalancerHighHttpResponseTime95P           = "v1/insights/lbaas/high_http_request_response_time_95p"
+	LoadBalancerHighHttpResponseTime99P           = "v1/insights/lbaas/high_http_request_response_time_99p"
+
+	DbaasFifteenMinuteLoadAverage = "v1/dbaas/alerts/load_15_alerts"
+	DbaasMemoryUtilizationPercent = "v1/dbaas/alerts/memory_utilization_alerts"
+	DbaasDiskUtilizationPercent   = "v1/dbaas/alerts/disk_utilization_alerts"
+	DbaasCPUUtilizationPercent    = "v1/dbaas/alerts/cpu_alerts"
 )
 
 // MonitoringService is an interface for interfacing with the

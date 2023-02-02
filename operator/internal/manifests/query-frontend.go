@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/imdario/mergo"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,15 +19,26 @@ import (
 func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 	deployment := NewQueryFrontendDeployment(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureQueryFrontendHTTPServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureQueryFrontendGRPCServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQueryFrontendGRPCServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&deployment.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
@@ -41,6 +51,7 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -120,7 +131,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -162,9 +173,8 @@ func NewQueryFrontendGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -192,9 +202,8 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -210,69 +219,12 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQueryFrontendHTTP(stackName)
-	caBundleName := signingCABundleName(stackName)
-
-	if err := configureTailCA(deployment, lokiFrontendContainerName, caBundleName, caBundleDir, caFile); err != nil {
-		return err
-	}
+func configureQueryFrontendHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQueryFrontendGRPC(stackName)
+func configureQueryFrontendGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQueryFrontendGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
-}
-
-// ConfigureQueryFrontendDeployment configures CA certificate when TLS is enabled.
-func configureTailCA(d *appsv1.Deployment,
-	qfContainerName, caBundleVolumeName, caDir, caFile string,
-) error {
-	var qfIdx int
-	for i, c := range d.Spec.Template.Spec.Containers {
-		if c.Name == qfContainerName {
-			qfIdx = i
-			break
-		}
-	}
-
-	containerSpec := corev1.Container{
-		Args: []string{
-			fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s/%s", caDir, caFile),
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      caBundleVolumeName,
-				ReadOnly:  true,
-				MountPath: caDir,
-			},
-		},
-	}
-
-	p := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: caBundleVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: caBundleVolumeName,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[qfIdx], containerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to add tls config args")
-	}
-
-	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to add tls volumes")
-	}
-
-	return nil
 }

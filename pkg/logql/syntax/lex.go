@@ -70,7 +70,11 @@ var tokens = map[string]int{
 	OpFmtLine:  LINE_FMT,
 
 	// filter functions
-	OpFilterIP: IP,
+	OpFilterIP:   IP,
+	OpDecolorize: DECOLORIZE,
+
+	// drop labels
+	OpDrop: DROP,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
@@ -91,6 +95,7 @@ var functionTokens = map[string]int{
 	OpRangeTypeFirst:       FIRST_OVER_TIME,
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
+	OpTypeVector:           VECTOR,
 
 	// vec ops
 	OpTypeSum:      SUM,
@@ -102,6 +107,8 @@ var functionTokens = map[string]int{
 	OpTypeStdvar:   STDVAR,
 	OpTypeBottomK:  BOTTOMK,
 	OpTypeTopK:     TOPK,
+	OpTypeSort:     SORT,
+	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
 
 	// conversion Op

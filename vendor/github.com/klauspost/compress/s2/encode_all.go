@@ -58,8 +58,9 @@ func encodeGo(dst, src []byte) []byte {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockGo(dst, src []byte) (d int) {
 	// Initialize the hash table.
 	const (

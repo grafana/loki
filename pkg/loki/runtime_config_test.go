@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -85,7 +85,7 @@ overrides:
 
 func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	t.Helper()
-	f, err := ioutil.TempFile(t.TempDir(), "bar")
+	f, err := os.CreateTemp(t.TempDir(), "bar")
 	require.NoError(t, err)
 	path := f.Name()
 	// fake loader to load from string instead of file.

@@ -100,10 +100,25 @@ func (fn StageFunc) RequiredLabelNames() []string {
 // pipeline is a combinations of multiple stages.
 // It can also be reduced into a single stage for convenience.
 type pipeline struct {
+	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
 
 	streamPipelines map[uint64]StreamPipeline
+}
+
+func (p *pipeline) Stages() []Stage {
+	return p.stages
+}
+
+func (p *pipeline) LabelsBuilder() *BaseLabelsBuilder {
+	return p.baseBuilder
+}
+
+type AnalyzablePipeline interface {
+	Pipeline
+	Stages() []Stage
+	LabelsBuilder() *BaseLabelsBuilder
 }
 
 // NewPipeline creates a new pipeline for a given set of stages.
@@ -123,16 +138,17 @@ type streamPipeline struct {
 	builder *LabelsBuilder
 }
 
+func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
+	return &streamPipeline{stages, labelsBuilder}
+}
+
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
 	if res, ok := p.streamPipelines[hash]; ok {
 		return res
 	}
 
-	res := &streamPipeline{
-		stages:  p.stages,
-		builder: p.baseBuilder.ForLabels(labels, hash),
-	}
+	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
 	p.streamPipelines[hash] = res
 	return res
 }

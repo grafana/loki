@@ -1,11 +1,12 @@
 ---
 title: Promtail
+description: Promtail
 weight: 10
 ---
 # Promtail
 
 Promtail is an agent which ships the contents of local logs to a private Grafana Loki
-instance or [Grafana Cloud](https://grafana.com/oss/loki). It is usually
+instance or [Grafana Cloud](/oss/loki). It is usually
 deployed to every machine that has applications needed to be monitored.
 
 It primarily:
@@ -34,11 +35,51 @@ Kubernetes API server while `static` usually covers all other use cases.
 Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 `relabel_configs` allows for fine-grained control of what to ingest, what to
 drop, and the final metadata to attach to the log line. Refer to the docs for
-[configuring Promtail](configuration/) for more details.
+[configuring Promtail]({{<relref "configuration.md">}}) for more details.
+
+### Support for compressed files
+
+Promtail now has native support for ingesting compressed files by a mechanism that
+relies on file extensions. If a discovered file has an expected compression file
+extension, Promtail will **lazily** decompress the compressed file and push the
+parsed data to Loki. Important details are:
+* It relies on the `\n` character to separate the data into different log lines.
+* The max expected log line is 2MB bytes within the compressed file.
+* The data is decompressed in blocks of 4096 bytes. i.e: it first fetches a block of 4096 bytes
+  from the compressed file and process it. After processing this block and pushing the data to Loki,
+  it fetches the following 4096 bytes, and so on.
+* It supports the following extensions:
+  - `.gz`: Data will be decompressed with the native Gunzip Golang pkg (`pkg/compress/gzip`)
+  - `.z`: Data will be decompressed with the native Zlib Golang pkg (`pkg/compress/zlib`)
+  - `.bz2`: Data will be decompressed with the native Bzip2 Golang pkg (`pkg/compress/bzip2`)
+  - `.tar.gz`: Data will be decompressed exactly as the `.gz` extension.
+      However, because `tar` will add its metadata at the beggining of the
+      compressed file, **the first parsed line will contains metadata together with
+      your log line**. It is illustrated at
+      `./clients/pkg/promtail/targets/file/decompresser_test.go`.
+* `.zip` extension isn't supported as of now because it doesn't support some of the interfaces
+  Promtail requires. We have plans to add support for it in the near future.
+* The decompression is quite CPU intensive and a lot of allocations are expected
+  to work, especially depending on the size of the file. You can expect the number
+  of garbage collection runs and the CPU usage to skyrocket, but no memory leak is
+  expected.
+* Positions are supported. That means that, if you interrupt Promtail after
+  parsing and pushing (for example) 45% of your compressed file data, you can expect Promtail
+  to resume work from the last scraped line and process the rest of the remaining 55%.
+* Since decompression and pushing can be very fast, depending on the size
+  of your compressed file Loki will rate-limit your ingestion. In that case you
+  might configure Promtail's [`limits` stage](/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
+  [ingestion limits on Loki](/docs/loki/latest/configuration/#limits_config).
+* Log rotations **aren't supported as of now**, mostly because it requires us modifying Promtail to
+  rely on file inodes instead of file names. If you'd like to see support for it, please create a new
+  issue on Github asking for it and explaining your use case.
+* If you would like to see support for a compression protocol that isn't listed here, please
+  create a new issue on Github asking for it and explaining your use case.
+
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api#post-lokiapiv1push) with the [loki_push_api](configuration#loki_push_api_config) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{<relref "../../api#push-log-entries-to-loki">}}) with the [loki_push_api]({{<relref "configuration#loki_push_api">}}) scrape config.
 
 There are a few instances where this might be helpful:
 
@@ -48,12 +89,12 @@ There are a few instances where this might be helpful:
 
 ## Receiving logs From Syslog
 
-When the [Syslog Target](configuration#syslog_config) is being used, logs
+When the [Syslog Target]({{<relref "configuration#syslog">}}) is being used, logs
 can be written with the syslog protocol to the configured port.
 
 ## AWS
 
-If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](../aws/ec2/).
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial]({{<relref "../aws/ec2/">}}).
 
 ## Labeling and parsing
 
@@ -66,7 +107,7 @@ To allow more sophisticated filtering afterwards, Promtail allows to set labels
 not only from service discovery, but also based on the contents of each log
 line. The `pipeline_stages` can be used to add or update labels, correct the
 timestamp, or re-write log lines entirely. Refer to the documentation for
-[pipelines](pipelines/) for more details.
+[pipelines]({{<relref "pipelines">}}) for more details.
 
 ## Shipping
 
@@ -92,7 +133,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. Refer to
-[Observing Grafana Loki](../../operations/observability/) for the list
+[Observing Grafana Loki]({{<relref "../../operations/observability/">}}) for the list
 of exported metrics.
 
 ### Promtail web server config

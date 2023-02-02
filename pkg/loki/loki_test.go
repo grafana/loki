@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -15,6 +14,9 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/server"
+
+	internalserver "github.com/grafana/loki/pkg/server"
 )
 
 func TestFlagDefaults(t *testing.T) {
@@ -92,6 +94,54 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 			if got := t.isModuleActive(tt.module); got != tt.want {
 				t1.Errorf("isModuleActive() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestLoki_AppendOptionalInternalServer(t *testing.T) {
+	fake := &Loki{
+		Cfg: Config{
+			Target: flagext.StringSliceCSV{All},
+			Server: server.Config{
+				HTTPListenAddress: "3100",
+			},
+		},
+	}
+	err := fake.setupModuleManager()
+	assert.NoError(t, err)
+
+	var tests []string
+	for target, deps := range fake.deps {
+		for _, dep := range deps {
+			if dep == Server {
+				tests = append(tests, target)
+				break
+			}
+		}
+	}
+
+	assert.NotEmpty(t, tests, tests)
+
+	for _, tt := range tests {
+		t.Run(tt, func(t *testing.T) {
+			l := &Loki{
+				Cfg: Config{
+					Target: flagext.StringSliceCSV{tt},
+					Server: server.Config{
+						HTTPListenAddress: "3100",
+					},
+					InternalServer: internalserver.Config{
+						Config: server.Config{
+							HTTPListenAddress: "3101",
+						},
+						Enable: true,
+					},
+				},
+			}
+			err := l.setupModuleManager()
+			assert.NoError(t, err)
+			assert.Contains(t, l.deps[tt], InternalServer)
+			assert.Contains(t, l.deps[tt], Server)
 		})
 	}
 }
@@ -197,7 +247,7 @@ schema_config:
 
 	defer resp.Body.Close()
 
-	bBytes, err := ioutil.ReadAll(resp.Body)
+	bBytes, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, string(bBytes), "abc")
 	assert.True(t, customHandlerInvoked)

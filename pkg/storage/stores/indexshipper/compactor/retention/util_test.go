@@ -303,7 +303,7 @@ func entryFromChunk(c chunk.Chunk) ChunkEntry {
 			From:     c.From,
 			Through:  c.Through,
 		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
+		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(nil),
 	}
 }
 
@@ -315,7 +315,7 @@ func newTestStore(t testing.TB) *testStore {
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
-	util_log.InitLogger(servercfg, nil)
+	util_log.InitLogger(servercfg, nil, true, false)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

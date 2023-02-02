@@ -74,6 +74,8 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	switch e := expr.(type) {
 	case *syntax.LiteralExpr:
 		return e, nil
+	case *syntax.VectorExpr:
+		return e, nil
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:

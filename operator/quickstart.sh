@@ -67,8 +67,9 @@ certificates() {
     kubectl -n cert-manager rollout status deployment cert-manager-webhook
     kubectl apply -f ./hack/addons_kind_certs.yaml
 
-    kubectl wait --timeout=180s --for=condition=ready certificate/lokistack-dev-ca-bundle
-    kubectl create configmap lokistack-dev-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-ca-bundle -o json | jq -r '.data."ca.crt"' | base64 -d -)"
+    kubectl wait --timeout=180s --for=condition=ready certificate/lokistack-dev-signing-ca
+    kubectl create configmap lokistack-dev-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-signing-ca -o json | jq -r '.data."ca.crt"' | base64 -d -)"
+    kubectl create configmap lokistack-dev-gateway-ca-bundle --from-literal service-ca.crt="$(kubectl get secret lokistack-dev-signing-ca -o json | jq -r '.data."ca.crt"' | base64 -d -)"
 }
 
 check() {

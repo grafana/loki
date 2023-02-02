@@ -49,7 +49,7 @@ func TestGetTenantSecrets_StaticMode(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "test" && name.Namespace == "some-ns" {
 			k.SetClientObject(object, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -112,7 +112,7 @@ func TestGetTenantSecrets_DynamicMode(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "test" && name.Namespace == "some-ns" {
 			k.SetClientObject(object, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{

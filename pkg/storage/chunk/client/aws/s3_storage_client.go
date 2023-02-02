@@ -76,7 +76,7 @@ type S3Config struct {
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
-	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
+	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -381,7 +381,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		if resp.ContentLength != nil {
 			size = *resp.ContentLength
 		}
-		if err == nil {
+		if err == nil && resp.Body != nil {
 			return resp.Body, size, nil
 		}
 		retries.Wait()

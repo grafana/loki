@@ -296,11 +296,9 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 
 func TestDoubleRegistration(t *testing.T) {
 	r := prometheus.NewRegistry()
-	cleanup, storeAddress := createTestGrpcServer(t)
-	t.Cleanup(cleanup)
 
 	clientCfg := IndexGatewayClientConfig{
-		Address: storeAddress,
+		Address: "my-store-address:1234",
 	}
 
 	client, err := NewGatewayClient(clientCfg, r, util_log.Logger)

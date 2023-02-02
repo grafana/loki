@@ -52,22 +52,38 @@ type PostPolicyV4Options struct {
 	// Exactly one of PrivateKey or SignBytes must be non-nil.
 	PrivateKey []byte
 
-	// SignBytes is a function for implementing custom signing. For example, if
+	// SignBytes is a function for implementing custom signing.
+	//
+	// Deprecated: Use SignRawBytes. If both SignBytes and SignRawBytes are defined,
+	// SignBytes will be ignored.
+	// This SignBytes function expects the bytes it receives to be hashed, while
+	// SignRawBytes accepts the raw bytes without hashing, allowing more flexibility.
+	// Add the following to the top of your signing function to hash the bytes
+	// to use SignRawBytes instead:
+	//		shaSum := sha256.Sum256(bytes)
+	//		bytes = shaSum[:]
+	//
+	SignBytes func(hashBytes []byte) (signature []byte, err error)
+
+	// SignRawBytes is a function for implementing custom signing. For example, if
 	// your application is running on Google App Engine, you can use
 	// appengine's internal signing function:
-	//     ctx := appengine.NewContext(request)
-	//     acc, _ := appengine.ServiceAccount(ctx)
-	//     url, err := SignedURL("bucket", "object", &SignedURLOptions{
-	//     	GoogleAccessID: acc,
-	//     	SignBytes: func(b []byte) ([]byte, error) {
-	//     		_, signedBytes, err := appengine.SignBytes(ctx, b)
-	//     		return signedBytes, err
-	//     	},
-	//     	// etc.
-	//     })
+	//		ctx := appengine.NewContext(request)
+	//     	acc, _ := appengine.ServiceAccount(ctx)
+	//     	&PostPolicyV4Options{
+	//     		GoogleAccessID: acc,
+	//     		SignRawBytes: func(b []byte) ([]byte, error) {
+	//     			_, signedBytes, err := appengine.SignBytes(ctx, b)
+	//     			return signedBytes, err
+	//     		},
+	//     		// etc.
+	//     	})
 	//
-	// Exactly one of PrivateKey or SignBytes must be non-nil.
-	SignBytes func(hashBytes []byte) (signature []byte, err error)
+	// SignRawBytes is equivalent to the SignBytes field on SignedURLOptions;
+	// that is, you may use the same signing function for the two.
+	//
+	// Exactly one of PrivateKey or SignRawBytes must be non-nil.
+	SignRawBytes func(bytes []byte) (signature []byte, err error)
 
 	// Expires is the expiration time on the signed URL.
 	// It must be a time in the future.
@@ -96,6 +112,23 @@ type PostPolicyV4Options struct {
 	// a 4XX status code, back with the message describing the problem.
 	// Optional.
 	Conditions []PostPolicyV4Condition
+
+	shouldHashSignBytes bool
+}
+
+func (opts *PostPolicyV4Options) clone() *PostPolicyV4Options {
+	return &PostPolicyV4Options{
+		GoogleAccessID:      opts.GoogleAccessID,
+		PrivateKey:          opts.PrivateKey,
+		SignBytes:           opts.SignBytes,
+		SignRawBytes:        opts.SignRawBytes,
+		Expires:             opts.Expires,
+		Style:               opts.Style,
+		Insecure:            opts.Insecure,
+		Fields:              opts.Fields,
+		Conditions:          opts.Conditions,
+		shouldHashSignBytes: opts.shouldHashSignBytes,
+	}
 }
 
 // PolicyV4Fields describes the attributes for a PostPolicyV4 request.
@@ -206,6 +239,8 @@ func conditionStatusCodeOnSuccess(statusCode int) PostPolicyV4Condition {
 
 // GenerateSignedPostPolicyV4 generates a PostPolicyV4 value from bucket, object and opts.
 // The generated URL and fields will then allow an unauthenticated client to perform multipart uploads.
+// If initializing a Storage Client, instead use the Bucket.GenerateSignedPostPolicyV4
+// method which uses the Client's credentials to handle authentication.
 func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
 	if bucket == "" {
 		return nil, errors.New("storage: bucket must be non-empty")
@@ -220,20 +255,22 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 
 	var signingFn func(hashedBytes []byte) ([]byte, error)
 	switch {
-	case opts.SignBytes != nil:
+	case opts.SignRawBytes != nil:
+		signingFn = opts.SignRawBytes
+	case opts.shouldHashSignBytes:
 		signingFn = opts.SignBytes
-
 	case len(opts.PrivateKey) != 0:
 		parsedRSAPrivKey, err := parseKey(opts.PrivateKey)
 		if err != nil {
 			return nil, err
 		}
-		signingFn = func(hashedBytes []byte) ([]byte, error) {
-			return rsa.SignPKCS1v15(rand.Reader, parsedRSAPrivKey, crypto.SHA256, hashedBytes)
+		signingFn = func(b []byte) ([]byte, error) {
+			sum := sha256.Sum256(b)
+			return rsa.SignPKCS1v15(rand.Reader, parsedRSAPrivKey, crypto.SHA256, sum[:])
 		}
 
 	default:
-		return nil, errors.New("storage: exactly one of PrivateKey or SignedBytes must be set")
+		return nil, errors.New("storage: exactly one of PrivateKey or SignRawBytes must be set")
 	}
 
 	var descFields PolicyV4Fields
@@ -249,10 +286,16 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 	conds := make([]PostPolicyV4Condition, len(opts.Conditions))
 	copy(conds, opts.Conditions)
 	conds = append(conds,
-		conditionRedirectToURLOnSuccess(descFields.RedirectToURLOnSuccess),
-		conditionStatusCodeOnSuccess(descFields.StatusCodeOnSuccess),
+		// These are ordered lexicographically. Technically the order doesn't matter
+		// for creating the policy, but we use this order to match the
+		// cross-language conformance tests for this feature.
 		&singleValueCondition{"acl", descFields.ACL},
 		&singleValueCondition{"cache-control", descFields.CacheControl},
+		&singleValueCondition{"content-disposition", descFields.ContentDisposition},
+		&singleValueCondition{"content-encoding", descFields.ContentEncoding},
+		&singleValueCondition{"content-type", descFields.ContentType},
+		conditionRedirectToURLOnSuccess(descFields.RedirectToURLOnSuccess),
+		conditionStatusCodeOnSuccess(descFields.StatusCodeOnSuccess),
 	)
 
 	YYYYMMDD := now.Format(yearMonthDay)
@@ -261,8 +304,12 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 		"x-goog-date":             now.Format(iso8601),
 		"x-goog-credential":       opts.GoogleAccessID + "/" + YYYYMMDD + "/auto/storage/goog4_request",
 		"x-goog-algorithm":        "GOOG4-RSA-SHA256",
-		"success_action_redirect": descFields.RedirectToURLOnSuccess,
 		"acl":                     descFields.ACL,
+		"cache-control":           descFields.CacheControl,
+		"content-disposition":     descFields.ContentDisposition,
+		"content-encoding":        descFields.ContentEncoding,
+		"content-type":            descFields.ContentType,
+		"success_action_redirect": descFields.RedirectToURLOnSuccess,
 	}
 	for key, value := range descFields.Metadata {
 		conds = append(conds, &singleValueCondition{key, value})
@@ -293,14 +340,22 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 		"expiration": opts.Expires.Format(time.RFC3339),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("storage: PostPolicyV4 JSON serialization failed: %v", err)
+		return nil, fmt.Errorf("storage: PostPolicyV4 JSON serialization failed: %w", err)
 	}
 
 	b64Policy := base64.StdEncoding.EncodeToString(condsAsJSON)
-	shaSum := sha256.Sum256([]byte(b64Policy))
-	signature, err := signingFn(shaSum[:])
-	if err != nil {
-		return nil, err
+	var signature []byte
+	var signErr error
+
+	if opts.shouldHashSignBytes {
+		// SignBytes expects hashed bytes as input instead of raw bytes, so we hash them
+		shaSum := sha256.Sum256([]byte(b64Policy))
+		signature, signErr = signingFn(shaSum[:])
+	} else {
+		signature, signErr = signingFn([]byte(b64Policy))
+	}
+	if signErr != nil {
+		return nil, signErr
 	}
 
 	policyFields["policy"] = b64Policy
@@ -338,21 +393,25 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 
 // validatePostPolicyV4Options checks that:
 // * GoogleAccessID is set
-// * either but not both PrivateKey and SignBytes are set or nil, but not both
-// * Expires, the deadline is not in the past
+// * either PrivateKey or SignRawBytes/SignBytes is set, but not both
+// * the deadline set in Expires is not in the past
 // * if Style is not set, it'll use PathStyle
+// * sets shouldHashSignBytes to true if opts.SignBytes should be used
 func validatePostPolicyV4Options(opts *PostPolicyV4Options, now time.Time) error {
 	if opts == nil || opts.GoogleAccessID == "" {
 		return errors.New("storage: missing required GoogleAccessID")
 	}
-	if privBlank, signBlank := len(opts.PrivateKey) == 0, opts.SignBytes == nil; privBlank == signBlank {
-		return errors.New("storage: exactly one of PrivateKey or SignedBytes must be set")
+	if privBlank, signBlank := len(opts.PrivateKey) == 0, opts.SignBytes == nil && opts.SignRawBytes == nil; privBlank == signBlank {
+		return errors.New("storage: exactly one of PrivateKey or SignRawBytes must be set")
 	}
 	if opts.Expires.Before(now) {
 		return errors.New("storage: expecting Expires to be in the future")
 	}
 	if opts.Style == nil {
 		opts.Style = PathStyle()
+	}
+	if opts.SignRawBytes == nil && opts.SignBytes != nil {
+		opts.shouldHashSignBytes = true
 	}
 	return nil
 }

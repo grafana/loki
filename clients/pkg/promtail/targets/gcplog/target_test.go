@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
@@ -45,7 +47,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				logger:  logger,
 				handler: eh,
 				relabel: nil,
-				jobName: "test_job",
+				jobName: "test_job_defaults_to_pull_target",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "",
 				},
@@ -60,7 +62,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				logger:  logger,
 				handler: eh,
 				relabel: nil,
-				jobName: "test_job",
+				jobName: "test_job_pull_subscriptiontype_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "pull",
 				},
@@ -75,7 +77,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				logger:  logger,
 				handler: eh,
 				relabel: nil,
-				jobName: "test_job",
+				jobName: "test_job_push_subscription_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "push",
 				},
@@ -90,7 +92,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				logger:  logger,
 				handler: eh,
 				relabel: nil,
-				jobName: "test_job",
+				jobName: "test_job_unknown_substype_fails_to_create_target",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "magic",
 				},
@@ -105,7 +107,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 			// Since the push target underlying http server registers metrics in the default registerer, we have to override it to prevent duplicate metrics errors.
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
-			got, err := NewGCPLogTarget(tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config)
+			got, err := NewGCPLogTarget(tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config, option.WithCredentials(&google.Credentials{}))
 			// If the target was started, stop it after test
 			if got != nil {
 				defer func() { _ = got.Stop() }()

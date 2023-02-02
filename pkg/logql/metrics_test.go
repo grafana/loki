@@ -85,7 +85,7 @@ func TestLogSlowQuery(t *testing.T) {
 	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
-			`level=info org_id=foo traceID=%s latency=slow query=".*" query_type=filter range_type=range length=1h0m0s start_delta=.* end_delta=.* step=1m0s duration=25.25s status=200 limit=1000 returned_lines=10 throughput=100kB total_bytes=100kB total_entries=10 queue_time=2ns subqueries=0 cache_chunk_req=0 cache_chunk_hit=0 cache_chunk_bytes_stored=0 cache_chunk_bytes_fetched=0 cache_index_req=0 cache_index_hit=0 cache_result_req=0 cache_result_hit=0 source=logvolhist feature=beta\n`,
+			`level=info org_id=foo traceID=%s latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		)),
 		buf.String())
@@ -186,4 +186,14 @@ func Test_testToKeyValues(t *testing.T) {
 			assert.Equal(t, c.exp, got)
 		})
 	}
+}
+
+func TestQueryHashing(t *testing.T) {
+	h1 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
+	h2 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)
+	// check that it capture differences of order.
+	require.NotEqual(t, h1, h2)
+	h3 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
+	// check that it evaluate same queries as same hashes, even if evaluated at different timestamps.
+	require.Equal(t, h1, h3)
 }

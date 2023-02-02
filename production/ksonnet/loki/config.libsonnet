@@ -3,6 +3,7 @@
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
     http_listen_port: 3100,
+    node_selector: null,
 
     create_service_monitor: false,
 
@@ -76,6 +77,15 @@
     index_period_hours: 24,  // 1 day
 
     ruler_enabled: false,
+
+    distributor: {
+      use_topology_spread: true,
+      topology_spread_max_skew: 1,
+    },
+
+    ingester_allow_multiple_replicas_on_same_node: false,
+    ingester_data_disk_size: '10Gi',
+    ingester_data_disk_class: 'fast',
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',

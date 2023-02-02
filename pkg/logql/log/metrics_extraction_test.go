@@ -18,127 +18,159 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		want    float64
 		wantLbs labels.Labels
 		wantOk  bool
+		line    string
 	}{
 		{
-			"convert float",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "convert float",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, nil, false, false, nil, NoopStage,
 			)),
-			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
-			15,
-			labels.Labels{},
-			true,
+			in:      labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
+			want:    15,
+			wantLbs: labels.Labels{},
+			wantOk:  true,
 		},
 		{
-			"convert float as vector with no grouping",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "convert float as vector with no grouping",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, nil, false, true, nil, NoopStage,
 			)),
-			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}, labels.Label{Name: "bar", Value: "buzz"}},
-			15,
-			labels.Labels{},
-			true,
+			in:      labels.Labels{labels.Label{Name: "foo", Value: "15.0"}, labels.Label{Name: "bar", Value: "buzz"}},
+			want:    15,
+			wantLbs: labels.Labels{},
+			wantOk:  true,
 		},
 		{
-			"convert float without",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "convert float without",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, []string{"bar", "buzz"}, true, false, nil, NoopStage,
 			)),
-			labels.Labels{
+			in: labels.Labels{
 				{Name: "foo", Value: "10"},
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 				{Name: "namespace", Value: "dev"},
 			},
-			10,
-			labels.Labels{
+			want: 10,
+			wantLbs: labels.Labels{
 				{Name: "namespace", Value: "dev"},
 			},
-			true,
+			wantOk: true,
 		},
 		{
-			"convert float with",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "convert float with",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
-			labels.Labels{
+			in: labels.Labels{
 				{Name: "foo", Value: "0.6"},
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 				{Name: "namespace", Value: "dev"},
 			},
-			0.6,
-			labels.Labels{
+			want: 0.6,
+			wantLbs: labels.Labels{
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 			},
-			true,
+			wantOk: true,
 		},
 		{
-			"convert duration with",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "convert duration with",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
-			labels.Labels{
+			in: labels.Labels{
 				{Name: "foo", Value: "500ms"},
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 				{Name: "namespace", Value: "dev"},
 			},
-			0.5,
-			labels.Labels{
+			want: 0.5,
+			wantLbs: labels.Labels{
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 			},
-			true,
+			wantOk: true,
 		},
 		{
-			"convert bytes",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "convert bytes",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
-			labels.Labels{
+			in: labels.Labels{
 				{Name: "foo", Value: "13 MiB"},
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 				{Name: "namespace", Value: "dev"},
 			},
-			13 * 1024 * 1024,
-			labels.Labels{
+			want: 13 * 1024 * 1024,
+			wantLbs: labels.Labels{
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 			},
-			true,
+			wantOk: true,
 		},
 		{
-			"not convertable",
-			mustSampleExtractor(LabelExtractorWithStages(
+			name: "not convertable",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
-			labels.Labels{
+			in: labels.Labels{
 				{Name: "foo", Value: "not_a_number"},
 				{Name: "bar", Value: "foo"},
 			},
-			0,
-			labels.Labels{
+			wantLbs: labels.Labels{
 				{Name: "__error__", Value: "SampleExtractionErr"},
 				{Name: "__error_details__", Value: "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax"},
 				{Name: "bar", Value: "foo"},
 				{Name: "foo", Value: "not_a_number"},
 			},
-			true,
+			wantOk: true,
+		},
+		{
+			name: "dynamic label, convert duration",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser()}, NoopStage,
+			)),
+			in: labels.Labels{
+				{Name: "bar", Value: "foo"},
+			},
+			want: 0.1234,
+			wantLbs: labels.Labels{
+				{Name: "bar", Value: "foo"},
+			},
+			wantOk: true,
+			line:   "foo=123.4ms",
+		},
+		{
+			name: "dynamic label, not convertable",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser()}, NoopStage,
+			)),
+			in: labels.Labels{
+				{Name: "bar", Value: "foo"},
+			},
+			wantLbs: labels.Labels{
+				{Name: "__error__", Value: "SampleExtractionErr"},
+				{Name: "__error_details__", Value: "time: invalid duration \"not_a_number\""},
+				{Name: "bar", Value: "foo"},
+				{Name: "foo", Value: "not_a_number"},
+			},
+			wantOk: true,
+			line:   "foo=not_a_number",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.in)
 
-			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(""))
+			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line))
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())
 
-			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, "")
+			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line)
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())

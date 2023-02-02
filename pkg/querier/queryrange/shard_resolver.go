@@ -101,17 +101,16 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 		results = append(results, casted.Response)
 		level.Debug(sp).Log(
-			"msg", "queried index",
-			"type", "single",
-			"matchers", matchers,
-			"bytes", strings.Replace(humanize.Bytes(casted.Response.Bytes), " ", "", 1),
-			"chunks", casted.Response.Chunks,
-			"streams", casted.Response.Streams,
-			"entries", casted.Response.Entries,
-			"duration", time.Since(start),
-			"from", adjustedFrom.Time(),
-			"through", adjustedThrough.Time(),
-			"length", adjustedThrough.Sub(adjustedFrom),
+			append(
+				casted.Response.LoggingKeyValues(),
+				"msg", "queried index",
+				"type", "single",
+				"matchers", matchers,
+				"duration", time.Since(start),
+				"from", adjustedFrom.Time(),
+				"through", adjustedThrough.Time(),
+				"length", adjustedThrough.Sub(adjustedFrom),
+			)...,
 		)
 		return nil
 	}); err != nil {
@@ -125,31 +124,36 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
 	level.Debug(sp).Log(
-		"msg", "queried index",
-		"type", "combined",
-		"len", len(results),
-		"bytes", strings.Replace(humanize.Bytes(combined.Bytes), " ", "", 1),
-		"chunks", combined.Chunks,
-		"streams", combined.Streams,
-		"entries", combined.Entries,
-		"max_parallelism", r.maxParallelism,
-		"duration", time.Since(start),
-		"factor", factor,
-		"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
+		append(
+			combined.LoggingKeyValues(),
+			"msg", "queried index",
+			"type", "combined",
+			"len", len(results),
+			"max_parallelism", r.maxParallelism,
+			"duration", time.Since(start),
+			"factor", factor,
+			"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
+		)...,
 	)
 	return factor, nil
 }
 
 const (
 	// Just some observed values to get us started on better query planning.
-	p90BytesPerSecond = 300 << 20 // 300MB/s/core
+	maxBytesPerShard = 600 << 20
 )
 
+// Since we shard by powers of two and we increase shard factor
+// once each shard surpasses maxBytesPerShard, if the shard factor
+// is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
+// For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards of 500MB.
+// If there are 1004MB, we split into four shards of 251MB.
 func guessShardFactor(stats stats.Stats) int {
-	expectedSeconds := float64(stats.Bytes) / float64(p90BytesPerSecond)
-	power := math.Ceil(math.Log2(expectedSeconds)) // round up to nearest power of 2
+	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
 
-	// Parallelize down to 1s queries
+	// round up to nearest power of 2
+	power := math.Ceil(math.Log2(minShards))
+
 	// Since x^0 == 1 and we only support factors of 2
 	// reset this edge case manually
 	factor := int(math.Pow(2, power))

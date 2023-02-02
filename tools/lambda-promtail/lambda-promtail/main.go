@@ -27,12 +27,14 @@ const (
 )
 
 var (
-	writeAddress                                 *url.URL
-	username, password, extraLabelsRaw, tenantID string
-	keepStream                                   bool
-	batchSize                                    int
-	s3Clients                                    map[string]*s3.Client
-	extraLabels                                  model.LabelSet
+	writeAddress                                              *url.URL
+	username, password, extraLabelsRaw, tenantID, bearerToken string
+	keepStream                                                bool
+	batchSize                                                 int
+	s3Clients                                                 map[string]*s3.Client
+	extraLabels                                               model.LabelSet
+	skipTlsVerify                                             bool
+	printLogLine                                              bool
 )
 
 func setupArguments() {
@@ -62,6 +64,18 @@ func setupArguments() {
 		panic("both username and password must be set if either one is set")
 	}
 
+	bearerToken = os.Getenv("BEARER_TOKEN")
+	// If username and password are set, bearer token is not allowed
+	if username != "" && bearerToken != "" {
+		panic("both username and bearerToken are not allowed")
+	}
+
+	skipTls := os.Getenv("SKIP_TLS_VERIFY")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(skipTls, "true") {
+		skipTlsVerify = true
+	}
+
 	tenantID = os.Getenv("TENANT_ID")
 
 	keep := os.Getenv("KEEP_STREAM")
@@ -75,6 +89,12 @@ func setupArguments() {
 	batchSize = 131072
 	if batch != "" {
 		batchSize, _ = strconv.Atoi(batch)
+	}
+
+	print := os.Getenv("PRINT_LOG_LINE")
+	printLogLine = true
+	if strings.EqualFold(print, "false") {
+		printLogLine = false
 	}
 
 	s3Clients = make(map[string]*s3.Client)
@@ -109,8 +129,9 @@ func applyExtraLabels(labels model.LabelSet) model.LabelSet {
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var s3Event events.S3Event
 	var cwEvent events.CloudwatchLogsEvent
+	var kinesisEvent events.KinesisEvent
 
-	types := [...]interface{}{&s3Event, &cwEvent}
+	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -142,6 +163,8 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 		return processS3Event(ctx, evt)
 	case *events.CloudwatchLogsEvent:
 		return processCWEvent(ctx, evt)
+	case *events.KinesisEvent:
+		return processKinesisEvent(ctx, evt)
 	}
 
 	return err

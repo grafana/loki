@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/errors"
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/series"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -37,10 +37,10 @@ type compositeStoreEntry struct {
 }
 
 type storeEntry struct {
-	limits  StoreLimits
-	stop    func()
-	fetcher *fetcher.Fetcher
-	index   series.IndexStore
+	limits      StoreLimits
+	stop        func()
+	fetcher     *fetcher.Fetcher
+	indexReader index.Reader
 	ChunkWriter
 }
 
@@ -64,7 +64,7 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 		return nil, nil, nil
 	}
 
-	refs, err := c.index.GetChunkRefs(ctx, userID, from, through, allMatchers...)
+	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, allMatchers...)
 
 	chunks := make([]chunk.Chunk, len(refs))
 	for i, ref := range refs {
@@ -77,11 +77,11 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 }
 
 func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
-	return c.index.GetSeries(ctx, userID, from, through, matchers...)
+	return c.indexReader.GetSeries(ctx, userID, from, through, matchers...)
 }
 
 func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	c.index.SetChunkFilterer(chunkFilter)
+	c.indexReader.SetChunkFilterer(chunkFilter)
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
@@ -97,7 +97,7 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 	}
 	level.Debug(log).Log("metric", metricName)
 
-	return c.index.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
@@ -111,7 +111,7 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 		return nil, nil
 	}
 
-	return c.index.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+	return c.indexReader.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 }
 
 func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
@@ -125,7 +125,7 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 		return nil, nil
 	}
 
-	return c.index.Stats(ctx, userID, from, through, matchers...)
+	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

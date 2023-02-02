@@ -199,7 +199,7 @@ type AuthenticationSpec struct {
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
 //
-// +kubebuilder:validation:Enum=static;dynamic;openshift-logging
+// +kubebuilder:validation:Enum=static;dynamic;openshift-logging;openshift-network
 type ModeType string
 
 const (
@@ -208,8 +208,10 @@ const (
 	Static ModeType = "static"
 	// Dynamic mode delegates the authorization to a third-party OPA-compatible endpoint.
 	Dynamic ModeType = "dynamic"
-	// OpenshiftLogging mode provides fully automatic OpenShift in-cluster authentication and authorization support.
+	// OpenshiftLogging mode provides fully automatic OpenShift in-cluster authentication and authorization support for application, infrastructure and audit logs.
 	OpenshiftLogging ModeType = "openshift-logging"
+	// OpenshiftNetwork mode provides fully automatic OpenShift in-cluster authentication and authorization support for network logs only.
+	OpenshiftNetwork ModeType = "openshift-network"
 )
 
 // TenantsSpec defines the mode, authentication and authorization
@@ -220,7 +222,7 @@ type TenantsSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=openshift-logging
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging"},displayName="Mode"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging","urn:alm:descriptor:com.tectonic.ui:select:openshift-network"},displayName="Mode"
 	Mode ModeType `json:"mode"`
 	// Authentication defines the lokistack-gateway component authentication configuration spec per tenant.
 	//
@@ -321,15 +323,45 @@ type LokiTemplateSpec struct {
 	Ruler *LokiComponentSpec `json:"ruler,omitempty"`
 }
 
-// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
-type ObjectStorageTLSSpec struct {
-	// CA is the name of a ConfigMap containing a CA certificate.
-	// It needs to be in the same namespace as the LokiStack custom resource.
+// ClusterProxy is the Proxy configuration when the cluster is behind a Proxy.
+type ClusterProxy struct {
+	// HTTPProxy configures the HTTP_PROXY/http_proxy env variable.
 	//
 	// +optional
 	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="HTTPProxy"
+	HTTPProxy string `json:"httpProxy,omitempty"`
+	// HTTPSProxy configures the HTTPS_PROXY/https_proxy env variable.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="HTTPSProxy"
+	HTTPSProxy string `json:"httpsProxy,omitempty"`
+	// NoProxy configures the NO_PROXY/no_proxy env variable.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="NoProxy"
+	NoProxy string `json:"noProxy,omitempty"`
+}
+
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	// Key is the data key of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	// If empty, it defaults to "service-ca.crt".
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap Key"
+	CAKey string `json:"caKey,omitempty"`
+	// CA is the name of a ConfigMap containing a CA certificate.
+	// It needs to be in the same namespace as the LokiStack custom resource.
+	//
+	// +required
+	// +kubebuilder:validation:required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
-	CA string `json:"caName,omitempty"`
+	CA string `json:"caName"`
 }
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
@@ -452,6 +484,14 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Query Series"
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
+
+	// Timeout when querying ingesters or storage during the execution of a query request.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:="1m"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
+	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
@@ -512,6 +552,45 @@ type IngestionLimitSpec struct {
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 }
 
+// RetentionStreamSpec defines a log stream with separate retention time.
+type RetentionStreamSpec struct {
+	// Days contains the number of days logs are kept.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum:=1
+	Days uint `json:"days"`
+
+	// Priority defines the priority of this selector compared to other retention rules.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=1
+	Priority uint32 `json:"priority,omitempty"`
+
+	// Selector contains the LogQL query used to define the log stream.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	Selector string `json:"selector"`
+}
+
+// RetentionLimitSpec controls how long logs will be kept in storage.
+type RetentionLimitSpec struct {
+	// Days contains the number of days logs are kept.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum:=1
+	Days uint `json:"days"`
+
+	// Stream defines the log stream.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Streams []*RetentionStreamSpec `json:"streams,omitempty"`
+}
+
 // LimitsTemplateSpec defines the limits  applied at ingestion or query path.
 type LimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
@@ -525,6 +604,12 @@ type LimitsTemplateSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
+
+	// Retention defines how long logs are kept in storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
 // LimitsSpec defines the spec for limits applied at ingestion or query
@@ -545,7 +630,7 @@ type LimitsSpec struct {
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
-// RulesSpec deifnes the spec for the ruler component.
+// RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
 	//
@@ -603,14 +688,20 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:StorageClass",displayName="Storage Class Name"
 	StorageClassName string `json:"storageClassName"`
 
+	// Proxy defines the spec for the object proxy to configure cluster proxy information.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
+	Proxy *ClusterProxy `json:"proxy,omitempty"`
+
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum:=1
-	// +kubebuilder:default:=1
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
-	ReplicationFactor int32 `json:"replicationFactor"`
+	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
 
 	// Rules defines the spec for the ruler component
 	//
@@ -648,7 +739,7 @@ const (
 	// ConditionReady defines the condition that all components in the Loki deployment are ready.
 	ConditionReady LokiStackConditionType = "Ready"
 
-	// ConditionPending defines the conditioin that some or all components are in pending state.
+	// ConditionPending defines the condition that some or all components are in pending state.
 	ConditionPending LokiStackConditionType = "Pending"
 
 	// ConditionFailed defines the condition that components in the Loki deployment failed to roll out.
@@ -698,6 +789,8 @@ const (
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
+	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
+	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
@@ -807,7 +900,9 @@ type LokiStackStatus struct {
 //
 // +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Ingress,v1},{Service,v1},{ServiceAccount,v1},{PersistentVolumeClaims,v1},{Route,v1},{ServiceMonitor,v1}}
 type LokiStack struct {
-	Spec              LokiStackSpec   `json:"spec,omitempty"`
+	// LokiStack CR spec field.
+	Spec LokiStackSpec `json:"spec,omitempty"`
+	// LokiStack CR spec Status.
 	Status            LokiStackStatus `json:"status,omitempty"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	metav1.TypeMeta   `json:",inline"`

@@ -1,13 +1,18 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/go-kit/log"
 	json "github.com/json-iterator/go"
@@ -511,6 +516,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
 			},
 		},
+
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -579,6 +585,43 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
 			},
 		},
+		//sort and sort_desc
+		{
+			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
+					newSeries(testSize, factor(5, identity), `{app="fuzz"}`), newSeries(testSize, identity, `{app="buzz"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "buzz"}}},
+			},
+		},
+		{
+			`sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
+					newSeries(testSize, factor(5, identity), `{app="fuzz"}`), newSeries(testSize, identity, `{app="buzz"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "buzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+			},
+		},
 		{
 			// healthcheck
 			`1+1`, time.Unix(60, 0), logproto.FORWARD, 100,
@@ -589,6 +632,14 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		{
 			// single literal
 			`2`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			nil,
+			nil,
+			promql.Scalar{T: 60 * 1000, V: 2},
+		},
+		{
+			// vector instant
+			`vector(2)`,
 			time.Unix(60, 0), logproto.FORWARD, 100,
 			nil,
 			nil,
@@ -1505,6 +1556,35 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			`rate({app="foo"}[1m]) or vector(0)`,
+			time.Unix(60, 0), time.Unix(180, 0), 20 * time.Second, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(55, 0).UnixNano(), Hash: 1, Value: 1.},
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 1.},
+						{Timestamp: time.Unix(65, 0).UnixNano(), Hash: 3, Value: 1.},
+						{Timestamp: time.Unix(70, 0).UnixNano(), Hash: 4, Value: 1.},
+						{Timestamp: time.Unix(170, 0).UnixNano(), Hash: 5, Value: 1.},
+						{Timestamp: time.Unix(175, 0).UnixNano(), Hash: 6, Value: 1.},
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					//vector result
+					Metric: labels.Labels(nil),
+					Points: []promql.Point{{T: 60000, V: 0}, {T: 80000, V: 0}, {T: 100000, V: 0}, {T: 120000, V: 0}, {T: 140000, V: 0}, {T: 160000, V: 0}, {T: 180000, V: 0}}},
+				promql.Series{
+					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60000, V: 0.03333333333333333}, {T: 80000, V: 0.06666666666666667}, {T: 100000, V: 0.06666666666666667}, {T: 120000, V: 0.03333333333333333}, {T: 180000, V: 0.03333333333333333}}},
+			},
+		},
+		{
 			`
 			rate({app=~"foo|bar"}[1m]) and
 			rate({app="bar"}[1m])
@@ -1920,6 +2000,18 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		// vector query range
+		{
+			`vector(2)`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			nil,
+			nil,
+			promql.Matrix{
+				promql.Series{
+					Points: []promql.Point{{T: 60 * 1000, V: 2}, {T: 90 * 1000, V: 2}, {T: 120 * 1000, V: 2}, {T: 150 * 1000, V: 2}, {T: 180 * 1000, V: 2}},
+				},
+			},
+		},
 		{
 			`bytes_rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{
@@ -2144,6 +2236,72 @@ func TestEngine_Stats(t *testing.T) {
 	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
 }
 
+type metaQuerier struct{}
+
+func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{
+			Name:   "Header",
+			Values: []string{"value"},
+		},
+	})
+	return iter.NoopIterator, nil
+}
+
+func (metaQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	})
+	return iter.NoopIterator, nil
+}
+
+func TestEngine_Metadata(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
+
+	q := eng.Query(LiteralParams{
+		qs:        `{foo="bar"}`,
+		start:     time.Now(),
+		end:       time.Now(),
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+
+	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.NoError(t, err)
+	require.Equal(t, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	}, r.Headers)
+}
+
+func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+
+	queueTime := 2 * time.Nanosecond
+	illegalVector := `vector(abc)`
+	q := eng.Query(LiteralParams{
+		qs:        illegalVector,
+		start:     time.Now(),
+		end:       time.Now(),
+		step:      time.Second * 30,
+		interval:  time.Second * 30,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+
+	require.EqualError(t, err, expectErr.Error())
+
+	qry, ok := q.(*query)
+	require.Equal(t, ok, true)
+	vectorExpr := syntax.NewVectorExpr(illegalVector)
+
+	_, err = qry.evalSample(ctx, vectorExpr)
+	expectEvalSampleErr := logqlmodel.NewParseError("unable to parse vectorExpr as a float: strconv.ParseFloat: parsing \"vector(abc)\": invalid syntax", 0, 0)
+	require.EqualError(t, err, expectEvalSampleErr.Error())
+}
+
 type errorIteratorQuerier struct {
 	samples []iter.SampleIterator
 	entries []iter.EntryIterator
@@ -2321,6 +2479,73 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 				b.Fatal("unexpected nil result")
 			}
 		}
+	}
+}
+
+// TestHashingStability tests logging stability between engine and RecordRangeAndInstantQueryMetrics methods.
+func TestHashingStability(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	params := LiteralParams{
+		start:     time.Unix(0, 0),
+		end:       time.Unix(5, 0),
+		step:      60 * time.Second,
+		direction: logproto.FORWARD,
+		limit:     1000,
+	}
+
+	queryWithEngine := func() string {
+		buf := bytes.NewBufferString("")
+		logger := log.NewLogfmtLogger(buf)
+		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
+		query := eng.Query(params)
+		_, err := query.Exec(ctx)
+		require.NoError(t, err)
+		return buf.String()
+	}
+
+	queryDirectly := func() string {
+		statsResult := stats.Result{
+			Summary: stats.Summary{
+				BytesProcessedPerSecond: 100000,
+				QueueTime:               0.000000002,
+				ExecTime:                25.25,
+				TotalBytesProcessed:     100000,
+				TotalEntriesReturned:    10,
+			},
+		}
+		buf := bytes.NewBufferString("")
+		logger := log.NewLogfmtLogger(buf)
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		return buf.String()
+	}
+
+	for _, test := range []struct {
+		qs string
+	}{
+		{`sum by(query_hash) (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s]))`},
+		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
+	} {
+		params.qs = test.qs
+		expectedQueryHash := HashedQuery(test.qs)
+
+		// check that both places will end up having the same query hash, even though they're emitting different log lines.
+		require.Regexp(t,
+			regexp.MustCompile(
+				fmt.Sprintf(
+					`level=info org_id=fake msg="executing query" type=range query=.* length=5s step=1m0s query_hash=%d.*`, expectedQueryHash,
+				),
+			),
+			queryWithEngine(),
+		)
+
+		require.Regexp(t,
+			regexp.MustCompile(
+				fmt.Sprintf(
+					`level=info org_id=fake latency=slow query=".*" query_hash=%d query_type=metric range_type=range.*\n`, expectedQueryHash,
+				),
+			),
+			queryDirectly(),
+		)
 	}
 }
 

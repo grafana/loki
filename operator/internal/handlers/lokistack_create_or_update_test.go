@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/status"
@@ -19,6 +20,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,8 +41,12 @@ var (
 	featureGates = configv1.FeatureGates{
 		ServiceMonitors:            false,
 		ServiceMonitorTLSEndpoints: false,
-		OpenShift: configv1.OpenShiftFeatureGates{
-			ServingCertsService: false,
+		BuiltInCertManagement: configv1.BuiltInCertManagement{
+			Enabled:        true,
+			CACertValidity: "10m",
+			CACertRefresh:  "5m",
+			CertValidity:   "2m",
+			CertRefresh:    "1m",
 		},
 	}
 
@@ -70,6 +76,26 @@ var (
 		},
 	}
 
+	rulesCM = corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack-rules",
+			Namespace: "some-ns",
+		},
+	}
+
+	rulerSS = appsv1.StatefulSet{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "StatefulSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack-ruler",
+			Namespace: "some-ns",
+		},
+	}
+
 	invalidSecret = corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "some-stack-secret",
@@ -94,7 +120,7 @@ func TestMain(m *testing.M) {
 	if testing.Verbose() {
 		logger = log.NewLogger("testing", log.WithVerbosity(5))
 	} else {
-		logger = log.NewLogger("testing", log.WithOutput(ioutil.Discard))
+		logger = log.NewLogger("testing", log.WithOutput(io.Discard))
 	}
 
 	// Register the clientgo and CRD schemes
@@ -115,7 +141,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.
 		},
 	}
 
-	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
@@ -139,7 +165,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsT
 	}
 
 	badRequestErr := apierrors.NewBadRequest("you do not belong here")
-	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		return badRequestErr
 	}
 
@@ -208,7 +234,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(out, &stack)
 			return nil
@@ -294,7 +320,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 	}
 
 	// Create looks up the CR first, so we need to return our fake stack
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 			return nil
@@ -385,7 +411,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 	}
 
 	// Create looks up the CR first, so we need to return our fake stack
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
@@ -484,7 +510,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 	}
 
 	// Create looks up the CR first, so we need to return our fake stack
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
@@ -547,7 +573,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 			return nil
@@ -654,7 +680,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
@@ -724,7 +750,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, stack)
 			return nil
@@ -785,7 +811,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, stack)
 			return nil
@@ -859,7 +885,7 @@ func TestCreateOrUpdateLokiStack_WithInvalidStorageSchema_SetDegraded(t *testing
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, stack)
 			return nil
@@ -927,7 +953,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, stack)
 			return nil
@@ -961,7 +987,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage CA configmap contents: missing key `service-ca.crt` or no contents",
+		Message: "Invalid object storage CA configmap contents: missing key or no contents",
 		Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 		Requeue: false,
 	}
@@ -997,7 +1023,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, stack)
 			return nil
@@ -1086,7 +1112,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, stack)
 			return nil
@@ -1174,7 +1200,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		o, ok := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
 			k.SetClientObject(o, stack)
@@ -1263,7 +1289,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		o, ok := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
 			k.SetClientObject(o, stack)
@@ -1338,7 +1364,7 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		o, ok := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
 			k.SetClientObject(o, stack)
@@ -1358,4 +1384,141 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 	// make sure error is returned
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+			Rules: &lokiv1.RulesSpec{
+				Enabled: true,
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: "dynamic",
+				Authentication: []lokiv1.AuthenticationSpec{
+					{
+						TenantName: "test",
+						TenantID:   "1234",
+						OIDC: &lokiv1.OIDCSpec{
+							Secret: &lokiv1.TenantSecretSpec{
+								Name: defaultGatewaySecret.Name,
+							},
+						},
+					},
+				},
+				Authorization: &lokiv1.AuthorizationSpec{
+					OPA: &lokiv1.OPASpec{
+						URL: "some-url",
+					},
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
+		_, ok := out.(*lokiv1beta1.RulerConfig)
+		if ok {
+			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
+		}
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(out, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(out, &defaultSecret)
+			return nil
+		}
+		if defaultGatewaySecret.Name == name.Name {
+			k.SetClientObject(out, &defaultGatewaySecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	k.CreateStub = func(_ context.Context, o client.Object, _ ...client.CreateOption) error {
+		assert.Equal(t, r.Namespace, o.GetNamespace())
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	k.DeleteStub = func(_ context.Context, o client.Object, _ ...client.DeleteOption) error {
+		assert.Equal(t, r.Namespace, o.GetNamespace())
+		return nil
+	}
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	require.NoError(t, err)
+
+	// make sure create was called
+	require.NotZero(t, k.CreateCallCount())
+
+	// make sure delete not called
+	require.Zero(t, k.DeleteCallCount())
+
+	// Disable the ruler
+	stack.Spec.Rules.Enabled = false
+
+	// Get should return ruler resources
+	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
+		_, ok := out.(*lokiv1beta1.RulerConfig)
+		if ok {
+			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
+		}
+		if rulesCM.Name == name.Name {
+			k.SetClientObject(out, &rulesCM)
+			return nil
+		}
+		if rulerSS.Name == name.Name {
+			k.SetClientObject(out, &rulerSS)
+			return nil
+		}
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(out, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(out, &defaultSecret)
+			return nil
+		}
+		if defaultGatewaySecret.Name == name.Name {
+			k.SetClientObject(out, &defaultGatewaySecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+	err = handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	require.NoError(t, err)
+
+	// make sure delete was called twice (delete rules configmap and ruler statefulset)
+	require.Equal(t, 2, k.DeleteCallCount())
 }

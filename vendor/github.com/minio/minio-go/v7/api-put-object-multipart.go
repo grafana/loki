@@ -104,7 +104,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 		// Choose hash algorithms to be calculated by hashCopyN,
 		// avoid sha256 with non-v4 signature request or
 		// HTTPS connection.
-		hashAlgos, hashSums := c.hashMaterials(opts.SendContentMd5)
+		hashAlgos, hashSums := c.hashMaterials(opts.SendContentMd5, !opts.DisableContentSha256)
 
 		length, rErr := readFull(reader, buf)
 		if rErr == io.EOF && partNumber > 1 {
@@ -140,7 +140,9 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 
 		// Proceed to upload the part.
 		objPart, uerr := c.uploadPart(ctx, bucketName, objectName, uploadID, rd, partNumber,
-			md5Base64, sha256Hex, int64(length), opts.ServerSideEncryption)
+			md5Base64, sha256Hex, int64(length),
+			opts.ServerSideEncryption,
+			!opts.DisableContentSha256)
 		if uerr != nil {
 			return UploadInfo{}, uerr
 		}
@@ -241,7 +243,7 @@ func (c *Client) initiateMultipartUpload(ctx context.Context, bucketName, object
 
 // uploadPart - Uploads a part in a multipart upload.
 func (c *Client) uploadPart(ctx context.Context, bucketName, objectName, uploadID string, reader io.Reader,
-	partNumber int, md5Base64, sha256Hex string, size int64, sse encrypt.ServerSide,
+	partNumber int, md5Base64, sha256Hex string, size int64, sse encrypt.ServerSide, streamSha256 bool,
 ) (ObjectPart, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -289,6 +291,7 @@ func (c *Client) uploadPart(ctx context.Context, bucketName, objectName, uploadI
 		contentLength:    size,
 		contentMD5Base64: md5Base64,
 		contentSHA256Hex: sha256Hex,
+		streamSha256:     streamSha256,
 	}
 
 	// Execute PUT on each part.

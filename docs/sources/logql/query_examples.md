@@ -155,6 +155,25 @@ The result would be:
 2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="loki-ops/query-frontend"} |= "query_range"
 ```
 
+It's possible to strip ANSI sequences from the log line, making it easier
+to parse it further:
+
+```
+{job="example"} | decolorize
+```
+
+This way this log line:
+
+```
+[2022-11-04 22:17:57.811] \033[0;32http\033[0m: GET /_health (0 ms) 204
+```
+
+turns into:
+```
+[2022-11-04 22:17:57.811] http: GET /_health (0 ms) 204
+```
+
+
 ## Unwrap examples
 
 - Calculate the p99 of the nginx-ingress latency by path:

@@ -1,10 +1,11 @@
 ---
 title: Troubleshooting
+description: Troubleshooting Grafana Loki
 weight: 80
 aliases:
     - /docs/loki/latest/getting-started/troubleshooting/
 ---
-# Troubleshooting Grafana Loki
+# Troubleshooting
 
 ## "Loki: Bad Gateway. 502"
 
@@ -51,7 +52,7 @@ can have many possible causes.
 
 - Review Loki configuration
 
-    - Loki configuration `querier.query_timeout`
+    - Loki configuration `limits_config.query_timeout`
     - `server.http_server_read_timeout`
     - `server.http_server_write_timeout`
     - `server.http_server_idle_timeout`
@@ -60,10 +61,26 @@ can have many possible causes.
 If you have a reverse proxy in front of Loki, that is, between Loki and Grafana, then check any configured timeouts, such as an NGINX proxy read timeout.
 
 - Other causes.  To determine if the issue is related to Loki itself or another system such as Grafana or a client-side error,
-attempt to run a [LogCLI](../../tools/logcli/) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
+attempt to run a [LogCLI]({{<relref "../tools/logcli">}}) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
 
-    - Adjust the [Grafana dataproxy timeout](https://grafana.com/docs/grafana/latest/administration/configuration/#dataproxy). Configure Grafana with a large enough dataproxy timeout.
+    - Adjust the [Grafana dataproxy timeout](/docs/grafana/latest/administration/configuration/#dataproxy). Configure Grafana with a large enough dataproxy timeout.
     - Check timeouts for reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy (a dataproxy). Therefore, connections from your client to Grafana must have their timeout configured as well.
+
+## Cache Generation errors
+Loki cache generation number errors(Loki >= 2.6)
+
+### error loading cache generation numbers
+
+- Symptom:
+
+  - Loki exposed errors on log with `msg="error loading cache generation numbers" err="unexpected status code: 403"` or `msg="error getting cache gen numbers from the store"`
+
+- Investigation:
+
+  - Check the metric `loki_delete_cache_gen_load_failures_total` on `/metrics`, which is an indicator for the occurrence of the problem. If the value is greater than 1, it means that there is a problem with that component.
+
+  - Try Http GET request to route: /loki/api/v1/cache/generation_numbers
+    - If response is equal as `"deletion is not available for this tenant"`, this means the deletion API is not enabled for the tenant. To enable this api, set `allow_deletes: true` for this tenant via the configuration settings. Check more docs: /docs/loki/latest/operations/storage/logs-deletion/
 
 ## Troubleshooting targets
 
@@ -155,3 +172,28 @@ If you deploy with Helm, use the following command:
 ```bash
 $ helm upgrade --install loki loki/loki --set "loki.tracing.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
 ```
+
+## Running Loki with Istio Sidecars
+
+An Istio sidecar runs alongside a pod. It intercepts all traffic to and from the pod. 
+When a pod tries to communicate with another pod using a given protocol, Istio inspects the destination's service using [Protocol Selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/).
+This mechanism uses a convention on the port name (for example, `http-my-port` or `grpc-my-port`)
+to determine how to handle this outgoing traffic. Istio can then do operations such as authorization and smart routing.
+
+This works fine when one pod communicates with another pod using a hostname. But,
+Istio does not allow pods to communicate with other pods using IP addresses,
+unless the traffic type is `tcp`.
+
+Loki internally uses DNS to resolve the IP addresses of the different components.
+Loki attempts to send a request to the IP address of those pods. The 
+Loki services have a `grpc` (:9095/:9096) port defined, so Istio will consider
+this to be `grpc` traffic. It will not allow Loki components to reach each other using 
+an IP address. So, the traffic will fail, and the ring will remain unhealthy. 
+
+The solution to this issue is to add `appProtocol: tcp` to all of the `grpc`
+(:9095) and `grpclb` (:9096) service ports of Loki components. This
+overrides the Istio protocol selection, and it force Istio to consider this traffic raw `tcp`, which allows pods to communicate using raw ip addresses.
+
+This disables part of the Istio traffic interception mechanism, 
+but still enables mTLS. This allows pods to communicate between themselves 
+using IP addresses over grpc.

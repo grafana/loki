@@ -30,7 +30,7 @@ func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
 	b := labels.NewBuilder(base)
 	b.Set(labels.MetricName, AlertForStateMetricName)
 	b.Set(labels.AlertName, alertName)
-	return b.Labels()
+	return b.Labels(nil)
 }
 
 type memstoreMetrics struct {
@@ -194,7 +194,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 			ruleKey = matcher.Value
 		}
 	}
-	ls := b.Labels()
+	ls := b.Labels(nil)
 	if ruleKey == "" {
 		level.Error(m.logger).Log("msg", "Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
 		return storage.NoopSeriesSet()

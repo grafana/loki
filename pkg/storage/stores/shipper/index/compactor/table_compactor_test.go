@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -446,7 +445,11 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 				compareCompactedTable(t, tablePathInStorage, tCompactor)
 			} else if tt.dbCount <= 1 {
 				require.Nil(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex)
-				require.Len(t, tCompactor.userCompactedIndexSet, 0)
+				uploadedCompactedIndexSets := make([]*compactedIndexSet, 0, len(tCompactor.userCompactedIndexSet))
+				for _, is := range tCompactor.userCompactedIndexSet {
+					uploadedCompactedIndexSets = append(uploadedCompactedIndexSets, is)
+				}
+				require.Len(t, uploadedCompactedIndexSets, 0)
 			} else {
 				require.False(t, tCompactor.commonIndexSet.(*mockIndexSet).compactedIndex.(*CompactedIndex).compactedFileRecreated)
 				for _, userCompactedIndexSet := range tCompactor.userCompactedIndexSet {
@@ -519,7 +522,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 func readIndexFromFiles(t *testing.T, tablePath string) map[string]map[string]string {
 	tempDir := t.TempDir()
 
-	filesInfo, err := ioutil.ReadDir(tablePath)
+	dirEntries, err := os.ReadDir(tablePath)
 	if err != nil && os.IsNotExist(err) {
 		return map[string]map[string]string{}
 	}
@@ -527,15 +530,15 @@ func readIndexFromFiles(t *testing.T, tablePath string) map[string]map[string]st
 
 	dbRecords := make(map[string]map[string]string)
 
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
 			continue
 		}
 
-		filePath := filepath.Join(tablePath, fileInfo.Name())
+		filePath := filepath.Join(tablePath, entry.Name())
 		if strings.HasSuffix(filePath, ".gz") {
-			filePath = filepath.Join(tempDir, fileInfo.Name())
-			testutil.DecompressFile(t, filepath.Join(tablePath, fileInfo.Name()), filePath)
+			filePath = filepath.Join(tempDir, entry.Name())
+			testutil.DecompressFile(t, filepath.Join(tablePath, entry.Name()), filePath)
 		}
 
 		db, err := openBoltdbFileWithNoSync(filePath)

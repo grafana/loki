@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	io "io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -407,7 +407,7 @@ type Buffer interface {
 
 func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
-		body, _ := ioutil.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
@@ -416,7 +416,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	if buffer, ok := r.Body.(Buffer); ok {
 		buf = buffer.Bytes()
 	} else {
-		buf, err = ioutil.ReadAll(r.Body)
+		buf, err = io.ReadAll(r.Body)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
@@ -590,7 +590,7 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(&buf),
+		Body:       io.NopCloser(&buf),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil

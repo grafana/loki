@@ -52,3 +52,5 @@ func (g *mockGenNumberClient) GetCacheGenerationNumber(ctx context.Context, user
 func (g *mockGenNumberClient) Name() string {
 	return ""
 }
+
+func (g *mockGenNumberClient) Stop() {}

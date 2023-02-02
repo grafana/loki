@@ -3,6 +3,7 @@
 package marshal
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/gorilla/websocket"
@@ -18,21 +19,14 @@ import (
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
-	value, err := NewResultValue(v.Data)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	err := EncodeResult(v, s)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not write JSON response: %w", err)
 	}
-
-	q := loghttp.QueryResponse{
-		Status: "success",
-		Data: loghttp.QueryResponseData{
-			ResultType: value.Type(),
-			Result:     value,
-			Statistics: v.Statistics,
-		},
-	}
-
-	return jsoniter.NewEncoder(w).Encode(q)
+	s.WriteRaw("\n")
+	return s.Flush()
 }
 
 // WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON
@@ -43,7 +37,11 @@ func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 		Data:   l.GetValues(),
 	}
 
-	return jsoniter.NewEncoder(w).Encode(v1Response)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(v1Response)
+	s.WriteRaw("\n")
+	return s.Flush()
 }
 
 // WebsocketWriter knows how to write message to a websocket connection.
@@ -77,7 +75,11 @@ func WriteSeriesResponseJSON(r logproto.SeriesResponse, w io.Writer) error {
 		adapter.Data = append(adapter.Data, series.GetLabels())
 	}
 
-	return jsoniter.NewEncoder(w).Encode(adapter)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(adapter)
+	s.WriteRaw("\n")
+	return s.Flush()
 }
 
 // This struct exists primarily because we can't specify a repeated map in proto v3.
@@ -90,5 +92,9 @@ type seriesResponseAdapter struct {
 // WriteIndexStatsResponseJSON marshals a gatewaypb.Stats to JSON and then
 // writes it to the provided io.Writer.
 func WriteIndexStatsResponseJSON(r *stats.Stats, w io.Writer) error {
-	return jsoniter.NewEncoder(w).Encode(r)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
 }

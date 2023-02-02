@@ -6,24 +6,24 @@ import (
 )
 
 type DeleteRequestClientMetrics struct {
-	deleteRequestsLookupsTotal       *prometheus.CounterVec
-	deleteRequestsLookupsFailedTotal *prometheus.CounterVec
+	deleteRequestsLookupsTotal       prometheus.Counter
+	deleteRequestsLookupsFailedTotal prometheus.Counter
 }
 
 func NewDeleteRequestClientMetrics(r prometheus.Registerer) *DeleteRequestClientMetrics {
 	m := DeleteRequestClientMetrics{}
 
-	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_total",
 		Help:      "Number times the client has looked up delete requests",
-	}, []string{"client_type"})
+	})
 
-	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_failed_total",
 		Help:      "Number times the client has failed to look up delete requests",
-	}, []string{"client_type"})
+	})
 
 	return &m
 }
@@ -70,7 +70,7 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 	m.deletionFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "compactor_delete_processing_fails_total",
-		Help:      "Number times the delete phase of compaction has failed",
+		Help:      "Number of times the delete phase of compaction has failed",
 	}, []string{"cause"})
 	m.loadPendingRequestsAttemptsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -80,7 +80,7 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 	m.oldestPendingDeleteRequestAgeSeconds = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki",
 		Name:      "compactor_oldest_pending_delete_request_age_seconds",
-		Help:      "Age of oldest pending delete request in seconds, since they are over their cancellation period",
+		Help:      "Age of oldest pending delete request in seconds since they are over their cancellation period",
 	})
 	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki",

@@ -166,6 +166,16 @@ func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
 	return b
 }
 
+func (b *LabelsBuilder) ResetError() *LabelsBuilder {
+	b.err = ""
+	return b
+}
+
+func (b *LabelsBuilder) ResetErrorDetails() *LabelsBuilder {
+	b.errDetails = ""
+	return b
+}
+
 func (b *LabelsBuilder) GetErrorDetails() string {
 	return b.errDetails
 }
@@ -229,12 +239,22 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
 func (b *LabelsBuilder) labels() labels.Labels {
-	b.buf = b.unsortedLabels(b.buf)
+	b.buf = b.UnsortedLabels(b.buf)
 	sort.Sort(b.buf)
 	return b.buf
 }
 
-func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
+func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
+	if b.err != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+	}
+	if b.errDetails != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
+	}
+	return buf
+}
+
+func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels) labels.Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		if buf == nil {
 			buf = make(labels.Labels, 0, len(b.base)+1)
@@ -242,13 +262,7 @@ func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
 			buf = buf[:0]
 		}
 		buf = append(buf, b.base...)
-		if b.err != "" {
-			buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-		}
-		if b.errDetails != "" {
-			buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
-		}
-		return buf
+		return b.appendErrors(buf)
 	}
 
 	// In the general case, labels are removed, modified or moved
@@ -273,11 +287,7 @@ Outer:
 		buf = append(buf, l)
 	}
 	buf = append(buf, b.add...)
-	if b.err != "" {
-		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
-	}
-
-	return buf
+	return b.appendErrors(buf)
 }
 
 func (b *LabelsBuilder) Map() map[string]string {
@@ -287,7 +297,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 		}
 		return b.baseMap
 	}
-	b.buf = b.unsortedLabels(b.buf)
+	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := make(map[string]string, len(b.buf))
@@ -422,9 +432,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels()
+		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels(nil)
 	} else {
-		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
+		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels(nil)
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res

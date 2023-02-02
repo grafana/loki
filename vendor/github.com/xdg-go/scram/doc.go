@@ -10,14 +10,16 @@
 //
 // Usage
 //
-// The scram package provides two variables, `SHA1` and `SHA256`, that are
-// used to construct Client or Server objects.
+// The scram package provides variables, `SHA1`, `SHA256`, and `SHA512`, that
+// are used to construct Client or Server objects.
 //
 //     clientSHA1,   err := scram.SHA1.NewClient(username, password, authID)
 //     clientSHA256, err := scram.SHA256.NewClient(username, password, authID)
+//     clientSHA512, err := scram.SHA512.NewClient(username, password, authID)
 //
 //     serverSHA1,   err := scram.SHA1.NewServer(credentialLookupFcn)
 //     serverSHA256, err := scram.SHA256.NewServer(credentialLookupFcn)
+//     serverSHA512, err := scram.SHA512.NewServer(credentialLookupFcn)
 //
 // These objects are used to construct ClientConversation or
 // ServerConversation objects that are used to carry out authentication.

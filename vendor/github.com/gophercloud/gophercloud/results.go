@@ -30,6 +30,11 @@ type Result struct {
 	// this will be the deserialized JSON structure.
 	Body interface{}
 
+	// StatusCode is the HTTP status code of the original response. Will be
+	// one of the OkCodes defined on the gophercloud.RequestOpts that was
+	// used in the request.
+	StatusCode int
+
 	// Header contains the HTTP header structure from the original response.
 	Header http.Header
 

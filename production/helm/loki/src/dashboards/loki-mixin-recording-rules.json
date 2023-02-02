@@ -1,0 +1,657 @@
+{
+      "annotations": {
+         "list": [
+            {
+               "builtIn": 1,
+               "datasource": "-- Grafana --",
+               "enable": true,
+               "hide": true,
+               "iconColor": "rgba(0, 211, 255, 1)",
+               "name": "Annotations & Alerts",
+               "target": {
+                  "limit": 100,
+                  "matchAny": false,
+                  "tags": [ ],
+                  "type": "dashboard"
+               },
+               "type": "dashboard"
+            },
+            {
+               "datasource": "${datasource}",
+               "enable": false,
+               "expr": "sum by (tenant) (changes(loki_ruler_wal_prometheus_tsdb_wal_truncations_total{tenant=~\"${tenant}\"}[$__rate_interval]))",
+               "iconColor": "red",
+               "name": "WAL Truncations",
+               "target": {
+                  "queryType": "Azure Monitor",
+                  "refId": "Anno"
+               },
+               "titleFormat": "{{tenant}}"
+            }
+         ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "iteration": 1635347545534,
+      "links": [ ],
+      "liveNow": false,
+      "panels": [
+         {
+            "datasource": "${datasource}",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "thresholds"
+                  },
+                  "mappings": [ ],
+                  "noValue": "0",
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 1
+                        }
+                     ]
+                  }
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 2,
+               "x": 0,
+               "y": 0
+            },
+            "id": 2,
+            "options": {
+               "colorMode": "value",
+               "graphMode": "area",
+               "justifyMode": "auto",
+               "orientation": "auto",
+               "reduceOptions": {
+                  "calcs": [
+                     "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+               },
+               "textMode": "auto"
+            },
+            "pluginVersion": "8.3.0-38205pre",
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": false,
+                  "expr": "sum(loki_ruler_wal_appender_ready) by (pod, tenant) == 0",
+                  "instant": true,
+                  "interval": "",
+                  "legendFormat": "",
+                  "refId": "A"
+               }
+            ],
+            "title": "Appenders Not Ready",
+            "type": "stat"
+         },
+         {
+            "datasource": "${datasource}",
+            "description": "",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                     "axisLabel": "",
+                     "axisPlacement": "auto",
+                     "barAlignment": 0,
+                     "drawStyle": "line",
+                     "fillOpacity": 0,
+                     "gradientMode": "none",
+                     "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                     },
+                     "lineInterpolation": "linear",
+                     "lineWidth": 1,
+                     "pointSize": 5,
+                     "scaleDistribution": {
+                        "type": "linear"
+                     },
+                     "showPoints": "auto",
+                     "spanNulls": false,
+                     "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                     },
+                     "thresholdsStyle": {
+                        "mode": "off"
+                     }
+                  },
+                  "mappings": [ ],
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 80
+                        }
+                     ]
+                  }
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 11,
+               "x": 2,
+               "y": 0
+            },
+            "id": 4,
+            "options": {
+               "legend": {
+                  "calcs": [ ],
+                  "displayMode": "list",
+                  "placement": "bottom"
+               },
+               "tooltip": {
+                  "mode": "single"
+               }
+            },
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": true,
+                  "expr": "sum(rate(loki_ruler_wal_samples_appended_total{tenant=~\"${tenant}\"}[$__rate_interval])) by (tenant) > 0",
+                  "interval": "",
+                  "legendFormat": "{{tenant}}",
+                  "refId": "A"
+               }
+            ],
+            "title": "Samples Appended to WAL per Second",
+            "type": "timeseries"
+         },
+         {
+            "datasource": "${datasource}",
+            "description": "Series are unique combinations of labels",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                     "axisLabel": "",
+                     "axisPlacement": "auto",
+                     "barAlignment": 0,
+                     "drawStyle": "line",
+                     "fillOpacity": 0,
+                     "gradientMode": "none",
+                     "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                     },
+                     "lineInterpolation": "linear",
+                     "lineWidth": 1,
+                     "pointSize": 5,
+                     "scaleDistribution": {
+                        "type": "linear"
+                     },
+                     "showPoints": "auto",
+                     "spanNulls": false,
+                     "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                     },
+                     "thresholdsStyle": {
+                        "mode": "off"
+                     }
+                  },
+                  "mappings": [ ],
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 80
+                        }
+                     ]
+                  }
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 11,
+               "x": 13,
+               "y": 0
+            },
+            "id": 5,
+            "options": {
+               "legend": {
+                  "calcs": [ ],
+                  "displayMode": "list",
+                  "placement": "bottom"
+               },
+               "tooltip": {
+                  "mode": "single"
+               }
+            },
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": true,
+                  "expr": "sum(rate(loki_ruler_wal_storage_created_series_total{tenant=~\"${tenant}\"}[$__rate_interval])) by (tenant) > 0",
+                  "interval": "",
+                  "legendFormat": "{{tenant}}",
+                  "refId": "A"
+               }
+            ],
+            "title": "Series Created per Second",
+            "type": "timeseries"
+         },
+         {
+            "datasource": "${datasource}",
+            "description": "Difference between highest timestamp appended to WAL and highest timestamp successfully written to remote storage",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                     "axisLabel": "",
+                     "axisPlacement": "auto",
+                     "barAlignment": 0,
+                     "drawStyle": "line",
+                     "fillOpacity": 0,
+                     "gradientMode": "none",
+                     "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                     },
+                     "lineInterpolation": "linear",
+                     "lineWidth": 1,
+                     "pointSize": 5,
+                     "scaleDistribution": {
+                        "type": "linear"
+                     },
+                     "showPoints": "auto",
+                     "spanNulls": false,
+                     "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                     },
+                     "thresholdsStyle": {
+                        "mode": "off"
+                     }
+                  },
+                  "mappings": [ ],
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 80
+                        }
+                     ]
+                  }
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 12,
+               "x": 0,
+               "y": 10
+            },
+            "id": 6,
+            "options": {
+               "legend": {
+                  "calcs": [ ],
+                  "displayMode": "list",
+                  "placement": "bottom"
+               },
+               "tooltip": {
+                  "mode": "single"
+               }
+            },
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": true,
+                  "expr": "loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{tenant=~\"${tenant}\"}\n- on (tenant)\n  (\n    loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{tenant=~\"${tenant}\"}\n    or vector(0)\n  )",
+                  "interval": "",
+                  "legendFormat": "{{tenant}}",
+                  "refId": "A"
+               }
+            ],
+            "title": "Write Behind",
+            "type": "timeseries"
+         },
+         {
+            "datasource": "${datasource}",
+            "description": "",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                     "axisLabel": "",
+                     "axisPlacement": "auto",
+                     "barAlignment": 0,
+                     "drawStyle": "line",
+                     "fillOpacity": 0,
+                     "gradientMode": "none",
+                     "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                     },
+                     "lineInterpolation": "linear",
+                     "lineWidth": 1,
+                     "pointSize": 5,
+                     "scaleDistribution": {
+                        "type": "linear"
+                     },
+                     "showPoints": "auto",
+                     "spanNulls": false,
+                     "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                     },
+                     "thresholdsStyle": {
+                        "mode": "off"
+                     }
+                  },
+                  "mappings": [ ],
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 80
+                        }
+                     ]
+                  }
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 12,
+               "x": 12,
+               "y": 10
+            },
+            "id": 7,
+            "options": {
+               "legend": {
+                  "calcs": [ ],
+                  "displayMode": "list",
+                  "placement": "bottom"
+               },
+               "tooltip": {
+                  "mode": "single"
+               }
+            },
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": true,
+                  "expr": "sum(rate(loki_ruler_wal_prometheus_remote_storage_samples_total{tenant=~\"${tenant}\"}[$__rate_interval])) by (tenant) > 0",
+                  "interval": "",
+                  "legendFormat": "{{tenant}}",
+                  "refId": "A"
+               }
+            ],
+            "title": "Samples Sent per Second",
+            "type": "timeseries"
+         },
+         {
+            "datasource": "${datasource}",
+            "description": "\n",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                     "axisLabel": "",
+                     "axisPlacement": "auto",
+                     "barAlignment": 0,
+                     "drawStyle": "line",
+                     "fillOpacity": 0,
+                     "gradientMode": "none",
+                     "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                     },
+                     "lineInterpolation": "linear",
+                     "lineWidth": 1,
+                     "pointSize": 5,
+                     "scaleDistribution": {
+                        "type": "linear"
+                     },
+                     "showPoints": "auto",
+                     "spanNulls": false,
+                     "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                     },
+                     "thresholdsStyle": {
+                        "mode": "off"
+                     }
+                  },
+                  "mappings": [ ],
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 80
+                        }
+                     ]
+                  },
+                  "unit": "bytes"
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 12,
+               "x": 0,
+               "y": 20
+            },
+            "id": 8,
+            "options": {
+               "legend": {
+                  "calcs": [ ],
+                  "displayMode": "list",
+                  "placement": "bottom"
+               },
+               "tooltip": {
+                  "mode": "single"
+               }
+            },
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": true,
+                  "expr": "sum by (tenant) (loki_ruler_wal_disk_size{tenant=~\"${tenant}\"})",
+                  "interval": "",
+                  "legendFormat": "{{tenant}}",
+                  "refId": "A"
+               }
+            ],
+            "title": "WAL Disk Size",
+            "type": "timeseries"
+         },
+         {
+            "datasource": "${datasource}",
+            "description": "Some number of pending samples is expected, but if remote-write is failing this value will remain high",
+            "fieldConfig": {
+               "defaults": {
+                  "color": {
+                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                     "axisLabel": "",
+                     "axisPlacement": "auto",
+                     "barAlignment": 0,
+                     "drawStyle": "line",
+                     "fillOpacity": 0,
+                     "gradientMode": "none",
+                     "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                     },
+                     "lineInterpolation": "linear",
+                     "lineWidth": 1,
+                     "pointSize": 5,
+                     "scaleDistribution": {
+                        "type": "linear"
+                     },
+                     "showPoints": "auto",
+                     "spanNulls": false,
+                     "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                     },
+                     "thresholdsStyle": {
+                        "mode": "off"
+                     }
+                  },
+                  "mappings": [ ],
+                  "thresholds": {
+                     "mode": "absolute",
+                     "steps": [
+                        {
+                           "color": "green",
+                           "value": null
+                        },
+                        {
+                           "color": "red",
+                           "value": 80
+                        }
+                     ]
+                  }
+               },
+               "overrides": [ ]
+            },
+            "gridPos": {
+               "h": 10,
+               "w": 12,
+               "x": 12,
+               "y": 20
+            },
+            "id": 9,
+            "options": {
+               "legend": {
+                  "calcs": [ ],
+                  "displayMode": "list",
+                  "placement": "bottom"
+               },
+               "tooltip": {
+                  "mode": "single"
+               }
+            },
+            "targets": [
+               {
+                  "datasource": "${datasource}",
+                  "exemplar": true,
+                  "expr": "max(loki_ruler_wal_prometheus_remote_storage_samples_pending{tenant=~\"${tenant}\"}) by (tenant,pod) > 0",
+                  "interval": "",
+                  "legendFormat": "{{tenant}}",
+                  "refId": "A"
+               }
+            ],
+            "title": "Pending Samples",
+            "type": "timeseries"
+         }
+      ],
+      "schemaVersion": 31,
+      "style": "dark",
+      "tags": [ ],
+      "templating": {
+         "list": [
+            {
+               "description": null,
+               "error": null,
+               "hide": 0,
+               "includeAll": false,
+               "label": "Datasource",
+               "multi": false,
+               "name": "datasource",
+               "options": [ ],
+               "query": "prometheus",
+               "queryValue": "",
+               "refresh": 1,
+               "regex": "",
+               "skipUrlSync": false,
+               "type": "datasource"
+            },
+            {
+               "allValue": null,
+               "datasource": "${datasource}",
+               "definition": "label_values(loki_ruler_wal_samples_appended_total, tenant)",
+               "description": null,
+               "error": null,
+               "hide": 0,
+               "includeAll": true,
+               "label": "Tenant",
+               "multi": true,
+               "name": "tenant",
+               "options": [ ],
+               "query": {
+                  "query": "label_values(loki_ruler_wal_samples_appended_total, tenant)",
+                  "refId": "StandardVariableQuery"
+               },
+               "refresh": 2,
+               "regex": "",
+               "skipUrlSync": false,
+               "sort": 0,
+               "type": "query"
+            }
+         ]
+      },
+      "time": {
+         "from": "now-6h",
+         "to": "now"
+      },
+      "timepicker": { },
+      "timezone": "",
+      "title": "Recording Rules",
+      "uid": "2xKA_ZK7k",
+      "version": 9,
+      "weekStart": ""
+   }

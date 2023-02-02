@@ -3,7 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -142,12 +142,12 @@ type table struct {
 func (t *testStore) indexTables() []table {
 	t.t.Helper()
 	res := []table{}
-	indexFilesInfo, err := ioutil.ReadDir(t.indexDir)
+	dirEntries, err := os.ReadDir(t.indexDir)
 	require.NoError(t.t, err)
-	for _, indexFileInfo := range indexFilesInfo {
-		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(t.indexDir, indexFileInfo.Name()))
+	for _, entry := range dirEntries {
+		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(t.indexDir, entry.Name()))
 		require.NoError(t.t, err)
-		res = append(res, table{name: indexFileInfo.Name(), DB: db})
+		res = append(res, table{name: entry.Name(), DB: db})
 	}
 	return res
 }
@@ -205,7 +205,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
-	util_log.InitLogger(servercfg, nil)
+	util_log.InitLogger(servercfg, nil, true, false)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

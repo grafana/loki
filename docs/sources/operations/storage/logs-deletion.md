@@ -11,17 +11,17 @@ Log entries that fall within a specified time window and match an optional line 
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
-The compactor component exposes REST [endpoints](../../../api/#compactor) that process delete requests.
+The compactor component exposes REST [endpoints]({{<relref "../../api/#compactor">}}) that process delete requests.
 Hitting the endpoint specifies the streams and the time window.
 The deletion of the log entries takes place after a configurable cancellation time period expires.
 
-Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor](../retention#compactor). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
+Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor]({{<relref "retention#compactor">}}). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
 
 ## Configuration
 
 Enable log entry deletion by setting `retention_enabled` to true in the compactor's configuration and setting and `deletion_mode` to `filter-only` or `filter-and-delete` in the runtime config.
 
-Because it is a runtime configuration, `deleteion_mode` can be set per-tenant, if desired.
+Because it is a runtime configuration, `deletion_mode` can be set per-tenant, if desired.
 
 With `filter-only`, log lines matching the query in the delete request are filtered out when querying Loki. They are not removed from storage.
 With `filter-and-delete`, log lines matching the query in the delete request are filtered out when querying Loki, and they are also removed from storage.

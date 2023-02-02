@@ -3,7 +3,6 @@ package ingester
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"testing"
 	"time"
@@ -143,7 +142,7 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 			PusherClient:   nil,
 			QuerierClient:  nil,
 			IngesterClient: &testIngesterClient{t: f.t, i: ingester},
-			Closer:         ioutil.NopCloser(nil),
+			Closer:         io.NopCloser(nil),
 		}, nil
 	}
 

@@ -1,0 +1,32 @@
+{{/*
+provisioner fullname
+*/}}
+{{- define "enterprise-logs.provisionerFullname" -}}
+{{ include "loki.name" . }}-provisioner
+{{- end }}
+
+{{/*
+provisioner common labels
+*/}}
+{{- define "enterprise-logs.provisionerLabels" -}}
+{{ include "loki.labels" . }}
+app.kubernetes.io/component: provisioner
+{{- end }}
+
+{{/*
+provisioner selector labels
+*/}}
+{{- define "enterprise-logs.provisionerSelectorLabels" -}}
+{{ include "loki.selectorLabels" . }}
+app.kubernetes.io/component: provisioner
+{{- end }}
+
+{{/*
+provisioner image name
+*/}}
+{{- define "enterprise-logs.provisionerImage" -}}
+{{- $dict := dict "service" .Values.enterprise.provisioner.image "global" .Values.global.image "defaultVersion" "latest" -}}
+{{- include "loki.baseImage" $dict -}}
+{{- end -}}
+
+

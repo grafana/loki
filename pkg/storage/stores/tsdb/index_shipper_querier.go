@@ -4,62 +4,62 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
+type indexShipperIterator interface {
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
+}
+
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
-	shipper     indexshipper.IndexShipper
+	shipper     indexShipperIterator
 	chunkFilter chunk.RequestChunkFilterer
 	tableRanges config.TableRanges
 }
 
-func newIndexShipperQuerier(shipper indexshipper.IndexShipper, tableRanges config.TableRanges) Index {
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRanges config.TableRanges) Index {
 	return &indexShipperQuerier{shipper: shipper, tableRanges: tableRanges}
 }
 
+type indexIterFunc func(func(context.Context, Index) error) error
+
+func (i indexIterFunc) For(ctx context.Context, f func(context.Context, Index) error) error {
+	return i(f)
+}
+
 func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
-	var indices []Index
+	itr := indexIterFunc(func(f func(context.Context, Index) error) error {
+		// Ensure we query both per tenant and multitenant TSDBs
+		idxBuckets := indexBuckets(from, through, i.tableRanges)
+		for _, bkt := range idxBuckets {
+			if err := i.shipper.ForEachConcurrent(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
+				impl, ok := idx.(Index)
+				if !ok {
+					return fmt.Errorf("unexpected shipper index type: %T", idx)
+				}
+				if multitenant {
+					impl = NewMultiTenantIndex(impl)
+				}
 
-	// Ensure we query both per tenant and multitenant TSDBs
-	idxBuckets, err := indexBuckets(from, through, i.tableRanges)
-	if err != nil {
-		return nil, err
-	}
-	for _, bkt := range idxBuckets {
-		if err := i.shipper.ForEach(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
-			impl, ok := idx.(Index)
-			if !ok {
-				return fmt.Errorf("unexpected shipper index type: %T", idx)
+				return f(ctx, impl)
+			}); err != nil {
+				return err
 			}
-			if multitenant {
-				indices = append(indices, NewMultiTenantIndex(impl))
-			} else {
-				indices = append(indices, impl)
-			}
-			return nil
-		}); err != nil {
-			return nil, err
 		}
+		return nil
+	})
 
-	}
-
-	if len(indices) == 0 {
-		return NoopIndex{}, nil
-	}
-	idx, err := NewMultiIndex(indices...)
-	if err != nil {
-		return nil, err
-	}
+	idx := NewMultiIndex(itr)
 
 	if i.chunkFilter != nil {
 		idx.SetChunkFilterer(i.chunkFilter)
@@ -116,11 +116,43 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, blooms *stats.Blooms, shard *index.ShardAnnotation, matchers ...*labels.Matcher) (*stats.Blooms, error) {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
-		return blooms, err
+		return err
 	}
 
-	return idx.Stats(ctx, userID, from, through, blooms, shard, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
+
+type resultAccumulator struct {
+	mtx   sync.Mutex
+	items []interface{}
+	merge func(xs []interface{}) (interface{}, error)
+}
+
+func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
+	return &resultAccumulator{
+		merge: merge,
+	}
+}
+
+func (acc *resultAccumulator) Add(item interface{}) {
+	acc.mtx.Lock()
+	defer acc.mtx.Unlock()
+	acc.items = append(acc.items, item)
+
+}
+
+func (acc *resultAccumulator) Merge() (interface{}, error) {
+	acc.mtx.Lock()
+	defer acc.mtx.Unlock()
+
+	if len(acc.items) == 0 {
+		return nil, ErrEmptyAccumulator
+	}
+
+	return acc.merge(acc.items)
+}
+
+var ErrEmptyAccumulator = errors.New("no items in result accumulator")

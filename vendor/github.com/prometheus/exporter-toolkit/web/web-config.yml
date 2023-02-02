@@ -3,4 +3,3 @@
 tls_server_config:
   cert_file: server.crt
   key_file: server.key
-

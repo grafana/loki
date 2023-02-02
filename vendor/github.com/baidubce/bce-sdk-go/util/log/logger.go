@@ -107,7 +107,6 @@ var (
 
 type writerArgs struct {
 	record     string
-	recordDone chan bool
 	rotateArgs interface{} // used for rotating: the size of the record or the logging time
 }
 
@@ -124,6 +123,7 @@ type logger struct {
 	logFile    string
 	rotateType RotateStrategy
 	rotateSize int64
+	done       chan bool
 }
 
 func (l *logger) logging(level Level, format string, args ...interface{}) {
@@ -163,13 +163,13 @@ func (l *logger) logging(level Level, format string, args ...interface{}) {
 		}
 	}
 	record := strings.Join(buf, " ")
-	logRecordDone := make(chan bool)
 	if l.rotateType == ROTATE_SIZE {
-		l.writerChan <- &writerArgs{record, logRecordDone, int64(len(record))}
+		l.writerChan <- &writerArgs{record, int64(len(record))}
 	} else {
-		l.writerChan <- &writerArgs{record, logRecordDone, now}
+		l.writerChan <- &writerArgs{record, now}
 	}
-	<-logRecordDone // wait for current record done logging
+
+	// wait for current record done logging
 }
 
 func (l *logger) buildWriter(args interface{}) {
@@ -346,25 +346,45 @@ func (l *logger) Panicf(format string, msg ...interface{}) {
 	panic(record)
 }
 
+func (l *logger) Close() {
+	select {
+	case <-l.done:
+		return
+	default:
+	}
+	l.writerChan <- nil
+}
+
 func NewLogger() *logger {
 	obj := &logger{
 		writers:        make(map[Handler]io.WriteCloser, 3), // now only support 3 kinds of handler
-		writerChan:     make(chan *writerArgs),
+		writerChan:     make(chan *writerArgs, 100),
 		logFormat:      gDefaultLogFormat,
 		levelThreshold: DEBUG,
 		handler:        NONE,
+		done:           make(chan bool),
 	}
-
 	// The backend writer goroutine to write each log record
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				fmt.Println(e)
+			}
+		}()
 		for {
 			select {
+			case <-obj.done:
+				return
 			case args := <-obj.writerChan: // wait until a record comes to log
+				if args == nil {
+					close(obj.done)
+					close(obj.writerChan)
+					return
+				}
 				obj.buildWriter(args.rotateArgs)
 				for _, w := range obj.writers {
 					fmt.Fprint(w, args.record)
 				}
-				args.recordDone <- true
 			}
 		}
 	}()

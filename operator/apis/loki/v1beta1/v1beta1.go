@@ -39,6 +39,8 @@ var (
 	ErrParseEvaluationInterval = errors.New("Failed to parse evaluation")
 	// ErrParseLogQLExpression when any loki rule expression is not a valid LogQL expression.
 	ErrParseLogQLExpression = errors.New("Failed to parse LogQL expression")
+	// ErrParseLogQLNotSample when the Loki rule expression does not evaluate to a sample expression.
+	ErrParseLogQLNotSample = errors.New("LogQL expression is not a sample query")
 	// ErrEffectiveDatesNotUnique when effective dates are not unique.
 	ErrEffectiveDatesNotUnique = errors.New("Effective dates are not unique")
 	// ErrParseEffectiveDates when effective dates cannot be parsed.
@@ -51,4 +53,10 @@ var (
 	ErrSchemaRetroactivelyRemoved = errors.New("Cannot retroactively remove schema(s)")
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
+	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
+	ErrHeaderAuthCredentialsConflict = errors.New("credentials and credentialsFile cannot be used at the same time")
+
+	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
+	// matchers for a namespace.
+	ErrRuleMustMatchNamespace = errors.New("rule needs to have a matcher for the namespace")
 )
