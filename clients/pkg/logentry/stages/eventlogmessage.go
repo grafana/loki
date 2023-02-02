@@ -152,13 +152,13 @@ func SanitizeLabelName(input string) string {
 	if len(input) == 0 {
 		return "_"
 	}
-	var valid_sb strings.Builder
+	var validSb strings.Builder
 	for i, b := range input {
 		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
-			valid_sb.WriteRune('_')
+			validSb.WriteRune('_')
 		} else {
-			valid_sb.WriteRune(b)
+			validSb.WriteRune(b)
 		}
 	}
-	return valid_sb.String()
+	return validSb.String()
 }

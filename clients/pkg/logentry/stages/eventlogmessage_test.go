@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var testEvtLogMsgYamlDefaults = `
@@ -133,9 +134,9 @@ func TestEventLogMessageConfig_validate(t *testing.T) {
 		},
 		"invalid source": {
 			map[string]interface{}{
-				"source": "The Message!",
+				"source": "the message",
 			},
-			fmt.Errorf(ErrInvalidLabelName, "The Message!"),
+			fmt.Errorf(ErrInvalidLabelName, "the message"),
 		},
 		"empty source": {
 			map[string]interface{}{
