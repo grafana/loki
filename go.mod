@@ -30,7 +30,7 @@ require (
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
-	github.com/fatih/color v1.13.0
+	github.com/fatih/color v1.14.1
 	github.com/felixge/fgprof v0.9.3
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/fsouza/fake-gcs-server v1.7.0
@@ -234,8 +234,8 @@ require (
 	github.com/klauspost/cpuid/v2 v2.0.14 // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.12 // indirect
-	github.com/mattn/go-isatty v0.0.14 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
