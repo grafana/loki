@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	ErrDropStageEmptyConfig     = "drop stage config must contain at least one of `source`, `expression`, `older_than` or `longer_than`"
-	ErrDropStageInvalidDuration = "drop stage invalid duration, %v cannot be converted to a duration: %v"
-	ErrDropStageInvalidConfig   = "drop stage config error, `value` and `expression` cannot both be defined at the same time."
-	ErrDropStageInvalidRegex    = "drop stage regex compilation error: %v"
-	ErrDropStageInvalidByteSize = "drop stage failed to parse longer_than to bytes: %v"
-	ErrDropStageInvalidSource   = "drop stage source invalid type should be string or list of strings"
+	ErrDropStageEmptyConfig       = "drop stage config must contain at least one of `source`, `expression`, `older_than` or `longer_than`"
+	ErrDropStageInvalidDuration   = "drop stage invalid duration, %v cannot be converted to a duration: %v"
+	ErrDropStageInvalidConfig     = "drop stage config error, `value` and `expression` cannot both be defined at the same time."
+	ErrDropStageInvalidRegex      = "drop stage regex compilation error: %v"
+	ErrDropStageInvalidByteSize   = "drop stage failed to parse longer_than to bytes: %v"
+	ErrDropStageInvalidSource     = "drop stage source invalid type should be string or list of strings"
+	ErrDropStageNoSourceWithValue = "drop stage config must contain `source` if `value` is specified"
 )
 
 var (
@@ -35,6 +36,7 @@ type DropConfig struct {
 	DropReason *string     `mapstructure:"drop_counter_reason"`
 	Source     interface{} `mapstructure:"source"`
 	source     *[]string
+	Value      *string `mapstructure:"value"`
 	Separator  *string `mapstructure:"separator"`
 	Expression *string `mapstructure:"expression"`
 	regex      *regexp.Regexp
@@ -70,8 +72,23 @@ func validateDropConfig(cfg *DropConfig) error {
 		}
 		cfg.olderThan = dur
 	}
+	if cfg.Value != nil && cfg.Source == nil {
+		return errors.New(ErrDropStageNoSourceWithValue)
+	}
+	if cfg.Value != nil && cfg.Expression != nil {
+		return errors.New(ErrDropStageInvalidConfig)
+	}
 	if cfg.Expression != nil {
 		expr, err := regexp.Compile(*cfg.Expression)
+		if err != nil {
+			return errors.Errorf(ErrDropStageInvalidRegex, err)
+		}
+		cfg.regex = expr
+	}
+	// The first step to exclude `value` and fully replace it with the `expression`.
+	// It will simplify code and less confusing for the end-user on which option to choose.
+	if cfg.Value != nil {
+		expr, err := regexp.Compile(fmt.Sprintf("^%s$", regexp.QuoteMeta(*cfg.Value)))
 		if err != nil {
 			return errors.Errorf(ErrDropStageInvalidRegex, err)
 		}
@@ -172,7 +189,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 			return false
 		}
 	}
-	if m.cfg.Source != nil && m.cfg.Expression == nil {
+	if m.cfg.Source != nil && m.cfg.regex == nil {
 		var match bool
 		match = true
 		for _, src := range *m.cfg.source {
@@ -193,7 +210,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		}
 	}
 
-	if m.cfg.Source == nil && m.cfg.Expression != nil {
+	if m.cfg.Source == nil && m.cfg.regex != nil {
 		if !m.cfg.regex.MatchString(e.Line) {
 			// Not a match to the regex, don't drop
 			if Debug {
@@ -206,7 +223,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		}
 	}
 
-	if m.cfg.Source != nil && m.cfg.Expression != nil {
+	if m.cfg.Source != nil && m.cfg.regex != nil {
 		var extractedData []string
 		for _, src := range *m.cfg.source {
 			if e, ok := e.Extracted[src]; ok {

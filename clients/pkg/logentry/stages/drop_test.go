@@ -127,6 +127,105 @@ func Test_dropStage_Process(t *testing.T) {
 			shouldDrop: false,
 		},
 		{
+			name: "Matched Source and Value",
+			config: &DropConfig{
+				Source: "key",
+				Value:  ptrFromString("val1"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key": "val1",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Did not match Source and Value",
+			config: &DropConfig{
+				Source: "key",
+				Value:  ptrFromString("val1"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key": "VALRUE1",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Matched Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 50,
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Matched Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "50",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Did not match Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 100,
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Did not match Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "100",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Matched Source and Value with multiple sources",
+			config: &DropConfig{
+				Source: []string{"key1", "key2"},
+				Value:  ptrFromString(`val1;val200.*`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "val1",
+				"key2": "val200.*",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Matched Source and Value with multiple sources and custom separator",
+			config: &DropConfig{
+				Source:    []string{"key1", "key2"},
+				Separator: ptrFromString("|"),
+				Value:     ptrFromString(`val1|val200[a]`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "val1",
+				"key2": "val200[a]",
+			},
+			shouldDrop: true,
+		},
+		{
 			name: "Regex Matched Source(int) and Expression",
 			config: &DropConfig{
 				Source:     "key",
