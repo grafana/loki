@@ -95,7 +95,7 @@ func (h iteratorSortHeap) Less(i, j int) bool {
 type HeapIterator interface {
 	EntryIterator
 	Peek() time.Time
-	Len() int
+	IsEmpty() bool
 	Push(EntryIterator)
 }
 
@@ -320,11 +320,11 @@ func (i *mergeEntryIterator) Peek() time.Time {
 	return i.heap.Peek().Entry().Timestamp
 }
 
-// Len returns the number of inner iterators on the heap, still having entries
-func (i *mergeEntryIterator) Len() int {
+// IsEmpty returns true if there are no more entries to pull.
+func (i *mergeEntryIterator) IsEmpty() bool {
 	i.prefetch()
 
-	return i.heap.Len()
+	return i.heap.Len() == 0
 }
 
 type entrySortIterator struct {

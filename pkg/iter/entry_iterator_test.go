@@ -165,8 +165,8 @@ func TestMergeIteratorPrefetch(t *testing.T) {
 	type tester func(t *testing.T, i HeapIterator)
 
 	tests := map[string]tester{
-		"prefetch on Len() when called as first method": func(t *testing.T, i HeapIterator) {
-			assert.Equal(t, 2, i.Len())
+		"prefetch on IsEmpty() when called as first method": func(t *testing.T, i HeapIterator) {
+			assert.Equal(t, false, i.IsEmpty())
 		},
 		"prefetch on Peek() when called as first method": func(t *testing.T, i HeapIterator) {
 			assert.Equal(t, time.Unix(0, 0), i.Peek())
