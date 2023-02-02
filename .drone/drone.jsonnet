@@ -137,14 +137,14 @@ local promtail_win() = pipeline('promtail-windows') {
   steps: [
     {
       name: 'identify-runner',
-      image: 'golang:windowsservercore-1809',
+      image: 'golang:1.19-windowsservercore-1809',
       commands: [
         'Write-Output $env:DRONE_RUNNER_NAME',
       ],
     },
     {
       name: 'test',
-      image: 'golang:windowsservercore-1809',
+      image: 'golang:1.19-windowsservercore-1809',
       commands: [
         'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
       ],
