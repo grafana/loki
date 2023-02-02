@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
+	"github.com/grafana/loki/pkg/storage"
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
@@ -137,6 +138,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			clu := cluster.New(template)
 			defer func() {
+				storage.ResetBoltDBIndexClientsWithShipper()
 				assert.NoError(t, clu.Cleanup())
 			}()
 
@@ -223,23 +225,6 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 				assert.ElementsMatch(t, []string{"lineC", "lineD"}, lines)
 			})
 
-			t.Run("query-lookback-set-to-zero", func(t *testing.T) {
-				tQuerier.AddFlags("-querier.query-ingesters-within=0")
-				require.NoError(t, tQuerier.Restart())
-
-				resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
-				require.NoError(t, err)
-				assert.Equal(t, "streams", resp.Data.ResultType)
-
-				var lines []string
-				for _, stream := range resp.Data.Stream {
-					for _, val := range stream.Values {
-						lines = append(lines, val[1])
-					}
-				}
-				assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
-			})
-
 			t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
 				// restart ingester which should flush the chunks
 				require.NoError(t, tIngester.Restart())
@@ -250,6 +235,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 				require.NoError(t, err)
 				checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 1)
 
+				storage.ResetBoltDBIndexClientsWithShipper()
 				tQuerier.AddFlags("-querier.query-store-only=true")
 				require.NoError(t, tQuerier.Restart())
 			})

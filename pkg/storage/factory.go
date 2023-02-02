@@ -32,6 +32,27 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+var (
+	indexGatewayClient index.Client
+	// singleton for each period
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+)
+
+// ResetBoltDBIndexClientsWithShipper allows to reset the singletons.
+// MUST ONLY BE USED IN TESTS
+func ResetBoltDBIndexClientsWithShipper() {
+	for _, client := range boltdbIndexClientsWithShipper {
+		client.Stop()
+	}
+
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+
+	if indexGatewayClient != nil {
+		indexGatewayClient.Stop()
+		indexGatewayClient = nil
+	}
+}
+
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	downloads.Limits
@@ -253,12 +274,21 @@ func NewIndexClient(periodCfg config.PeriodConfig, getTableRange func() config.T
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.BoltDBShipperType:
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
+			if indexGatewayClient != nil {
+				return indexGatewayClient, nil
+			}
+
 			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
 			if err != nil {
 				return nil, err
 			}
 
+			indexGatewayClient = gateway
 			return gateway, nil
+		}
+
+		if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
+			return client, nil
 		}
 
 		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
@@ -268,8 +298,14 @@ func NewIndexClient(periodCfg config.PeriodConfig, getTableRange func() config.T
 
 		tableRange := getTableRange()
 		instanceName := fmt.Sprintf("%s_%d", periodCfg.ObjectType, tableRange.Start)
-		return shipper.NewShipper(instanceName, cfg.BoltDBShipperConfig, objectClient, limits,
+		shipper, err := shipper.NewShipper(instanceName, cfg.BoltDBShipperConfig, objectClient, limits,
 			ownsTenantFn, tableRange, registerer)
+		if err != nil {
+			return nil, err
+		}
+
+		boltdbIndexClientsWithShipper[periodCfg.From] = shipper
+		return shipper, nil
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", periodCfg.IndexType, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
 	}

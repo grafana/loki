@@ -396,7 +396,7 @@ func (tm *tableManager) loadLocalTables() error {
 
 		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
 		if err != nil {
-			return err
+			continue
 		}
 		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, entry.Name()) {
 			continue
