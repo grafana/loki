@@ -40,15 +40,15 @@ var (
 		// regex that extracts the timestamp from the AWS Loadbalancer message log
 		// format: timestamp (RFC3339)
 		// example: h2 2022-12-20T23:55:02.599911Z ...
-		regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`), //h2 2022-12-20T23:55:02.599911Z ...
+		regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`),
 		// regex that extracts the timestamp from the AWS VPC Flow Logs message log
 		// format: timestamp (seconds)
-		// example: ... 1669842701 1669842702 ACCEPT
+		// example: ... 1669842701 1669842702 ACCEPT ...
 		regexp.MustCompile(`(?P<begin_date>\d{8,}) (?P<end_date>\d{8,}) (?:ACCEPT|REJECT)`),
 		// regex that extracts the timestamp from the AWS WAF message log
 		// format: timestamp (milliseconds)
 		// example: {"timestamp":1671624901861,...
-		regexp.MustCompile(`"timestamp":(?P<timestamp>\d+)`), //{"timestamp":1671624901861,... (milliseconds)
+		regexp.MustCompile(`"timestamp":(?P<timestamp>\d+)`),
 	}
 )
 
