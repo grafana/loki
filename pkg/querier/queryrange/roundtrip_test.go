@@ -594,6 +594,10 @@ func (f fakeLimits) MaxQueryLength(string) time.Duration {
 	return f.maxQueryLength
 }
 
+func (f fakeLimits) MaxQueryRange(string) time.Duration {
+	return 24 * time.Hour
+}
+
 func (f fakeLimits) MaxQueryParallelism(string) int {
 	return f.maxQueryParallelism
 }

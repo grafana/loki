@@ -30,6 +30,7 @@ const (
 	defaultOrgID             = "logcli"
 	defaultMetricSeriesLimit = 1024
 	defaultMaxFileSize       = 20 * (1 << 20) // 20MB
+	defaultRangeLimit        = 24 * time.Hour
 )
 
 var ErrNotSupported = errors.New("not supported")
@@ -53,7 +54,7 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 		},
 	}
 
-	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit}, log.Logger)
+	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit, rangeLimit: defaultRangeLimit}, log.Logger)
 	return &FileClient{
 		r:           r,
 		orgID:       defaultOrgID,
@@ -183,11 +184,16 @@ func (f *FileClient) GetOrgID() string {
 }
 
 type limiter struct {
-	n int
+	n          int
+	rangeLimit time.Duration
 }
 
 func (l *limiter) MaxQuerySeries(userID string) int {
 	return l.n
+}
+
+func (l *limiter) MaxQueryRange(userID string) time.Duration {
+	return l.rangeLimit
 }
 
 func (l *limiter) QueryTimeout(userID string) time.Duration {
