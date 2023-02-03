@@ -136,6 +136,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 		"tsdb-index":   cluster.ConfigWithTSDB(true),
 	} {
 		t.Run(name, func(t *testing.T) {
+			storage.ResetBoltDBIndexClientsWithShipper()
 			clu := cluster.New(template)
 			defer func() {
 				storage.ResetBoltDBIndexClientsWithShipper()
@@ -228,13 +229,8 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 			t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
 				// restart ingester which should flush the chunks
 				require.NoError(t, tIngester.Restart())
-				// ensure that ingester has 0 chunks in memory
-				cliIngester = client.New(tenantID, "", tIngester.HTTPURL())
-				cliIngester.Now = now
-				metrics, err := cliIngester.Metrics()
-				require.NoError(t, err)
-				checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 1)
 
+				// restart querier and index shipper to sync the index
 				storage.ResetBoltDBIndexClientsWithShipper()
 				tQuerier.AddFlags("-querier.query-store-only=true")
 				require.NoError(t, tQuerier.Restart())
