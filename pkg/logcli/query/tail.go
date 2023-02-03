@@ -55,14 +55,25 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 			if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
 				log.Printf("Remote websocket connection closed unexpectedly (%+v). Connecting again.", err)
 
-				// Close previous connection
+				// Close previous connection. If it fails to close the connection it should be fine as it is already broken.
 				if err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
-					log.Fatalf("Error closing websocket: %+v", err)
+					log.Printf("Error closing websocket: %+v", err)
 				}
 
-				conn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
-				if err != nil {
-					log.Fatalf("Error recreating tailing connection after unexpected close: %+v", err)
+				// Try to re-establish the connection up to 5 times.
+				for retry := 4; retry >= 0; retry-- {
+					conn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
+					if err == nil {
+						break
+					}
+
+					if retry == 0 {
+						log.Println("Error recreating tailing connection after unexpected close, giving up:", err)
+						return
+					}
+
+					log.Println("Error recreating tailing connection after unexpected close, will retry:", err)
+					time.Sleep(5 * time.Second)
 				}
 
 				continue
