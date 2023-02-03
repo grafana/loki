@@ -17,6 +17,8 @@ const (
 	ErrEmptyEvtLogMsgStageConfig = "empty event log message stage configuration"
 )
 
+var RegexSplitKeyValue = regexp.MustCompile(": ?")
+
 type EventLogMessageConfig struct {
 	Source            *string `mapstructure:"source"`
 	DropInvalidLabels bool    `mapstructure:"drop_invalid_labels"`
@@ -103,7 +105,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 	}
 	lines := strings.Split(s, "\r\n")
 	for _, line := range lines {
-		parts := regexp.MustCompile(": ?").Split(line, 2)
+		parts := RegexSplitKeyValue.Split(line, 2)
 		if len(parts) < 2 {
 			level.Warn(m.logger).Log("msg", "invalid line parsed from message", "line", line)
 			continue
@@ -116,7 +118,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 				}
 				continue
 			}
-			mkey = SanitizeLabelName(mkey)
+			mkey = SanitizeFullLabelName(mkey)
 		}
 		if _, ok := extracted[mkey]; ok && !m.cfg.OverwriteExisting {
 			level.Info(m.logger).Log("msg", "extracted key that already existed, appending _extracted to key",
@@ -144,7 +146,8 @@ func (m *eventLogMessageStage) Name() string {
 }
 
 // Sanitize a input string to convert it into a valid prometheus label
-func SanitizeLabelName(input string) string {
+// TODO: switch to prometheus/prometheus/util/strutil/SanitizeFullLabelName
+func SanitizeFullLabelName(input string) string {
 	if len(input) == 0 {
 		return "_"
 	}
