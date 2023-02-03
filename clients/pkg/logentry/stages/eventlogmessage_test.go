@@ -2,6 +2,7 @@ package stages
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -335,4 +336,52 @@ func TestEventLogMessage_invalidString(t *testing.T) {
 	out := processEntries(pl,
 		newEntry(map[string]interface{}{"message": nil}, nil, "", time.Now()))
 	assert.Len(t, out, 0, "No output should be produced with a nil input")
+}
+
+var inputJustKey = "Key 1:"
+var inputBoth = "Key 1: Value 1"
+
+func BenchmarkSplittingKeyValuesRegex(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var val string
+		resultKey := RegexSplitKeyValue.Split(inputJustKey, 2)
+		if len(resultKey) > 1 {
+			val = resultKey[1]
+		}
+		resultKeyValue := RegexSplitKeyValue.Split(inputBoth, 2)
+		if len(resultKeyValue) > 1 {
+			val = resultKeyValue[1]
+		}
+		_ = val
+	}
+}
+
+func BenchmarkSplittingKeyValuesSplitTrim(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var val string
+		resultKey := strings.SplitN(":", inputJustKey, 2)
+		if len(resultKey) > 1 {
+			val = strings.TrimLeft(resultKey[1], " ")
+		}
+		resultKeyValue := RegexSplitKeyValue.Split(inputBoth, 2)
+		if len(resultKey) > 1 {
+			val = strings.TrimLeft(resultKeyValue[1], " ")
+		}
+		_ = val
+	}
+}
+
+func BenchmarkSplittingKeyValuesSplitSubstr(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var val string
+		resultKey := strings.SplitN(":", inputJustKey, 2)
+		if len(resultKey) > 1 && len(resultKey[1]) > 0 {
+			val = resultKey[1][1:]
+		}
+		resultKeyValue := RegexSplitKeyValue.Split(inputBoth, 2)
+		if len(resultKey) > 1 && len(resultKey[1]) > 0 {
+			val = resultKeyValue[1][1:]
+		}
+		_ = val
+	}
 }
