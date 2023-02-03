@@ -9,8 +9,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 type FakeBuilder struct {
@@ -71,6 +73,19 @@ type FakeBuilder struct {
 		result1 k8s.Builder
 	}
 	ownsReturnsOnCall map[int]struct {
+		result1 k8s.Builder
+	}
+	WatchesStub        func(source.Source, handler.EventHandler, ...builder.WatchesOption) k8s.Builder
+	watchesMutex       sync.RWMutex
+	watchesArgsForCall []struct {
+		arg1 source.Source
+		arg2 handler.EventHandler
+		arg3 []builder.WatchesOption
+	}
+	watchesReturns struct {
+		result1 k8s.Builder
+	}
+	watchesReturnsOnCall map[int]struct {
 		result1 k8s.Builder
 	}
 	WithEventFilterStub        func(predicate.Predicate) k8s.Builder
@@ -420,6 +435,69 @@ func (fake *FakeBuilder) OwnsReturnsOnCall(i int, result1 k8s.Builder) {
 	}{result1}
 }
 
+func (fake *FakeBuilder) Watches(arg1 source.Source, arg2 handler.EventHandler, arg3 ...builder.WatchesOption) k8s.Builder {
+	fake.watchesMutex.Lock()
+	ret, specificReturn := fake.watchesReturnsOnCall[len(fake.watchesArgsForCall)]
+	fake.watchesArgsForCall = append(fake.watchesArgsForCall, struct {
+		arg1 source.Source
+		arg2 handler.EventHandler
+		arg3 []builder.WatchesOption
+	}{arg1, arg2, arg3})
+	stub := fake.WatchesStub
+	fakeReturns := fake.watchesReturns
+	fake.recordInvocation("Watches", []interface{}{arg1, arg2, arg3})
+	fake.watchesMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2, arg3...)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeBuilder) WatchesCallCount() int {
+	fake.watchesMutex.RLock()
+	defer fake.watchesMutex.RUnlock()
+	return len(fake.watchesArgsForCall)
+}
+
+func (fake *FakeBuilder) WatchesCalls(stub func(source.Source, handler.EventHandler, ...builder.WatchesOption) k8s.Builder) {
+	fake.watchesMutex.Lock()
+	defer fake.watchesMutex.Unlock()
+	fake.WatchesStub = stub
+}
+
+func (fake *FakeBuilder) WatchesArgsForCall(i int) (source.Source, handler.EventHandler, []builder.WatchesOption) {
+	fake.watchesMutex.RLock()
+	defer fake.watchesMutex.RUnlock()
+	argsForCall := fake.watchesArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+}
+
+func (fake *FakeBuilder) WatchesReturns(result1 k8s.Builder) {
+	fake.watchesMutex.Lock()
+	defer fake.watchesMutex.Unlock()
+	fake.WatchesStub = nil
+	fake.watchesReturns = struct {
+		result1 k8s.Builder
+	}{result1}
+}
+
+func (fake *FakeBuilder) WatchesReturnsOnCall(i int, result1 k8s.Builder) {
+	fake.watchesMutex.Lock()
+	defer fake.watchesMutex.Unlock()
+	fake.WatchesStub = nil
+	if fake.watchesReturnsOnCall == nil {
+		fake.watchesReturnsOnCall = make(map[int]struct {
+			result1 k8s.Builder
+		})
+	}
+	fake.watchesReturnsOnCall[i] = struct {
+		result1 k8s.Builder
+	}{result1}
+}
+
 func (fake *FakeBuilder) WithEventFilter(arg1 predicate.Predicate) k8s.Builder {
 	fake.withEventFilterMutex.Lock()
 	ret, specificReturn := fake.withEventFilterReturnsOnCall[len(fake.withEventFilterArgsForCall)]
@@ -616,6 +694,8 @@ func (fake *FakeBuilder) Invocations() map[string][][]interface{} {
 	defer fake.namedMutex.RUnlock()
 	fake.ownsMutex.RLock()
 	defer fake.ownsMutex.RUnlock()
+	fake.watchesMutex.RLock()
+	defer fake.watchesMutex.RUnlock()
 	fake.withEventFilterMutex.RLock()
 	defer fake.withEventFilterMutex.RUnlock()
 	fake.withLogConstructorMutex.RLock()

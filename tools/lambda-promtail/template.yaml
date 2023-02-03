@@ -43,6 +43,10 @@ Parameters:
     Description: Tenant ID to be added when writing logs from lambda-promtail.
     Type: String
     Default: ""
+  SkipTlsVerify:
+    Description: Determines whether to verify the TLS certificate
+    Type: String
+    Default: "false"
 
 Resources:
   LambdaPromtailRole:
@@ -91,6 +95,7 @@ Resources:
           KEEP_STREAM: !Ref KeepStream
           EXTRA_LABELS: !Ref ExtraLabels
           TENANT_ID: !Ref TenantID
+          SKIP_TLS_VERIFY: !Ref SkipTlsVerify
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:

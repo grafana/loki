@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    service.beta.openshift.io/serving-cert-secret-name: loki-operator-webhook-service
-  name: webhook-service
-  namespace: system

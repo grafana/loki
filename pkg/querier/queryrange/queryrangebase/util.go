@@ -2,13 +2,6 @@ package queryrangebase
 
 import (
 	"context"
-	"net/http"
-
-	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // RequestResponse contains a request response and the respective request that was used.
@@ -17,13 +10,8 @@ type RequestResponse struct {
 	Response Response
 }
 
-// DoRequests executes a list of requests in parallel. The limits parameters is used to limit parallelism per single request.
-func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
+// DoRequests executes a list of requests in parallel.
+func DoRequests(ctx context.Context, downstream Handler, reqs []Request, parallelism int) ([]RequestResponse, error) {
 	// If one of the requests fail, we want to be able to cancel the rest of them.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -38,7 +26,6 @@ func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits 
 	}()
 
 	respChan, errChan := make(chan RequestResponse), make(chan error)
-	parallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.MaxQueryParallelism)
 	if parallelism > len(reqs) {
 		parallelism = len(reqs)
 	}

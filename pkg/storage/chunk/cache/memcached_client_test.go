@@ -3,7 +3,7 @@ package cache_test
 import (
 	"sync"
 
-	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/grafana/gomemcache/memcache"
 )
 
 type mockMemcache struct {
@@ -17,7 +17,7 @@ func newMockMemcache() *mockMemcache {
 	}
 }
 
-func (m *mockMemcache) GetMulti(keys []string) (map[string]*memcache.Item, error) {
+func (m *mockMemcache) GetMulti(keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	m.RLock()
 	defer m.RUnlock()
 	result := map[string]*memcache.Item{}

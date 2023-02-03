@@ -55,42 +55,44 @@ func (m *Miniredis) cmdZadd(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key, args := args[0], args[1:]
-	var (
-		nx    = false
-		xx    = false
-		gt    = false
-		lt    = false
-		ch    = false
-		incr  = false
-		elems = map[string]float64{}
-	)
+	var opts struct {
+		key  string
+		nx   bool
+		xx   bool
+		gt   bool
+		lt   bool
+		ch   bool
+		incr bool
+	}
+	elems := map[string]float64{}
 
+	opts.key = args[0]
+	args = args[1:]
 outer:
 	for len(args) > 0 {
 		switch strings.ToUpper(args[0]) {
 		case "NX":
-			nx = true
+			opts.nx = true
 			args = args[1:]
 			continue
 		case "XX":
-			xx = true
+			opts.xx = true
 			args = args[1:]
 			continue
 		case "GT":
-			gt = true
+			opts.gt = true
 			args = args[1:]
 			continue
 		case "LT":
-			lt = true
+			opts.lt = true
 			args = args[1:]
 			continue
 		case "CH":
-			ch = true
+			opts.ch = true
 			args = args[1:]
 			continue
 		case "INCR":
-			incr = true
+			opts.incr = true
 			args = args[1:]
 			continue
 		default:
@@ -114,21 +116,21 @@ outer:
 		args = args[2:]
 	}
 
-	if xx && nx {
+	if opts.xx && opts.nx {
 		setDirty(c)
 		c.WriteError(msgXXandNX)
 		return
 	}
 
-	if gt && lt ||
-		gt && nx ||
-		lt && nx {
+	if opts.gt && opts.lt ||
+		opts.gt && opts.nx ||
+		opts.lt && opts.nx {
 		setDirty(c)
 		c.WriteError(msgGTLTandNX)
 		return
 	}
 
-	if incr && len(elems) > 1 {
+	if opts.incr && len(elems) > 1 {
 		setDirty(c)
 		c.WriteError(msgSingleElementPair)
 		return
@@ -137,22 +139,22 @@ outer:
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		if incr {
+		if opts.incr {
 			for member, delta := range elems {
-				if nx && db.ssetExists(key, member) {
+				if opts.nx && db.ssetExists(opts.key, member) {
 					c.WriteNull()
 					return
 				}
-				if xx && !db.ssetExists(key, member) {
+				if opts.xx && !db.ssetExists(opts.key, member) {
 					c.WriteNull()
 					return
 				}
-				newScore := db.ssetIncrby(key, member, delta)
+				newScore := db.ssetIncrby(opts.key, member, delta)
 				c.WriteFloat(newScore)
 			}
 			return
@@ -160,23 +162,23 @@ outer:
 
 		res := 0
 		for member, score := range elems {
-			if nx && db.ssetExists(key, member) {
+			if opts.nx && db.ssetExists(opts.key, member) {
 				continue
 			}
-			if xx && !db.ssetExists(key, member) {
+			if opts.xx && !db.ssetExists(opts.key, member) {
 				continue
 			}
-			old := db.ssetScore(key, member)
-			if gt && score <= old {
+			old := db.ssetScore(opts.key, member)
+			if opts.gt && score <= old {
 				continue
 			}
-			if lt && score >= old {
+			if opts.lt && score >= old {
 				continue
 			}
-			if db.ssetAdd(key, score, member) {
+			if db.ssetAdd(opts.key, score, member) {
 				res++
 			} else {
-				if ch && old != score {
+				if opts.ch && old != score {
 					// if 'CH' is specified, only count changed keys
 					res++
 				}
@@ -233,14 +235,25 @@ func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	min, minIncl, err := parseFloatRange(args[1])
+	var (
+		opts struct {
+			key     string
+			min     float64
+			minIncl bool
+			max     float64
+			maxIncl bool
+		}
+		err error
+	)
+
+	opts.key = args[0]
+	opts.min, opts.minIncl, err = parseFloatRange(args[1])
 	if err != nil {
 		setDirty(c)
 		c.WriteError(msgInvalidMinMax)
 		return
 	}
-	max, maxIncl, err := parseFloatRange(args[2])
+	opts.max, opts.maxIncl, err = parseFloatRange(args[2])
 	if err != nil {
 		setDirty(c)
 		c.WriteError(msgInvalidMinMax)
@@ -250,18 +263,18 @@ func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(key) {
+		if !db.exists(opts.key) {
 			c.WriteInt(0)
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(opts.key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.ssetElements(key)
-		members = withSSRange(members, min, minIncl, max, maxIncl)
+		members := db.ssetElements(opts.key)
+		members = withSSRange(members, opts.min, opts.minIncl, opts.max, opts.maxIncl)
 		c.WriteInt(len(members))
 	})
 }
@@ -280,23 +293,30 @@ func (m *Miniredis) cmdZincrby(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	delta, err := strconv.ParseFloat(args[1], 64)
+	var opts struct {
+		key    string
+		delta  float64
+		member string
+	}
+
+	opts.key = args[0]
+	d, err := strconv.ParseFloat(args[1], 64)
 	if err != nil {
 		setDirty(c)
 		c.WriteError(msgInvalidFloat)
 		return
 	}
-	member := args[2]
+	opts.delta = d
+	opts.member = args[2]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != "zset" {
 			c.WriteError(msgWrongType)
 			return
 		}
-		newScore := db.ssetIncrby(key, member, delta)
+		newScore := db.ssetIncrby(opts.key, opts.member, opts.delta)
 		c.WriteFloat(newScore)
 	})
 }
@@ -889,37 +909,37 @@ func (m *Miniredis) cmdZremrangebyrank(c *server.Peer, cmd string, args []string
 		return
 	}
 
-	key := args[0]
-	start, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		key   string
+		start int
+		end   int
+	}
+
+	opts.key = args[0]
+	if ok := optInt(c, args[1], &opts.start); !ok {
 		return
 	}
-	end, err := strconv.Atoi(args[2])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	if ok := optInt(c, args[2], &opts.end); !ok {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(key) {
+		if !db.exists(opts.key) {
 			c.WriteInt(0)
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(opts.key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.ssetMembers(key)
-		rs, re := redisRange(len(members), start, end, false)
+		members := db.ssetMembers(opts.key)
+		rs, re := redisRange(len(members), opts.start, opts.end, false)
 		for _, el := range members[rs:re] {
-			db.ssetRem(key, el)
+			db.ssetRem(opts.key, el)
 		}
 		c.WriteInt(re - rs)
 	})
@@ -939,14 +959,24 @@ func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []strin
 		return
 	}
 
-	key := args[0]
-	min, minIncl, err := parseFloatRange(args[1])
+	var (
+		opts struct {
+			key     string
+			min     float64
+			minIncl bool
+			max     float64
+			maxIncl bool
+		}
+		err error
+	)
+	opts.key = args[0]
+	opts.min, opts.minIncl, err = parseFloatRange(args[1])
 	if err != nil {
 		setDirty(c)
 		c.WriteError(msgInvalidMinMax)
 		return
 	}
-	max, maxIncl, err := parseFloatRange(args[2])
+	opts.max, opts.maxIncl, err = parseFloatRange(args[2])
 	if err != nil {
 		setDirty(c)
 		c.WriteError(msgInvalidMinMax)
@@ -956,21 +986,21 @@ func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []strin
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(key) {
+		if !db.exists(opts.key) {
 			c.WriteInt(0)
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(opts.key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.ssetElements(key)
-		members = withSSRange(members, min, minIncl, max, maxIncl)
+		members := db.ssetElements(opts.key)
+		members = withSSRange(members, opts.min, opts.minIncl, opts.max, opts.maxIncl)
 
 		for _, el := range members {
-			db.ssetRem(key, el.member)
+			db.ssetRem(opts.key, el.member)
 		}
 		c.WriteInt(len(members))
 	})
@@ -1371,17 +1401,19 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	cursor, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidCursor)
+	var opts struct {
+		key       string
+		cursor    int
+		withMatch bool
+		match     string
+	}
+
+	opts.key = args[0]
+	if ok := optIntErr(c, args[1], &opts.cursor, msgInvalidCursor); !ok {
 		return
 	}
 	args = args[2:]
 	// MATCH and COUNT options
-	var withMatch bool
-	var match string
 	for len(args) > 0 {
 		if strings.ToLower(args[0]) == "count" {
 			if len(args) < 2 {
@@ -1389,8 +1421,7 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			_, err := strconv.Atoi(args[1])
-			if err != nil {
+			if _, err := strconv.Atoi(args[1]); err != nil {
 				setDirty(c)
 				c.WriteError(msgInvalidInt)
 				return
@@ -1405,8 +1436,8 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			withMatch = true
-			match = args[1]
+			opts.withMatch = true
+			opts.match = args[1]
 			args = args[2:]
 			continue
 		}
@@ -1418,21 +1449,21 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 		// Paging is not implementend, all results are returned for cursor 0.
-		if cursor != 0 {
+		if opts.cursor != 0 {
 			// Invalid cursor.
 			c.WriteLen(2)
 			c.WriteBulk("0") // no next cursor
 			c.WriteLen(0)    // no elements
 			return
 		}
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != "zset" {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
 
-		members := db.ssetMembers(key)
-		if withMatch {
-			members, _ = matchKeys(members, match)
+		members := db.ssetMembers(opts.key)
+		if opts.withMatch {
+			members, _ = matchKeys(members, opts.match)
 		}
 
 		c.WriteLen(2)
@@ -1441,7 +1472,7 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 		c.WriteLen(len(members) * 2)
 		for _, k := range members {
 			c.WriteBulk(k)
-			c.WriteFloat(db.ssetScore(key, k))
+			c.WriteFloat(db.ssetScore(opts.key, k))
 		}
 	})
 }
@@ -1463,10 +1494,9 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 		var err error
 		if len(args) > 1 {
 			count, err = strconv.Atoi(args[1])
-
-			if err != nil {
+			if err != nil || count < 0 {
 				setDirty(c)
-				c.WriteError(msgInvalidInt)
+				c.WriteError(msgInvalidRange)
 				return
 			}
 		}
@@ -1536,17 +1566,12 @@ func (m *Miniredis) cmdZrandmember(c *server.Peer, cmd string, args []string) {
 	args = args[1:]
 
 	if len(args) > 0 {
-		count := args[0]
-		args = args[1:]
-
-		n, err := strconv.Atoi(count)
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
+		// can be negative
+		if ok := optInt(c, args[0], &opts.count); !ok {
 			return
 		}
 		opts.withCount = true
-		opts.count = n // can be negative
+		args = args[1:]
 	}
 
 	if len(args) > 0 && strings.ToUpper(args[0]) == "WITHSCORES" {

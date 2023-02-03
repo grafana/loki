@@ -26,7 +26,6 @@ require (
 	github.com/google/go-cmp v0.5.8
 	github.com/grafana/loki v1.6.2-0.20220718071907-6bd05c9a4399
 	github.com/openshift/library-go v0.0.0-20220622115547-84d884f4c9f6
-	github.com/operator-framework/operator-lib v0.11.0
 	github.com/prometheus/prometheus v1.8.2-0.20220303173753-edfe657b5405
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/apiserver v0.25.0
@@ -123,7 +122,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common/sigv4 v0.1.0 // indirect
-	github.com/prometheus/exporter-toolkit v0.7.1 // indirect
+	github.com/prometheus/exporter-toolkit v0.7.3 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect

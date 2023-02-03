@@ -53,9 +53,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.UpTo, prefix+"hedge-requests-up-to", 2, "The maximun of hedge requests allowed.")
+	f.IntVar(&cfg.UpTo, prefix+"hedge-requests-up-to", 2, "The maximum of hedge requests allowed.")
 	f.DurationVar(&cfg.At, prefix+"hedge-requests-at", 0, "If set to a non-zero value a second request will be issued at the provided duration. Default is 0 (disabled)")
-	f.IntVar(&cfg.MaxPerSecond, prefix+"hedge-max-per-second", 5, "The maximun of hedge requests allowed per seconds.")
+	f.IntVar(&cfg.MaxPerSecond, prefix+"hedge-max-per-second", 5, "The maximum of hedge requests allowed per seconds.")
 }
 
 // Client returns a hedged http client.

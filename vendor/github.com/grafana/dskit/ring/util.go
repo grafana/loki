@@ -95,7 +95,7 @@ func WaitInstanceState(ctx context.Context, r ReadRing, instanceID string, state
 
 // WaitRingStability monitors the ring topology for the provided operation and waits until it
 // keeps stable for at least minStability.
-func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+func WaitRingStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration) error {
 	return waitStability(ctx, r, op, minStability, maxWaiting, HasReplicationSetChanged)
 }
 
@@ -104,11 +104,11 @@ func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability,
 // allowed states (e.g. JOINING->ACTIVE if allowed by op).
 // This can be used to avoid wasting resources on moving data around
 // due to multiple changes in the Ring.
-func WaitRingTokensStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+func WaitRingTokensStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration) error {
 	return waitStability(ctx, r, op, minStability, maxWaiting, HasReplicationSetChangedWithoutState)
 }
 
-func waitStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration, isChanged func(ReplicationSet, ReplicationSet) bool) error {
+func waitStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration, isChanged func(ReplicationSet, ReplicationSet) bool) error {
 	// Configure the max waiting time as a context deadline.
 	ctx, cancel := context.WithTimeout(ctx, maxWaiting)
 	defer cancel()

@@ -144,6 +144,18 @@ func (lnf latestNFilter) proto() *btpb.RowFilter {
 	return &btpb.RowFilter{Filter: &btpb.RowFilter_CellsPerColumnLimitFilter{CellsPerColumnLimitFilter: int32(lnf)}}
 }
 
+// LabelFilter returns a filter that applies the
+// given label to all cells in the output row.
+func LabelFilter(label string) Filter { return labelFilter(label) }
+
+type labelFilter string
+
+func (lf labelFilter) String() string { return fmt.Sprintf("apply_label(%s)", string(lf)) }
+
+func (lf labelFilter) proto() *btpb.RowFilter {
+	return &btpb.RowFilter{Filter: &btpb.RowFilter_ApplyLabelTransformer{ApplyLabelTransformer: string(lf)}}
+}
+
 // StripValueFilter returns a filter that replaces each value with the empty string.
 func StripValueFilter() Filter { return stripValueFilter{} }
 

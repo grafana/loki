@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // Test that the service ports have matching deployment/statefulset/daemonset ports on the podspec.
@@ -313,7 +314,6 @@ func TestServices_WithEncryption(t *testing.T) {
 	tt := []struct {
 		desc             string
 		buildFunc        func(Options) ([]client.Object, error)
-		wantArgs         []string
 		wantPorts        []corev1.ContainerPort
 		wantVolumeMounts []corev1.VolumeMount
 		wantVolumes      []corev1.Volume
@@ -321,24 +321,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "compactor",
 			buildFunc: BuildCompactor,
-			wantArgs: []string{
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -395,31 +377,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "distributor",
 			buildFunc: BuildDistributor,
-			wantArgs: []string{
-				"-ingester.client.tls-enabled=true",
-				fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				"-ingester.client.tls-min-version=VersionTLS12",
-				"-ingester.client.tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -476,24 +433,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "index-gateway",
 			buildFunc: BuildIndexGateway,
-			wantArgs: []string{
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -550,38 +489,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "ingester",
 			buildFunc: BuildIngester,
-			wantArgs: []string{
-				"-ingester.client.tls-enabled=true",
-				fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				"-ingester.client.tls-min-version=VersionTLS12",
-				"-ingester.client.tls-cipher-suites=cipher1,cipher2",
-				"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
-				"-boltdb.shipper.index-gateway-client.grpc.tls-min-version=VersionTLS12",
-				"-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -638,52 +545,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "querier",
 			buildFunc: BuildQuerier,
-			wantArgs: []string{
-				"-ingester.client.tls-enabled=true",
-				fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				"-ingester.client.tls-min-version=VersionTLS12",
-				"-ingester.client.tls-cipher-suites=cipher1,cipher2",
-				"-querier.frontend-client.tls-enabled=true",
-				fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-querier.frontend-client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-querier.frontend-client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNs)),
-				"-querier.frontend-client.tls-min-version=VersionTLS12",
-				"-querier.frontend-client.tls-cipher-suites=cipher1,cipher2",
-				"-boltdb.shipper.compactor.client.tls-enabled=true",
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(stackName), stackNs)),
-				"-boltdb.shipper.compactor.client.tls-min-version=VersionTLS12",
-				"-boltdb.shipper.compactor.client.tls-cipher-suites=cipher1,cipher2",
-				"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
-				"-boltdb.shipper.index-gateway-client.grpc.tls-min-version=VersionTLS12",
-				"-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -740,30 +601,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "query-frontend",
 			buildFunc: BuildQueryFrontend,
-			wantArgs: []string{
-				"-frontend.tail-tls-config.tls-min-version=VersionTLS12",
-				"-frontend.tail-tls-config.tls-cipher-suites=cipher1,cipher2",
-				fmt.Sprintf("-frontend.tail-tls-config.tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-frontend.tail-tls-config.tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-frontend.tail-proxy-url=https://test-querier-http.ns.svc.cluster.local:3100",
-				fmt.Sprintf("-frontend.tail-tls-config.tls-ca-path=%s", signingCAPath()),
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -820,52 +657,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		{
 			desc:      "ruler",
 			buildFunc: BuildRuler,
-			wantArgs: []string{
-				"-boltdb.shipper.compactor.client.tls-enabled=true",
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-boltdb.shipper.compactor.client.tls-server-name=%s", fqdn(serviceNameCompactorHTTP(stackName), stackNs)),
-				"-boltdb.shipper.compactor.client.tls-min-version=VersionTLS12",
-				"-boltdb.shipper.compactor.client.tls-cipher-suites=cipher1,cipher2",
-				"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNs)),
-				"-boltdb.shipper.index-gateway-client.grpc.tls-min-version=VersionTLS12",
-				"-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=cipher1,cipher2",
-				"-ingester.client.tls-enabled=true",
-				fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-ingester.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-ingester.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNs)),
-				"-ingester.client.tls-min-version=VersionTLS12",
-				"-ingester.client.tls-cipher-suites=cipher1,cipher2",
-				"-ruler.client.tls-enabled=true",
-				fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-ruler.client.tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-ruler.client.tls-key-path=%s", lokiServerGRPCTLSKey()),
-				fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(stackName), stackNs)),
-				"-ruler.client.tls-min-version=VersionTLS12",
-				"-ruler.client.tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.enable=true",
-				"-internal-server.http-listen-address=",
-				fmt.Sprintf("-internal-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-internal-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-internal-server.http-tls-cipher-suites=cipher1,cipher2",
-				"-internal-server.http-tls-min-version=VersionTLS12",
-				"-server.tls-cipher-suites=cipher1,cipher2",
-				"-server.tls-min-version=VersionTLS12",
-				fmt.Sprintf("-server.http-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.http-tls-cert-path=%s", lokiServerHTTPTLSCert()),
-				fmt.Sprintf("-server.http-tls-key-path=%s", lokiServerHTTPTLSKey()),
-				"-server.http-tls-client-auth=RequireAndVerifyClientCert",
-				fmt.Sprintf("-server.grpc-tls-ca-path=%s", signingCAPath()),
-				fmt.Sprintf("-server.grpc-tls-cert-path=%s", lokiServerGRPCTLSCert()),
-				fmt.Sprintf("-server.grpc-tls-key-path=%s", lokiServerGRPCTLSKey()),
-				"-server.grpc-tls-client-auth=RequireAndVerifyClientCert",
-			},
 			wantPorts: []corev1.ContainerPort{
 				{
 					Name:          lokiInternalHTTPPortName,
@@ -943,16 +734,6 @@ func TestServices_WithEncryption(t *testing.T) {
 					strings.Contains(s, "-http") || // Serving HTTP certificates
 					strings.Contains(s, "-grpc") || // Serving GRPC certificates
 					strings.Contains(s, "ca") // Certificate authorities
-			}
-
-			// Check args not missing
-			for _, arg := range test.wantArgs {
-				require.Contains(t, pod.Containers[0].Args, arg)
-			}
-			for _, arg := range pod.Containers[0].Args {
-				if isEncryptionRelated(arg) {
-					require.Contains(t, test.wantArgs, arg)
-				}
 			}
 
 			// Check ports not missing

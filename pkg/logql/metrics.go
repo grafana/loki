@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -108,11 +109,12 @@ func RecordRangeAndInstantQueryMetrics(
 
 	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 
-	logValues := make([]interface{}, 0, 20)
+	logValues := make([]interface{}, 0, 30)
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
+		"query_hash", HashedQuery(p.Query()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -126,16 +128,20 @@ func RecordRangeAndInstantQueryMetrics(
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"total_entries", stats.Summary.TotalEntriesReturned,
+		"store_chunks_download_time", stats.ChunksDownloadTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"subqueries", stats.Summary.Subqueries,
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
 		"cache_chunk_bytes_stored", stats.Caches.Chunk.BytesSent,
 		"cache_chunk_bytes_fetched", stats.Caches.Chunk.BytesReceived,
+		"cache_chunk_download_time", stats.Caches.Chunk.CacheDownloadTime(),
 		"cache_index_req", stats.Caches.Index.EntriesRequested,
 		"cache_index_hit", stats.Caches.Index.EntriesFound,
+		"cache_index_download_time", stats.Caches.Index.CacheDownloadTime(),
 		"cache_result_req", stats.Caches.Result.EntriesRequested,
 		"cache_result_hit", stats.Caches.Result.EntriesFound,
+		"cache_result_download_time", stats.Caches.Result.CacheDownloadTime(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -156,6 +162,12 @@ func RecordRangeAndInstantQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
+}
+
+func HashedQuery(query string) uint32 {
+	h := fnv.New32()
+	_, _ = h.Write([]byte(query))
+	return h.Sum32()
 }
 
 func RecordLabelQueryMetrics(
@@ -201,6 +213,11 @@ func RecordLabelQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 
+func PrintMatches(matches []string) string {
+	// not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
+	return strings.Join(matches, ":")
+}
+
 func RecordSeriesQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
@@ -228,7 +245,7 @@ func RecordSeriesQueryMetrics(
 		"length", end.Sub(start),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
-		"match", strings.Join(match, ":"), // not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
+		"match", PrintMatches(match),
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"total_entries", stats.Summary.TotalEntriesReturned,

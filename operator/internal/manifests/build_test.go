@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -348,14 +347,6 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			HTTPEncryption: true,
 		},
 	}
-	ciphers := strings.Join([]string{
-		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
-		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
-	}, ",")
 
 	err := ApplyDefaultSettings(&opts)
 	require.NoError(t, err)
@@ -369,7 +360,6 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name string
 			vs   []corev1.Volume
 			vms  []corev1.VolumeMount
-			args []string
 			rps  corev1.URIScheme
 			lps  corev1.URIScheme
 		)
@@ -379,14 +369,12 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		default:
@@ -411,10 +399,6 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.tls-min-version=VersionTLS12")
-		require.Contains(t, args, fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers))
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/server/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/server/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -448,7 +432,6 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name string
 			vs   []corev1.Volume
 			vms  []corev1.VolumeMount
-			args []string
 			rps  corev1.URIScheme
 			lps  corev1.URIScheme
 		)
@@ -458,14 +441,12 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		default:
@@ -490,8 +471,6 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/server/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/server/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -602,15 +581,6 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 		"test-ruler":         "test-ruler-grpc",
 	}
 
-	ciphers := strings.Join([]string{
-		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
-		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
-	}, ",")
-
 	for _, tst := range table {
 		tst := tst
 		t.Run(tst.desc, func(t *testing.T) {
@@ -643,12 +613,6 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 
 				t.Run(name, func(t *testing.T) {
 					secretName := secretsMap[name]
-					args := []string{
-						"-server.grpc-tls-cert-path=/var/run/tls/grpc/server/tls.crt",
-						"-server.grpc-tls-key-path=/var/run/tls/grpc/server/tls.key",
-						"-server.tls-min-version=VersionTLS12",
-						fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers),
-					}
 
 					vm := corev1.VolumeMount{
 						Name:      secretName,
@@ -666,11 +630,9 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 					}
 
 					if tst.BuildOptions.Gates.GRPCEncryption {
-						require.Subset(t, spec.Containers[0].Args, args)
 						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
 						require.Contains(t, spec.Volumes, v)
 					} else {
-						require.NotSubset(t, spec.Containers[0].Args, args)
 						require.NotContains(t, spec.Containers[0].VolumeMounts, vm)
 						require.NotContains(t, spec.Volumes, v)
 					}

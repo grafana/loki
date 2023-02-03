@@ -23,6 +23,9 @@ type Expr interface {
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
 	Walkable
 	fmt.Stringer
+
+	// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
+	Pretty(level int) string
 }
 
 func Clone(e Expr) (Expr, error) {
@@ -332,6 +335,19 @@ type LabelParserExpr struct {
 }
 
 func newLabelParserExpr(op, param string) *LabelParserExpr {
+	if op == OpParserTypeRegexp {
+		_, err := log.NewRegexpParser(param)
+		if err != nil {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regexp parser: %s", err.Error()), 0, 0))
+		}
+	}
+	if op == OpParserTypePattern {
+		_, err := log.NewPatternParser(param)
+		if err != nil {
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
+		}
+	}
+
 	return &LabelParserExpr{
 		Op:    op,
 		Param: param,
@@ -367,6 +383,9 @@ func (e *LabelParserExpr) String() string {
 	if e.Param != "" {
 		sb.WriteString(" ")
 		sb.WriteString(strconv.Quote(e.Param))
+	}
+	if (e.Op == OpParserTypeRegexp || e.Op == OpParserTypePattern) && e.Param == "" {
+		sb.WriteString(" \"\"")
 	}
 	return sb.String()
 }
@@ -427,6 +446,44 @@ func (e *DecolorizeExpr) String() string {
 }
 func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
 
+type DropLabelsExpr struct {
+	dropLabels []log.DropLabel
+	implicit
+}
+
+func newDropLabelsExpr(dropLabels []log.DropLabel) *DropLabelsExpr {
+	return &DropLabelsExpr{dropLabels: dropLabels}
+}
+
+func (e *DropLabelsExpr) Shardable() bool { return true }
+
+func (e *DropLabelsExpr) Stage() (log.Stage, error) {
+	return log.NewDropLabels(e.dropLabels), nil
+}
+func (e *DropLabelsExpr) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpDrop))
+
+	for i, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			sb.WriteString(dropLabel.Matcher.String())
+			if i+1 != len(e.dropLabels) {
+				sb.WriteString(",")
+			}
+		}
+		if dropLabel.Name != "" {
+			sb.WriteString(dropLabel.Name)
+			if i+1 != len(e.dropLabels) {
+				sb.WriteString(",")
+			}
+		}
+	}
+	str := sb.String()
+	return str
+}
+func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -441,7 +498,6 @@ func (e *LineFmtExpr) String() string {
 
 type LabelFmtExpr struct {
 	Formats []log.LabelFmt
-
 	implicit
 }
 
@@ -461,7 +517,9 @@ func (e *LabelFmtExpr) Stage() (log.Stage, error) {
 
 func (e *LabelFmtExpr) String() string {
 	var sb strings.Builder
+
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
+
 	for i, f := range e.Formats {
 		sb.WriteString(f.Name)
 		sb.WriteString("=")
@@ -623,15 +681,17 @@ func newOffsetExpr(offset time.Duration) *OffsetExpr {
 
 const (
 	// vector ops
-	OpTypeSum     = "sum"
-	OpTypeAvg     = "avg"
-	OpTypeMax     = "max"
-	OpTypeMin     = "min"
-	OpTypeCount   = "count"
-	OpTypeStddev  = "stddev"
-	OpTypeStdvar  = "stdvar"
-	OpTypeBottomK = "bottomk"
-	OpTypeTopK    = "topk"
+	OpTypeSum      = "sum"
+	OpTypeAvg      = "avg"
+	OpTypeMax      = "max"
+	OpTypeMin      = "min"
+	OpTypeCount    = "count"
+	OpTypeStddev   = "stddev"
+	OpTypeStdvar   = "stdvar"
+	OpTypeBottomK  = "bottomk"
+	OpTypeTopK     = "topk"
+	OpTypeSort     = "sort"
+	OpTypeSortDesc = "sort_desc"
 
 	// range vector ops
 	OpRangeTypeCount       = "count_over_time"
@@ -658,7 +718,7 @@ const (
 	OpTypeAnd    = "and"
 	OpTypeUnless = "unless"
 
-	// binops - operations
+	// binops - arithmetic
 	OpTypeAdd = "+"
 	OpTypeSub = "-"
 	OpTypeMul = "*"
@@ -704,6 +764,9 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
+
+	// drop labels
+	OpDrop = "drop"
 )
 
 func IsComparisonOperator(op string) bool {

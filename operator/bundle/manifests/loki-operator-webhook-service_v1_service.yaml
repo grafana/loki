@@ -1,8 +1,6 @@
 apiVersion: v1
 kind: Service
 metadata:
-  annotations:
-    service.beta.openshift.io/serving-cert-secret-name: loki-operator-webhook-service
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.0.1

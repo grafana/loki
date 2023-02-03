@@ -12,9 +12,8 @@
 // snapshots (backups) - for a low, predictable monthly price.
 //
 // You can manage your Lightsail resources using the Lightsail console, Lightsail
-// API, AWS Command Line Interface (AWS CLI), or SDKs. For more information
-// about Lightsail concepts and tasks, see the Amazon Lightsail Developer Guide
-// (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/lightsail-how-to-set-up-access-keys-to-use-sdk-api-cli).
+// API, Command Line Interface (CLI), or SDKs. For more information about Lightsail
+// concepts and tasks, see the Amazon Lightsail Developer Guide (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/lightsail-how-to-set-up-access-keys-to-use-sdk-api-cli).
 //
 // This API Reference provides detailed information about the actions, data
 // types, parameters, and errors of the Lightsail service. For more information

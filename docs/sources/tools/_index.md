@@ -1,7 +1,8 @@
 ---
 title: Tools
+description: Tools
 weight: 1050
 ---
 # Tools
 
-- [LogCLI](logcli/)
+- [LogCLI]({{<relref "logcli">}})

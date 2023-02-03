@@ -1,5 +1,26 @@
 ## Main
 
+- [8308](https://github.com/grafana/loki/pull/8308) **aminesnow**: operator: Cleanup ruler resources when disabled
+- [8336](https://github.com/grafana/loki/pull/8336) **periklis**: Update Loki operand to v2.7.2
+- [8253](https://github.com/grafana/loki/pull/8253) **aminesnow**: Add watch on the Alertmanager in openshift-monitoring and decouple it from the user-workload AM
+- [8265](https://github.com/grafana/loki/pull/8265) **Red-GV**: Use gRPC compactor service instead of http for retention
+- [8038](https://github.com/grafana/loki/pull/8038) **aminesnow**: Add watch on the Alertmanager in OCP's user-workload-monitoring namespace
+- [8173](https://github.com/grafana/loki/pull/8173) **periklis**: Remove custom webhook cert mounts for OLM-based deployment (OpenShift)
+- [8001](https://github.com/grafana/loki/pull/8001) **aminesnow**: Add API validation to Alertmanager header auth config
+- [8087](https://github.com/grafana/loki/pull/8087) **xperimental**: Fix status not updating when state of pods changes
+- [8068](https://github.com/grafana/loki/pull/8068) **periklis**: Use lokistack-gateway replicas from size table
+- [8068](https://github.com/grafana/loki/pull/8068) **periklis**: Use lokistack-gateway replicas from size table
+- [7839](https://github.com/grafana/loki/pull/7839) **aminesnow**: Configure Alertmanager per-tenant
+- [7910](https://github.com/grafana/loki/pull/7910) **periklis**: Update Loki operand to v2.7.1
+- [7815](https://github.com/grafana/loki/pull/7815) **periklis**: Apply delete client changes for compat with release-2.7.x
+- [7809](https://github.com/grafana/loki/pull/7809) **xperimental**: Fix histogram-based alerting rules
+- [7808](https://github.com/grafana/loki/pull/7808) **xperimental**: Replace fifocache usage by embedded_cache
+- [7753](https://github.com/grafana/loki/pull/7753) **periklis**: Check for mandatory CA configmap name in ObjectStorageTLS spec
+- [7744](https://github.com/grafana/loki/pull/7744) **periklis**: Fix object storage TLS spec CAKey descriptor
+- [7716](https://github.com/grafana/loki/pull/7716) **aminesnow**: Migrate API docs generation tool
+- [7710](https://github.com/grafana/loki/pull/7710) **periklis**: Fix LokiStackController watches for cluster-scoped resources
+- [7682](https://github.com/grafana/loki/pull/7682) **periklis**: Refactor cluster proxy to use configv1.Proxy on OpenShift
+- [7711](https://github.com/grafana/loki/pull/7711) **Red-GV**: Remove default value from replicationFactor field
 - [7617](https://github.com/grafana/loki/pull/7617) **Red-GV**: Modify ingestionRate for respective shirt size
 - [7592](https://github.com/grafana/loki/pull/7592) **aminesnow**: Update API docs generation using gen-crd-api-reference-docs
 - [7448](https://github.com/grafana/loki/pull/7448) **periklis**: Add TLS support for compactor delete client
