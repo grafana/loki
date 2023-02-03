@@ -176,6 +176,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for backend pods</td>
