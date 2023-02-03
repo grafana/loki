@@ -196,6 +196,7 @@ Check the history of the branch `release-2.7.x`.
 * [5400](https://github.com/grafana/loki/pull/5400) **BenoitKnecht**: promtail/server: Disable profiling by default
 
 #### Promtail
+* [7470](https://github.com/grafana/loki/pull/7470) **Jack-King**: Add configuration for adding custom HTTP headers to push requests
 
 ##### Enhancements
 * [7593](https://github.com/grafana/loki/pull/7593) **chodges15**: Promtail: Add tenant label to client drop metrics and logs
