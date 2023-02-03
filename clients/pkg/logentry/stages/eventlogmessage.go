@@ -105,7 +105,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 	}
 	lines := strings.Split(s, "\r\n")
 	for _, line := range lines {
-		parts := RegexSplitKeyValue.Split(line, 2)
+		parts := strings.SplitN(line, ":", 2)
 		if len(parts) < 2 {
 			level.Warn(m.logger).Log("msg", "invalid line parsed from message", "line", line)
 			continue
@@ -126,6 +126,9 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			mkey += "_extracted"
 		}
 		mval := parts[1]
+		if len(mval) > 0 {
+			mval = mval[1:]
+		}
 		if !model.LabelValue(mval).IsValid() {
 			if Debug {
 				level.Debug(m.logger).Log("msg", "invalid value parsed from message", "value", mval)

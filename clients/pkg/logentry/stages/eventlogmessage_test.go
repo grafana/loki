@@ -359,11 +359,11 @@ func BenchmarkSplittingKeyValuesRegex(b *testing.B) {
 func BenchmarkSplittingKeyValuesSplitTrim(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var val string
-		resultKey := strings.SplitN(":", inputJustKey, 2)
+		resultKey := strings.SplitN(inputJustKey, ":", 2)
 		if len(resultKey) > 1 {
 			val = strings.TrimLeft(resultKey[1], " ")
 		}
-		resultKeyValue := RegexSplitKeyValue.Split(inputBoth, 2)
+		resultKeyValue := strings.SplitN(inputBoth, ":", 2)
 		if len(resultKey) > 1 {
 			val = strings.TrimLeft(resultKeyValue[1], " ")
 		}
@@ -374,11 +374,11 @@ func BenchmarkSplittingKeyValuesSplitTrim(b *testing.B) {
 func BenchmarkSplittingKeyValuesSplitSubstr(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var val string
-		resultKey := strings.SplitN(":", inputJustKey, 2)
+		resultKey := strings.SplitN(inputJustKey, ":", 2)
 		if len(resultKey) > 1 && len(resultKey[1]) > 0 {
 			val = resultKey[1][1:]
 		}
-		resultKeyValue := RegexSplitKeyValue.Split(inputBoth, 2)
+		resultKeyValue := strings.SplitN(inputBoth, ":", 2)
 		if len(resultKey) > 1 && len(resultKey[1]) > 0 {
 			val = resultKeyValue[1][1:]
 		}
