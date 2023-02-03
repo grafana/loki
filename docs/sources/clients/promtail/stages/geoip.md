@@ -4,7 +4,7 @@ description: geoip stage
 ---
 # geoip
 
-The `geoip` stage is a parsing stage that reads a ip address and 
+The `geoip` stage is a parsing stage that reads an ip address and 
 populates the labelset with geoip fields. Maxmind's GeoIP2 databse is used for the lookup.
 
 Populated fields for City db:
@@ -39,7 +39,7 @@ geoip:
   [db_type: <string>]
 ```
 
-## GeoIP with City database
+## GeoIP with City database example
 
 For the given pipeline
 
@@ -58,7 +58,7 @@ And the log line:
 "34.120.177.193 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
-The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. `geoip` stage performs a lookup on the `ip` and populates below labels
+The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. The `geoip` stage performs a lookup on the `ip` and populates the following labels:
 
 - `geoip_city_name`: `Kansas City`
 - `geoip_country_name`: `United States`
@@ -71,9 +71,10 @@ The `regex` stage parses the log line and `ip` is extracted. Then the extracted 
 - `geoip_subdivision_name`: `Missouri`
 - `geoip_subdivision_code`: `MO`
 
-If only a subset of above labels are required. We can chain the above pipeline with `labeldrop` or `labelallow` stage
+If only a subset of these labels are required, you can chain the above pipeline with the `labeldrop` or `labelallow` stage.
 
-### labelallow
+### labelallow example
+
 ```yaml
 - regex:
     expression: "^(?P<ip>\S+) .*"
@@ -90,7 +91,7 @@ If only a subset of above labels are required. We can chain the above pipeline w
 
 Only the labels listed under `labelallow` will be sent to Loki.
 
-### labeldrop
+### labeldrop example
 
 ```yaml
 - regex:
@@ -106,7 +107,7 @@ Only the labels listed under `labelallow` will be sent to Loki.
 
 All the labels except the ones listed under `labeldrop` will be sent to Loki.
 
-## GeoIP with ASN database
+## GeoIP with ASN database example
 
 ```yaml
 - regex:
@@ -123,7 +124,7 @@ And the log line:
 "34.120.177.193 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
-The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. `geoip` stage performs a lookup on the `ip` and populates below labels
+The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. The `geoip` stage performs a lookup on the `ip` and populates the following labels:
 
 - `geoip_autonomous_system_number`: `396982`
 - `geoip_autonomous_system_organization`: `GOOGLE-CLOUD-PLATFORM`
