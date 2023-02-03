@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/backoff"
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
@@ -61,19 +63,25 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 				}
 
 				// Try to re-establish the connection up to 5 times.
-				for retry := 4; retry >= 0; retry-- {
+				backoff := backoff.New(context.Background(), backoff.Config{
+					MinBackoff: 1 * time.Second,
+					MaxBackoff: 10 * time.Second,
+					MaxRetries: 5,
+				})
+
+				for backoff.Ongoing() {
 					conn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
 					if err == nil {
 						break
 					}
 
-					if retry == 0 {
-						log.Println("Error recreating tailing connection after unexpected close, giving up:", err)
-						return
-					}
-
 					log.Println("Error recreating tailing connection after unexpected close, will retry:", err)
-					time.Sleep(5 * time.Second)
+					backoff.Wait()
+				}
+
+				if err = backoff.Err(); err != nil {
+					log.Println("Error recreating tailing connection:", err)
+					return
 				}
 
 				continue
