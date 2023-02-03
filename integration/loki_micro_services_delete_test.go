@@ -212,7 +212,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("read-delete-request", func(t *testing.T) {
 		deleteRequests, err := cliCompactor.GetDeleteRequests()
 		require.NoError(t, err)
-		require.Equal(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
+		require.ElementsMatch(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
 	})
 
 	// Query lines
