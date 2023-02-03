@@ -1004,7 +1004,6 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	boltdbShipperConfig := shipper.Config{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
@@ -1021,6 +1020,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 			},
 		},
 	}
+	require.NoError(t, cfg.NamedStores.validate())
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -1037,7 +1037,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 			{
 				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem.named-store",
+				ObjectType: "named-store",
 				Schema:     "v11",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -1048,6 +1048,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		},
 	}
 
+	ResetBoltDBIndexClientsWithShipper()
 	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
 
@@ -1084,6 +1085,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
 	store.Stop()
 
+	ResetBoltDBIndexClientsWithShipper()
 	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
 
@@ -1350,7 +1352,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		},
 	}
 
-	ResetBoltDBIndexClientWithShipper()
+	ResetBoltDBIndexClientsWithShipper()
 	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
 
