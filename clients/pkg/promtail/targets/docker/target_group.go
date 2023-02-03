@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
@@ -34,6 +35,7 @@ type targetGroup struct {
 	host             string
 	httpClientConfig config.HTTPClientConfig
 	client           client.APIClient
+	refreshInterval  model.Duration
 
 	mtx     sync.Mutex
 	targets map[string]*Target
@@ -87,7 +89,7 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 			opts = append(opts,
 				client.WithHTTPClient(&http.Client{
 					Transport: rt,
-					Timeout:   0, // Use 0 timeout, means it it reads until all has been read.
+					Timeout:   time.Duration(tg.refreshInterval),
 				}),
 				client.WithScheme(hostURL.Scheme),
 				client.WithHTTPHeaders(map[string]string{
