@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -83,7 +82,7 @@ func NewTargetManager(
 						relabelConfig:    cfg.RelabelConfigs,
 						host:             sdConfig.Host,
 						httpClientConfig: sdConfig.HTTPClientConfig,
-						refreshInterval:  time.Duration(sdConfig.RefreshInterval),
+						refreshInterval:  sdConfig.RefreshInterval,
 					}
 				}
 				configs[syncerKey] = append(configs[syncerKey], sdConfig)
