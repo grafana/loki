@@ -26,3 +26,4 @@ featureGates:
   lokiStackWebhook: false
   alertingRuleWebhook: false
   recordingRuleWebhook: false
+  rulerConfigWebhook: false

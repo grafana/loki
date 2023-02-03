@@ -2,6 +2,7 @@ package indexgateway
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -218,10 +219,16 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	// An empty matchers string cannot be parsed,
 	// therefore we check the string representation of the the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
-		matchers, err = syntax.ParseMatchers(req.Matchers)
+		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
 		if err != nil {
 			return nil, err
 		}
+
+		matcherExpr, ok := expr.(*syntax.MatchersExpr)
+		if !ok {
+			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
+		}
+		matchers = matcherExpr.Mts
 	}
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {

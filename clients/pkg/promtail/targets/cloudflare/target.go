@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/buger/jsonparser"
-	"github.com/cloudflare/cloudflare-go"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/cloudflare-go"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
@@ -158,6 +158,9 @@ func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 			level.Warn(t.logger).Log("msg", "failed iterating over logs, out of cloudflare range, not retrying", "err", err, "start", start, "end", end, "retries", backoff.NumRetries())
 			return nil
 		} else if err != nil {
+			if it != nil {
+				it.Close()
+			}
 			errs.Add(err)
 			backoff.Wait()
 			continue
@@ -221,9 +224,13 @@ func (t *Target) Ready() bool {
 
 func (t *Target) Details() interface{} {
 	fields, _ := Fields(FieldsType(t.config.FieldsType))
+	var errMsg string
+	if t.err != nil {
+		errMsg = t.err.Error()
+	}
 	return map[string]string{
 		"zone_id":        t.config.ZoneID,
-		"error":          t.err.Error(),
+		"error":          errMsg,
 		"position":       t.positions.GetString(positions.CursorKey(t.config.ZoneID)),
 		"last_timestamp": t.to.String(),
 		"fields":         strings.Join(fields, ","),

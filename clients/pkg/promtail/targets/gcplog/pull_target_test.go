@@ -2,173 +2,149 @@ package gcplog
 
 import (
 	"context"
-	"sync"
+	"io"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
+	"github.com/pkg/errors"
+
 	"cloud.google.com/go/pubsub"
-	"cloud.google.com/go/pubsub/pstest"
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
-func TestPullTarget_Run(t *testing.T) {
-	// Goal: Check message written to pubsub topic is received by the target.
-	ctx := context.Background()
-	tt, apiclient, pubsubClient, teardown := testPullTarget(ctx, t)
-	defer teardown()
+func TestPullTarget_RunStop(t *testing.T) {
+	t.Run("it sends messages to the promclient and stopps when Stop() is called", func(t *testing.T) {
+		tc := testPullTarget(t)
 
-	// seed pubsub
-	tp, err := pubsubClient.CreateTopic(ctx, topic)
-	require.NoError(t, err)
-	defer tp.Stop()
+		runErr := make(chan error)
+		go func() {
+			runErr <- tc.target.run()
+		}()
 
-	_, err = pubsubClient.CreateSubscription(ctx, subscription, pubsub.SubscriptionConfig{
-		Topic: tp,
+		tc.sub.messages <- &pubsub.Message{Data: []byte(gcpLogEntry)}
+		require.Eventually(t, func() bool {
+			return len(tc.promClient.Received()) > 0
+		}, time.Second, 50*time.Millisecond)
+
+		require.NoError(t, tc.target.Stop())
+		require.EqualError(t, <-runErr, "context canceled")
 	})
-	require.NoError(t, err)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	t.Run("it retries when there is an error", func(t *testing.T) {
+		tc := testPullTarget(t)
 
-	go func() {
-		defer wg.Done()
-		tt.run() //nolint:errcheck
-	}()
+		runErr := make(chan error)
+		go func() {
+			runErr <- tc.target.run()
+		}()
 
-	publishMessage(ctx, t, tp)
-	// Wait till message is received by the run loop.
-	// NOTE(kavi): sleep is not ideal. but not other way to confirm if api.Handler received messages
-	time.Sleep(500 * time.Millisecond)
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.messages <- &pubsub.Message{Data: []byte(gcpLogEntry)}
+		require.Eventually(t, func() bool {
+			return len(tc.promClient.Received()) > 0
+		}, time.Second, 50*time.Millisecond)
 
-	err = tt.Stop()
-	require.NoError(t, err)
+		require.NoError(t, tc.target.Stop())
 
-	// wait till `run` stops.
-	wg.Wait()
+		require.Eventually(t, func() bool {
+			select {
+			case e := <-runErr:
+				return e.Error() == "context canceled"
+			default:
+				return false
+			}
+		}, time.Second, 50*time.Millisecond)
+	})
 
-	// Sleep one more time before reading from api.Received.
-	time.Sleep(500 * time.Millisecond)
-	assert.Equal(t, 1, len(apiclient.Received()))
-}
+	t.Run("a successful message resets retries", func(t *testing.T) {
+		tc := testPullTarget(t)
 
-func TestPullTarget_Stop(t *testing.T) {
-	// Goal: To test that `run()` stops when you invoke `target.Stop()`
+		runErr := make(chan error)
+		go func() {
+			runErr <- tc.target.run()
+		}()
 
-	errs := make(chan error, 1)
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.messages <- &pubsub.Message{Data: []byte(gcpLogEntry)}
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.errors <- errors.New("something bad")
+		tc.sub.messages <- &pubsub.Message{Data: []byte(gcpLogEntry)}
 
-	ctx := context.Background()
-	tt, _, _, teardown := testPullTarget(ctx, t)
-	defer teardown()
+		require.Eventually(t, func() bool {
+			return len(tc.promClient.Received()) > 1
+		}, time.Second, 50*time.Millisecond)
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		errs <- tt.run()
-	}()
-
-	// invoke stop
-	_ = tt.Stop()
-
-	// wait till run returns
-	wg.Wait()
-
-	// wouldn't block as 1 error is buffered into the channel.
-	err := <-errs
-
-	// returned error should be cancelled context error
-	assert.Equal(t, tt.ctx.Err(), err)
+		require.NoError(t, tc.target.Stop())
+	})
 }
 
 func TestPullTarget_Type(t *testing.T) {
-	ctx := context.Background()
-	tt, _, _, teardown := testPullTarget(ctx, t)
-	defer teardown()
+	tc := testPullTarget(t)
 
-	assert.Equal(t, target.TargetType("Gcplog"), tt.Type())
+	assert.Equal(t, target.TargetType("Gcplog"), tc.target.Type())
 }
 
 func TestPullTarget_Ready(t *testing.T) {
-	ctx := context.Background()
-	tt, _, _, teardown := testPullTarget(ctx, t)
-	defer teardown()
+	tc := testPullTarget(t)
 
-	assert.Equal(t, true, tt.Ready())
+	assert.Equal(t, true, tc.target.Ready())
 }
 
 func TestPullTarget_Labels(t *testing.T) {
-	ctx := context.Background()
-	tt, _, _, teardown := testPullTarget(ctx, t)
-	defer teardown()
+	tc := testPullTarget(t)
 
-	assert.Equal(t, model.LabelSet{"job": "test-gcplogtarget"}, tt.Labels())
+	assert.Equal(t, model.LabelSet{"job": "test-gcplogtarget"}, tc.target.Labels())
 }
 
-func testPullTarget(ctx context.Context, t *testing.T) (*pullTarget, *fake.Client, *pubsub.Client, func()) {
+type testContext struct {
+	target     *pullTarget
+	promClient *fake.Client
+	sub        *fakeSubscription
+}
+
+func testPullTarget(t *testing.T) *testContext {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(ctx)
-
-	mockSvr := pstest.NewServer()
-	conn, err := grpc.Dial(mockSvr.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-
-	mockpubsubClient, err := pubsub.NewClient(ctx, testConfig.ProjectID, option.WithGRPCConn(conn))
-	require.NoError(t, err)
-
-	fakeClient := fake.New(func() {})
-
-	var handler api.EntryHandler = fakeClient
+	ctx, cancel := context.WithCancel(context.Background())
+	sub := newFakeSubscription()
+	promClient := fake.New(func() {})
 	target := &pullTarget{
 		metrics:       NewMetrics(prometheus.NewRegistry()),
 		logger:        log.NewNopLogger(),
-		handler:       handler,
+		handler:       promClient,
 		relabelConfig: nil,
-		config:        testConfig,
-		jobName:       t.Name() + "job-test-gcplogtarget",
 		ctx:           ctx,
 		cancel:        cancel,
-		ps:            mockpubsubClient,
+		config:        testConfig,
+		jobName:       t.Name() + "job-test-gcplogtarget",
+		ps:            io.NopCloser(nil),
+		sub:           sub,
 		msgs:          make(chan *pubsub.Message),
+		backoff:       backoff.New(ctx, testBackoff),
 	}
 
-	// cleanup
-	return target, fakeClient, mockpubsubClient, func() {
-		cancel()
-		conn.Close()
-		mockSvr.Close()
-		mockpubsubClient.Close()
+	return &testContext{
+		target:     target,
+		promClient: promClient,
+		sub:        sub,
 	}
-}
-
-func publishMessage(ctx context.Context, t *testing.T, topic *pubsub.Topic) {
-	t.Helper()
-
-	res := topic.Publish(ctx, &pubsub.Message{Data: []byte(gcpLogEntry)})
-
-	_, err := res.Get(ctx) // wait till message is actully published
-	require.NoError(t, err)
 }
 
 const (
 	project      = "test-project"
-	topic        = "test-topic"
 	subscription = "test-subscription"
-
-	gcpLogEntry = `
+	gcpLogEntry  = `
 {
   "insertId": "ajv4d1f1ch8dr",
   "logName": "projects/grafanalabs-dev/logs/cloudaudit.googleapis.com%2Fdata_access",
@@ -244,4 +220,32 @@ var testConfig = &scrapeconfig.GcplogTargetConfig{
 		"job": "test-gcplogtarget",
 	},
 	SubscriptionType: "pull",
+}
+
+func newFakeSubscription() *fakeSubscription {
+	return &fakeSubscription{
+		messages: make(chan *pubsub.Message),
+		errors:   make(chan error),
+	}
+}
+
+type fakeSubscription struct {
+	messages chan *pubsub.Message
+	errors   chan error
+}
+
+func (s *fakeSubscription) Receive(ctx context.Context, f func(context.Context, *pubsub.Message)) error {
+	for {
+		select {
+		case m := <-s.messages:
+			f(ctx, m)
+		case e := <-s.errors:
+			return e
+		}
+	}
+}
+
+var testBackoff = backoff.Config{
+	MinBackoff: 1 * time.Millisecond,
+	MaxBackoff: 10 * time.Millisecond,
 }

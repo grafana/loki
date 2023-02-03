@@ -73,7 +73,6 @@ func formatLine(cfg *scrapeconfig.WindowsEventsTargetConfig, event win_eventlog.
 		Keywords:      event.Keywords,
 		TimeCreated:   event.TimeCreated.SystemTime,
 		EventRecordID: event.EventRecordID,
-		Message:       event.Message,
 	}
 
 	if !cfg.ExcludeEventData {
@@ -81,6 +80,9 @@ func formatLine(cfg *scrapeconfig.WindowsEventsTargetConfig, event win_eventlog.
 	}
 	if !cfg.ExcludeUserData {
 		structuredEvent.UserData = string(event.UserData.InnerXML)
+	}
+	if !cfg.ExcludeEventMessage {
+		structuredEvent.Message = event.Message
 	}
 	if event.Correlation.ActivityID != "" || event.Correlation.RelatedActivityID != "" {
 		structuredEvent.Correlation = &Correlation{

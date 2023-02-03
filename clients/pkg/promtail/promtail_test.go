@@ -45,7 +45,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
 
 func TestPromtail(t *testing.T) {
 	// Setup.
@@ -89,7 +89,7 @@ func TestPromtail(t *testing.T) {
 		if t.Failed() {
 			return // Test has already failed; don't wait for everything to shut down.
 		}
-		fmt.Fprintf(os.Stdout, "wait close")
+		fmt.Fprintf(os.Stdout, "wait close\n")
 		wg.Wait()
 		if err != nil {
 			t.Fatal(err)

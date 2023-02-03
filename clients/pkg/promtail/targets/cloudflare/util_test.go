@@ -5,9 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/grafana/cloudflare-go"
 	"github.com/stretchr/testify/mock"
 )
+
+var ErrorLogpullReceived = errors.New("error logpull received")
 
 type fakeCloudflareClient struct {
 	mock.Mock
@@ -45,7 +47,12 @@ func (f *fakeLogIterator) Next() bool {
 func (f *fakeLogIterator) Err() error                         { return f.err }
 func (f *fakeLogIterator) Line() []byte                       { return []byte(f.current) }
 func (f *fakeLogIterator) Fields() (map[string]string, error) { return nil, nil }
-func (f *fakeLogIterator) Close() error                       { return nil }
+func (f *fakeLogIterator) Close() error {
+	if f.err == ErrorLogpullReceived {
+		f.err = nil
+	}
+	return nil
+}
 
 func newFakeCloudflareClient() *fakeCloudflareClient {
 	return &fakeCloudflareClient{}
@@ -54,7 +61,11 @@ func newFakeCloudflareClient() *fakeCloudflareClient {
 func (f *fakeCloudflareClient) LogpullReceived(ctx context.Context, start, end time.Time) (cloudflare.LogpullReceivedIterator, error) {
 	r := f.Called(ctx, start, end)
 	if r.Get(0) != nil {
-		return r.Get(0).(cloudflare.LogpullReceivedIterator), nil
+		it := r.Get(0).(cloudflare.LogpullReceivedIterator)
+		if it.Err() == ErrorLogpullReceived {
+			return it, it.Err()
+		}
+		return it, nil
 	}
 	return nil, r.Error(1)
 }

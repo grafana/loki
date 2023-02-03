@@ -1,24 +1,29 @@
 package queryrange
 
 import (
+	"context"
 	"flag"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -83,7 +88,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, LokiCodec, metrics)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, LokiCodec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,19 +103,22 @@ func NewTripperware(
 		seriesRT := seriesTripperware(next)
 		labelsRT := labelsTripperware(next)
 		instantRT := instantMetricTripperware(next)
-		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, limits)
+		return newRoundTripper(log, next, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, limits)
 	}, c, nil
 }
 
 type roundTripper struct {
+	logger log.Logger
+
 	next, log, metric, series, labels, instantMetric http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric, series, labels, instantMetric http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, log, metric, series, labels, instantMetric http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
+		logger:        logger,
 		log:           log,
 		limits:        limits,
 		metric:        metric,
@@ -137,6 +145,10 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		queryHash := logql.HashedQuery(rangeQuery.Query)
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
+
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
 			return r.metric.RoundTrip(req)
@@ -155,16 +167,22 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return r.next.RoundTrip(req)
 		}
 	case SeriesOp:
-		_, err := loghttp.ParseAndValidateSeriesQuery(req)
+		sr, err := loghttp.ParseAndValidateSeriesQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
+
 		return r.series.RoundTrip(req)
 	case LabelNamesOp:
-		_, err := loghttp.ParseLabelQuery(req)
+		lr, err := loghttp.ParseLabelQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start))
+
 		return r.labels.RoundTrip(req)
 	case InstantQueryOp:
 		instantQuery, err := loghttp.ParseInstantQuery(req)
@@ -175,6 +193,10 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		queryHash := logql.HashedQuery(instantQuery.Query)
+		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
+
 		switch expr.(type) {
 		case syntax.SampleExpr:
 			return r.instantMetric.RoundTrip(req)
@@ -259,7 +281,7 @@ func NewLogFilterTripperware(
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(limits, codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.CacheResults {
@@ -301,7 +323,7 @@ func NewLogFilterTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -323,7 +345,7 @@ func NewSeriesTripperware(
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
 		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
 		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -348,7 +370,7 @@ func NewSeriesTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -361,6 +383,7 @@ func NewLabelsTripperware(
 	limits Limits,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
+	schema config.SchemaConfig,
 ) (queryrangebase.Tripperware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		StatsCollectorMiddleware(),
@@ -368,7 +391,7 @@ func NewLabelsTripperware(
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
 		// This is because the labels API is an index-only operation.
-		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -413,7 +436,7 @@ func NewMetricTripperware(
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
 	)
 
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
@@ -428,6 +451,16 @@ func NewMetricTripperware(
 			cacheGenNumLoader,
 			func(r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart()),
+					model.Time(r.GetEnd()),
+				)
 			},
 			retentionEnabled,
 			metrics.ResultsCacheMetrics,
@@ -465,7 +498,7 @@ func NewMetricTripperware(
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			rt := NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
+			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 			return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {
 					return next.RoundTrip(r)
@@ -511,7 +544,7 @@ func NewInstantMetricTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil

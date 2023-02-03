@@ -33,6 +33,10 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+const (
+	defaultCAKey = "service-ca.crt"
+)
+
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
 func CreateOrUpdateLokiStack(
 	ctx context.Context,
@@ -102,8 +106,18 @@ func CreateOrUpdateLokiStack(
 	objStore.Schemas = storageSchemas
 
 	if stack.Spec.Storage.TLS != nil {
+		tlsConfig := stack.Spec.Storage.TLS
+
+		if tlsConfig.CA == "" {
+			return &status.DegradedError{
+				Message: "Missing object storage CA config map",
+				Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
 		var cm corev1.ConfigMap
-		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
+		key := client.ObjectKey{Name: tlsConfig.CA, Namespace: stack.Namespace}
 		if err = k.Get(ctx, key, &cm); err != nil {
 			if apierrors.IsNotFound(err) {
 				return &status.DegradedError{
@@ -115,7 +129,12 @@ func CreateOrUpdateLokiStack(
 			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
 		}
 
-		if !storage.IsValidCAConfigMap(&cm, stack.Spec.Storage.TLS.CAKey) {
+		caKey := defaultCAKey
+		if tlsConfig.CAKey != "" {
+			caKey = tlsConfig.CAKey
+		}
+
+		if !storage.IsValidCAConfigMap(&cm, caKey) {
 			return &status.DegradedError{
 				Message: "Invalid object storage CA configmap contents: missing key or no contents",
 				Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
@@ -123,7 +142,7 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: stack.Spec.Storage.TLS.CAKey}
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: caKey}
 	}
 
 	var (
@@ -152,6 +171,17 @@ func CreateOrUpdateLokiStack(
 			if err != nil {
 				return err
 			}
+
+			if stack.Spec.Proxy == nil {
+				// If the LokiStack has no proxy set but there is a cluster-wide proxy setting,
+				// set the LokiStack proxy to that.
+				ocpProxy, proxyErr := openshift.GetProxy(ctx, k)
+				if proxyErr != nil {
+					return proxyErr
+				}
+
+				stack.Spec.Proxy = ocpProxy
+			}
 		default:
 			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
 			if err != nil {
@@ -172,6 +202,7 @@ func CreateOrUpdateLokiStack(
 		rulerConfig    *lokiv1beta1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
 		ocpAmEnabled   bool
+		ocpUWAmEnabled bool
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
@@ -214,6 +245,24 @@ func CreateOrUpdateLokiStack(
 			return err
 		}
 
+		ocpUWAmEnabled, err = openshift.UserWorkloadAlertManagerSVCExists(ctx, stack.Spec, k)
+		if err != nil {
+			ll.Error(err, "failed to check OCP User Workload AlertManager")
+			return err
+		}
+	} else {
+		// Clean up ruler resources
+		err = rules.RemoveRulesConfigMap(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove rules configmap")
+			return err
+		}
+
+		err = rules.RemoveRuler(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove ruler statefulset")
+			return err
+		}
 	}
 
 	certRotationRequiredAt := ""
@@ -244,7 +293,8 @@ func CreateOrUpdateLokiStack(
 		},
 		OpenShiftOptions: manifests_openshift.Options{
 			BuildOpts: manifests_openshift.BuildOptions{
-				AlertManagerEnabled: ocpAmEnabled,
+				AlertManagerEnabled:             ocpAmEnabled,
+				UserWorkloadAlertManagerEnabled: ocpUWAmEnabled,
 			},
 		},
 	}

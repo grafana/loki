@@ -403,5 +403,5 @@ func (i *Ingester) reportFlushedChunkStatistics(ch *chunk.Chunk, desc *chunkDesc
 	i.metrics.flushedChunksLinesStats.Record(float64(numEntries))
 	i.metrics.flushedChunksUtilizationStats.Record(utilization)
 	i.metrics.flushedChunksAgeStats.Record(time.Since(boundsFrom).Seconds())
-	i.metrics.flushedChunksLifespanStats.Record(boundsTo.Sub(boundsFrom).Hours())
+	i.metrics.flushedChunksLifespanStats.Record(boundsTo.Sub(boundsFrom).Seconds())
 }

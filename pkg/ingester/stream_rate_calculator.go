@@ -35,7 +35,7 @@ type StreamRateCalculator struct {
 
 func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
-		size:     defaultStripeSize,
+		size: defaultStripeSize,
 		// Lookup pattern: tenant -> fingerprint -> rate
 		samples:  make([]map[string]map[uint64]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),

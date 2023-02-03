@@ -8,5 +8,5 @@ metadata:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
 data:
   nginx.conf: |
-    {{- tpl (ternary .Values.enterprise.nginxConfig.file .Values.gateway.nginxConfig.file .Values.enterprise.enabled) . | nindent 4 }}
+    {{- tpl .Values.gateway.nginxConfig.file . | indent 2 }}
 {{- end }}

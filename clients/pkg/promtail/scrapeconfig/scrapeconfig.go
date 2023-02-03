@@ -236,6 +236,9 @@ type WindowsEventsTargetConfig struct {
 	// ExcludeEventData allows to exclude the xml event data.
 	ExcludeEventData bool `yaml:"exclude_event_data"`
 
+	// ExcludeEventMessage allows to exclude the human-friendly message contained in each windows event.
+	ExcludeEventMessage bool `yaml:"exclude_event_message"`
+
 	// ExcludeUserData allows to exclude the user data of each windows event.
 	ExcludeUserData bool `yaml:"exclude_user_data"`
 

@@ -1,9 +1,9 @@
 ---
 title: Install Grafana Loki with Helm
-menuTitle: Deploy on Kubernetes
-description: Use this template when you write a concept topic.
+menuTitle: Install using Helm
+description: Learn how to install Grafana Loki on Kubernetes with Helm.
 aliases:
-  - /docs/writers-toolkit/latest/templates/concept-template
+  - /docs/installation/helm
 weight: 100
 keywords:
   - helm 
@@ -12,12 +12,14 @@ keywords:
   - installation
 ---
 
+# Install Grafana Loki with Helm
+
 The [Helm](https://helm.sh/) chart allows you to configure, install, and upgrade Grafana Loki within a Kubernetes cluster.
 
-This guide contains the following sections:
+This guide references the Loki Helm chart version 3.0 or greater and contains the following sections:
 
 {{< section menuTitle="true" >}}
 
 ## Reference
 
-[Values reference](reference)
+[Values reference]({{<relref "reference">}})

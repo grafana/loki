@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/util"
@@ -103,11 +104,11 @@ func TestSelectRestores(t *testing.T) {
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
 	iter := sset.At().Iterator()
-	require.Equal(t, true, iter.Next())
+	require.Equal(t, chunkenc.ValFloat, iter.Next())
 	ts, v := iter.At()
 	require.Equal(t, now, ts)
 	require.Equal(t, float64(tNow.Add(-forDuration).Unix()), v)
-	require.Equal(t, false, iter.Next())
+	require.Equal(t, chunkenc.ValNone, iter.Next())
 	require.Equal(t, false, sset.Next())
 
 	// Second call uses cache
@@ -120,11 +121,11 @@ func TestSelectRestores(t *testing.T) {
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
 	iter = sset.At().Iterator()
-	require.Equal(t, true, iter.Next())
+	require.Equal(t, chunkenc.ValFloat, iter.Next())
 	ts, v = iter.At()
 	require.Equal(t, now, ts)
 	require.Equal(t, float64(tNow.Add(-forDuration).Unix()), v)
-	require.Equal(t, false, iter.Next())
+	require.Equal(t, chunkenc.ValNone, iter.Next())
 	require.Equal(t, false, sset.Next())
 	require.Equal(t, 1, callCount)
 

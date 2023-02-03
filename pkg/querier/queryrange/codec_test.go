@@ -983,7 +983,8 @@ var (
 				"entriesStored": 0,
 				"bytesReceived": 0,
 				"bytesSent": 0,
-				"requests": 0
+				"requests": 0,
+				"downloadTime": 0
 			},
 			"index": {
 				"entriesFound": 0,
@@ -991,7 +992,8 @@ var (
 				"entriesStored": 0,
 				"bytesReceived": 0,
 				"bytesSent": 0,
-				"requests": 0
+				"requests": 0,
+				"downloadTime": 0
 			},
 			"result": {
 				"entriesFound": 0,
@@ -999,7 +1001,8 @@ var (
 				"entriesStored": 0,
 				"bytesReceived": 0,
 				"bytesSent": 0,
-				"requests": 0
+				"requests": 0,
+				"downloadTime": 0
 			}
 		},
 		"summary": {

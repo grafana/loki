@@ -1,43 +1,45 @@
 ---
 overrides:
-  {{- range $tenant, $spec := .Stack.Limits.Tenants }}
+{{- $opts := . }}
+  {{- range $tenant, $overrides := .Overrides }}
+  {{- $spec := $overrides.Limits }}
   {{ $tenant }}:
   {{- if $l := $spec.IngestionLimits -}}
-    {{ if $l.IngestionRate }}
+    {{- if $l.IngestionRate }}
     ingestion_rate_mb: {{ $l.IngestionRate }}
-    {{- end -}}
-    {{ if $l.IngestionBurstSize }}
+    {{- end }}
+    {{- if $l.IngestionBurstSize }}
     ingestion_burst_size_mb: {{ $l.IngestionBurstSize }}
-    {{- end -}}
-    {{ if $l.MaxLabelNameLength }}
+    {{- end }}
+    {{- if $l.MaxLabelNameLength }}
     max_label_name_length: {{ $l.MaxLabelNameLength }}
-    {{- end -}}
-    {{ if $l.MaxLabelValueLength }}
+    {{- end }}
+    {{- if $l.MaxLabelValueLength }}
     max_label_value_length: {{ $l.MaxLabelValueLength }}
-    {{- end -}}
-    {{ if $l.MaxLabelNamesPerSeries }}
+    {{- end }}
+    {{- if $l.MaxLabelNamesPerSeries }}
     max_label_names_per_series: {{ $l.MaxLabelNamesPerSeries }}
-    {{- end -}}
-    {{ if $l.MaxLineSize }}
+    {{- end }}
+    {{- if $l.MaxLineSize }}
     max_line_size: {{ $l.MaxLineSize }}
-    {{- end -}}
-    {{ if $l.MaxGlobalStreamsPerTenant }}
+    {{- end }}
+    {{- if $l.MaxGlobalStreamsPerTenant }}
     max_global_streams_per_user: {{ $l.MaxGlobalStreamsPerTenant }}
-    {{- end -}}
+    {{- end }}
   {{- end -}}
   {{- if $l := $spec.QueryLimits -}}
-    {{ if $l.MaxEntriesLimitPerQuery }}
+    {{- if $l.MaxEntriesLimitPerQuery }}
     max_entries_limit_per_query: {{ $spec.QueryLimits.MaxEntriesLimitPerQuery }}
-    {{- end -}}
-    {{ if $spec.QueryLimits.MaxChunksPerQuery }}
+    {{- end }}
+    {{- if $spec.QueryLimits.MaxChunksPerQuery }}
     max_chunks_per_query: {{ $spec.QueryLimits.MaxChunksPerQuery }}
-    {{- end -}}
-    {{ if $spec.QueryLimits.MaxQuerySeries }}
+    {{- end }}
+    {{- if $spec.QueryLimits.MaxQuerySeries }}
     max_query_series: {{ $spec.QueryLimits.MaxQuerySeries }}
-    {{- end -}}
-    {{ if $spec.QueryLimits.QueryTimeout }}
+    {{- end }}
+    {{- if $spec.QueryLimits.QueryTimeout }}
     query_timeout: {{ $spec.QueryLimits.QueryTimeout }}
-    {{- end -}}
+    {{- end }}
   {{- end -}}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d
@@ -50,4 +52,103 @@ overrides:
     {{- end }}
     {{- end }}
   {{- end }}
+
+  {{- if $opts.Ruler.Enabled }}
+  {{- $ro := $overrides.Ruler }}
+  {{- if $amo := $ro.AlertManager }}
+    ruler_alertmanager_config:
+    {{- with $amo }}
+      {{- with .ExternalURL }}
+      external_url: {{ . }}
+      {{- end }}
+      {{- with .ExternalLabels }}
+      external_labels:
+        {{ range $name, $value := . }}
+        {{ $name }}: {{ $value }}
+        {{ end }}
+      {{- end }}
+      alertmanager_url: {{ .Hosts }}
+      {{- if .EnableV2 }}
+      enable_alertmanager_v2: {{ .EnableV2 }}
+      {{- end }}
+      {{- if .EnableDiscovery }}
+      enable_alertmanager_discovery: {{ .EnableDiscovery }}
+      alertmanager_refresh_interval: {{ .RefreshInterval }}
+      {{- end }}
+      {{- if .QueueCapacity }}
+      notification_queue_capacity: {{ .QueueCapacity }}
+      {{- end }}
+      {{- if .Timeout }}
+      notification_timeout: {{ .Timeout }}
+      {{- end }}
+      {{- if .Notifier }}
+      {{- with .Notifier }}
+      alertmanager_client: 
+        {{- if .TLS.CertPath }}
+        tls_cert_path: {{ .TLS.CertPath }}
+        {{- end }}
+        {{- if .TLS.KeyPath }}
+        tls_key_path: {{ .TLS.KeyPath }}
+        {{- end }}
+        {{- if .TLS.CAPath }}
+        tls_ca_path: {{ .TLS.CAPath }}
+        {{- end }}
+        {{- if .TLS.ServerName }}
+        tls_server_name: {{ .TLS.ServerName }}
+        {{- end }}
+        {{- if .TLS.InsecureSkipVerify }}
+        tls_insecure_skip_verify: {{ .TLS.InsecureSkipVerify }}
+        {{- end }}
+        {{- if .TLS.CipherSuites }}
+        tls_cipher_suites: {{ .TLS.CipherSuites }}
+        {{- end }}
+        {{- if .TLS.MinVersion }}
+        tls_min_version: {{ .TLS.MinVersion }}
+        {{- end }}
+        {{- if .BasicAuth.Username }}
+        basic_auth_username: {{ .BasicAuth.Username }}
+        {{- end }}
+        {{- if .BasicAuth.Password }}
+        basic_auth_password: {{ .BasicAuth.Password }}
+        {{- end }}
+        {{- if .HeaderAuth.Type }}
+        type: {{ .HeaderAuth.Type }}
+        {{- end }}
+        {{- if .HeaderAuth.Credentials }}
+        credentials: {{ .HeaderAuth.Credentials }}
+        {{- end }}
+        {{- if .HeaderAuth.CredentialsFile }}
+        credentials_file: {{ .HeaderAuth.CredentialsFile }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- with .RelabelConfigs }}
+      alert_relabel_configs:
+      {{- range $k, $cfg := . }}
+      - {{- if $cfg.SourceLabels}}
+        source_labels: {{ $cfg.SourceLabelsString }}
+        {{- end }}
+        {{- if $cfg.Regex }}
+        regex: {{ $cfg.Regex }}
+        {{- end }}
+        {{- if $cfg.Action }}
+        action: {{ $cfg.Action }}
+        {{- end }}
+        separator: {{ $cfg.SeparatorString }}
+        {{- if $cfg.Replacement }}
+        replacement: {{ $cfg.Replacement }}
+        {{- end }}
+        {{- if $cfg.TargetLabel }}
+        target_label: {{ $cfg.TargetLabel }}
+        {{- end }}
+        {{- if $cfg.Modulus }}
+        modulus: {{ $cfg.Modulus }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
+
   {{- end -}}
+

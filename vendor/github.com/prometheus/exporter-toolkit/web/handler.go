@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -113,7 +114,12 @@ func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			hashedPassword = "$2y$10$QOauhQNbBCuQDKes6eFzPeMqBSjb7Mr5DUmpZ/VcEd00UAV/LDeSi"
 		}
 
-		cacheKey := hex.EncodeToString(append(append([]byte(user), []byte(hashedPassword)...), []byte(pass)...))
+		cacheKey := strings.Join(
+			[]string{
+				hex.EncodeToString([]byte(user)),
+				hex.EncodeToString([]byte(hashedPassword)),
+				hex.EncodeToString([]byte(pass)),
+			}, ":")
 		authOk, ok := u.cache.get(cacheKey)
 
 		if !ok {
@@ -122,7 +128,7 @@ func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(pass))
 			u.bcryptMtx.Unlock()
 
-			authOk = err == nil
+			authOk = validUser && err == nil
 			u.cache.set(cacheKey, authOk)
 		}
 
