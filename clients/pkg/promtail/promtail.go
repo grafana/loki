@@ -142,6 +142,10 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
+	// entryHandlers contains all sinks were scraped log entries should get to
+	var entryHandlers = []api.EntryHandler{}
+
+	// TODO: Refactor all client instantiation inside client.Manager
 	if p.dryRun {
 		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
@@ -149,8 +153,6 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else if cfg.WAL.Enabled {
-		// TODO: Once we refactor all client instantiations into the manager, all ifs statements here will be removed
-		// and p.client will contain the manager, with all instantiated clients inside.
 		p.client, err = client.NewManager(
 			p.metrics,
 			p.logger,
@@ -164,6 +166,14 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		if err != nil {
 			return err
 		}
+
+		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+		if err != nil {
+			return fmt.Errorf("failed to create wal writer: %w", err)
+		}
+		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
+		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
+		entryHandlers = append(entryHandlers, p.walWriter)
 	} else {
 		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
 		if err != nil {
@@ -171,18 +181,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 	}
 
-	// these are the sinks were all scraped log entries should get to
-	var entryHandlers = []api.EntryHandler{p.client}
-
-	// If WAL is enabled, instantiate the WAL itself, it's writer, and use that as entries sink for all scraping targets
-	if cfg.WAL.Enabled {
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return fmt.Errorf("failed to create wal writer: %w", err)
-		}
-		entryHandlers = append(entryHandlers, p.walWriter)
-	}
-
+	entryHandlers = append(entryHandlers, p.client)
 	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
 
 	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
