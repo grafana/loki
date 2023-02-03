@@ -39,10 +39,28 @@ limits_config:
   readline_burst: 200
 `
 
+const headersTestFile = `
+clients:
+  - name: custom-headers
+    url: https://1:shh@example.com/loki/api/v1/push
+    headers:
+      name: value
+`
+
 func Test_Load(t *testing.T) {
 	var dst Config
 	err := yaml.Unmarshal([]byte(testFile), &dst)
 	require.Nil(t, err)
+}
+
+func TestHeadersConfigLoad(t *testing.T) {
+	var dst Config
+	err := yaml.Unmarshal([]byte(headersTestFile), &dst)
+	require.Nil(t, err)
+
+	for _, clientConfig := range dst.ClientConfigs {
+		require.Equal(t, map[string]string{"name": "value"}, clientConfig.Headers)
+	}
 }
 
 func Test_RateLimitLoad(t *testing.T) {
