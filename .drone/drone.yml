@@ -1279,11 +1279,11 @@ platform:
 steps:
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: identify-runner
 - commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: test
 trigger:
   ref:
@@ -1675,6 +1675,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: fbc93106cac3a989c4b910682f2e08eadc21786d8502f3270bc2f4a5b1996b21
+hmac: c1930caa8e7ffedf82b641cc1204d87319cddf576efa787d2ef1a86d16c2b9cf
 
 ...
