@@ -36,9 +36,11 @@ func Test_InitQuerierService(t *testing.T) {
 			authMiddleware = middleware.Identity
 		}
 
+		pathPrefix := ""
 		querierWorkerService, err := InitWorkerService(
 			config,
 			nil,
+			pathPrefix,
 			mockQueryHandlers,
 			alwaysExternalHandlers,
 			externalRouter,
