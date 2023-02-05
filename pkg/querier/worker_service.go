@@ -47,6 +47,7 @@ type WorkerServiceConfig struct {
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
+	queryRouterPathPrefix string,
 	queryRoutesToHandlers map[string]http.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
@@ -64,6 +65,9 @@ func InitWorkerService(
 	)
 
 	internalRouter := mux.NewRouter()
+	if queryRouterPathPrefix != "" {
+		internalRouter = internalRouter.PathPrefix(queryRouterPathPrefix).Subrouter()
+	}
 	for route, handler := range queryRoutesToHandlers {
 		internalRouter.Path(route).Methods("GET", "POST").Handler(handler)
 	}
