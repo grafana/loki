@@ -3167,7 +3167,7 @@ null
 			<td>int</td>
 			<td>Number of replicas for the single binary</td>
 			<td><pre lang="json">
-1
+0
 </pre>
 </td>
 		</tr>
