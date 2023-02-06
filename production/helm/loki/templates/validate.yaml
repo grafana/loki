@@ -16,6 +16,7 @@
 
 {{- $singleBinaryReplicas := int .Values.singleBinary.replicas }}
 {{- $isUsingFilesystem := eq (include "loki.isUsingObjectStorage" .) "false" }}
+{{- $isUsingObjectStorage := eq (include "loki.isUsingObjectStorage" .) "true" }}
 {{- $atLeastOneScalableReplica := or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0) }}
 
 {{- if and $isUsingFilesystem (gt $singleBinaryReplicas 1) }}
@@ -25,4 +26,3 @@
 {{- if and $isUsingFilesystem (and (eq $singleBinaryReplicas 0) $atLeastOneScalableReplica) }}
 {{- fail "Cannot run Scalable targets (backend, read, write) without an object storage backend."}}
 {{- end }}
-
