@@ -4,7 +4,6 @@ description: Loki Configuration Examples
 ---
  # Examples
 
-## almost-zero-dependency.yaml
 ## 1-Local-Configuration-Example.yaml
 
 ```yaml
@@ -273,7 +272,8 @@ storage_config:
     
 ```
 
-## 10-alibaba-cloud-storage-config.yaml
+
+## alibaba-cloud-storage-config.yaml
 
 ```yaml
 # This partial configuration uses Alibaba for chunk storage
@@ -294,5 +294,4 @@ storage_config:
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
 ```
-
 
