@@ -2,7 +2,6 @@ package stages
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -16,8 +15,6 @@ const (
 	defaultSource                = "message"
 	ErrEmptyEvtLogMsgStageConfig = "empty event log message stage configuration"
 )
-
-var RegexSplitKeyValue = regexp.MustCompile(": ?")
 
 type EventLogMessageConfig struct {
 	Source            *string `mapstructure:"source"`

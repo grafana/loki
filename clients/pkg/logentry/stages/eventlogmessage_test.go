@@ -2,6 +2,7 @@ package stages
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -340,6 +341,7 @@ func TestEventLogMessage_invalidString(t *testing.T) {
 
 var inputJustKey = "Key 1:"
 var inputBoth = "Key 1: Value 1"
+var RegexSplitKeyValue = regexp.MustCompile(": ?")
 
 func BenchmarkSplittingKeyValuesRegex(b *testing.B) {
 	for i := 0; i < b.N; i++ {
