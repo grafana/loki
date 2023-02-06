@@ -170,7 +170,12 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 		return validateSampleExpr(e.RHS)
 
-	case *LiteralExpr, *VectorExpr:
+	case *LiteralExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return nil
+	case *VectorExpr:
 		if e.err != nil {
 			return e.err
 		}
