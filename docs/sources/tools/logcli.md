@@ -372,9 +372,6 @@ Flags:
       --remote-schema         Execute the current query using a remote schema
                               retrieved using the configured storage in the
                               given Loki configuration file.
-      --remote-schema      Execute the current query using a remote schema
-                           retrieved using the configured storage in the given
-                           Loki configuration file.
       --colored-output        Show output with colored labels
   -t, --tail                  Tail the logs
   -f, --follow                Alias for --tail
