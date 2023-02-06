@@ -107,7 +107,7 @@ Only the labels listed under `labelallow` will be sent to Loki.
 
 All the labels except the ones listed under `labeldrop` will be sent to Loki.
 
-## GeoIP with ASN database example
+## GeoIP with ASN (Autonomous System Number) database example
 
 ```yaml
 - regex:
