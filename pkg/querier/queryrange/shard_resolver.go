@@ -64,7 +64,10 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	// We try to shard subtrees in the AST independently if possible, although
 	// nested binary expressions can make this difficult. In this case,
 	// we query the index stats for all matcher groups then sum the results.
-	grps := syntax.MatcherGroups(e)
+	grps, err := syntax.MatcherGroups(e)
+	if err != nil {
+		return 0, err
+	}
 
 	// If there are zero matchers groups, we'll inject one to query everything
 	if len(grps) == 0 {

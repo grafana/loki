@@ -15,12 +15,29 @@ enterprise-logs: prepare-gel helm-cluster
 	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
+enterprise-logs-ha-single-binary: prepare-gel helm-cluster
+	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
+	echo "Waiting 5s for cluster to be ready for helm installation."
+	echo "The helm install will take a while. It's useful to monitor progress using a tool like k9s."
+	# wait 5s for tk apply to finish and cluster is ready for helm install
+	sleep 5
+	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs-ha-single-binary
+	echo "Helm installation finished. You can tear down this cluster with make down."
+
 loki: prepare helm-cluster
 	$(MAKE) -C $(CURDIR) apply-loki-helm-cluster
 	echo "Waiting 5s for cluster to be ready for helm installation."
 	# wait 5s for tk apply to finish and cluster is ready for helm install
 	sleep 5
 	$(MAKE) -C $(CURDIR) helm-install-loki
+	echo "Helm installation finished. You can tear down this cluster with make down."
+
+loki-ha-single-binary: prepare helm-cluster
+	$(MAKE) -C $(CURDIR) apply-loki-helm-cluster
+	echo "Waiting 5s for cluster to be ready for helm installation."
+	# wait 5s for tk apply to finish and cluster is ready for helm install
+	sleep 5
+	$(MAKE) -C $(CURDIR) helm-install-loki-ha-single-binary
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
 helm-cluster: prepare
@@ -102,6 +119,15 @@ helm-upgrade-enterprise-logs:
 helm-uninstall-enterprise-logs:
 	helm uninstall enterprise-logs-test-fixture -n loki
 
+helm-install-enterprise-logs-ha-single-binary:
+	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-ha-single-binary.yaml"
+
+helm-upgrade-enterprise-logs-ha-single-binary:
+	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-ha-single-binary.yaml"
+
+helm-uninstall-enterprise-logs-ha-single-binary:
+	helm uninstall enterprise-logs-test-fixture -n loki
+
 helm-install-loki:
 	helm install loki "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
 
@@ -110,3 +136,12 @@ helm-upgrade-loki:
 
 helm-uninstall-loki:
 	helm uninstall loki -n loki
+
+helm-install-loki-ha-single-binary:
+	helm install loki-single-binary "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki-ha-single-binary.yaml"
+
+helm-upgrade-loki-ha-single-binary:
+	helm upgrade loki-single-binary "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki-ha-single-binary.yaml"
+
+helm-uninstall-loki-binary:
+	helm uninstall loki-single-binary -n loki
