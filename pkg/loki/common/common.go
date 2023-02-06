@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
@@ -39,35 +40,48 @@ type Config struct {
 	// You can check this during Loki execution under ring status pages (ex: `/ring` will output the address of the different ingester
 	// instances).
 	InstanceAddr string `yaml:"instance_addr"`
+
+	// CompactorAddress is the http address of the compactor in the form http://host:port
+	CompactorAddress string `yaml:"compactor_address"`
+
+	// CompactorAddress is the grpc address of the compactor in the form host:port
+	CompactorGRPCAddress string `yaml:"compactor_grpc_address"`
 }
 
-func (c *Config) RegisterFlags(_ *flag.FlagSet) {
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
 	throwaway.IntVar(&c.ReplicationFactor, "common.replication-factor", 3, "How many ingesters incoming data should be replicated to.")
-	c.Storage.RegisterFlagsWithPrefix("common.storage", throwaway)
-	c.Ring.RegisterFlagsWithPrefix("", "collectors/", throwaway)
+	c.Storage.RegisterFlagsWithPrefix("common.storage.", f)
+	c.Storage.RegisterFlagsWithPrefix("common.storage.", throwaway)
+	c.Ring.RegisterFlagsWithPrefix("common.storage.", "collectors/", f)
+	c.Ring.RegisterFlagsWithPrefix("common.storage.", "collectors/", throwaway)
 
 	// instance related flags.
 	c.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
 	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "", "Default advertised address to be used by Loki components.")
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
+
+	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
+	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
 }
 
 type Storage struct {
-	S3       aws.S3Config            `yaml:"s3"`
-	GCS      gcp.GCSConfig           `yaml:"gcs"`
-	Azure    azure.BlobStorageConfig `yaml:"azure"`
-	Swift    openstack.SwiftConfig   `yaml:"swift"`
-	FSConfig FilesystemConfig        `yaml:"filesystem"`
-	Hedging  hedging.Config          `yaml:"hedging"`
+	S3       aws.S3Config              `yaml:"s3"`
+	GCS      gcp.GCSConfig             `yaml:"gcs"`
+	Azure    azure.BlobStorageConfig   `yaml:"azure"`
+	BOS      baidubce.BOSStorageConfig `yaml:"bos"`
+	Swift    openstack.SwiftConfig     `yaml:"swift"`
+	FSConfig FilesystemConfig          `yaml:"filesystem"`
+	Hedging  hedging.Config            `yaml:"hedging"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	s.S3.RegisterFlagsWithPrefix(prefix+".s3", f)
-	s.GCS.RegisterFlagsWithPrefix(prefix+".gcs", f)
-	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
-	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
-	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
+	s.S3.RegisterFlagsWithPrefix(prefix, f)
+	s.GCS.RegisterFlagsWithPrefix(prefix, f)
+	s.Azure.RegisterFlagsWithPrefix(prefix, f)
+	s.Swift.RegisterFlagsWithPrefix(prefix, f)
+	s.BOS.RegisterFlagsWithPrefix(prefix, f)
+	s.FSConfig.RegisterFlagsWithPrefix(prefix, f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 }
 
@@ -77,6 +91,6 @@ type FilesystemConfig struct {
 }
 
 func (cfg *FilesystemConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.ChunksDirectory, prefix+".chunk-directory", "", "Directory to store chunks in.")
-	f.StringVar(&cfg.RulesDirectory, prefix+".rules-directory", "", "Directory to store rules in.")
+	f.StringVar(&cfg.ChunksDirectory, prefix+"filesystem.chunk-directory", "", "Directory to store chunks in.")
+	f.StringVar(&cfg.RulesDirectory, prefix+"filesystem.rules-directory", "", "Directory to store rules in.")
 }

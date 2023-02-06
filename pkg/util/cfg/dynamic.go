@@ -20,16 +20,20 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) err
 		// First populate the config with defaults including flags from the command line
 		Defaults(fs),
 		// Next populate the config from the config file, we do this to populate the `common`
-		// section of the config file by taking advantage of the code in YAMLFlag which will load
+		// section of the config file by taking advantage of the code in ConfigFileLoader which will load
 		// and process the config file.
-		YAMLFlag(args, "config.file"),
+		ConfigFileLoader(args, "config.file", true),
 		// Apply any dynamic logic to set other defaults in the config. This function is called after parsing the
 		// config files so that values from a common, or shared, section can be used in
 		// the dynamic evaluation
 		dst.ApplyDynamicConfig(),
 		// Load configs from the config file a second time, this will supersede anything set by the common
 		// config with values specified in the config file.
-		YAMLFlag(args, "config.file"),
+		// By loading the config file twice and unmarshaling it into the same object,
+		// using strict yaml unmarshal causes an `already set in map` error with the `Clients` config,
+		// because it's a map that already has the keys we are trying to unmarshal into it.
+		// That is why we don't use strict for the second marshaling.
+		ConfigFileLoader(args, "config.file", false),
 		// Load the flags again, this will supersede anything set from config file with flags from the command line.
 		Flags(args, fs),
 	)

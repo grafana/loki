@@ -48,7 +48,7 @@ func ComponentStatus(name string) *ComponentStatusApplyConfiguration {
 // ExtractComponentStatus extracts the applied configuration owned by fieldManager from
 // componentStatus. If no managedFields are found in componentStatus for fieldManager, a
 // ComponentStatusApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // componentStatus must be a unmodified ComponentStatus API object that was retrieved from the Kubernetes API.
@@ -57,8 +57,19 @@ func ComponentStatus(name string) *ComponentStatusApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractComponentStatus(componentStatus *apicorev1.ComponentStatus, fieldManager string) (*ComponentStatusApplyConfiguration, error) {
+	return extractComponentStatus(componentStatus, fieldManager, "")
+}
+
+// ExtractComponentStatusStatus is the same as ExtractComponentStatus except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractComponentStatusStatus(componentStatus *apicorev1.ComponentStatus, fieldManager string) (*ComponentStatusApplyConfiguration, error) {
+	return extractComponentStatus(componentStatus, fieldManager, "status")
+}
+
+func extractComponentStatus(componentStatus *apicorev1.ComponentStatus, fieldManager string, subresource string) (*ComponentStatusApplyConfiguration, error) {
 	b := &ComponentStatusApplyConfiguration{}
-	err := managedfields.ExtractInto(componentStatus, internal.Parser().Type("io.k8s.api.core.v1.ComponentStatus"), fieldManager, b)
+	err := managedfields.ExtractInto(componentStatus, internal.Parser().Type("io.k8s.api.core.v1.ComponentStatus"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -109,15 +120,6 @@ func (b *ComponentStatusApplyConfiguration) WithGenerateName(value string) *Comp
 func (b *ComponentStatusApplyConfiguration) WithNamespace(value string) *ComponentStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *ComponentStatusApplyConfiguration) WithSelfLink(value string) *ComponentStatusApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -227,15 +229,6 @@ func (b *ComponentStatusApplyConfiguration) WithFinalizers(values ...string) *Co
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *ComponentStatusApplyConfiguration) WithClusterName(value string) *ComponentStatusApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

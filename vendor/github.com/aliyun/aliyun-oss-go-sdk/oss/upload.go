@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -54,7 +55,7 @@ func getUploadCpFilePath(cpConf *cpConfig, srcFile, destBucket, destObject strin
 
 // getCpConfig gets checkpoint configuration
 func getCpConfig(options []Option) *cpConfig {
-	cpcOpt, err := findOption(options, checkpointConfig, nil)
+	cpcOpt, err := FindOption(options, checkpointConfig, nil)
 	if err != nil || cpcOpt == nil {
 		return nil
 	}
@@ -84,7 +85,7 @@ func getCpFileName(src, dest, versionId string) string {
 
 // getRoutines gets the routine count. by default it's 1.
 func getRoutines(options []Option) int {
-	rtnOpt, err := findOption(options, routineNum, nil)
+	rtnOpt, err := FindOption(options, routineNum, nil)
 	if err != nil || rtnOpt == nil {
 		return 1
 	}
@@ -101,17 +102,16 @@ func getRoutines(options []Option) int {
 
 // getPayer return the payer of the request
 func getPayer(options []Option) string {
-	payerOpt, err := findOption(options, HTTPHeaderOssRequester, nil)
+	payerOpt, err := FindOption(options, HTTPHeaderOssRequester, nil)
 	if err != nil || payerOpt == nil {
 		return ""
 	}
-
 	return payerOpt.(string)
 }
 
-// getProgressListener gets the progress callback
-func getProgressListener(options []Option) ProgressListener {
-	isSet, listener, _ := isOptionSet(options, progressListener)
+// GetProgressListener gets the progress callback
+func GetProgressListener(options []Option) ProgressListener {
+	isSet, listener, _ := IsOptionSet(options, progressListener)
 	if !isSet {
 		return nil
 	}
@@ -137,14 +137,32 @@ type workerArg struct {
 }
 
 // worker is the worker coroutine function
+type defaultUploadProgressListener struct {
+}
+
+// ProgressChanged no-ops
+func (listener *defaultUploadProgressListener) ProgressChanged(event *ProgressEvent) {
+}
+
 func worker(id int, arg workerArg, jobs <-chan FileChunk, results chan<- UploadPart, failed chan<- error, die <-chan bool) {
 	for chunk := range jobs {
 		if err := arg.hook(id, chunk); err != nil {
 			failed <- err
 			break
 		}
-		part, err := arg.bucket.UploadPartFromFile(arg.imur, arg.filePath, chunk.Offset, chunk.Size, chunk.Number, arg.options...)
+		var respHeader http.Header
+		p := Progress(&defaultUploadProgressListener{})
+		opts := make([]Option, len(arg.options)+2)
+		opts = append(opts, arg.options...)
+
+		// use defaultUploadProgressListener
+		opts = append(opts, p, GetResponseHeader(&respHeader))
+
+		startT := time.Now().UnixNano() / 1000 / 1000 / 1000
+		part, err := arg.bucket.UploadPartFromFile(arg.imur, arg.filePath, chunk.Offset, chunk.Size, chunk.Number, opts...)
+		endT := time.Now().UnixNano() / 1000 / 1000 / 1000
 		if err != nil {
+			arg.bucket.Client.Config.WriteLog(Debug, "upload part error,cost:%d second,part number:%d,request id:%s,error:%s\n", endT-startT, chunk.Number, GetRequestId(respHeader), err.Error())
 			failed <- err
 			break
 		}
@@ -175,7 +193,7 @@ func getTotalBytes(chunks []FileChunk) int64 {
 
 // uploadFile is a concurrent upload, without checkpoint
 func (bucket Bucket) uploadFile(objectKey, filePath string, partSize int64, options []Option, routines int) error {
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	chunks, err := SplitFileByPartSize(filePath, partSize)
 	if err != nil {
@@ -223,7 +241,7 @@ func (bucket Bucket) uploadFile(objectKey, filePath string, partSize int64, opti
 
 			// why RwBytes in ProgressEvent is 0 ?
 			// because read or write event has been notified in teeReader.Read()
-			event = newProgressEvent(TransferDataEvent, completedBytes, totalBytes, 0)
+			event = newProgressEvent(TransferDataEvent, completedBytes, totalBytes, chunks[part.PartNumber-1].Size)
 			publishProgress(listener, event)
 		case err := <-failed:
 			close(die)
@@ -454,7 +472,7 @@ func complete(cp *uploadCheckpoint, bucket *Bucket, parts []UploadPart, cpFilePa
 
 // uploadFileWithCp handles concurrent upload with checkpoint
 func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64, options []Option, cpFilePath string, routines int) error {
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	partOptions := ChoiceTransferPartOption(options)
 	completeOptions := ChoiceCompletePartOption(options)
@@ -511,7 +529,7 @@ func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64
 			ucp.updatePart(part)
 			ucp.dump(cpFilePath)
 			completedBytes += ucp.Parts[part.PartNumber-1].Chunk.Size
-			event = newProgressEvent(TransferDataEvent, completedBytes, ucp.FileStat.Size, 0)
+			event = newProgressEvent(TransferDataEvent, completedBytes, ucp.FileStat.Size, ucp.Parts[part.PartNumber-1].Chunk.Size)
 			publishProgress(listener, event)
 		case err := <-failed:
 			close(die)

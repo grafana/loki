@@ -195,8 +195,8 @@ func ParseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.
 	case len(components) == 3:
-		chunkID = string(components[2])
-		labelValue = model.LabelValue(components[1])
+		chunkID = yoloString(components[2])
+		labelValue = model.LabelValue(yoloString(components[1]))
 		return
 
 	case len(components[3]) == 1:
@@ -205,42 +205,42 @@ func ParseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 		// "version" is 1 and label value is base64 encoded.
 		// (older code wrote "version" as 1, not '1')
 		case chunkTimeRangeKeyV1a, chunkTimeRangeKeyV1:
-			chunkID = string(components[2])
+			chunkID = yoloString(components[2])
 			labelValue, err = decodeBase64Value(components[1])
 			return
 
 		// v4 schema wrote v3 range keys and a new range key - version 2,
 		// with four components - <empty>, <empty>, chunk ID and version.
 		case chunkTimeRangeKeyV2:
-			chunkID = string(components[2])
+			chunkID = yoloString(components[2])
 			return
 
 		// v5 schema version 3 range key is chunk end time, <empty>, chunk ID, version
 		case chunkTimeRangeKeyV3:
-			chunkID = string(components[2])
+			chunkID = yoloString(components[2])
 			return
 
 		// v5 schema version 4 range key is chunk end time, label value, chunk ID, version
 		case chunkTimeRangeKeyV4:
-			chunkID = string(components[2])
+			chunkID = yoloString(components[2])
 			labelValue, err = decodeBase64Value(components[1])
 			return
 
 		// v6 schema added version 5 range keys, which have the label value written in
 		// to the value, not the range key. So they are [chunk end time, <empty>, chunk ID, version].
 		case chunkTimeRangeKeyV5:
-			chunkID = string(components[2])
-			labelValue = model.LabelValue(value)
+			chunkID = yoloString(components[2])
+			labelValue = model.LabelValue(yoloString(value))
 			return
 
 		// v9 schema actually return series IDs
 		case seriesRangeKeyV1:
-			chunkID = string(components[0])
+			chunkID = yoloString(components[0])
 			return
 
 		case labelSeriesRangeKeyV1:
-			chunkID = string(components[1])
-			labelValue = model.LabelValue(value)
+			chunkID = yoloString(components[1])
+			labelValue = model.LabelValue(yoloString(value))
 			return
 		}
 	}

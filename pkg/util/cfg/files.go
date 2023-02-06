@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/drone/envsubst"
 	"github.com/pkg/errors"
@@ -20,7 +20,7 @@ func JSON(f *string) Source {
 			return nil
 		}
 
-		j, err := ioutil.ReadFile(*f)
+		j, err := os.ReadFile(*f)
 		if err != nil {
 			return err
 		}
@@ -40,9 +40,9 @@ func dJSON(y []byte) Source {
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
 // When expandEnvVars is true, variables in the supplied '.yaml\ file are expanded
 // using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
-func YAML(f string, expandEnvVars bool) Source {
+func YAML(f string, expandEnvVars bool, strict bool) Source {
 	return func(dst Cloneable) error {
-		y, err := ioutil.ReadFile(f)
+		y, err := os.ReadFile(f)
 		if err != nil {
 			return err
 		}
@@ -53,20 +53,31 @@ func YAML(f string, expandEnvVars bool) Source {
 			}
 			y = []byte(s)
 		}
-		err = dYAML(y)(dst)
+		if strict {
+			err = dYAMLStrict(y)(dst)
+		} else {
+			err = dYAML(y)(dst)
+		}
+
 		return errors.Wrap(err, f)
 	}
 }
 
-// dYAML returns a YAML source and allows dependency injection
-func dYAML(y []byte) Source {
+// dYAMLStrict returns a YAML source and allows dependency injection
+func dYAMLStrict(y []byte) Source {
 	return func(dst Cloneable) error {
 		return yaml.UnmarshalStrict(y, dst)
 	}
 }
 
-func YAMLFlag(args []string, name string) Source {
+// dYAML is the same as dYAMLStrict but with non strict unmarshaling
+func dYAML(y []byte) Source {
+	return func(dst Cloneable) error {
+		return yaml.Unmarshal(y, dst)
+	}
+}
 
+func ConfigFileLoader(args []string, name string, strict bool) Source {
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
 
@@ -92,13 +103,22 @@ func YAMLFlag(args []string, name string) Source {
 		if f == nil || f.Value.String() == "" {
 			return nil
 		}
-		expandEnv := false
-		expandEnvFlag := freshFlags.Lookup("config.expand-env")
-		if expandEnvFlag != nil {
-			expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
+
+		for _, val := range strings.Split(f.Value.String(), ",") {
+			val := strings.TrimSpace(val)
+			expandEnv := false
+			expandEnvFlag := freshFlags.Lookup("config.expand-env")
+			if expandEnvFlag != nil {
+				expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
+			}
+			if _, err := os.Stat(val); err == nil {
+				err := YAML(val, expandEnv, strict)(dst)
+				if err != nil && !expandEnv {
+					err = fmt.Errorf("%w. Use `-config.expand-env=true` flag if you want to expand environment variables in your config file", err)
+				}
+				return err
+			}
 		}
-
-		return YAML(f.Value.String(), expandEnv)(dst)
-
+		return fmt.Errorf("%s does not exist, set %s for custom config path", f.Value.String(), name)
 	}
 }

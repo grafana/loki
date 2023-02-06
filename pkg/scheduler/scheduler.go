@@ -120,20 +120,18 @@ type connectedFrontend struct {
 
 type Config struct {
 	MaxOutstandingPerTenant int               `yaml:"max_outstanding_requests_per_tenant"`
-	QuerierForgetDelay      time.Duration     `yaml:"-"`
+	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
 	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
-	SchedulerRing    lokiutil.RingConfig `yaml:"scheduler_ring,omitempty"`
+	SchedulerRing    lokiutil.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
-	// Loki doesn't have query shuffle sharding yet for which this config is intended
-	// use the default value of 0 until someday when this config may be needed.
-	cfg.QuerierForgetDelay = 0
+	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
-	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query scheduler create a ring and the frontend and frontend_worker use this ring to get the addresses of the query schedulers. If frontend_address and scheduler_address are not present in the config this value will be toggle by Loki to true")
+	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query schedulers create and place themselves in a ring. If no frontend_address or scheduler_address are present anywhere else in the configuration, Loki will toggle this value to true.")
 	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
 }
 
@@ -299,10 +297,10 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 		switch msg.GetType() {
 		case schedulerpb.ENQUEUE:
 			err = s.enqueueRequest(frontendCtx, frontendAddress, msg)
-			switch {
-			case err == nil:
+			switch err {
+			case nil:
 				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
-			case err == queue.ErrTooManyRequests:
+			case queue.ErrTooManyRequests:
 				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.TOO_MANY_REQUESTS_PER_TENANT}
 			default:
 				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR, Error: err.Error()}
@@ -679,13 +677,13 @@ func (s *Scheduler) running(ctx context.Context) error {
 
 func (s *Scheduler) setRunState(isInSet bool) {
 	if isInSet {
-		if s.shouldRun.CAS(false, true) {
+		if s.shouldRun.CompareAndSwap(false, true) {
 			// Value was swapped, meaning this was a state change from stopped to running.
 			level.Info(s.log).Log("msg", "this scheduler is in the ReplicationSet, will now accept requests.")
 			s.schedulerRunning.Set(1)
 		}
 	} else {
-		if s.shouldRun.CAS(true, false) {
+		if s.shouldRun.CompareAndSwap(true, false) {
 			// Value was swapped, meaning this was a state change from running to stopped,
 			// we need to send shutdown to all the connected frontends.
 			level.Info(s.log).Log("msg", "this scheduler is no longer in the ReplicationSet, disconnecting frontends, canceling queries and no longer accepting requests.")
@@ -764,5 +762,9 @@ func (s *Scheduler) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Des
 }
 
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	s.ring.ServeHTTP(w, req)
+	if s.cfg.UseSchedulerRing {
+		s.ring.ServeHTTP(w, req)
+	} else {
+		_, _ = w.Write([]byte("QueryScheduler running with '-query-scheduler.use-scheduler-ring' set to false."))
+	}
 }

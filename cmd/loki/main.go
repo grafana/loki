@@ -21,16 +21,21 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+func exit(code int) {
+	util_log.Flush()
+	os.Exit(code)
+}
+
 func main() {
 	var config loki.ConfigWrapper
 
+	if loki.PrintVersion(os.Args[1:]) {
+		fmt.Println(version.Print("loki"))
+		os.Exit(0)
+	}
 	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
-	}
-	if config.PrintVersion {
-		fmt.Println(version.Print("loki"))
-		os.Exit(0)
 	}
 
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
@@ -41,35 +46,32 @@ func main() {
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &logging.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
-		os.Exit(1)
+		exit(1)
 	}
-	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
-	err := config.Validate()
-	if err != nil {
+	if err := config.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	if config.PrintConfig {
-		err := util.PrintConfig(os.Stderr, &config)
-		if err != nil {
+		if err := util.PrintConfig(os.Stderr, &config); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
 	if config.LogConfig {
-		err := util.LogConfig(&config)
-		if err != nil {
+		if err := util.LogConfig(&config); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
 	}
 
 	if config.VerifyConfig {
 		level.Info(util_log.Logger).Log("msg", "config is valid")
-		os.Exit(0)
+		exit(0)
 	}
 
 	if config.Tracing.Enabled {
@@ -78,13 +80,13 @@ func main() {
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
+
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {
 					level.Error(util_log.Logger).Log("msg", "error closing tracing", "err", err)
 				}
 			}
-
 		}()
 	}
 
@@ -96,11 +98,11 @@ func main() {
 
 	// Start Loki
 	t, err := loki.New(config.Config)
-	util_log.CheckFatal("initialising loki", err, util_log.Logger)
+	util_log.CheckFatal("initializing loki", err, util_log.Logger)
 
 	if config.ListTargets {
 		t.ListTargets()
-		os.Exit(0)
+		exit(0)
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())

@@ -13,7 +13,8 @@ import (
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
-	MaxRetries: 20,
+	ContainerName: "loki",
+	MaxRetries:    20,
 	Config: http.Config{
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 2 * time.Minute,

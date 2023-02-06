@@ -1,0 +1,208 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.8.0
+  creationTimestamp: null
+  name: projectconfigs.config.grafana.com
+spec:
+  group: config.grafana.com
+  names:
+    kind: ProjectConfig
+    listKind: ProjectConfigList
+    plural: projectconfigs
+    singular: projectconfig
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: ProjectConfig is the Schema for the projectconfigs API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          cacheNamespace:
+            description: "CacheNamespace if specified restricts the manager's cache
+              to watch objects in the desired namespace Defaults to all namespaces
+              \n Note: If a namespace is specified, controllers can still Watch for
+              a cluster-scoped resource (e.g Node).  For namespaced resources the
+              cache will only hold objects from the desired namespace."
+            type: string
+          controller:
+            description: Controller contains global configuration options for controllers
+              registered within this manager.
+            properties:
+              cacheSyncTimeout:
+                description: CacheSyncTimeout refers to the time limit set to wait
+                  for syncing caches. Defaults to 2 minutes if not set.
+                format: int64
+                type: integer
+              groupKindConcurrency:
+                additionalProperties:
+                  type: integer
+                description: "GroupKindConcurrency is a map from a Kind to the number
+                  of concurrent reconciliation allowed for that controller. \n When
+                  a controller is registered within this manager using the builder
+                  utilities, users have to specify the type the controller reconciles
+                  in the For(...) call. If the object's kind passed matches one of
+                  the keys in this map, the concurrency for that controller is set
+                  to the number specified. \n The key is expected to be consistent
+                  in form with GroupKind.String(), e.g. ReplicaSet in apps group (regardless
+                  of version) would be `ReplicaSet.apps`."
+                type: object
+            type: object
+          featureFlags:
+            description: FeatureFlags is a set of operator feature flags.
+            properties:
+              enableAlertingRuleWebhook:
+                type: boolean
+              enableCertSigningService:
+                type: boolean
+              enableGrafanaLabsStats:
+                type: boolean
+              enableLokiStackAlerts:
+                type: boolean
+              enableLokiStackGateway:
+                type: boolean
+              enableLokiStackGatewayRoute:
+                type: boolean
+              enableRecordingRuleWebhook:
+                type: boolean
+              enableRulerConfigWebhook:
+                type: boolean
+              enableServiceMonitors:
+                type: boolean
+              enableTlsGrpcServices:
+                type: boolean
+              enableTlsServiceMonitorConfig:
+                type: boolean
+              enableTlsHttpServices:
+                type: boolean
+            type: object
+          gracefulShutDown:
+            description: GracefulShutdownTimeout is the duration given to runnable
+              to stop before the manager actually returns on stop. To disable graceful
+              shutdown, set to time.Duration(0) To use graceful shutdown without timeout,
+              set to a negative duration, e.G. time.Duration(-1) The graceful shutdown
+              is skipped for safety reasons in case the leader election lease is lost.
+            type: string
+          health:
+            description: Health contains the controller health configuration
+            properties:
+              healthProbeBindAddress:
+                description: HealthProbeBindAddress is the TCP address that the controller
+                  should bind to for serving health probes
+                type: string
+              livenessEndpointName:
+                description: LivenessEndpointName, defaults to "healthz"
+                type: string
+              readinessEndpointName:
+                description: ReadinessEndpointName, defaults to "readyz"
+                type: string
+            type: object
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          leaderElection:
+            description: LeaderElection is the LeaderElection config to be used when
+              configuring the manager.Manager leader election
+            properties:
+              leaderElect:
+                description: leaderElect enables a leader election client to gain
+                  leadership before executing the main loop. Enable this when running
+                  replicated components for high availability.
+                type: boolean
+              leaseDuration:
+                description: leaseDuration is the duration that non-leader candidates
+                  will wait after observing a leadership renewal until attempting
+                  to acquire leadership of a led but unrenewed leader slot. This is
+                  effectively the maximum duration that a leader can be stopped before
+                  it is replaced by another candidate. This is only applicable if
+                  leader election is enabled.
+                type: string
+              renewDeadline:
+                description: renewDeadline is the interval between attempts by the
+                  acting master to renew a leadership slot before it stops leading.
+                  This must be less than or equal to the lease duration. This is only
+                  applicable if leader election is enabled.
+                type: string
+              resourceLock:
+                description: resourceLock indicates the resource object type that
+                  will be used to lock during leader election cycles.
+                type: string
+              resourceName:
+                description: resourceName indicates the name of resource object that
+                  will be used to lock during leader election cycles.
+                type: string
+              resourceNamespace:
+                description: resourceName indicates the namespace of resource object
+                  that will be used to lock during leader election cycles.
+                type: string
+              retryPeriod:
+                description: retryPeriod is the duration the clients should wait between
+                  attempting acquisition and renewal of a leadership. This is only
+                  applicable if leader election is enabled.
+                type: string
+            required:
+            - leaderElect
+            - leaseDuration
+            - renewDeadline
+            - resourceLock
+            - resourceName
+            - resourceNamespace
+            - retryPeriod
+            type: object
+          metadata:
+            type: object
+          metrics:
+            description: Metrics contains thw controller metrics configuration
+            properties:
+              bindAddress:
+                description: BindAddress is the TCP address that the controller should
+                  bind to for serving prometheus metrics. It can be set to "0" to
+                  disable the metrics serving.
+                type: string
+            type: object
+          syncPeriod:
+            description: SyncPeriod determines the minimum frequency at which watched
+              resources are reconciled. A lower period will correct entropy more quickly,
+              but reduce responsiveness to change if there are many watched resources.
+              Change this value only if you know what you are doing. Defaults to 10
+              hours if unset. there will a 10 percent jitter between the SyncPeriod
+              of all controllers so that all controllers will not send list requests
+              simultaneously.
+            type: string
+          webhook:
+            description: Webhook contains the controllers webhook configuration
+            properties:
+              certDir:
+                description: CertDir is the directory that contains the server key
+                  and certificate. if not set, webhook server would look up the server
+                  key and certificate in {TempDir}/k8s-webhook-server/serving-certs.
+                  The server key and certificate must be named tls.key and tls.crt,
+                  respectively.
+                type: string
+              host:
+                description: Host is the hostname that the webhook server binds to.
+                  It is used to set webhook.Server.Host.
+                type: string
+              port:
+                description: Port is the port that the webhook server serves at. It
+                  is used to set webhook.Server.Port.
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

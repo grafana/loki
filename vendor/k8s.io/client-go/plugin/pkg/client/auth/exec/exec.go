@@ -35,20 +35,20 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"golang.org/x/term"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/util/clock"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/client-go/pkg/apis/clientauthentication"
-	"k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1"
-	"k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
+	"k8s.io/client-go/pkg/apis/clientauthentication/install"
+	clientauthenticationv1 "k8s.io/client-go/pkg/apis/clientauthentication/v1"
+	clientauthenticationv1beta1 "k8s.io/client-go/pkg/apis/clientauthentication/v1beta1"
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/metrics"
 	"k8s.io/client-go/transport"
 	"k8s.io/client-go/util/connrotation"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 )
 
 const execInfoEnv = "KUBERNETES_EXEC_INFO"
@@ -63,10 +63,7 @@ var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 
 func init() {
-	v1.AddToGroupVersion(scheme, schema.GroupVersion{Version: "v1"})
-	utilruntime.Must(v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(v1beta1.AddToScheme(scheme))
-	utilruntime.Must(clientauthentication.AddToScheme(scheme))
+	install.Install(scheme)
 }
 
 var (
@@ -75,8 +72,8 @@ var (
 	globalCache = newCache()
 	// The list of API versions we accept.
 	apiVersions = map[string]schema.GroupVersion{
-		v1alpha1.SchemeGroupVersion.String(): v1alpha1.SchemeGroupVersion,
-		v1beta1.SchemeGroupVersion.String():  v1beta1.SchemeGroupVersion,
+		clientauthenticationv1beta1.SchemeGroupVersion.String(): clientauthenticationv1beta1.SchemeGroupVersion,
+		clientauthenticationv1.SchemeGroupVersion.String():      clientauthenticationv1.SchemeGroupVersion,
 	}
 )
 
@@ -162,10 +159,10 @@ func (s *sometimes) Do(f func()) {
 
 // GetAuthenticator returns an exec-based plugin for providing client credentials.
 func GetAuthenticator(config *api.ExecConfig, cluster *clientauthentication.Cluster) (*Authenticator, error) {
-	return newAuthenticator(globalCache, config, cluster)
+	return newAuthenticator(globalCache, term.IsTerminal, config, cluster)
 }
 
-func newAuthenticator(c *cache, config *api.ExecConfig, cluster *clientauthentication.Cluster) (*Authenticator, error) {
+func newAuthenticator(c *cache, isTerminalFunc func(int) bool, config *api.ExecConfig, cluster *clientauthentication.Cluster) (*Authenticator, error) {
 	key := cacheKey(config, cluster)
 	if a, ok := c.get(key); ok {
 		return a, nil
@@ -196,21 +193,52 @@ func newAuthenticator(c *cache, config *api.ExecConfig, cluster *clientauthentic
 			clock:     clock.RealClock{},
 		},
 
-		stdin:       os.Stdin,
-		stderr:      os.Stderr,
-		interactive: term.IsTerminal(int(os.Stdin.Fd())),
-		now:         time.Now,
-		environ:     os.Environ,
+		stdin:           os.Stdin,
+		stderr:          os.Stderr,
+		interactiveFunc: func() (bool, error) { return isInteractive(isTerminalFunc, config) },
+		now:             time.Now,
+		environ:         os.Environ,
 
-		defaultDialer: defaultDialer,
-		connTracker:   connTracker,
+		connTracker: connTracker,
 	}
 
 	for _, env := range config.Env {
 		a.env = append(a.env, env.Name+"="+env.Value)
 	}
 
+	// these functions are made comparable and stored in the cache so that repeated clientset
+	// construction with the same rest.Config results in a single TLS cache and Authenticator
+	a.getCert = &transport.GetCertHolder{GetCert: a.cert}
+	a.dial = &transport.DialHolder{Dial: defaultDialer.DialContext}
+
 	return c.put(key, a), nil
+}
+
+func isInteractive(isTerminalFunc func(int) bool, config *api.ExecConfig) (bool, error) {
+	var shouldBeInteractive bool
+	switch config.InteractiveMode {
+	case api.NeverExecInteractiveMode:
+		shouldBeInteractive = false
+	case api.IfAvailableExecInteractiveMode:
+		shouldBeInteractive = !config.StdinUnavailable && isTerminalFunc(int(os.Stdin.Fd()))
+	case api.AlwaysExecInteractiveMode:
+		if !isTerminalFunc(int(os.Stdin.Fd())) {
+			return false, errors.New("standard input is not a terminal")
+		}
+		if config.StdinUnavailable {
+			suffix := ""
+			if len(config.StdinUnavailableMessage) > 0 {
+				// only print extra ": <message>" if the user actually specified a message
+				suffix = fmt.Sprintf(": %s", config.StdinUnavailableMessage)
+			}
+			return false, fmt.Errorf("standard input is unavailable%s", suffix)
+		}
+		shouldBeInteractive = true
+	default:
+		return false, fmt.Errorf("unknown interactiveMode: %q", config.InteractiveMode)
+	}
+
+	return shouldBeInteractive, nil
 }
 
 // Authenticator is a client credential provider that rotates credentials by executing a plugin.
@@ -231,14 +259,12 @@ type Authenticator struct {
 	installHint string
 
 	// Stubbable for testing
-	stdin       io.Reader
-	stderr      io.Writer
-	interactive bool
-	now         func() time.Time
-	environ     func() []string
+	stdin           io.Reader
+	stderr          io.Writer
+	interactiveFunc func() (bool, error)
+	now             func() time.Time
+	environ         func() []string
 
-	// defaultDialer is used for clients which don't specify a custom dialer
-	defaultDialer *connrotation.Dialer
 	// connTracker tracks all connections opened that we need to close when rotating a client certificate
 	connTracker *connrotation.ConnectionTracker
 
@@ -249,6 +275,12 @@ type Authenticator struct {
 	mu          sync.Mutex
 	cachedCreds *credentials
 	exp         time.Time
+
+	// getCert makes Authenticator.cert comparable to support TLS config caching
+	getCert *transport.GetCertHolder
+	// dial is used for clients which do not specify a custom dialer
+	// it is comparable to support TLS config caching
+	dial *transport.DialHolder
 }
 
 type credentials struct {
@@ -263,8 +295,9 @@ func (a *Authenticator) UpdateTransportConfig(c *transport.Config) error {
 	// setting up the transport, as that triggers the exec action if the server is
 	// also configured to allow client certificates for authentication. For requests
 	// like "kubectl get --token (token) pods" we should assume the intention is to
-	// use the provided token for authentication.
-	if c.HasTokenAuth() {
+	// use the provided token for authentication. The same can be said for when the
+	// user specifies basic auth or cert auth.
+	if c.HasTokenAuth() || c.HasBasicAuth() || c.HasCertAuth() {
 		return nil
 	}
 
@@ -272,27 +305,36 @@ func (a *Authenticator) UpdateTransportConfig(c *transport.Config) error {
 		return &roundTripper{a, rt}
 	})
 
-	if c.TLS.GetCert != nil {
+	if c.HasCertCallback() {
 		return errors.New("can't add TLS certificate callback: transport.Config.TLS.GetCert already set")
 	}
-	c.TLS.GetCert = a.cert
+	c.TLS.GetCertHolder = a.getCert // comparable for TLS config caching
 
-	var d *connrotation.Dialer
-	if c.Dial != nil {
+	if c.DialHolder != nil {
+		if c.DialHolder.Dial == nil {
+			return errors.New("invalid transport.Config.DialHolder: wrapped Dial function is nil")
+		}
+
 		// if c has a custom dialer, we have to wrap it
-		d = connrotation.NewDialerWithTracker(c.Dial, a.connTracker)
+		// TLS config caching is not supported for this config
+		d := connrotation.NewDialerWithTracker(c.DialHolder.Dial, a.connTracker)
+		c.DialHolder = &transport.DialHolder{Dial: d.DialContext}
 	} else {
-		d = a.defaultDialer
+		c.DialHolder = a.dial // comparable for TLS config caching
 	}
-
-	c.Dial = d.DialContext
 
 	return nil
 }
 
+var _ utilnet.RoundTripperWrapper = &roundTripper{}
+
 type roundTripper struct {
 	a    *Authenticator
 	base http.RoundTripper
+}
+
+func (r *roundTripper) WrappedRoundTripper() http.RoundTripper {
+	return r.base
 }
 
 func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -315,11 +357,7 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	if res.StatusCode == http.StatusUnauthorized {
-		resp := &clientauthentication.Response{
-			Header: res.Header,
-			Code:   int32(res.StatusCode),
-		}
-		if err := r.a.maybeRefreshCreds(creds, resp); err != nil {
+		if err := r.a.maybeRefreshCreds(creds); err != nil {
 			klog.Errorf("refreshing credentials: %v", err)
 		}
 	}
@@ -349,7 +387,7 @@ func (a *Authenticator) getCreds() (*credentials, error) {
 		return a.cachedCreds, nil
 	}
 
-	if err := a.refreshCredsLocked(nil); err != nil {
+	if err := a.refreshCredsLocked(); err != nil {
 		return nil, err
 	}
 
@@ -358,7 +396,7 @@ func (a *Authenticator) getCreds() (*credentials, error) {
 
 // maybeRefreshCreds executes the plugin to force a rotation of the
 // credentials, unless they were rotated already.
-func (a *Authenticator) maybeRefreshCreds(creds *credentials, r *clientauthentication.Response) error {
+func (a *Authenticator) maybeRefreshCreds(creds *credentials) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -369,16 +407,20 @@ func (a *Authenticator) maybeRefreshCreds(creds *credentials, r *clientauthentic
 		return nil
 	}
 
-	return a.refreshCredsLocked(r)
+	return a.refreshCredsLocked()
 }
 
 // refreshCredsLocked executes the plugin and reads the credentials from
 // stdout. It must be called while holding the Authenticator's mutex.
-func (a *Authenticator) refreshCredsLocked(r *clientauthentication.Response) error {
+func (a *Authenticator) refreshCredsLocked() error {
+	interactive, err := a.interactiveFunc()
+	if err != nil {
+		return fmt.Errorf("exec plugin cannot support interactive mode: %w", err)
+	}
+
 	cred := &clientauthentication.ExecCredential{
 		Spec: clientauthentication.ExecCredentialSpec{
-			Response:    r,
-			Interactive: a.interactive,
+			Interactive: interactive,
 		},
 	}
 	if a.provideClusterInfo {
@@ -397,7 +439,7 @@ func (a *Authenticator) refreshCredsLocked(r *clientauthentication.Response) err
 	cmd.Env = env
 	cmd.Stderr = a.stderr
 	cmd.Stdout = stdout
-	if a.interactive {
+	if interactive {
 		cmd.Stdin = a.stdin
 	}
 
@@ -461,7 +503,7 @@ func (a *Authenticator) refreshCredsLocked(r *clientauthentication.Response) err
 	if oldCreds != nil && !reflect.DeepEqual(oldCreds.cert, a.cachedCreds.cert) {
 		// Can be nil if the exec auth plugin only returned token auth.
 		if oldCreds.cert != nil && oldCreds.cert.Leaf != nil {
-			metrics.ClientCertRotationAge.Observe(time.Now().Sub(oldCreds.cert.Leaf.NotBefore))
+			metrics.ClientCertRotationAge.Observe(time.Since(oldCreds.cert.Leaf.NotBefore))
 		}
 		a.connTracker.CloseAll()
 	}

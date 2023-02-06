@@ -8,4 +8,12 @@ spec:
       containers:
         - name: manager
           args:
-          - "--with-lokistack-gateway"
+          - "--config=controller_manager_config.yaml"
+          volumeMounts:
+          - name: manager-config
+            mountPath: /controller_manager_config.yaml
+            subPath: controller_manager_config.yaml
+      volumes:
+      - name: manager-config
+        configMap:
+          name: loki-operator-manager-config

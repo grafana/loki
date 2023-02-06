@@ -1,6 +1,8 @@
 package oss
 
-import "io"
+import (
+	"io"
+)
 
 // ProgressEventType defines transfer progress event type
 type ProgressEventType int

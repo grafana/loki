@@ -49,7 +49,7 @@ func Lease(name, namespace string) *LeaseApplyConfiguration {
 // ExtractLease extracts the applied configuration owned by fieldManager from
 // lease. If no managedFields are found in lease for fieldManager, a
 // LeaseApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // lease must be a unmodified Lease API object that was retrieved from the Kubernetes API.
@@ -58,8 +58,19 @@ func Lease(name, namespace string) *LeaseApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractLease(lease *coordinationv1beta1.Lease, fieldManager string) (*LeaseApplyConfiguration, error) {
+	return extractLease(lease, fieldManager, "")
+}
+
+// ExtractLeaseStatus is the same as ExtractLease except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractLeaseStatus(lease *coordinationv1beta1.Lease, fieldManager string) (*LeaseApplyConfiguration, error) {
+	return extractLease(lease, fieldManager, "status")
+}
+
+func extractLease(lease *coordinationv1beta1.Lease, fieldManager string, subresource string) (*LeaseApplyConfiguration, error) {
 	b := &LeaseApplyConfiguration{}
-	err := managedfields.ExtractInto(lease, internal.Parser().Type("io.k8s.api.coordination.v1beta1.Lease"), fieldManager, b)
+	err := managedfields.ExtractInto(lease, internal.Parser().Type("io.k8s.api.coordination.v1beta1.Lease"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -111,15 +122,6 @@ func (b *LeaseApplyConfiguration) WithGenerateName(value string) *LeaseApplyConf
 func (b *LeaseApplyConfiguration) WithNamespace(value string) *LeaseApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *LeaseApplyConfiguration) WithSelfLink(value string) *LeaseApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -229,15 +231,6 @@ func (b *LeaseApplyConfiguration) WithFinalizers(values ...string) *LeaseApplyCo
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *LeaseApplyConfiguration) WithClusterName(value string) *LeaseApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

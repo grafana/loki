@@ -2,17 +2,23 @@ package client
 
 import (
 	"fmt"
-	"sort"
+	"strconv"
+
 	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
+)
+
+const (
+	errMaxStreamsLimitExceeded = "streams limit exceeded, streams: %d exceeds limit: %d, stream: '%s'"
 )
 
 // batch holds pending log streams waiting to be sent to Loki, and it's used
@@ -23,55 +29,80 @@ type batch struct {
 	streams   map[string]*logproto.Stream
 	bytes     int
 	createdAt time.Time
+
+	maxStreams int
 }
 
-func newBatch(entries ...api.Entry) *batch {
+func newBatch(maxStreams int, entries ...api.Entry) *batch {
 	b := &batch{
-		streams:   map[string]*logproto.Stream{},
-		bytes:     0,
-		createdAt: time.Now(),
+		streams:    map[string]*logproto.Stream{},
+		bytes:      0,
+		createdAt:  time.Now(),
+		maxStreams: maxStreams,
 	}
 
 	// Add entries to the batch
 	for _, entry := range entries {
-		b.add(entry)
+		//never error here
+		_ = b.add(entry)
 	}
 
 	return b
 }
 
 // add an entry to the batch
-func (b *batch) add(entry api.Entry) {
+func (b *batch) add(entry api.Entry) error {
 	b.bytes += len(entry.Line)
 
 	// Append the entry to an already existing stream (if any)
 	labels := labelsMapToString(entry.Labels, ReservedLabelTenantID)
 	if stream, ok := b.streams[labels]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
-		return
+		return nil
 	}
 
+	streams := len(b.streams)
+	if b.maxStreams > 0 && streams >= b.maxStreams {
+		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labels)
+	}
 	// Add the entry as a new stream
 	b.streams[labels] = &logproto.Stream{
 		Labels:  labels,
 		Entries: []logproto.Entry{entry.Entry},
 	}
+	return nil
 }
 
-func labelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
-	lstrs := make([]string, 0, len(ls))
-Outer:
+func labelsMapToString(ls model.LabelSet, without model.LabelName) string {
+	var b strings.Builder
+	totalSize := 2
+	lstrs := make([]model.LabelName, 0, len(ls))
+
 	for l, v := range ls {
-		for _, w := range without {
-			if l == w {
-				continue Outer
-			}
+		if l == without {
+			continue
 		}
-		lstrs = append(lstrs, fmt.Sprintf("%s=%q", l, v))
+
+		lstrs = append(lstrs, l)
+		// guess size increase: 2 for `, ` between labels and 3 for the `=` and quotes around label value
+		totalSize += len(l) + 2 + len(v) + 3
 	}
 
-	sort.Strings(lstrs)
-	return fmt.Sprintf("{%s}", strings.Join(lstrs, ", "))
+	b.Grow(totalSize)
+	b.WriteByte('{')
+	slices.Sort(lstrs)
+	for i, l := range lstrs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+
+		b.WriteString(string(l))
+		b.WriteString(`=`)
+		b.WriteString(strconv.Quote(string(ls[l])))
+	}
+	b.WriteByte('}')
+
+	return b.String()
 }
 
 // sizeBytes returns the current batch size in bytes

@@ -24,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -32,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -64,9 +66,9 @@ func TestChunkFlushingShutdown(t *testing.T) {
 
 type fullWAL struct{}
 
-func (fullWAL) Log(_ *WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
-func (fullWAL) Start()                 {}
-func (fullWAL) Stop() error            { return nil }
+func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
+func (fullWAL) Start()                  {}
+func (fullWAL) Stop() error             { return nil }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -314,7 +316,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		if chunk.Metric.Has("__name__") {
 			labelsBuilder := labels.NewBuilder(chunk.Metric)
 			labelsBuilder.Del("__name__")
-			chunks[ix].Metric = labelsBuilder.Labels()
+			chunks[ix].Metric = labelsBuilder.Labels(nil)
 		}
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
@@ -338,12 +340,16 @@ func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 }
 
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
-	return nil
+	return defaultPeriodConfigs
 }
 
 func (s *testStore) Stop() {}
 
 func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
+
+func (s *testStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return &stats.Stats{}, nil
+}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}

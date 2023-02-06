@@ -25,6 +25,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
+    container.withEnvMixin($._config.commonEnvs) +
     k.util.resourcesRequests('100m', '100Mi') +
     k.util.resourcesLimits('200m', '200Mi'),
 
@@ -36,5 +37,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     k.util.configVolumeMount('loki', '/etc/loki/config'),
 
   table_manager_service:
-    k.util.serviceFor($.table_manager_deployment),
+    k.util.serviceFor($.table_manager_deployment, $._config.service_ignored_labels),
 }

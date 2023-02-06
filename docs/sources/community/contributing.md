@@ -1,5 +1,6 @@
 ---
 title: Contributing to Loki
+description: Contributing to Loki
 ---
 # Contributing to Loki
 
@@ -38,7 +39,7 @@ While `go install ./cmd/loki` works, the preferred way to build is by using
 - `make loki`: builds Loki and outputs the binary to `./cmd/loki/loki`
 
 - `make promtail`: builds Promtail and outputs the binary to
-  `./cmd/promtail/promtail`
+  `./clients/cmd/promtail/promtail`
 
 - `make logcli`: builds LogCLI and outputs the binary to `./cmd/logcli/logcli`
 
@@ -49,7 +50,7 @@ While `go install ./cmd/loki` works, the preferred way to build is by using
   Docker.
 
 - `make images`: builds all Docker images (optionally suffix the previous binary
-    commands with `-image`, e.g., `make loki-image`).
+  commands with `-image`, e.g., `make loki-image`).
 
 These commands can be chained together to build multiple binaries in one go:
 

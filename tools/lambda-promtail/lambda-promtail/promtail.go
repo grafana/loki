@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,14 +40,22 @@ type batch struct {
 	size    int
 }
 
+type batchIf interface {
+	add(ctx context.Context, e entry) error
+	encode() ([]byte, int, error)
+	createPushRequest() (*logproto.PushRequest, int)
+	flushBatch(ctx context.Context) error
+}
+
 func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
 	b := &batch{
 		streams: map[string]*logproto.Stream{},
 	}
 
 	for _, entry := range entries {
-		err := b.add(ctx, entry)
-		return b, err
+		if err := b.add(ctx, entry); err != nil {
+			return nil, err
+		}
 	}
 
 	return b, nil
@@ -169,11 +178,25 @@ func send(ctx context.Context, buf []byte) (int, error) {
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", userAgent)
 
+	if tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", tenantID)
+	}
+
 	if username != "" && password != "" {
 		req.SetBasicAuth(username, password)
 	}
 
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
+	promtailClient := &http.Client{}
+
+	if skipTlsVerify == true {
+		promtailClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	}
+
+	resp, err := promtailClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err
 	}

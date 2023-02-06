@@ -111,7 +111,7 @@ func (d DBPointer) String() string {
 
 // Equal compares d to d2 and returns true if they are equal.
 func (d DBPointer) Equal(d2 DBPointer) bool {
-	return d.DB == d2.DB && bytes.Equal(d.Pointer[:], d2.Pointer[:])
+	return d == d2
 }
 
 // IsZero returns if d is the empty DBPointer.
@@ -182,7 +182,7 @@ type MaxKey struct{}
 //
 // Example usage:
 //
-// 		bson.D{{"foo", "bar"}, {"hello", "world"}, {"pi", 3.14159}}
+//	bson.D{{"foo", "bar"}, {"hello", "world"}, {"pi", 3.14159}}
 type D []E
 
 // Map creates a map from the elements of the D.
@@ -206,12 +206,12 @@ type E struct {
 //
 // Example usage:
 //
-// 		bson.M{"foo": "bar", "hello": "world", "pi": 3.14159}
+//	bson.M{"foo": "bar", "hello": "world", "pi": 3.14159}
 type M map[string]interface{}
 
 // An A is an ordered representation of a BSON array.
 //
 // Example usage:
 //
-// 		bson.A{"bar", "world", 3.14159, bson.D{{"qux", 12345}}}
+//	bson.A{"bar", "world", 3.14159, bson.D{{"qux", 12345}}}
 type A []interface{}

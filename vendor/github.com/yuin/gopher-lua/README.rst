@@ -870,6 +870,7 @@ Libraries for GopherLua
 - `gluaperiphery <https://github.com/BixData/gluaperiphery>`_ : A periphery library for the GopherLua VM (GPIO, SPI, I2C, MMIO, and Serial peripheral I/O for Linux).
 - `glua-async <https://github.com/CuberL/glua-async>`_ : An async/await implement for gopher-lua.
 - `gopherlua-debugger <https://github.com/edolphin-ydf/gopherlua-debugger>`_ : A debugger for gopher-lua
+- `gluamahonia <https://github.com/super1207/gluamahonia>`_ : An encoding converter for gopher-lua
 ----------------------------------------------------------------
 Donation
 ----------------------------------------------------------------

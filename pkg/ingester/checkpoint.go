@@ -3,8 +3,7 @@ package ingester
 import (
 	"bytes"
 	"context"
-	fmt "fmt"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,10 +17,11 @@ import (
 	"github.com/pkg/errors"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/pool"
@@ -125,15 +125,15 @@ func decodeCheckpointRecord(rec []byte, s *Series) error {
 	cpy := make([]byte, len(rec))
 	copy(cpy, rec)
 
-	switch RecordType(cpy[0]) {
-	case CheckpointRecord:
+	switch wal.RecordType(cpy[0]) {
+	case wal.CheckpointRecord:
 		return proto.Unmarshal(cpy[1:], s)
 	default:
 		return errors.Errorf("unexpected record type: %d", rec[0])
 	}
 }
 
-func encodeWithTypeHeader(m *Series, typ RecordType, buf []byte) ([]byte, error) {
+func encodeWithTypeHeader(m *Series, typ wal.RecordType, buf []byte) ([]byte, error) {
 	size := m.Size()
 	if cap(buf) < size+1 {
 		buf = make([]byte, size+1)
@@ -207,7 +207,7 @@ type streamIterator struct {
 func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
-	for i, inst := range ing.getInstances() {
+	for i, inst := range instances {
 		streams := make([]*stream, 0, inst.streams.Len())
 		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
 			streams = append(streams, s)
@@ -308,7 +308,7 @@ type walLogger interface {
 
 type WALCheckpointWriter struct {
 	metrics    *ingesterMetrics
-	segmentWAL *wal.WAL
+	segmentWAL *wlog.WL
 
 	checkpointWAL walLogger
 	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
@@ -318,7 +318,7 @@ type WALCheckpointWriter struct {
 }
 
 func (w *WALCheckpointWriter) Advance() (bool, error) {
-	_, lastSegment, err := wal.Segments(w.segmentWAL.Dir())
+	_, lastSegment, err := wlog.Segments(w.segmentWAL.Dir())
 	if err != nil {
 		return false, err
 	}
@@ -330,7 +330,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 
 	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
 	// low throughput scenarios and to minimize segment replays on top of checkpoints.
-	if err := w.segmentWAL.NextSegment(); err != nil {
+	if _, err := w.segmentWAL.NextSegment(); err != nil {
 		return false, err
 	}
 
@@ -352,7 +352,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 		return false, errors.Wrap(err, "create checkpoint dir")
 	}
 
-	checkpoint, err := wal.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
+	checkpoint, err := wlog.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
 	if err != nil {
 		return false, errors.Wrap(err, "open checkpoint")
 	}
@@ -371,7 +371,7 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 	size := s.Size() + 1 // +1 for header
 	buf := recordBufferPool.Get(size).([]byte)[:size]
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord, buf)
+	b, err := encodeWithTypeHeader(s, wal.CheckpointRecord, buf)
 	if err != nil {
 		return err
 	}
@@ -425,7 +425,7 @@ func checkpointIndex(filename string, includeTmp bool) (int, error) {
 // lastCheckpoint returns the directory name and index of the most recent checkpoint.
 // If dir does not contain any checkpoints, -1 is returned as index.
 func lastCheckpoint(dir string) (string, int, error) {
-	dirs, err := ioutil.ReadDir(dir)
+	dirs, err := os.ReadDir(dir)
 	if err != nil {
 		return "", -1, err
 	}
@@ -466,7 +466,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 
 	errs := tsdb_errors.NewMulti()
 
-	files, err := ioutil.ReadDir(w.segmentWAL.Dir())
+	files, err := os.ReadDir(w.segmentWAL.Dir())
 	if err != nil {
 		return err
 	}

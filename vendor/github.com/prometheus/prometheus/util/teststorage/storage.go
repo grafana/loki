@@ -14,7 +14,6 @@
 package teststorage
 
 import (
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -31,7 +30,7 @@ import (
 // New returns a new TestStorage for testing purposes
 // that removes all associated files on closing.
 func New(t testutil.T) *TestStorage {
-	dir, err := ioutil.TempDir("", "test_storage")
+	dir, err := os.MkdirTemp("", "test_storage")
 	require.NoError(t, err, "unexpected error while opening test directory")
 
 	// Tests just load data for a series sequentially. Thus we
@@ -40,6 +39,7 @@ func New(t testutil.T) *TestStorage {
 	opts.MinBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	opts.MaxBlockDuration = int64(24 * time.Hour / time.Millisecond)
 	opts.RetentionDuration = 0
+	opts.EnableNativeHistograms = true
 	db, err := tsdb.Open(dir, nil, nil, opts, tsdb.NewDBStats())
 	require.NoError(t, err, "unexpected error while opening test storage")
 	reg := prometheus.NewRegistry()

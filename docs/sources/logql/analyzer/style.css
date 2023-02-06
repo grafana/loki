@@ -1,0 +1,222 @@
+.hide {
+    display: none !important;
+}
+
+.logql-analyzer {
+    word-break: break-all;
+    position: relative;
+    display: grid;
+    grid-template-rows: 4fr 1fr auto;
+}
+
+.logs-source {
+    display: grid;
+    grid-template-rows: 1fr 1fr 9fr;
+}
+
+.examples {
+    display: flex;
+    column-gap: 10px;
+    align-items: center;
+    align-content: center;
+}
+
+.example {
+    display: flex;
+    align-items: center;
+    column-gap: 5px;
+}
+
+.query-container {
+    display: grid;
+    grid-template-columns: 11fr 1fr;
+    grid-column-gap: 5px;
+}
+
+.query-error {
+    color: red;
+}
+
+.logs-source__input {
+    border: 1px solid #a0a0a0;
+    height: auto;
+    resize: vertical;
+    min-height: 250px;
+}
+
+.primary-button {
+    position: relative;
+    -webkit-box-align: center;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 2px;
+    line-height: 30px;
+    font-weight: 500;
+    white-space: nowrap;
+    background: #3871dc;
+    color: #fff;
+    border: 1px solid #0000;
+}
+
+.primary-button:hover {
+    background: #2c5ab0;
+    color: #fff;
+    box-shadow: rgb(24 26 27 / 20%) 0 1px 2px;
+}
+
+.panel-container {
+    border: 1px solid #24292e1f;
+    border-radius: 3px;
+    box-shadow: none;
+    margin-bottom: 10px;
+    padding: 10px 15px;
+}
+
+.share-link-copied-notification {
+    color: #1b855e;
+}
+
+.logs-source__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-header {
+    font-weight: 600;
+}
+
+.last-stage-result {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-columns: 1.5fr 11fr;
+}
+
+.last-stage-result:hover {
+    background: #fafafa;
+}
+
+.line-index {
+    display: flex;
+    column-gap: 5px;
+    align-items: flex-start;
+}
+
+.line-index__wrapper{
+    display: flex;
+    align-items: center;
+}
+
+.line-cursor {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+.expand-cursor {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' class='css-eio55b-topVerticalAlign'%3E%3Cpath d='M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+.collapse-cursor {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' class='css-eio55b-topVerticalAlign'%3E%3Cpath d='M17,9.17a1,1,0,0,0-1.41,0L12,12.71,8.46,9.17a1,1,0,0,0-1.41,0,1,1,0,0,0,0,1.42l4.24,4.24a1,1,0,0,0,1.42,0L17,10.59A1,1,0,0,0,17,9.17Z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+.debug-result-row__explain {
+    display: grid;
+    justify-items: center;
+    grid-row-gap: 5px;
+    padding: 10px 5px 10px 25px;
+    border-bottom: 1px solid #24292e1f;
+}
+
+.explain-section {
+    width: 100%;
+    border: 1px solid #24292e1f;
+    background-color: #f4f5f5;
+    border-radius: 2px;
+
+}
+
+.explain-section__header {
+    font-weight: 500;
+    border-bottom: 1px solid #24292e1f;
+    padding: 4px 8px;
+}
+
+.explain-section__body {
+    padding: 8px;
+    display: grid;
+    grid-row-gap: 10px;
+}
+
+
+.input-box {
+    display: flex;
+    align-items: center;
+    border: 1px solid #a0a0a0;
+    padding-left: 0.5rem;
+    overflow: hidden;
+}
+
+.input-box .prefix {
+    font-weight: 300;
+    color: #999;
+}
+
+.input-box input {
+    flex-grow: 1;
+    background: #fff;
+    border: none;
+    outline: none;
+    padding: 0.5rem;
+}
+
+.input-box:focus-within {
+    border-color: #777;
+}
+
+.label-value {
+    border: 1px solid #777;
+    border-radius: 10px;
+    padding: 3px;
+}
+
+.explain-section__row {
+    display: grid;
+    grid-template-columns: 3fr 9fr;
+    grid-column-gap: 10px;
+}
+
+.explain-section__row-title {
+    word-break: break-word;
+    line-height: 2rem;
+}
+
+.explain-section__row-body {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 10px;
+    row-gap: 5px;
+    font-weight: 500;
+    align-content: center;
+}
+
+.filtered-out {
+    text-decoration: line-through;
+    font-weight: 300;
+    color: #999;
+}
+
+.note-text {
+    font-weight: 300;
+    color: #999;
+    font-style: italic;
+}
+
+.stage-expression {
+    color: #1f60c4;
+}
+
+.important-text {
+    color: #ff0000 !important;
+}

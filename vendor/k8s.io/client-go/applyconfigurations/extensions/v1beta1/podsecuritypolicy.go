@@ -48,7 +48,7 @@ func PodSecurityPolicy(name string) *PodSecurityPolicyApplyConfiguration {
 // ExtractPodSecurityPolicy extracts the applied configuration owned by fieldManager from
 // podSecurityPolicy. If no managedFields are found in podSecurityPolicy for fieldManager, a
 // PodSecurityPolicyApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // podSecurityPolicy must be a unmodified PodSecurityPolicy API object that was retrieved from the Kubernetes API.
@@ -57,8 +57,19 @@ func PodSecurityPolicy(name string) *PodSecurityPolicyApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractPodSecurityPolicy(podSecurityPolicy *extensionsv1beta1.PodSecurityPolicy, fieldManager string) (*PodSecurityPolicyApplyConfiguration, error) {
+	return extractPodSecurityPolicy(podSecurityPolicy, fieldManager, "")
+}
+
+// ExtractPodSecurityPolicyStatus is the same as ExtractPodSecurityPolicy except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractPodSecurityPolicyStatus(podSecurityPolicy *extensionsv1beta1.PodSecurityPolicy, fieldManager string) (*PodSecurityPolicyApplyConfiguration, error) {
+	return extractPodSecurityPolicy(podSecurityPolicy, fieldManager, "status")
+}
+
+func extractPodSecurityPolicy(podSecurityPolicy *extensionsv1beta1.PodSecurityPolicy, fieldManager string, subresource string) (*PodSecurityPolicyApplyConfiguration, error) {
 	b := &PodSecurityPolicyApplyConfiguration{}
-	err := managedfields.ExtractInto(podSecurityPolicy, internal.Parser().Type("io.k8s.api.extensions.v1beta1.PodSecurityPolicy"), fieldManager, b)
+	err := managedfields.ExtractInto(podSecurityPolicy, internal.Parser().Type("io.k8s.api.extensions.v1beta1.PodSecurityPolicy"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -109,15 +120,6 @@ func (b *PodSecurityPolicyApplyConfiguration) WithGenerateName(value string) *Po
 func (b *PodSecurityPolicyApplyConfiguration) WithNamespace(value string) *PodSecurityPolicyApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *PodSecurityPolicyApplyConfiguration) WithSelfLink(value string) *PodSecurityPolicyApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -227,15 +229,6 @@ func (b *PodSecurityPolicyApplyConfiguration) WithFinalizers(values ...string) *
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *PodSecurityPolicyApplyConfiguration) WithClusterName(value string) *PodSecurityPolicyApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

@@ -1,15 +1,3 @@
-<!--  Thanks for sending a pull request!  Before submitting:
-
-1. Read our CONTRIBUTING.md guide
-2. Name your PR as `<Feature Area>: Describe your change`.
-  a. Do not end the title with punctuation. It will be added in the changelog.
-  b. Start with an imperative verb. Example: Fix the latency between System A and System B.
-  c. Use sentence case, not title case.
-  d. Use a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
-3. Rebase your PR if it gets out of sync with main
-4. If changing the Helm chart, please ensure the chart version is increased per semantic versioning (https://semver.org)
--->
-
 **What this PR does / why we need it**:
 
 **Which issue(s) this PR fixes**:
@@ -18,6 +6,8 @@ Fixes #<issue number>
 **Special notes for your reviewer**:
 
 **Checklist**
+- [ ] Reviewed the [`CONTRIBUTING.md`](https://github.com/grafana/loki/blob/main/CONTRIBUTING.md) guide (**required**)
 - [ ] Documentation added
 - [ ] Tests updated
-- [ ] Add an entry in the `CHANGELOG.md` about the changes.
+- [ ] `CHANGELOG.md` updated
+- [ ] Changes that require user attention or interaction to upgrade are documented in `docs/sources/upgrading/_index.md`

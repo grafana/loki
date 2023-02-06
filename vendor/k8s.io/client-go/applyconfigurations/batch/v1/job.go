@@ -50,7 +50,7 @@ func Job(name, namespace string) *JobApplyConfiguration {
 // ExtractJob extracts the applied configuration owned by fieldManager from
 // job. If no managedFields are found in job for fieldManager, a
 // JobApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // job must be a unmodified Job API object that was retrieved from the Kubernetes API.
@@ -59,8 +59,19 @@ func Job(name, namespace string) *JobApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractJob(job *apibatchv1.Job, fieldManager string) (*JobApplyConfiguration, error) {
+	return extractJob(job, fieldManager, "")
+}
+
+// ExtractJobStatus is the same as ExtractJob except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractJobStatus(job *apibatchv1.Job, fieldManager string) (*JobApplyConfiguration, error) {
+	return extractJob(job, fieldManager, "status")
+}
+
+func extractJob(job *apibatchv1.Job, fieldManager string, subresource string) (*JobApplyConfiguration, error) {
 	b := &JobApplyConfiguration{}
-	err := managedfields.ExtractInto(job, internal.Parser().Type("io.k8s.api.batch.v1.Job"), fieldManager, b)
+	err := managedfields.ExtractInto(job, internal.Parser().Type("io.k8s.api.batch.v1.Job"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +123,6 @@ func (b *JobApplyConfiguration) WithGenerateName(value string) *JobApplyConfigur
 func (b *JobApplyConfiguration) WithNamespace(value string) *JobApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *JobApplyConfiguration) WithSelfLink(value string) *JobApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -230,15 +232,6 @@ func (b *JobApplyConfiguration) WithFinalizers(values ...string) *JobApplyConfig
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *JobApplyConfiguration) WithClusterName(value string) *JobApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

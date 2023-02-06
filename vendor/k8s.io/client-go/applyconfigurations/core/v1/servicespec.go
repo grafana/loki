@@ -39,9 +39,8 @@ type ServiceSpecApplyConfiguration struct {
 	HealthCheckNodePort           *int32                                   `json:"healthCheckNodePort,omitempty"`
 	PublishNotReadyAddresses      *bool                                    `json:"publishNotReadyAddresses,omitempty"`
 	SessionAffinityConfig         *SessionAffinityConfigApplyConfiguration `json:"sessionAffinityConfig,omitempty"`
-	TopologyKeys                  []string                                 `json:"topologyKeys,omitempty"`
 	IPFamilies                    []corev1.IPFamily                        `json:"ipFamilies,omitempty"`
-	IPFamilyPolicy                *corev1.IPFamilyPolicyType               `json:"ipFamilyPolicy,omitempty"`
+	IPFamilyPolicy                *corev1.IPFamilyPolicy                   `json:"ipFamilyPolicy,omitempty"`
 	AllocateLoadBalancerNodePorts *bool                                    `json:"allocateLoadBalancerNodePorts,omitempty"`
 	LoadBalancerClass             *string                                  `json:"loadBalancerClass,omitempty"`
 	InternalTrafficPolicy         *corev1.ServiceInternalTrafficPolicyType `json:"internalTrafficPolicy,omitempty"`
@@ -182,16 +181,6 @@ func (b *ServiceSpecApplyConfiguration) WithSessionAffinityConfig(value *Session
 	return b
 }
 
-// WithTopologyKeys adds the given value to the TopologyKeys field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the TopologyKeys field.
-func (b *ServiceSpecApplyConfiguration) WithTopologyKeys(values ...string) *ServiceSpecApplyConfiguration {
-	for i := range values {
-		b.TopologyKeys = append(b.TopologyKeys, values[i])
-	}
-	return b
-}
-
 // WithIPFamilies adds the given value to the IPFamilies field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the IPFamilies field.
@@ -205,7 +194,7 @@ func (b *ServiceSpecApplyConfiguration) WithIPFamilies(values ...corev1.IPFamily
 // WithIPFamilyPolicy sets the IPFamilyPolicy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the IPFamilyPolicy field is set to the value of the last call.
-func (b *ServiceSpecApplyConfiguration) WithIPFamilyPolicy(value corev1.IPFamilyPolicyType) *ServiceSpecApplyConfiguration {
+func (b *ServiceSpecApplyConfiguration) WithIPFamilyPolicy(value corev1.IPFamilyPolicy) *ServiceSpecApplyConfiguration {
 	b.IPFamilyPolicy = &value
 	return b
 }

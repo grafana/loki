@@ -15,6 +15,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -28,7 +29,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/go-kit/log"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
@@ -49,14 +49,16 @@ const (
 	lightsailLabelIPv6Addresses       = lightsailLabel + "ipv6_addresses"
 	lightsailLabelPrivateIP           = lightsailLabel + "private_ip"
 	lightsailLabelPublicIP            = lightsailLabel + "public_ip"
+	lightsailLabelRegion              = lightsailLabel + "region"
 	lightsailLabelTag                 = lightsailLabel + "tag_"
 	lightsailLabelSeparator           = ","
 )
 
 // DefaultLightsailSDConfig is the default Lightsail SD configuration.
 var DefaultLightsailSDConfig = LightsailSDConfig{
-	Port:            80,
-	RefreshInterval: model.Duration(60 * time.Second),
+	Port:             80,
+	RefreshInterval:  model.Duration(60 * time.Second),
+	HTTPClientConfig: config.DefaultHTTPClientConfig,
 }
 
 func init() {
@@ -73,6 +75,8 @@ type LightsailSDConfig struct {
 	RoleARN         string         `yaml:"role_arn,omitempty"`
 	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
 	Port            int            `yaml:"port"`
+
+	HTTPClientConfig config.HTTPClientConfig `yaml:",inline"`
 }
 
 // Name returns the name of the Lightsail Config.
@@ -143,16 +147,22 @@ func (d *LightsailDiscovery) lightsailClient() (*lightsail.Lightsail, error) {
 		creds = nil
 	}
 
+	client, err := config.NewClientFromConfig(d.cfg.HTTPClientConfig, "lightsail_sd")
+	if err != nil {
+		return nil, err
+	}
+
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
 			Endpoint:    &d.cfg.Endpoint,
 			Region:      &d.cfg.Region,
 			Credentials: creds,
+			HTTPClient:  client,
 		},
 		Profile: d.cfg.Profile,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "could not create aws session")
+		return nil, fmt.Errorf("could not create aws session: %w", err)
 	}
 
 	if d.cfg.RoleARN != "" {
@@ -179,10 +189,11 @@ func (d *LightsailDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group,
 
 	output, err := lightsailClient.GetInstancesWithContext(ctx, input)
 	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok && (awsErr.Code() == "AuthFailure" || awsErr.Code() == "UnauthorizedOperation") {
+		var awsErr awserr.Error
+		if errors.As(err, &awsErr) && (awsErr.Code() == "AuthFailure" || awsErr.Code() == "UnauthorizedOperation") {
 			d.lightsail = nil
 		}
-		return nil, errors.Wrap(err, "could not get instances")
+		return nil, fmt.Errorf("could not get instances: %w", err)
 	}
 
 	for _, inst := range output.Instances {
@@ -198,6 +209,7 @@ func (d *LightsailDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group,
 			lightsailLabelInstanceState:       model.LabelValue(*inst.State.Name),
 			lightsailLabelInstanceSupportCode: model.LabelValue(*inst.SupportCode),
 			lightsailLabelPrivateIP:           model.LabelValue(*inst.PrivateIpAddress),
+			lightsailLabelRegion:              model.LabelValue(d.cfg.Region),
 		}
 
 		addr := net.JoinHostPort(*inst.PrivateIpAddress, fmt.Sprintf("%d", d.cfg.Port))

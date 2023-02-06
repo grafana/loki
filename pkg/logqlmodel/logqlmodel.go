@@ -3,6 +3,8 @@ package logqlmodel
 import (
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
@@ -17,6 +19,7 @@ const PackedEntryKey = "_entry"
 type Result struct {
 	Data       parser.Value
 	Statistics stats.Result
+	Headers    []*definitions.PrometheusResponseHeader
 }
 
 // Streams is promql.Value

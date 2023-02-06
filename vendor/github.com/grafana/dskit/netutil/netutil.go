@@ -52,6 +52,5 @@ func privateNetworkInterfaces(all []net.Interface, fallback []string, logger log
 	if len(privInts) == 0 {
 		return fallback
 	}
-	level.Debug(logger).Log("msg", "found network interfaces with private IP addresses assigned", "interfaces", privInts)
 	return privInts
 }

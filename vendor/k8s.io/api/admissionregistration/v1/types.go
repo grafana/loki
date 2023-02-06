@@ -26,11 +26,13 @@ type Rule struct {
 	// APIGroups is the API groups the resources belong to. '*' is all groups.
 	// If '*' is present, the length of the slice must be one.
 	// Required.
+	// +listType=atomic
 	APIGroups []string `json:"apiGroups,omitempty" protobuf:"bytes,1,rep,name=apiGroups"`
 
 	// APIVersions is the API versions the resources belong to. '*' is all versions.
 	// If '*' is present, the length of the slice must be one.
 	// Required.
+	// +listType=atomic
 	APIVersions []string `json:"apiVersions,omitempty" protobuf:"bytes,2,rep,name=apiVersions"`
 
 	// Resources is a list of resources this rule applies to.
@@ -48,6 +50,7 @@ type Rule struct {
 	//
 	// Depending on the enclosing object, subresources might not be allowed.
 	// Required.
+	// +listType=atomic
 	Resources []string `json:"resources,omitempty" protobuf:"bytes,3,rep,name=resources"`
 
 	// scope specifies the scope of this rule.
@@ -64,6 +67,7 @@ type Rule struct {
 }
 
 // ScopeType specifies a scope for a Rule.
+// +enum
 type ScopeType string
 
 const (
@@ -77,6 +81,7 @@ const (
 )
 
 // FailurePolicyType specifies a failure policy that defines how unrecognized errors from the admission endpoint are handled.
+// +enum
 type FailurePolicyType string
 
 const (
@@ -87,6 +92,7 @@ const (
 )
 
 // MatchPolicyType specifies the type of match policy.
+// +enum
 type MatchPolicyType string
 
 const (
@@ -97,6 +103,7 @@ const (
 )
 
 // SideEffectClass specifies the types of side effects a webhook may have.
+// +enum
 type SideEffectClass string
 
 const (
@@ -450,6 +457,7 @@ type MutatingWebhook struct {
 }
 
 // ReinvocationPolicyType specifies what type of policy the admission hook uses.
+// +enum
 type ReinvocationPolicyType string
 
 const (
@@ -469,6 +477,7 @@ type RuleWithOperations struct {
 	// for all of those operations and any future admission operations that are added.
 	// If '*' is present, the length of the slice must be one.
 	// Required.
+	// +listType=atomic
 	Operations []OperationType `json:"operations,omitempty" protobuf:"bytes,1,rep,name=operations,casttype=OperationType"`
 	// Rule is embedded, it describes other criteria of the rule, like
 	// APIGroups, APIVersions, Resources, etc.
@@ -476,6 +485,7 @@ type RuleWithOperations struct {
 }
 
 // OperationType specifies an operation for a request.
+// +enum
 type OperationType string
 
 // The constants should be kept in sync with those defined in k8s.io/kubernetes/pkg/admission/interface.go.

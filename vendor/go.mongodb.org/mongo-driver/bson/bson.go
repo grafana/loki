@@ -7,8 +7,6 @@
 // Based on gopkg.in/mgo.v2/bson by Gustavo Niemeyer
 // See THIRD-PARTY-NOTICES for original license terms.
 
-// +build go1.9
-
 package bson // import "go.mongodb.org/mongo-driver/bson"
 
 import (
@@ -29,7 +27,7 @@ type Zeroer interface {
 //
 // Example usage:
 //
-// 		bson.D{{"foo", "bar"}, {"hello", "world"}, {"pi", 3.14159}}
+//	bson.D{{"foo", "bar"}, {"hello", "world"}, {"pi", 3.14159}}
 type D = primitive.D
 
 // E represents a BSON element for a D. It is usually used inside a D.
@@ -41,12 +39,12 @@ type E = primitive.E
 //
 // Example usage:
 //
-// 		bson.M{"foo": "bar", "hello": "world", "pi": 3.14159}
+//	bson.M{"foo": "bar", "hello": "world", "pi": 3.14159}
 type M = primitive.M
 
 // An A is an ordered representation of a BSON array.
 //
 // Example usage:
 //
-// 		bson.A{"bar", "world", 3.14159, bson.D{{"qux", 12345}}}
+//	bson.A{"bar", "world", 3.14159, bson.D{{"qux", 12345}}}
 type A = primitive.A

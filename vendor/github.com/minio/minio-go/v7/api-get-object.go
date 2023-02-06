@@ -24,13 +24,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
 // GetObject wrapper function that accepts a request context
-func (c Client) GetObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
+func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, err
@@ -38,6 +39,8 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
 		return nil, err
 	}
+
+	gctx, cancel := context.WithCancel(ctx)
 
 	// Detect if snowball is server location we are talking to.
 	var snowball bool
@@ -58,13 +61,12 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 	reqCh := make(chan getRequest)
 	// Create response channel.
 	resCh := make(chan getResponse)
-	// Create done channel.
-	doneCh := make(chan struct{})
 
 	// This routine feeds partial object data as and when the caller reads.
 	go func() {
 		defer close(reqCh)
 		defer close(resCh)
+		defer cancel()
 
 		// Used to verify if etag of object has changed since last read.
 		var etag string
@@ -72,8 +74,8 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 		// Loop through the incoming control messages and read data.
 		for {
 			select {
-			// When the done channel is closed exit our routine.
-			case <-doneCh:
+			// When context is closed exit our routine.
+			case <-gctx.Done():
 				// Close the http response body before returning.
 				// This ends the connection with the server.
 				if httpReader != nil {
@@ -82,7 +84,10 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 				return
 
 			// Gather incoming request.
-			case req := <-reqCh:
+			case req, ok := <-reqCh:
+				if !ok {
+					return
+				}
 				// If this is the first request we may not need to do a getObject request yet.
 				if req.isFirstReq {
 					// First request is a Read/ReadAt.
@@ -97,7 +102,7 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 						} else if req.Offset > 0 {
 							opts.SetRange(req.Offset, 0)
 						}
-						httpReader, objectInfo, _, err = c.getObject(ctx, bucketName, objectName, opts)
+						httpReader, objectInfo, _, err = c.getObject(gctx, bucketName, objectName, opts)
 						if err != nil {
 							resCh <- getResponse{Error: err}
 							return
@@ -139,7 +144,7 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 
 						// Remove range header if already set, for stat Operations to get original file size.
 						delete(opts.headers, "Range")
-						objectInfo, err = c.statObject(ctx, bucketName, objectName, StatObjectOptions(opts))
+						objectInfo, err = c.StatObject(gctx, bucketName, objectName, StatObjectOptions(opts))
 						if err != nil {
 							resCh <- getResponse{
 								Error: err,
@@ -162,7 +167,7 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 					if etag != "" && !snowball {
 						opts.SetMatchETag(etag)
 					}
-					objectInfo, err := c.statObject(ctx, bucketName, objectName, StatObjectOptions(opts))
+					objectInfo, err := c.StatObject(gctx, bucketName, objectName, StatObjectOptions(opts))
 					if err != nil {
 						resCh <- getResponse{
 							Error: err,
@@ -198,8 +203,11 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 							opts.SetRange(req.Offset, req.Offset+int64(len(req.Buffer))-1)
 						} else if req.Offset > 0 { // Range is set with respect to the offset.
 							opts.SetRange(req.Offset, 0)
+						} else {
+							// Remove range header if already set
+							delete(opts.headers, "Range")
 						}
-						httpReader, objectInfo, _, err = c.getObject(ctx, bucketName, objectName, opts)
+						httpReader, objectInfo, _, err = c.getObject(gctx, bucketName, objectName, opts)
 						if err != nil {
 							resCh <- getResponse{
 								Error: err,
@@ -246,7 +254,7 @@ func (c Client) GetObject(ctx context.Context, bucketName, objectName string, op
 	}()
 
 	// Create a newObject through the information sent back by reqCh.
-	return newObject(reqCh, resCh, doneCh), nil
+	return newObject(gctx, cancel, reqCh, resCh), nil
 }
 
 // get request message container to communicate with internal
@@ -279,7 +287,8 @@ type Object struct {
 	// User allocated and defined.
 	reqCh      chan<- getRequest
 	resCh      <-chan getResponse
-	doneCh     chan<- struct{}
+	ctx        context.Context
+	cancel     context.CancelFunc
 	currOffset int64
 	objectInfo ObjectInfo
 
@@ -307,7 +316,12 @@ type Object struct {
 // as any error encountered. For all first requests sent on the object
 // it is also responsible for sending back the objectInfo.
 func (o *Object) doGetRequest(request getRequest) (getResponse, error) {
-	o.reqCh <- request
+	select {
+	case <-o.ctx.Done():
+		return getResponse{}, o.ctx.Err()
+	case o.reqCh <- request:
+	}
+
 	response := <-o.resCh
 
 	// Return any error to the top level.
@@ -611,7 +625,7 @@ func (o *Object) Close() (err error) {
 	}
 
 	// Close successfully.
-	close(o.doneCh)
+	o.cancel()
 
 	// Save for future operations.
 	errMsg := "Object is already closed. Bad file descriptor."
@@ -623,12 +637,13 @@ func (o *Object) Close() (err error) {
 
 // newObject instantiates a new *minio.Object*
 // ObjectInfo will be set by setObjectInfo
-func newObject(reqCh chan<- getRequest, resCh <-chan getResponse, doneCh chan<- struct{}) *Object {
+func newObject(ctx context.Context, cancel context.CancelFunc, reqCh chan<- getRequest, resCh <-chan getResponse) *Object {
 	return &Object{
+		ctx:    ctx,
+		cancel: cancel,
 		mutex:  &sync.Mutex{},
 		reqCh:  reqCh,
 		resCh:  resCh,
-		doneCh: doneCh,
 	}
 }
 
@@ -639,7 +654,7 @@ func newObject(reqCh chan<- getRequest, resCh <-chan getResponse, doneCh chan<- 
 //
 // For more information about the HTTP Range header.
 // go to http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35.
-func (c Client) getObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (io.ReadCloser, ObjectInfo, http.Header, error) {
+func (c *Client) getObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (io.ReadCloser, ObjectInfo, http.Header, error) {
 	// Validate input arguments.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, ObjectInfo{}, nil, err
@@ -651,6 +666,9 @@ func (c Client) getObject(ctx context.Context, bucketName, objectName string, op
 	urlValues := make(url.Values)
 	if opts.VersionID != "" {
 		urlValues.Set("versionId", opts.VersionID)
+	}
+	if opts.PartNumber > 0 {
+		urlValues.Set("partNumber", strconv.Itoa(opts.PartNumber))
 	}
 
 	// Execute GET on objectName.

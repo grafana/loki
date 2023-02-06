@@ -134,17 +134,17 @@ func (bucket Bucket) DoPostSelectObject(key string, params map[string]interface{
 	}
 	result.Headers = resp.Headers
 	// result.Frame = SelectObjectResult{}
-	result.ReadTimeOut = bucket.getConfig().Timeout
+	result.ReadTimeOut = bucket.GetConfig().Timeout
 
 	// Progress
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	// CRC32
 	crcCalc := crc32.NewIEEE()
 	result.WriterForCheckCrc32 = crcCalc
 	result.Body = TeeReader(resp.Body, nil, 0, listener, nil)
 
-	err = checkRespCode(resp.StatusCode, []int{http.StatusPartialContent, http.StatusOK})
+	err = CheckRespCode(resp.StatusCode, []int{http.StatusPartialContent, http.StatusOK})
 
 	return result, err
 }

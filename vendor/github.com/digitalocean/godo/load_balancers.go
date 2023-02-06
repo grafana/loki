@@ -50,6 +50,9 @@ type LoadBalancer struct {
 	EnableBackendKeepalive       bool             `json:"enable_backend_keepalive,omitempty"`
 	VPCUUID                      string           `json:"vpc_uuid,omitempty"`
 	DisableLetsEncryptDNSRecords *bool            `json:"disable_lets_encrypt_dns_records,omitempty"`
+	ValidateOnly                 bool             `json:"validate_only,omitempty"`
+	ProjectID                    string           `json:"project_id,omitempty"`
+	HTTPIdleTimeoutSeconds       *uint64          `json:"http_idle_timeout_seconds,omitempty"`
 }
 
 // String creates a human-readable description of a LoadBalancer.
@@ -79,6 +82,9 @@ func (l LoadBalancer) AsRequest() *LoadBalancerRequest {
 		HealthCheck:                  l.HealthCheck,
 		VPCUUID:                      l.VPCUUID,
 		DisableLetsEncryptDNSRecords: l.DisableLetsEncryptDNSRecords,
+		ValidateOnly:                 l.ValidateOnly,
+		ProjectID:                    l.ProjectID,
+		HTTPIdleTimeoutSeconds:       l.HTTPIdleTimeoutSeconds,
 	}
 
 	if l.DisableLetsEncryptDNSRecords != nil {
@@ -96,6 +102,7 @@ func (l LoadBalancer) AsRequest() *LoadBalancerRequest {
 	if l.Region != nil {
 		r.Region = l.Region.Slug
 	}
+
 	return &r
 }
 
@@ -162,6 +169,9 @@ type LoadBalancerRequest struct {
 	EnableBackendKeepalive       bool             `json:"enable_backend_keepalive,omitempty"`
 	VPCUUID                      string           `json:"vpc_uuid,omitempty"`
 	DisableLetsEncryptDNSRecords *bool            `json:"disable_lets_encrypt_dns_records,omitempty"`
+	ValidateOnly                 bool             `json:"validate_only,omitempty"`
+	ProjectID                    string           `json:"project_id,omitempty"`
+	HTTPIdleTimeoutSeconds       *uint64          `json:"http_idle_timeout_seconds,omitempty"`
 }
 
 // String creates a human-readable description of a LoadBalancerRequest.

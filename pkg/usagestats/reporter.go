@@ -3,6 +3,7 @@ package usagestats
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"math"
@@ -254,7 +255,10 @@ func (rep *Reporter) running(ctx context.Context) error {
 
 	if rep.cluster == nil {
 		<-ctx.Done()
-		return ctx.Err()
+		if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+			return err
+		}
+		return nil
 	}
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
@@ -281,7 +285,10 @@ func (rep *Reporter) running(ctx context.Context) error {
 			rep.lastReport = next
 			next = next.Add(reportInterval)
 		case <-ctx.Done():
-			return ctx.Err()
+			if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+				return err
+			}
+			return nil
 		}
 	}
 }

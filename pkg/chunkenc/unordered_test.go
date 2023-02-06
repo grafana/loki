@@ -141,6 +141,26 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			},
 			dir: logproto.BACKWARD,
 		},
+		{
+			desc: "ts remove exact dupe forward",
+			input: []entry{
+				{0, "a"}, {0, "b"}, {1, "c"}, {0, "b"},
+			},
+			exp: []entry{
+				{0, "a"}, {0, "b"}, {1, "c"},
+			},
+			dir: logproto.FORWARD,
+		},
+		{
+			desc: "ts remove exact dupe backward",
+			input: []entry{
+				{0, "a"}, {0, "b"}, {1, "c"}, {0, "b"},
+			},
+			exp: []entry{
+				{1, "c"}, {0, "b"}, {0, "a"},
+			},
+			dir: logproto.BACKWARD,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock()

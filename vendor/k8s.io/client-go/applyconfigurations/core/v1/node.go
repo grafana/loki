@@ -49,7 +49,7 @@ func Node(name string) *NodeApplyConfiguration {
 // ExtractNode extracts the applied configuration owned by fieldManager from
 // node. If no managedFields are found in node for fieldManager, a
 // NodeApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // node must be a unmodified Node API object that was retrieved from the Kubernetes API.
@@ -58,8 +58,19 @@ func Node(name string) *NodeApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractNode(node *apicorev1.Node, fieldManager string) (*NodeApplyConfiguration, error) {
+	return extractNode(node, fieldManager, "")
+}
+
+// ExtractNodeStatus is the same as ExtractNode except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractNodeStatus(node *apicorev1.Node, fieldManager string) (*NodeApplyConfiguration, error) {
+	return extractNode(node, fieldManager, "status")
+}
+
+func extractNode(node *apicorev1.Node, fieldManager string, subresource string) (*NodeApplyConfiguration, error) {
 	b := &NodeApplyConfiguration{}
-	err := managedfields.ExtractInto(node, internal.Parser().Type("io.k8s.api.core.v1.Node"), fieldManager, b)
+	err := managedfields.ExtractInto(node, internal.Parser().Type("io.k8s.api.core.v1.Node"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -110,15 +121,6 @@ func (b *NodeApplyConfiguration) WithGenerateName(value string) *NodeApplyConfig
 func (b *NodeApplyConfiguration) WithNamespace(value string) *NodeApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *NodeApplyConfiguration) WithSelfLink(value string) *NodeApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -228,15 +230,6 @@ func (b *NodeApplyConfiguration) WithFinalizers(values ...string) *NodeApplyConf
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *NodeApplyConfiguration) WithClusterName(value string) *NodeApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

@@ -58,18 +58,28 @@ type BalanceStrategy interface {
 // --------------------------------------------------------------------
 
 // BalanceStrategyRange is the default and assigns partitions as ranges to consumer group members.
-// Example with one topic T with six partitions (0..5) and two members (M1, M2):
-//   M1: {T: [0, 1, 2]}
-//   M2: {T: [3, 4, 5]}
+// This follows the same logic as
+// https://kafka.apache.org/31/javadoc/org/apache/kafka/clients/consumer/RangeAssignor.html
+//
+// Example with two topics T1 and T2 with six partitions each (0..5) and two members (M1, M2):
+//
+//	M1: {T1: [0, 1, 2], T2: [0, 1, 2]}
+//	M2: {T2: [3, 4, 5], T2: [3, 4, 5]}
 var BalanceStrategyRange = &balanceStrategy{
 	name: RangeBalanceStrategyName,
 	coreFn: func(plan BalanceStrategyPlan, memberIDs []string, topic string, partitions []int32) {
-		step := float64(len(partitions)) / float64(len(memberIDs))
+		partitionsPerConsumer := len(partitions) / len(memberIDs)
+		consumersWithExtraPartition := len(partitions) % len(memberIDs)
+
+		sort.Strings(memberIDs)
 
 		for i, memberID := range memberIDs {
-			pos := float64(i)
-			min := int(math.Floor(pos*step + 0.5))
-			max := int(math.Floor((pos+1)*step + 0.5))
+			min := i*partitionsPerConsumer + int(math.Min(float64(consumersWithExtraPartition), float64(i)))
+			extra := 0
+			if i < consumersWithExtraPartition {
+				extra = 1
+			}
+			max := min + partitionsPerConsumer + extra
 			plan.Add(memberID, topic, partitions[min:max]...)
 		}
 	},
@@ -78,14 +88,15 @@ var BalanceStrategyRange = &balanceStrategy{
 // BalanceStrategySticky assigns partitions to members with an attempt to preserve earlier assignments
 // while maintain a balanced partition distribution.
 // Example with topic T with six partitions (0..5) and two members (M1, M2):
-//   M1: {T: [0, 2, 4]}
-//   M2: {T: [1, 3, 5]}
+//
+//	M1: {T: [0, 2, 4]}
+//	M2: {T: [1, 3, 5]}
 //
 // On reassignment with an additional consumer, you might get an assignment plan like:
-//   M1: {T: [0, 2]}
-//   M2: {T: [1, 3]}
-//   M3: {T: [4, 5]}
 //
+//	M1: {T: [0, 2]}
+//	M2: {T: [1, 3]}
+//	M3: {T: [4, 5]}
 var BalanceStrategySticky = &stickyBalanceStrategy{}
 
 // --------------------------------------------------------------------
@@ -108,18 +119,27 @@ func (s *balanceStrategy) Plan(members map[string]ConsumerGroupMemberMetadata, t
 		}
 	}
 
-	// Sort members for each topic
-	for topic, memberIDs := range mbt {
-		sort.Sort(&balanceStrategySortable{
-			topic:     topic,
-			memberIDs: memberIDs,
-		})
+	// func to sort and de-duplicate a StringSlice
+	uniq := func(ss sort.StringSlice) []string {
+		if ss.Len() < 2 {
+			return ss
+		}
+		sort.Sort(ss)
+		var i, j int
+		for i = 1; i < ss.Len(); i++ {
+			if ss[i] == ss[j] {
+				continue
+			}
+			j++
+			ss.Swap(i, j)
+		}
+		return ss[:j+1]
 	}
 
 	// Assemble plan
 	plan := make(BalanceStrategyPlan, len(members))
 	for topic, memberIDs := range mbt {
-		s.coreFn(plan, memberIDs, topic, topics[topic])
+		s.coreFn(plan, uniq(memberIDs), topic, topics[topic])
 	}
 	return plan, nil
 }
@@ -127,31 +147,6 @@ func (s *balanceStrategy) Plan(members map[string]ConsumerGroupMemberMetadata, t
 // AssignmentData simple strategies do not require any shared assignment data
 func (s *balanceStrategy) AssignmentData(memberID string, topics map[string][]int32, generationID int32) ([]byte, error) {
 	return nil, nil
-}
-
-type balanceStrategySortable struct {
-	topic     string
-	memberIDs []string
-}
-
-func (p balanceStrategySortable) Len() int { return len(p.memberIDs) }
-func (p balanceStrategySortable) Swap(i, j int) {
-	p.memberIDs[i], p.memberIDs[j] = p.memberIDs[j], p.memberIDs[i]
-}
-
-func (p balanceStrategySortable) Less(i, j int) bool {
-	return balanceStrategyHashValue(p.topic, p.memberIDs[i]) < balanceStrategyHashValue(p.topic, p.memberIDs[j])
-}
-
-func balanceStrategyHashValue(vv ...string) uint32 {
-	h := uint32(2166136261)
-	for _, s := range vv {
-		for _, c := range s {
-			h ^= uint32(c)
-			h *= 16777619
-		}
-	}
-	return h
 }
 
 type stickyBalanceStrategy struct {
@@ -614,9 +609,9 @@ func assignPartition(partition topicPartitionAssignment, sortedCurrentSubscripti
 // Deserialize topic partition assignment data to aid with creation of a sticky assignment.
 func deserializeTopicPartitionAssignment(userDataBytes []byte) (StickyAssignorUserData, error) {
 	userDataV1 := &StickyAssignorUserDataV1{}
-	if err := decode(userDataBytes, userDataV1); err != nil {
+	if err := decode(userDataBytes, userDataV1, nil); err != nil {
 		userDataV0 := &StickyAssignorUserDataV0{}
-		if err := decode(userDataBytes, userDataV0); err != nil {
+		if err := decode(userDataBytes, userDataV0, nil); err != nil {
 			return nil, err
 		}
 		return userDataV0, nil

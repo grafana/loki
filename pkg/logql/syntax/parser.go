@@ -15,7 +15,11 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-const errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+const (
+	EmptyMatchers = "{}"
+
+	errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
+)
 
 var parserPool = sync.Pool{
 	New: func() interface{} {
@@ -61,7 +65,7 @@ func (p *parser) Parse() (Expr, error) {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +75,7 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
@@ -116,14 +120,10 @@ func validateExpr(expr Expr) error {
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func validateMatchers(matchers []*labels.Matcher) error {
-	if len(matchers) == 0 {
-		return nil
-	}
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
 		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
-
 	return nil
 }
 
@@ -139,6 +139,10 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 		return nil, errors.New("only label matchers is supported")
 	}
 	return matcherExpr.Mts, nil
+}
+
+func MatchersString(xs []*labels.Matcher) string {
+	return newMatcherExpr(xs).String()
 }
 
 // ParseSampleExpr parses a string and returns the sampleExpr
@@ -163,16 +167,32 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 
 		return validateSampleExpr(e.RHS)
-	case *LiteralExpr:
+	case *LiteralExpr, *VectorExpr:
 		return nil
+	case *VectorAggregationExpr:
+		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
+			if err := validateSortGrouping(e.Grouping); err != nil {
+				return err
+			}
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		return validateMatchers(expr.Selector().Matchers())
 	}
 }
 
+// validateSortGrouping prevent by|without groupings on sort operations.
+// This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
+func validateSortGrouping(grouping *Grouping) error {
+	if grouping != nil && len(grouping.Groups) > 0 {
+		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+	}
+	return nil
+}
+
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +214,18 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Sort labels to ensure functionally equivalent
+	// inputs map to the same output
 	sort.Sort(ls)
-	return ls, nil
+
+	// Use the label builder to trim empty label values.
+	// Empty label values are equivalent to absent labels
+	// in Prometheus, but they unfortunately alter the
+	// Hash values created. This can cause problems in Loki
+	// if we can't rely on a set of labels to have a deterministic
+	// hash value.
+	// Therefore we must normalize early in the write path.
+	// See https://github.com/grafana/loki/pull/7355
+	// for more information
+	return labels.NewBuilder(ls).Labels(nil), nil
 }

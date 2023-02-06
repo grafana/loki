@@ -24,8 +24,9 @@ import (
 
 type DefaultMultiTenantManager struct {
 	cfg            Config
-	notifierCfg    *config.Config
+	notifiersCfg   map[string]*config.Config
 	managerFactory ManagerFactory
+	limits         RulesLimits
 
 	mapper *mapper
 
@@ -47,21 +48,27 @@ type DefaultMultiTenantManager struct {
 	logger                        log.Logger
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
-	ncfg, err := buildNotifierConfig(&cfg)
-	if err != nil {
-		return nil, err
-	}
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits) (*DefaultMultiTenantManager, error) {
+	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel, func(k, v string) string {
+		// When "by-rule" sharding is enabled, each rule group is assigned a unique name to work around some of Prometheus'
+		// assumptions, and metrics are exported based on these rule group names. If we kept these unique rule group names
+		// in place, this would explode cardinality.
+		if k == RuleGroupLabel {
+			return RemoveRuleTokenFromGroupName(v)
+		}
 
-	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel)
+		return v
+
+	})
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}
 
 	return &DefaultMultiTenantManager{
 		cfg:                cfg,
-		notifierCfg:        ncfg,
+		notifiersCfg:       map[string]*config.Config{},
 		managerFactory:     managerFactory,
+		limits:             limits,
 		notifiers:          map[string]*rulerNotifier{},
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]RulesManager{},
@@ -148,7 +155,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String())
+		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
@@ -185,6 +192,26 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		return n.notifier, nil
 	}
 
+	nCfg, ok := r.notifiersCfg[userID]
+	if !ok {
+		amCfg := r.cfg.AlertManagerConfig
+
+		// Apply the tenant specific alertmanager config when defined
+		if amOverrides := r.limits.RulerAlertManagerConfig(userID); amOverrides != nil {
+			amCfg = applyAlertmanagerDefaults(*amOverrides)
+		}
+
+		var err error
+		nCfg, err = buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build notifier config for tenant %s: %w", userID, err)
+		}
+
+		if nCfg != nil {
+			r.notifiersCfg[userID] = nCfg
+		}
+	}
+
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
@@ -210,7 +237,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	n.run()
 
 	// This should never fail, unless there's a programming mistake.
-	if err := n.applyConfig(r.notifierCfg); err != nil {
+	if err := n.applyConfig(nCfg); err != nil {
 		return nil, err
 	}
 

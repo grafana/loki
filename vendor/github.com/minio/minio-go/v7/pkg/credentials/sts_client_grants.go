@@ -18,9 +18,11 @@
 package credentials
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -103,8 +105,8 @@ func NewSTSClientGrants(stsEndpoint string, getClientGrantsTokenExpiry func() (*
 }
 
 func getClientGrantsCredentials(clnt *http.Client, endpoint string,
-	getClientGrantsTokenExpiry func() (*ClientGrantsToken, error)) (AssumeRoleWithClientGrantsResponse, error) {
-
+	getClientGrantsTokenExpiry func() (*ClientGrantsToken, error),
+) (AssumeRoleWithClientGrantsResponse, error) {
 	accessToken, err := getClientGrantsTokenExpiry()
 	if err != nil {
 		return AssumeRoleWithClientGrantsResponse{}, err
@@ -132,7 +134,22 @@ func getClientGrantsCredentials(clnt *http.Client, endpoint string,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return AssumeRoleWithClientGrantsResponse{}, errors.New(resp.Status)
+		var errResp ErrorResponse
+		buf, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return AssumeRoleWithClientGrantsResponse{}, err
+		}
+		_, err = xmlDecodeAndBody(bytes.NewReader(buf), &errResp)
+		if err != nil {
+			var s3Err Error
+			if _, err = xmlDecodeAndBody(bytes.NewReader(buf), &s3Err); err != nil {
+				return AssumeRoleWithClientGrantsResponse{}, err
+			}
+			errResp.RequestID = s3Err.RequestID
+			errResp.STSError.Code = s3Err.Code
+			errResp.STSError.Message = s3Err.Message
+		}
+		return AssumeRoleWithClientGrantsResponse{}, errResp
 	}
 
 	a := AssumeRoleWithClientGrantsResponse{}

@@ -3,7 +3,6 @@ package local
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -41,12 +40,12 @@ func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	// Verify whether all files are created
-	files, _ := ioutil.ReadDir(".")
+	files, _ := os.ReadDir(".")
 	require.Equal(t, 2, len(files), "Number of files should be 2")
 
 	// No files should be deleted, since all of them are not much older
 	require.NoError(t, bucketClient.DeleteChunksBefore(context.Background(), time.Now().Add(-deleteFilesOlderThan)))
-	files, _ = ioutil.ReadDir(".")
+	files, _ = os.ReadDir(".")
 	require.Equal(t, 2, len(files), "Number of files should be 2")
 
 	// Changing mtime of file1 to make it look older
@@ -54,7 +53,7 @@ func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	require.NoError(t, bucketClient.DeleteChunksBefore(context.Background(), time.Now().Add(-deleteFilesOlderThan)))
 
 	// Verifying whether older file got deleted
-	files, _ = ioutil.ReadDir(".")
+	files, _ = os.ReadDir(".")
 	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
 }
 

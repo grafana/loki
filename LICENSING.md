@@ -10,10 +10,18 @@ The following folders and their subfolders are licensed under Apache-2.0:
 
 ```
 clients/
+pkg/ingester/wal
 pkg/logproto/
 pkg/loghttp/
 pkg/logqlmodel/
+pkg/push
 pkg/util
 production/
 tools/
+```
+
+The following directories and their subdirectories are licensed under their original upstream licenses:
+
+```
+vendor/
 ```

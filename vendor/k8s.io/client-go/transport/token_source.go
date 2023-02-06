@@ -18,14 +18,15 @@ package transport
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
 
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/klog/v2"
 )
 
@@ -95,6 +96,8 @@ type tokenSourceTransport struct {
 	src  ResettableTokenSource
 }
 
+var _ utilnet.RoundTripperWrapper = &tokenSourceTransport{}
+
 func (tst *tokenSourceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// This is to allow --token to override other bearer token providers.
 	if req.Header.Get("Authorization") != "" {
@@ -119,6 +122,8 @@ func (tst *tokenSourceTransport) CancelRequest(req *http.Request) {
 	tryCancelRequest(tst.ort, req)
 }
 
+func (tst *tokenSourceTransport) WrappedRoundTripper() http.RoundTripper { return tst.base }
+
 type fileTokenSource struct {
 	path   string
 	period time.Duration
@@ -127,7 +132,7 @@ type fileTokenSource struct {
 var _ = oauth2.TokenSource(&fileTokenSource{})
 
 func (ts *fileTokenSource) Token() (*oauth2.Token, error) {
-	tokb, err := ioutil.ReadFile(ts.path)
+	tokb, err := os.ReadFile(ts.path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token file %q: %v", ts.path, err)
 	}

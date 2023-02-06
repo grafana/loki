@@ -1,7 +1,8 @@
 ---
 title: labels
+description: labels stage
 ---
-# `labels` stage
+# labels
 
 The labels stage is an action stage that takes data from the extracted map and
 modifies the label set that is sent to Loki with the log entry.

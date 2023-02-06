@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -202,6 +201,8 @@ func (c *Config) String() string {
 type ImpersonationConfig struct {
 	// UserName is the username to impersonate on each request.
 	UserName string
+	// UID is a unique value that identifies the user.
+	UID string
 	// Groups are the groups to impersonate on each request.
 	Groups []string
 	// Extra is a free-form field which can be used to link some authentication information
@@ -303,7 +304,38 @@ type ContentConfig struct {
 // object. Note that a RESTClient may require fields that are optional when initializing a Client.
 // A RESTClient created by this method is generic - it expects to operate on an API that follows
 // the Kubernetes conventions, but may not be the Kubernetes API.
+// RESTClientFor is equivalent to calling RESTClientForConfigAndClient(config, httpClient),
+// where httpClient was generated with HTTPClientFor(config).
 func RESTClientFor(config *Config) (*RESTClient, error) {
+	if config.GroupVersion == nil {
+		return nil, fmt.Errorf("GroupVersion is required when initializing a RESTClient")
+	}
+	if config.NegotiatedSerializer == nil {
+		return nil, fmt.Errorf("NegotiatedSerializer is required when initializing a RESTClient")
+	}
+
+	// Validate config.Host before constructing the transport/client so we can fail fast.
+	// ServerURL will be obtained later in RESTClientForConfigAndClient()
+	_, _, err := defaultServerUrlFor(config)
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient, err := HTTPClientFor(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return RESTClientForConfigAndClient(config, httpClient)
+}
+
+// RESTClientForConfigAndClient returns a RESTClient that satisfies the requested attributes on a
+// client Config object.
+// Unlike RESTClientFor, RESTClientForConfigAndClient allows to pass an http.Client that is shared
+// between all the API Groups and Versions.
+// Note that the http client takes precedence over the transport values configured.
+// The http client defaults to the `http.DefaultClient` if nil.
+func RESTClientForConfigAndClient(config *Config, httpClient *http.Client) (*RESTClient, error) {
 	if config.GroupVersion == nil {
 		return nil, fmt.Errorf("GroupVersion is required when initializing a RESTClient")
 	}
@@ -314,19 +346,6 @@ func RESTClientFor(config *Config) (*RESTClient, error) {
 	baseURL, versionedAPIPath, err := defaultServerUrlFor(config)
 	if err != nil {
 		return nil, err
-	}
-
-	transport, err := TransportFor(config)
-	if err != nil {
-		return nil, err
-	}
-
-	var httpClient *http.Client
-	if transport != http.DefaultTransport {
-		httpClient = &http.Client{Transport: transport}
-		if config.Timeout > 0 {
-			httpClient.Timeout = config.Timeout
-		}
 	}
 
 	rateLimiter := config.RateLimiter
@@ -369,22 +388,31 @@ func UnversionedRESTClientFor(config *Config) (*RESTClient, error) {
 		return nil, fmt.Errorf("NegotiatedSerializer is required when initializing a RESTClient")
 	}
 
+	// Validate config.Host before constructing the transport/client so we can fail fast.
+	// ServerURL will be obtained later in UnversionedRESTClientForConfigAndClient()
+	_, _, err := defaultServerUrlFor(config)
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient, err := HTTPClientFor(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return UnversionedRESTClientForConfigAndClient(config, httpClient)
+}
+
+// UnversionedRESTClientForConfigAndClient is the same as RESTClientForConfigAndClient,
+// except that it allows the config.Version to be empty.
+func UnversionedRESTClientForConfigAndClient(config *Config, httpClient *http.Client) (*RESTClient, error) {
+	if config.NegotiatedSerializer == nil {
+		return nil, fmt.Errorf("NegotiatedSerializer is required when initializing a RESTClient")
+	}
+
 	baseURL, versionedAPIPath, err := defaultServerUrlFor(config)
 	if err != nil {
 		return nil, err
-	}
-
-	transport, err := TransportFor(config)
-	if err != nil {
-		return nil, err
-	}
-
-	var httpClient *http.Client
-	if transport != http.DefaultTransport {
-		httpClient = &http.Client{Transport: transport}
-		if config.Timeout > 0 {
-			httpClient.Timeout = config.Timeout
-		}
 	}
 
 	rateLimiter := config.RateLimiter
@@ -490,7 +518,7 @@ func InClusterConfig() (*Config, error) {
 		return nil, ErrNotInCluster
 	}
 
-	token, err := ioutil.ReadFile(tokenFile)
+	token, err := os.ReadFile(tokenFile)
 	if err != nil {
 		return nil, err
 	}
@@ -543,10 +571,7 @@ func LoadTLSFiles(c *Config) error {
 	}
 
 	c.KeyData, err = dataFromSliceOrFile(c.KeyData, c.KeyFile)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // dataFromSliceOrFile returns data from the slice (if non-empty), or from the file,
@@ -556,7 +581,7 @@ func dataFromSliceOrFile(data []byte, file string) ([]byte, error) {
 		return data, nil
 	}
 	if len(file) > 0 {
-		fileData, err := ioutil.ReadFile(file)
+		fileData, err := os.ReadFile(file)
 		if err != nil {
 			return []byte{}, err
 		}
@@ -608,9 +633,10 @@ func CopyConfig(config *Config) *Config {
 		BearerToken:     config.BearerToken,
 		BearerTokenFile: config.BearerTokenFile,
 		Impersonate: ImpersonationConfig{
+			UserName: config.Impersonate.UserName,
+			UID:      config.Impersonate.UID,
 			Groups:   config.Impersonate.Groups,
 			Extra:    config.Impersonate.Extra,
-			UserName: config.Impersonate.UserName,
 		},
 		AuthProvider:        config.AuthProvider,
 		AuthConfigPersister: config.AuthConfigPersister,

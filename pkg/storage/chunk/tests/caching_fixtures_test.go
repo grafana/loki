@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
@@ -33,7 +34,7 @@ func (f fixture) Clients() (index.Client, client.Client, index.TableClient, conf
 	indexClient = index.NewCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		MaxSizeItems: 500,
 		TTL:          5 * time.Minute,
-	}, reg, logger), 5*time.Minute, limits, logger, false)
+	}, reg, logger, stats.ChunkCache), 5*time.Minute, limits, logger, false)
 	return indexClient, chunkClient, tableClient, schemaConfig, closer, err
 }
 

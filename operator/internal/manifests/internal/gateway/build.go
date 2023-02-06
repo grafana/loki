@@ -3,12 +3,12 @@ package gateway
 import (
 	"bytes"
 	"embed"
-	"io/ioutil"
+	"io"
 	"text/template"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
-	"github.com/ViaQ/logerr/kverrors"
+	"github.com/ViaQ/logerr/v2/kverrors"
 )
 
 const (
@@ -20,16 +20,6 @@ const (
 	LokiGatewayRegoFileName = "lokistack-gateway.rego"
 	// LokiGatewayMountDir is the path that is mounted from the configmap
 	LokiGatewayMountDir = "/etc/lokistack-gateway"
-	// LokiGatewayTLSDir is the path that is mounted from the configmap for TLS
-	LokiGatewayTLSDir = "/var/run/tls"
-	// LokiGatewayCABundleDir is the path that is mounted from the configmap for TLS
-	LokiGatewayCABundleDir = "/var/run/ca"
-	// LokiGatewayCAFile is the file name of the certificate authority file
-	LokiGatewayCAFile = "service-ca.crt"
-	// LokiGatewayCertFile is the file of the X509 server certificate file
-	LokiGatewayCertFile = "tls.crt"
-	// LokiGatewayKeyFile is the file name of the server private key
-	LokiGatewayKeyFile = "tls.key"
 )
 
 var (
@@ -57,7 +47,7 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to create loki gateway rbac configuration")
 	}
-	rbacCfg, err = ioutil.ReadAll(w)
+	rbacCfg, err = io.ReadAll(w)
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
@@ -67,18 +57,18 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to create loki gateway tenants configuration")
 	}
-	tenantsCfg, err = ioutil.ReadAll(w)
+	tenantsCfg, err = io.ReadAll(w)
 	if err != nil {
 		return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	// Build loki gateway observatorium rego for static mode
-	if opts.Stack.Tenants.Mode == lokiv1beta1.Static {
+	if opts.Stack.Tenants.Mode == lokiv1.Static {
 		w = bytes.NewBuffer(nil)
 		err = lokiStackGatewayRegoTmpl.Execute(w, opts)
 		if err != nil {
 			return nil, nil, nil, kverrors.Wrap(err, "failed to create lokistack gateway rego configuration")
 		}
-		regoCfg, err = ioutil.ReadAll(w)
+		regoCfg, err = io.ReadAll(w)
 		if err != nil {
 			return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 		}

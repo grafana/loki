@@ -50,7 +50,7 @@ func ReplicationController(name, namespace string) *ReplicationControllerApplyCo
 // ExtractReplicationController extracts the applied configuration owned by fieldManager from
 // replicationController. If no managedFields are found in replicationController for fieldManager, a
 // ReplicationControllerApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // replicationController must be a unmodified ReplicationController API object that was retrieved from the Kubernetes API.
@@ -59,8 +59,19 @@ func ReplicationController(name, namespace string) *ReplicationControllerApplyCo
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractReplicationController(replicationController *apicorev1.ReplicationController, fieldManager string) (*ReplicationControllerApplyConfiguration, error) {
+	return extractReplicationController(replicationController, fieldManager, "")
+}
+
+// ExtractReplicationControllerStatus is the same as ExtractReplicationController except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractReplicationControllerStatus(replicationController *apicorev1.ReplicationController, fieldManager string) (*ReplicationControllerApplyConfiguration, error) {
+	return extractReplicationController(replicationController, fieldManager, "status")
+}
+
+func extractReplicationController(replicationController *apicorev1.ReplicationController, fieldManager string, subresource string) (*ReplicationControllerApplyConfiguration, error) {
 	b := &ReplicationControllerApplyConfiguration{}
-	err := managedfields.ExtractInto(replicationController, internal.Parser().Type("io.k8s.api.core.v1.ReplicationController"), fieldManager, b)
+	err := managedfields.ExtractInto(replicationController, internal.Parser().Type("io.k8s.api.core.v1.ReplicationController"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +123,6 @@ func (b *ReplicationControllerApplyConfiguration) WithGenerateName(value string)
 func (b *ReplicationControllerApplyConfiguration) WithNamespace(value string) *ReplicationControllerApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *ReplicationControllerApplyConfiguration) WithSelfLink(value string) *ReplicationControllerApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -230,15 +232,6 @@ func (b *ReplicationControllerApplyConfiguration) WithFinalizers(values ...strin
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *ReplicationControllerApplyConfiguration) WithClusterName(value string) *ReplicationControllerApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

@@ -58,14 +58,13 @@ func TestMultiIndex(t *testing.T) {
 
 	// group 5 indices together, all with duplicate data
 	n := 5
-	var indices []*TSDBIndex
+	var indices []Index
 	dir := t.TempDir()
 	for i := 0; i < n; i++ {
-		indices = append(indices, BuildIndex(t, dir, "fake", cases))
+		indices = append(indices, BuildIndex(t, dir, cases))
 	}
 
-	idx, err := NewMultiIndex(indices...)
-	require.Nil(t, err)
+	idx := NewMultiIndex(IndexSlice(indices))
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
 		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))

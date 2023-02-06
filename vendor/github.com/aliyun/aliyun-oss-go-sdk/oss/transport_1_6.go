@@ -3,8 +3,10 @@
 package oss
 
 import (
+	"crypto/tls"
 	"net"
 	"net/http"
+	"time"
 )
 
 func newTransport(conn *Conn, config *Config) *http.Transport {
@@ -13,7 +15,10 @@ func newTransport(conn *Conn, config *Config) *http.Transport {
 	// New Transport
 	transport := &http.Transport{
 		Dial: func(netw, addr string) (net.Conn, error) {
-			d := net.Dialer{Timeout: httpTimeOut.ConnectTimeout}
+			d := net.Dialer{
+				Timeout:   httpTimeOut.ConnectTimeout,
+				KeepAlive: 30 * time.Second,
+			}
 			if config.LocalAddr != nil {
 				d.LocalAddr = config.LocalAddr
 			}
@@ -25,6 +30,12 @@ func newTransport(conn *Conn, config *Config) *http.Transport {
 		},
 		MaxIdleConnsPerHost:   httpMaxConns.MaxIdleConnsPerHost,
 		ResponseHeaderTimeout: httpTimeOut.HeaderTimeout,
+	}
+
+	if config.InsecureSkipVerify {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 	}
 	return transport
 }

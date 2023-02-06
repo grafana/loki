@@ -7,12 +7,15 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -64,38 +67,30 @@ func main() {
 		panic(err)
 	}
 
-	builder := index.NewBuilder()
+	builder := tsdb.NewBuilder()
 
 	log.Println("Loading index into memory")
 
 	// loads everything into memory.
 	if err := db.View(func(t *bbolt.Tx) error {
-		it, err := retention.NewChunkIndexIterator(t.Bucket([]byte("index")), periodConfig)
-		if err != nil {
-			return err
-		}
-
-		for it.Next() {
-			if it.Err() != nil {
-				return it.Err()
-			}
-			entry := it.Entry()
-			builder.AddSeries(entry.Labels, []index.ChunkMeta{{
+		return compactor.ForEachChunk(context.Background(), t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
+			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),
 				MaxTime:  int64(entry.Through),
 				KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
 				Entries:  10000,                  // guess: 10k entries
 			}})
-		}
-
-		return nil
+			return false, nil
+		})
 	}); err != nil {
 		panic(err)
 	}
 
 	log.Println("writing index")
-	if _, err := builder.Build(context.Background(), *dest, "fake"); err != nil {
+	if _, err := builder.Build(context.Background(), *dest, func(from, through model.Time, checksum uint32) tsdb.Identifier {
+		panic("todo")
+	}); err != nil {
 		panic(err)
 	}
 }

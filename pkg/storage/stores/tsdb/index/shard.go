@@ -1,6 +1,7 @@
 package index
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -13,6 +14,8 @@ const (
 	// ShardLabelFmt is the fmt of the ShardLabel key.
 	ShardLabelFmt = "%d_of_%d"
 )
+
+var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding")
 
 // ShardAnnotation is a convenience struct which holds data from a parsed shard label
 // Of MUST be a power of 2 to ensure sharding logic works correctly.
@@ -33,11 +36,13 @@ func NewShard(x, of uint32) ShardAnnotation {
 // Inclusion in a shard is calculated by determining the arbitrary bit prefix
 // for a shard, then ensuring the fingerprint has the same prefix
 func (shard ShardAnnotation) Match(fp model.Fingerprint) bool {
+	if shard.Of < 2 {
+		return true
+	}
 	requiredBits := shard.RequiredBits()
 
 	// A shard only matches a fingerprint when they both start with the same prefix
-	prefix := uint64(shard.Shard) << (64 - requiredBits)
-	return prefix^uint64(fp) < 1<<(64-requiredBits)
+	return uint64(shard.Shard) == uint64(fp)>>(64-requiredBits)
 }
 
 // String encodes a shardAnnotation into a label value
@@ -51,8 +56,19 @@ func (shard ShardAnnotation) RequiredBits() uint64 {
 
 }
 
+func (shard ShardAnnotation) Validate() error {
+	if shard.Of == 1 {
+		return errDisallowedIdentityShard
+	}
+
+	if 1<<shard.RequiredBits() != shard.Of {
+		return fmt.Errorf("Shard factor must be a power of two, got %d", shard.Of)
+	}
+	return nil
+}
+
 // Bounds shows the [minimum, maximum) fingerprints. If there is no maximum
-// fingerprint (for example )
+// fingerprint (for example the last shard), math.MaxUint64 is used as the maximum.
 func (shard ShardAnnotation) Bounds() (model.Fingerprint, model.Fingerprint) {
 	requiredBits := model.Fingerprint(shard.RequiredBits())
 	from := model.Fingerprint(shard.Shard) << (64 - requiredBits)

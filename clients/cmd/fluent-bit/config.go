@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -200,7 +200,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	labelMapPath := cfg.Get("LabelMapPath")
 	if labelMapPath != "" {
-		content, err := ioutil.ReadFile(labelMapPath)
+		content, err := os.ReadFile(labelMapPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open LabelMap file: %s", err)
 		}

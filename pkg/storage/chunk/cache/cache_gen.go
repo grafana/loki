@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type contextKey int
@@ -42,6 +44,10 @@ func (c GenNumMiddleware) Fetch(ctx context.Context, keys []string) (found []str
 // Stop calls Stop method of downstream cache.
 func (c GenNumMiddleware) Stop() {
 	c.downstreamCache.Stop()
+}
+
+func (c GenNumMiddleware) GetCacheType() stats.CacheType {
+	return c.downstreamCache.GetCacheType()
 }
 
 // InjectCacheGenNumber returns a derived context containing the cache gen.

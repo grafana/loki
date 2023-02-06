@@ -46,6 +46,9 @@ type ExecCredentialSpec struct {
 	// ExecConfig.ProvideClusterInfo).
 	// +optional
 	Cluster *Cluster `json:"cluster,omitempty"`
+
+	// Interactive declares whether stdin has been passed to this exec plugin.
+	Interactive bool `json:"interactive"`
 }
 
 // ExecCredentialStatus holds credentials for the transport to use.
@@ -93,6 +96,11 @@ type Cluster struct {
 	// cluster.
 	// +optional
 	ProxyURL string `json:"proxy-url,omitempty"`
+	// DisableCompression allows client to opt-out of response compression for all requests to the server. This is useful
+	// to speed up requests (specifically lists) when client-server network bandwidth is ample, by saving time on
+	// compression (server-side) and decompression (client-side): https://github.com/kubernetes/kubernetes/issues/112296.
+	// +optional
+	DisableCompression bool `json:"disable-compression,omitempty"`
 	// Config holds additional config data that is specific to the exec
 	// plugin with regards to the cluster being authenticated to.
 	//

@@ -104,7 +104,7 @@ func TestFormat(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := format(c.msg, c.labels, c.useIncomingTimestamp, c.relabel)
+			got, err := parseGCPLogsEntry(c.msg.Data, c.labels, nil, c.useIncomingTimestamp, c.relabel)
 
 			require.NoError(t, err)
 

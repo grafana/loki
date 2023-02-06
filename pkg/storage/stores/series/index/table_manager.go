@@ -325,7 +325,7 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 	}
 
 	expected := m.calculateExpectedTables()
-	level.Info(util_log.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
+	level.Debug(util_log.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
 
 	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -476,7 +476,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []config.T
 	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
-		level.Info(util_log.Logger).Log("msg", "creating table", "table", desc.Name)
+		level.Debug(util_log.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
 			numFailures++

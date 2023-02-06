@@ -36,6 +36,13 @@ func (m *KV) createAndRegisterMetrics() {
 		Help:      "Number of received broadcast user messages that were invalid. Hopefully 0.",
 	})
 
+	m.numberOfDroppedMessages = promauto.With(m.registerer).NewCounter(prometheus.CounterOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "received_broadcasts_dropped_total",
+		Help:      "Number of received broadcast user messages that were dropped. Hopefully 0.",
+	})
+
 	m.numberOfPushes = promauto.With(m.registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,

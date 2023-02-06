@@ -15,11 +15,12 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	v1 "k8s.io/api/networking/v1"
 	"k8s.io/api/networking/v1beta1"
@@ -47,7 +48,7 @@ type Ingress struct {
 // NewIngress returns a new ingress discovery.
 func NewIngress(l log.Logger, inf cache.SharedInformer) *Ingress {
 	s := &Ingress{logger: l, informer: inf, store: inf.GetStore(), queue: workqueue.NewNamed("ingress")}
-	s.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := s.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			ingressAddCount.Inc()
 			s.enqueue(o)
@@ -61,6 +62,9 @@ func NewIngress(l log.Logger, inf cache.SharedInformer) *Ingress {
 			s.enqueue(o)
 		},
 	})
+	if err != nil {
+		level.Error(l).Log("msg", "Error adding ingresses event handler.", "err", err)
+	}
 	return s
 }
 
@@ -78,7 +82,7 @@ func (i *Ingress) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 	defer i.queue.ShutDown()
 
 	if !cache.WaitForCacheSync(ctx.Done(), i.informer.HasSynced) {
-		if ctx.Err() != context.Canceled {
+		if !errors.Is(ctx.Err(), context.Canceled) {
 			level.Error(i.logger).Log("msg", "ingress informer unable to sync cache")
 		}
 		return
@@ -123,7 +127,7 @@ func (i *Ingress) process(ctx context.Context, ch chan<- []*targetgroup.Group) b
 		ia = newIngressAdaptorFromV1beta1(ingress)
 	default:
 		level.Error(i.logger).Log("msg", "converting to Ingress object failed", "err",
-			errors.Errorf("received unexpected object: %v", o))
+			fmt.Errorf("received unexpected object: %v", o))
 		return true
 	}
 	send(ctx, ch, i.buildIngress(ia))

@@ -48,7 +48,7 @@ func IngressClass(name string) *IngressClassApplyConfiguration {
 // ExtractIngressClass extracts the applied configuration owned by fieldManager from
 // ingressClass. If no managedFields are found in ingressClass for fieldManager, a
 // IngressClassApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // ingressClass must be a unmodified IngressClass API object that was retrieved from the Kubernetes API.
@@ -57,8 +57,19 @@ func IngressClass(name string) *IngressClassApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractIngressClass(ingressClass *apinetworkingv1.IngressClass, fieldManager string) (*IngressClassApplyConfiguration, error) {
+	return extractIngressClass(ingressClass, fieldManager, "")
+}
+
+// ExtractIngressClassStatus is the same as ExtractIngressClass except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractIngressClassStatus(ingressClass *apinetworkingv1.IngressClass, fieldManager string) (*IngressClassApplyConfiguration, error) {
+	return extractIngressClass(ingressClass, fieldManager, "status")
+}
+
+func extractIngressClass(ingressClass *apinetworkingv1.IngressClass, fieldManager string, subresource string) (*IngressClassApplyConfiguration, error) {
 	b := &IngressClassApplyConfiguration{}
-	err := managedfields.ExtractInto(ingressClass, internal.Parser().Type("io.k8s.api.networking.v1.IngressClass"), fieldManager, b)
+	err := managedfields.ExtractInto(ingressClass, internal.Parser().Type("io.k8s.api.networking.v1.IngressClass"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -109,15 +120,6 @@ func (b *IngressClassApplyConfiguration) WithGenerateName(value string) *Ingress
 func (b *IngressClassApplyConfiguration) WithNamespace(value string) *IngressClassApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *IngressClassApplyConfiguration) WithSelfLink(value string) *IngressClassApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -227,15 +229,6 @@ func (b *IngressClassApplyConfiguration) WithFinalizers(values ...string) *Ingre
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *IngressClassApplyConfiguration) WithClusterName(value string) *IngressClassApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

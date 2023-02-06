@@ -49,7 +49,7 @@ func PersistentVolume(name string) *PersistentVolumeApplyConfiguration {
 // ExtractPersistentVolume extracts the applied configuration owned by fieldManager from
 // persistentVolume. If no managedFields are found in persistentVolume for fieldManager, a
 // PersistentVolumeApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // persistentVolume must be a unmodified PersistentVolume API object that was retrieved from the Kubernetes API.
@@ -58,8 +58,19 @@ func PersistentVolume(name string) *PersistentVolumeApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractPersistentVolume(persistentVolume *apicorev1.PersistentVolume, fieldManager string) (*PersistentVolumeApplyConfiguration, error) {
+	return extractPersistentVolume(persistentVolume, fieldManager, "")
+}
+
+// ExtractPersistentVolumeStatus is the same as ExtractPersistentVolume except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractPersistentVolumeStatus(persistentVolume *apicorev1.PersistentVolume, fieldManager string) (*PersistentVolumeApplyConfiguration, error) {
+	return extractPersistentVolume(persistentVolume, fieldManager, "status")
+}
+
+func extractPersistentVolume(persistentVolume *apicorev1.PersistentVolume, fieldManager string, subresource string) (*PersistentVolumeApplyConfiguration, error) {
 	b := &PersistentVolumeApplyConfiguration{}
-	err := managedfields.ExtractInto(persistentVolume, internal.Parser().Type("io.k8s.api.core.v1.PersistentVolume"), fieldManager, b)
+	err := managedfields.ExtractInto(persistentVolume, internal.Parser().Type("io.k8s.api.core.v1.PersistentVolume"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -110,15 +121,6 @@ func (b *PersistentVolumeApplyConfiguration) WithGenerateName(value string) *Per
 func (b *PersistentVolumeApplyConfiguration) WithNamespace(value string) *PersistentVolumeApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *PersistentVolumeApplyConfiguration) WithSelfLink(value string) *PersistentVolumeApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -228,15 +230,6 @@ func (b *PersistentVolumeApplyConfiguration) WithFinalizers(values ...string) *P
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *PersistentVolumeApplyConfiguration) WithClusterName(value string) *PersistentVolumeApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

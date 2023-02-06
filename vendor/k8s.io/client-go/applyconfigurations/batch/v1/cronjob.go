@@ -50,7 +50,7 @@ func CronJob(name, namespace string) *CronJobApplyConfiguration {
 // ExtractCronJob extracts the applied configuration owned by fieldManager from
 // cronJob. If no managedFields are found in cronJob for fieldManager, a
 // CronJobApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // cronJob must be a unmodified CronJob API object that was retrieved from the Kubernetes API.
@@ -59,8 +59,19 @@ func CronJob(name, namespace string) *CronJobApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractCronJob(cronJob *apibatchv1.CronJob, fieldManager string) (*CronJobApplyConfiguration, error) {
+	return extractCronJob(cronJob, fieldManager, "")
+}
+
+// ExtractCronJobStatus is the same as ExtractCronJob except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractCronJobStatus(cronJob *apibatchv1.CronJob, fieldManager string) (*CronJobApplyConfiguration, error) {
+	return extractCronJob(cronJob, fieldManager, "status")
+}
+
+func extractCronJob(cronJob *apibatchv1.CronJob, fieldManager string, subresource string) (*CronJobApplyConfiguration, error) {
 	b := &CronJobApplyConfiguration{}
-	err := managedfields.ExtractInto(cronJob, internal.Parser().Type("io.k8s.api.batch.v1.CronJob"), fieldManager, b)
+	err := managedfields.ExtractInto(cronJob, internal.Parser().Type("io.k8s.api.batch.v1.CronJob"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +123,6 @@ func (b *CronJobApplyConfiguration) WithGenerateName(value string) *CronJobApply
 func (b *CronJobApplyConfiguration) WithNamespace(value string) *CronJobApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *CronJobApplyConfiguration) WithSelfLink(value string) *CronJobApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -230,15 +232,6 @@ func (b *CronJobApplyConfiguration) WithFinalizers(values ...string) *CronJobApp
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *CronJobApplyConfiguration) WithClusterName(value string) *CronJobApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

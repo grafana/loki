@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -315,9 +316,9 @@ func Test_PromQL(t *testing.T) {
 		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
 
-			baseQuery, err := engine.NewRangeQuery(shardAwareQueryable, tt.normalQuery, start, end, step)
+			baseQuery, err := engine.NewRangeQuery(shardAwareQueryable, nil, tt.normalQuery, start, end, step)
 			require.Nil(t, err)
-			shardQuery, err := engine.NewRangeQuery(shardAwareQueryable, tt.shardQuery, start, end, step)
+			shardQuery, err := engine.NewRangeQuery(shardAwareQueryable, nil, tt.shardQuery, start, end, step)
 			require.Nil(t, err)
 			baseResult := baseQuery.Exec(ctx)
 			shardResult := shardQuery.Exec(ctx)
@@ -522,6 +523,7 @@ func Test_FunctionParallelism(t *testing.T) {
 		t.Run(tc.fn, func(t *testing.T) {
 			baseQuery, err := engine.NewRangeQuery(
 				shardAwareQueryable,
+				nil,
 				mkQuery(tpl, tc.fn, tc.isTestMatrix, tc.fArgs),
 				start,
 				end,
@@ -530,6 +532,7 @@ func Test_FunctionParallelism(t *testing.T) {
 			require.Nil(t, err)
 			shardQuery, err := engine.NewRangeQuery(
 				shardAwareQueryable,
+				nil,
 				mkQuery(shardTpl, tc.fn, tc.isTestMatrix, tc.fArgs),
 				start,
 				end,
@@ -665,7 +668,7 @@ func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMat
 		}
 		var points []promql.Point
 		it := s.Iterator()
-		for it.Next() {
+		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			points = append(points, promql.Point{
 				T: t,

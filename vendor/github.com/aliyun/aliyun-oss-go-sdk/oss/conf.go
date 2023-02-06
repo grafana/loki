@@ -97,8 +97,15 @@ type Config struct {
 	Logger              *log.Logger         // For write log
 	UploadLimitSpeed    int                 // Upload limit speed:KB/s, 0 is unlimited
 	UploadLimiter       *OssLimiter         // Bandwidth limit reader for upload
+	DownloadLimitSpeed  int                 // Download limit speed:KB/s, 0 is unlimited
+	DownloadLimiter     *OssLimiter         // Bandwidth limit reader for download
 	CredentialsProvider CredentialsProvider // User provides interface to get AccessKeyID, AccessKeySecret, SecurityToken
 	LocalAddr           net.Addr            // local client host info
+	UserSetUa           bool                // UserAgent is set by user or not
+	AuthVersion         AuthVersionType     //  v1 or v2 signature,default is v1
+	AdditionalHeaders   []string            //  special http headers needed to be sign
+	RedirectEnabled     bool                //  only effective from go1.7 onward, enable http redirect or not
+	InsecureSkipVerify  bool                //  for https, Whether to skip verifying the server certificate file
 }
 
 // LimitUploadSpeed uploadSpeed:KB/s, 0 is unlimited,default is 0
@@ -115,6 +122,24 @@ func (config *Config) LimitUploadSpeed(uploadSpeed int) error {
 	config.UploadLimiter, err = GetOssLimiter(uploadSpeed)
 	if err == nil {
 		config.UploadLimitSpeed = uploadSpeed
+	}
+	return err
+}
+
+// LimitDownLoadSpeed downloadSpeed:KB/s, 0 is unlimited,default is 0
+func (config *Config) LimitDownloadSpeed(downloadSpeed int) error {
+	if downloadSpeed < 0 {
+		return fmt.Errorf("invalid argument, the value of downloadSpeed is less than 0")
+	} else if downloadSpeed == 0 {
+		config.DownloadLimitSpeed = 0
+		config.DownloadLimiter = nil
+		return nil
+	}
+
+	var err error
+	config.DownloadLimiter, err = GetOssLimiter(downloadSpeed)
+	if err == nil {
+		config.DownloadLimitSpeed = downloadSpeed
 	}
 	return err
 }
@@ -173,6 +198,10 @@ func getDefaultOssConfig() *Config {
 
 	provider := &defaultCredentialsProvider{config: &config}
 	config.CredentialsProvider = provider
+
+	config.AuthVersion = AuthV1
+	config.RedirectEnabled = true
+	config.InsecureSkipVerify = false
 
 	return &config
 }

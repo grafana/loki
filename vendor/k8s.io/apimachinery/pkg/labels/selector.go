@@ -22,21 +22,24 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
+	stringslices "k8s.io/utils/strings/slices"
 )
 
 var (
-	validRequirementOperators = []string{
+	unaryOperators = []string{
+		string(selection.Exists), string(selection.DoesNotExist),
+	}
+	binaryOperators = []string{
 		string(selection.In), string(selection.NotIn),
 		string(selection.Equals), string(selection.DoubleEquals), string(selection.NotEquals),
-		string(selection.Exists), string(selection.DoesNotExist),
 		string(selection.GreaterThan), string(selection.LessThan),
 	}
+	validRequirementOperators = append(binaryOperators, unaryOperators...)
 )
 
 // Requirements is AND of all requirements.
@@ -71,9 +74,12 @@ type Selector interface {
 	RequiresExactMatch(label string) (value string, found bool)
 }
 
+// Sharing this saves 1 alloc per use; this is safe because it's immutable.
+var sharedEverythingSelector Selector = internalSelector{}
+
 // Everything returns a selector that matches all labels.
 func Everything() Selector {
-	return internalSelector{}
+	return sharedEverythingSelector
 }
 
 type nothingSelector struct{}
@@ -88,9 +94,12 @@ func (n nothingSelector) RequiresExactMatch(label string) (value string, found b
 	return "", false
 }
 
+// Sharing this saves 1 alloc per use; this is safe because it's immutable.
+var sharedNothingSelector Selector = nothingSelector{}
+
 // Nothing returns a selector that matches no labels
 func Nothing() Selector {
-	return nothingSelector{}
+	return sharedNothingSelector
 }
 
 // NewSelector returns a nil selector
@@ -140,13 +149,14 @@ type Requirement struct {
 
 // NewRequirement is the constructor for a Requirement.
 // If any of these rules is violated, an error is returned:
-// (1) The operator can only be In, NotIn, Equals, DoubleEquals, NotEquals, Exists, or DoesNotExist.
+// (1) The operator can only be In, NotIn, Equals, DoubleEquals, Gt, Lt, NotEquals, Exists, or DoesNotExist.
 // (2) If the operator is In or NotIn, the values set must be non-empty.
 // (3) If the operator is Equals, DoubleEquals, or NotEquals, the values set must contain one value.
 // (4) If the operator is Exists or DoesNotExist, the value set must be empty.
 // (5) If the operator is Gt or Lt, the values set must contain only one value, which will be interpreted as an integer.
 // (6) The key is invalid due to its length, or sequence
-//     of characters. See validateLabelKey for more details.
+//
+//	of characters. See validateLabelKey for more details.
 //
 // The empty string is a valid value in the input values set.
 // Returned error, if not nil, is guaranteed to be an aggregated field.ErrorList
@@ -205,13 +215,20 @@ func (r *Requirement) hasValue(value string) bool {
 // There is a match in the following cases:
 // (1) The operator is Exists and Labels has the Requirement's key.
 // (2) The operator is In, Labels has the Requirement's key and Labels'
-//     value for that key is in Requirement's value set.
+//
+//	value for that key is in Requirement's value set.
+//
 // (3) The operator is NotIn, Labels has the Requirement's key and
-//     Labels' value for that key is not in Requirement's value set.
+//
+//	Labels' value for that key is not in Requirement's value set.
+//
 // (4) The operator is DoesNotExist or NotIn and Labels does not have the
-//     Requirement's key.
+//
+//	Requirement's key.
+//
 // (5) The operator is GreaterThanOperator or LessThanOperator, and Labels has
-//     the Requirement's key and the corresponding value satisfies mathematical inequality.
+//
+//	the Requirement's key and the corresponding value satisfies mathematical inequality.
 func (r *Requirement) Matches(ls Labels) bool {
 	switch r.operator {
 	case selection.In, selection.Equals, selection.DoubleEquals:
@@ -285,7 +302,7 @@ func (r Requirement) Equal(x Requirement) bool {
 	if r.operator != x.operator {
 		return false
 	}
-	return cmp.Equal(r.strValues, x.strValues)
+	return stringslices.Equal(r.strValues, x.strValues)
 }
 
 // Empty returns true if the internalSelector doesn't restrict selection space
@@ -364,13 +381,9 @@ func safeSort(in []string) []string {
 
 // Add adds requirements to the selector. It copies the current selector returning a new one
 func (s internalSelector) Add(reqs ...Requirement) Selector {
-	var ret internalSelector
-	for ix := range s {
-		ret = append(ret, s[ix])
-	}
-	for _, r := range reqs {
-		ret = append(ret, r)
-	}
+	ret := make(internalSelector, 0, len(s)+len(reqs))
+	ret = append(ret, s...)
+	ret = append(ret, reqs...)
 	sort.Sort(ByKey(ret))
 	return ret
 }
@@ -753,7 +766,7 @@ func (p *Parser) parseOperator() (op selection.Operator, err error) {
 	case NotEqualsToken:
 		op = selection.NotEquals
 	default:
-		return "", fmt.Errorf("found '%s', expected: '=', '!=', '==', 'in', notin'", lit)
+		return "", fmt.Errorf("found '%s', expected: %v", lit, strings.Join(binaryOperators, ", "))
 	}
 	return op, nil
 }
@@ -841,32 +854,33 @@ func (p *Parser) parseExactValue() (sets.String, error) {
 // as they parse different selectors with different syntaxes.
 // The input will cause an error if it does not follow this form:
 //
-//  <selector-syntax>         ::= <requirement> | <requirement> "," <selector-syntax>
-//  <requirement>             ::= [!] KEY [ <set-based-restriction> | <exact-match-restriction> ]
-//  <set-based-restriction>   ::= "" | <inclusion-exclusion> <value-set>
-//  <inclusion-exclusion>     ::= <inclusion> | <exclusion>
-//  <exclusion>               ::= "notin"
-//  <inclusion>               ::= "in"
-//  <value-set>               ::= "(" <values> ")"
-//  <values>                  ::= VALUE | VALUE "," <values>
-//  <exact-match-restriction> ::= ["="|"=="|"!="] VALUE
+//	<selector-syntax>         ::= <requirement> | <requirement> "," <selector-syntax>
+//	<requirement>             ::= [!] KEY [ <set-based-restriction> | <exact-match-restriction> ]
+//	<set-based-restriction>   ::= "" | <inclusion-exclusion> <value-set>
+//	<inclusion-exclusion>     ::= <inclusion> | <exclusion>
+//	<exclusion>               ::= "notin"
+//	<inclusion>               ::= "in"
+//	<value-set>               ::= "(" <values> ")"
+//	<values>                  ::= VALUE | VALUE "," <values>
+//	<exact-match-restriction> ::= ["="|"=="|"!="] VALUE
 //
 // KEY is a sequence of one or more characters following [ DNS_SUBDOMAIN "/" ] DNS_LABEL. Max length is 63 characters.
 // VALUE is a sequence of zero or more characters "([A-Za-z0-9_-\.])". Max length is 63 characters.
 // Delimiter is white space: (' ', '\t')
 // Example of valid syntax:
-//  "x in (foo,,baz),y,z notin ()"
+//
+//	"x in (foo,,baz),y,z notin ()"
 //
 // Note:
-//  (1) Inclusion - " in " - denotes that the KEY exists and is equal to any of the
-//      VALUEs in its requirement
-//  (2) Exclusion - " notin " - denotes that the KEY is not equal to any
-//      of the VALUEs in its requirement or does not exist
-//  (3) The empty string is a valid VALUE
-//  (4) A requirement with just a KEY - as in "y" above - denotes that
-//      the KEY exists and can be any VALUE.
-//  (5) A requirement with just !KEY requires that the KEY not exist.
 //
+//	(1) Inclusion - " in " - denotes that the KEY exists and is equal to any of the
+//	    VALUEs in its requirement
+//	(2) Exclusion - " notin " - denotes that the KEY is not equal to any
+//	    of the VALUEs in its requirement or does not exist
+//	(3) The empty string is a valid VALUE
+//	(4) A requirement with just a KEY - as in "y" above - denotes that
+//	    the KEY exists and can be any VALUE.
+//	(5) A requirement with just !KEY requires that the KEY not exist.
 func Parse(selector string, opts ...field.PathOption) (Selector, error) {
 	parsedSelector, err := parse(selector, field.ToPath(opts...))
 	if err == nil {

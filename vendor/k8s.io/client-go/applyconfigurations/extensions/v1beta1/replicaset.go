@@ -50,7 +50,7 @@ func ReplicaSet(name, namespace string) *ReplicaSetApplyConfiguration {
 // ExtractReplicaSet extracts the applied configuration owned by fieldManager from
 // replicaSet. If no managedFields are found in replicaSet for fieldManager, a
 // ReplicaSetApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // replicaSet must be a unmodified ReplicaSet API object that was retrieved from the Kubernetes API.
@@ -59,8 +59,19 @@ func ReplicaSet(name, namespace string) *ReplicaSetApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractReplicaSet(replicaSet *extensionsv1beta1.ReplicaSet, fieldManager string) (*ReplicaSetApplyConfiguration, error) {
+	return extractReplicaSet(replicaSet, fieldManager, "")
+}
+
+// ExtractReplicaSetStatus is the same as ExtractReplicaSet except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractReplicaSetStatus(replicaSet *extensionsv1beta1.ReplicaSet, fieldManager string) (*ReplicaSetApplyConfiguration, error) {
+	return extractReplicaSet(replicaSet, fieldManager, "status")
+}
+
+func extractReplicaSet(replicaSet *extensionsv1beta1.ReplicaSet, fieldManager string, subresource string) (*ReplicaSetApplyConfiguration, error) {
 	b := &ReplicaSetApplyConfiguration{}
-	err := managedfields.ExtractInto(replicaSet, internal.Parser().Type("io.k8s.api.extensions.v1beta1.ReplicaSet"), fieldManager, b)
+	err := managedfields.ExtractInto(replicaSet, internal.Parser().Type("io.k8s.api.extensions.v1beta1.ReplicaSet"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +123,6 @@ func (b *ReplicaSetApplyConfiguration) WithGenerateName(value string) *ReplicaSe
 func (b *ReplicaSetApplyConfiguration) WithNamespace(value string) *ReplicaSetApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *ReplicaSetApplyConfiguration) WithSelfLink(value string) *ReplicaSetApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -230,15 +232,6 @@ func (b *ReplicaSetApplyConfiguration) WithFinalizers(values ...string) *Replica
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *ReplicaSetApplyConfiguration) WithClusterName(value string) *ReplicaSetApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

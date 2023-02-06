@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -51,6 +52,16 @@ func Test_TargetManager(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			err := json.NewEncoder(w).Encode([]types.NetworkResource{})
 			require.NoError(t, err)
+		case strings.HasSuffix(path, "json"):
+			w.Header().Set("Content-Type", "application/json")
+			info := types.ContainerJSON{
+				ContainerJSONBase: &types.ContainerJSONBase{},
+				Mounts:            []types.MountPoint{},
+				Config:            &container.Config{Tty: false},
+				NetworkSettings:   &types.NetworkSettings{},
+			}
+			err := json.NewEncoder(w).Encode(info)
+			require.NoError(t, err)
 		default:
 			// Serve container logs
 			dat, err := os.ReadFile("testdata/flog.log")
@@ -89,7 +100,7 @@ func Test_TargetManager(t *testing.T) {
 	require.True(t, ta.Ready())
 
 	require.Eventually(t, func() bool {
-		return len(entryHandler.Received()) >= 5
+		return len(entryHandler.Received()) >= 6
 	}, 20*time.Second, 100*time.Millisecond)
 
 	received := entryHandler.Received()
@@ -109,4 +120,5 @@ func Test_TargetManager(t *testing.T) {
 		actualLines = append(actualLines, entry.Line)
 	}
 	require.ElementsMatch(t, actualLines, expectedLines)
+	require.Equal(t, 99969, len(received[5].Line))
 }

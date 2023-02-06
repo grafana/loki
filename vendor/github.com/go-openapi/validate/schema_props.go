@@ -163,7 +163,7 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 		}
 
 		if validated != 1 {
-			additionalMsg := ""
+			var additionalMsg string
 			if validated == 0 {
 				additionalMsg = "Found none valid"
 			} else {

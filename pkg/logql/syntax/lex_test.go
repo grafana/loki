@@ -64,6 +64,7 @@ func TestLex(t *testing.T) {
 		}},
 		{`{ foo = "ba\"r" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{`rate({foo="bar"}[10s])`, []int{RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS}},
+		{`rate_counter({foo="bar"} | unwrap foo[10s])`, []int{RATE_COUNTER, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, UNWRAP, IDENTIFIER, RANGE, CLOSE_PARENTHESIS}},
 		{`count_over_time({foo="bar"}[5m])`, []int{COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS}},
 		{`count_over_time({foo="bar"} |~ "\\w+" | unwrap foo[5m])`, []int{COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, UNWRAP, IDENTIFIER, RANGE, CLOSE_PARENTHESIS}},
 		{`sum(count_over_time({foo="bar"}[5m])) by (foo,bar)`, []int{SUM, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, BY, OPEN_PARENTHESIS, IDENTIFIER, COMMA, IDENTIFIER, CLOSE_PARENTHESIS}},
@@ -84,6 +85,7 @@ func TestLex(t *testing.T) {
 					# |~ "\\w+"
 					| json`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON}},
 		{`{foo="bar"} | json code="response.code", param="request.params[0]"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON, IDENTIFIER, EQ, STRING, COMMA, IDENTIFIER, EQ, STRING}},
+		{`decolorize`, []int{DECOLORIZE}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}

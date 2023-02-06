@@ -39,7 +39,7 @@ func (ServerStorageVersion) SwaggerDoc() map[string]string {
 }
 
 var map_StorageVersion = map[string]string{
-	"":         "\n Storage version of a specific resource.",
+	"":         "Storage version of a specific resource.",
 	"metadata": "The name is <group>.<resource>.",
 	"spec":     "Spec is an empty spec. It is here to comply with Kubernetes API style.",
 	"status":   "API server instances report the version they can decode and the version they encode objects to when persisting objects in the backend.",
@@ -64,7 +64,9 @@ func (StorageVersionCondition) SwaggerDoc() map[string]string {
 }
 
 var map_StorageVersionList = map[string]string{
-	"": "A list of StorageVersions.",
+	"":         "A list of StorageVersions.",
+	"metadata": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
+	"items":    "Items holds a list of StorageVersion",
 }
 
 func (StorageVersionList) SwaggerDoc() map[string]string {

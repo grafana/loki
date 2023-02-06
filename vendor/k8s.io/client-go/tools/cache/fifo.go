@@ -103,10 +103,11 @@ func Pop(queue Queue) interface{} {
 // recent version will be processed. This can't be done with a channel
 //
 // FIFO solves this use case:
-//  * You want to process every object (exactly) once.
-//  * You want to process the most recent version of the object when you process it.
-//  * You do not want to process deleted objects, they should be removed from the queue.
-//  * You do not want to periodically reprocess objects.
+//   - You want to process every object (exactly) once.
+//   - You want to process the most recent version of the object when you process it.
+//   - You do not want to process deleted objects, they should be removed from the queue.
+//   - You do not want to periodically reprocess objects.
+//
 // Compare with DeltaFIFO for other use cases.
 type FIFO struct {
 	lock sync.RWMutex
@@ -127,7 +128,7 @@ type FIFO struct {
 
 	// Indication the queue is closed.
 	// Used to indicate a queue is closed so a control loop can exit when a queue is empty.
-	// Currently, not used to gate any of CRED operations.
+	// Currently, not used to gate any of CRUD operations.
 	closed bool
 }
 
@@ -263,10 +264,7 @@ func (f *FIFO) GetByKey(key string) (item interface{}, exists bool, err error) {
 func (f *FIFO) IsClosed() bool {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	if f.closed {
-		return true
-	}
-	return false
+	return f.closed
 }
 
 // Pop waits until an item is ready and processes it. If multiple items are

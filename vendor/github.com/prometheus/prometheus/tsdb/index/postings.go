@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -39,7 +40,8 @@ const ensureOrderBatchSize = 1024
 // ensureOrderBatchPool is a pool used to recycle batches passed to workers in MemPostings.EnsureOrder().
 var ensureOrderBatchPool = sync.Pool{
 	New: func() interface{} {
-		return make([][]storage.SeriesRef, 0, ensureOrderBatchSize)
+		x := make([][]storage.SeriesRef, 0, ensureOrderBatchSize)
+		return &x // Return pointer type as preferred by Pool.
 	},
 }
 
@@ -89,7 +91,7 @@ func (p *MemPostings) Symbols() StringIter {
 		res = append(res, k)
 	}
 
-	sort.Strings(res)
+	slices.Sort(res)
 	return NewStringListIter(res)
 }
 
@@ -231,7 +233,7 @@ func (p *MemPostings) EnsureOrder() {
 	}
 
 	n := runtime.GOMAXPROCS(0)
-	workc := make(chan [][]storage.SeriesRef)
+	workc := make(chan *[][]storage.SeriesRef)
 
 	var wg sync.WaitGroup
 	wg.Add(n)
@@ -239,31 +241,31 @@ func (p *MemPostings) EnsureOrder() {
 	for i := 0; i < n; i++ {
 		go func() {
 			for job := range workc {
-				for _, l := range job {
-					sort.Sort(seriesRefSlice(l))
+				for _, l := range *job {
+					slices.Sort(l)
 				}
 
-				job = job[:0]
-				ensureOrderBatchPool.Put(job) //nolint:staticcheck // Ignore SA6002 safe to ignore and actually fixing it has some performance penalty.
+				*job = (*job)[:0]
+				ensureOrderBatchPool.Put(job)
 			}
 			wg.Done()
 		}()
 	}
 
-	nextJob := ensureOrderBatchPool.Get().([][]storage.SeriesRef)
+	nextJob := ensureOrderBatchPool.Get().(*[][]storage.SeriesRef)
 	for _, e := range p.m {
 		for _, l := range e {
-			nextJob = append(nextJob, l)
+			*nextJob = append(*nextJob, l)
 
-			if len(nextJob) >= ensureOrderBatchSize {
+			if len(*nextJob) >= ensureOrderBatchSize {
 				workc <- nextJob
-				nextJob = ensureOrderBatchPool.Get().([][]storage.SeriesRef)
+				nextJob = ensureOrderBatchPool.Get().(*[][]storage.SeriesRef)
 			}
 		}
 	}
 
 	// If the last job was partially filled, we need to push it to workers too.
-	if len(nextJob) > 0 {
+	if len(*nextJob) > 0 {
 		workc <- nextJob
 	}
 
@@ -826,13 +828,6 @@ func (it *bigEndianPostings) Seek(x storage.SeriesRef) bool {
 func (it *bigEndianPostings) Err() error {
 	return nil
 }
-
-// seriesRefSlice attaches the methods of sort.Interface to []storage.SeriesRef, sorting in increasing order.
-type seriesRefSlice []storage.SeriesRef
-
-func (x seriesRefSlice) Len() int           { return len(x) }
-func (x seriesRefSlice) Less(i, j int) bool { return x[i] < x[j] }
-func (x seriesRefSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 // FindIntersectingPostings checks the intersection of p and candidates[i] for each i in candidates,
 // if intersection is non empty, then i is added to the indexes returned.

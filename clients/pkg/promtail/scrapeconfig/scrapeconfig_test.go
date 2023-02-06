@@ -30,14 +30,15 @@ pipeline_stages:
   - regex:
       expr: "./*"
   - json:
-      timestamp:
-        source: time
-        format: RFC3339
-      labels:
-        stream:
-          source: json_key_name.json_sub_key_name
-      output:
-        source: log
+      expressions:
+        timestamp:
+          source: time
+          format: RFC3339
+        labels:
+          stream:
+            source: json_key_name.json_sub_key_name
+        output:
+          source: log
 job_name: kubernetes-pods-name
 kubernetes_sd_configs:
 - role: pod
@@ -104,10 +105,8 @@ func TestLoadSmallConfig(t *testing.T) {
 		ServiceDiscoveryConfig: ServiceDiscoveryConfig{
 			KubernetesSDConfigs: []*kubernetes.SDConfig{
 				{
-					Role: "pod",
-					HTTPClientConfig: promConfig.HTTPClientConfig{
-						FollowRedirects: true,
-					},
+					Role:             "pod",
+					HTTPClientConfig: promConfig.DefaultHTTPClientConfig,
 				},
 			},
 			StaticConfigs: []*targetgroup.Group{
@@ -140,4 +139,6 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+
+	require.NotZero(t, len(config.PipelineStages))
 }

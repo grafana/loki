@@ -63,7 +63,7 @@ func Event(name, namespace string) *EventApplyConfiguration {
 // ExtractEvent extracts the applied configuration owned by fieldManager from
 // event. If no managedFields are found in event for fieldManager, a
 // EventApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // event must be a unmodified Event API object that was retrieved from the Kubernetes API.
@@ -72,8 +72,19 @@ func Event(name, namespace string) *EventApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractEvent(event *apieventsv1.Event, fieldManager string) (*EventApplyConfiguration, error) {
+	return extractEvent(event, fieldManager, "")
+}
+
+// ExtractEventStatus is the same as ExtractEvent except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractEventStatus(event *apieventsv1.Event, fieldManager string) (*EventApplyConfiguration, error) {
+	return extractEvent(event, fieldManager, "status")
+}
+
+func extractEvent(event *apieventsv1.Event, fieldManager string, subresource string) (*EventApplyConfiguration, error) {
 	b := &EventApplyConfiguration{}
-	err := managedfields.ExtractInto(event, internal.Parser().Type("io.k8s.api.events.v1.Event"), fieldManager, b)
+	err := managedfields.ExtractInto(event, internal.Parser().Type("io.k8s.api.events.v1.Event"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -125,15 +136,6 @@ func (b *EventApplyConfiguration) WithGenerateName(value string) *EventApplyConf
 func (b *EventApplyConfiguration) WithNamespace(value string) *EventApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *EventApplyConfiguration) WithSelfLink(value string) *EventApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -243,15 +245,6 @@ func (b *EventApplyConfiguration) WithFinalizers(values ...string) *EventApplyCo
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *EventApplyConfiguration) WithClusterName(value string) *EventApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

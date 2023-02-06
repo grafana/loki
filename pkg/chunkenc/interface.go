@@ -11,20 +11,37 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 // Errors returned by the chunk interface.
 var (
 	ErrChunkFull       = errors.New("chunk full")
 	ErrOutOfOrder      = errors.New("entry out of order")
-	ErrTooFarBehind    = errors.New("entry too far behind")
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidFlag     = errors.New("invalid flag")
 	ErrInvalidChecksum = errors.New("invalid chunk checksum")
 )
 
+type errTooFarBehind struct {
+	cutoff time.Time
+}
+
+func IsErrTooFarBehind(err error) bool {
+	_, ok := err.(*errTooFarBehind)
+	return ok
+}
+
+func ErrTooFarBehind(cutoff time.Time) error {
+	return &errTooFarBehind{cutoff: cutoff}
+}
+
+func (m *errTooFarBehind) Error() string {
+	return "entry too far behind, oldest acceptable timestamp is: " + m.cutoff.Format(time.RFC3339)
+}
+
 func IsOutOfOrderErr(err error) bool {
-	return err == ErrOutOfOrder || err == ErrTooFarBehind
+	return err == ErrOutOfOrder || IsErrTooFarBehind(err)
 }
 
 // Encoding is the identifier for a chunk encoding.
@@ -127,7 +144,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() Encoding
-	Rebound(start, end time.Time) (Chunk, error)
+	Rebound(start, end time.Time, filter filter.Func) (Chunk, error)
 }
 
 // Block is a chunk block.

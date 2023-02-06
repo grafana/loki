@@ -73,15 +73,19 @@ module Fluent
       desc 'if a record only has 1 key, then just set the log line to the value and discard the key.'
       config_param :drop_single_key, :bool, default: false
 
+      desc 'whether or not to include the fluentd_thread label when multiple threads are used for flushing'
+      config_param :include_thread_label, :bool, default: true
+
       config_section :buffer do
         config_set_default :@type, DEFAULT_BUFFER_TYPE
         config_set_default :chunk_keys, []
       end
 
-      def configure(conf) # rubocop:disable Metrics/CyclomaticComplexity
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      def configure(conf)
         compat_parameters_convert(conf, :buffer)
         super
-        @uri = URI.parse(@url + '/loki/api/v1/push')
+        @uri = URI.parse("#{@url}/loki/api/v1/push")
         unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
           raise Fluent::ConfigError, 'URL parameter must have HTTP/HTTPS scheme'
         end
@@ -105,25 +109,24 @@ module Fluent
           validate_client_cert_key
         end
 
-        raise "bearer_token_file #{@bearer_token_file} not found" if !@bearer_token_file.nil? && !File.exist?(@bearer_token_file)
+        if !@bearer_token_file.nil? && !File.exist?(@bearer_token_file)
+          raise "bearer_token_file #{@bearer_token_file} not found"
+        end
 
         @auth_token_bearer = nil
-        if !@bearer_token_file.nil?
-          if !File.exist?(@bearer_token_file)
-            raise "bearer_token_file #{@bearer_token_file} not found"
-          end
+        unless @bearer_token_file.nil?
+          raise "bearer_token_file #{@bearer_token_file} not found" unless File.exist?(@bearer_token_file)
 
           # Read the file once, assume long-lived authentication token.
           @auth_token_bearer = File.read(@bearer_token_file)
-          if @auth_token_bearer.empty?
-            raise "bearer_token_file #{@bearer_token_file} is empty"
-          end
+          raise "bearer_token_file #{@bearer_token_file} is empty" if @auth_token_bearer.empty?
+
           log.info "will use Bearer token from bearer_token_file #{@bearer_token_file} in Authorization header"
         end
 
-
         raise "CA certificate file #{@ca_cert} not found" if !@ca_cert.nil? && !File.exist?(@ca_cert)
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       def client_cert_configured?
         !@key.nil? && !@cert.nil?
@@ -201,8 +204,7 @@ module Fluent
       def generic_to_loki(chunk)
         # log.debug("GenericToLoki: converting #{chunk}")
         streams = chunk_to_loki(chunk)
-        payload = payload_builder(streams)
-        payload
+        payload_builder(streams)
       end
 
       private
@@ -212,7 +214,7 @@ module Fluent
           @uri.request_uri
         )
         req.add_field('Content-Type', 'application/json')
-        req.add_field('Authorization', "Bearer #{@auth_token_bearer}") if !@auth_token_bearer.nil?
+        req.add_field('Authorization', "Bearer #{@auth_token_bearer}") unless @auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
@@ -238,7 +240,7 @@ module Fluent
         data_labels = {} if data_labels.nil?
         data_labels = data_labels.merge(@extra_labels)
         # sanitize label values
-        data_labels.each { |k, v| formatted_labels[k] = v.gsub('"', '\\"') if v && v&.is_a?(String) }
+        data_labels.each { |k, v| formatted_labels[k] = v.gsub('"', '\\"') if v.is_a?(String) }
         formatted_labels
       end
 
@@ -267,6 +269,7 @@ module Fluent
         end
       end
 
+      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def record_to_line(record)
         line = ''
         if @drop_single_key && record.keys.length == 1
@@ -279,11 +282,9 @@ module Fluent
             formatted_labels = []
             record.each do |k, v|
               # Remove non UTF-8 characters by force-encoding the string
-              if v.is_a?(String)
-                v = v.encode('utf-8', invalid: :replace, undef: :replace, replace: '?')
-              end
+              v = v.encode('utf-8', invalid: :replace, undef: :replace, replace: '?') if v.is_a?(String)
               # Escape double quotes and backslashes by prefixing them with a backslash
-              v = v.to_s.gsub(%r{(["\\])}, '\\\\\1')
+              v = v.to_s.gsub(/(["\\])/, '\\\\\1')
               if v.include?(' ') || v.include?('=')
                 formatted_labels.push(%(#{k}="#{v}"))
               else
@@ -295,25 +296,25 @@ module Fluent
         end
         line
       end
+      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       # convert a line to loki line with labels
+      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def line_to_loki(record)
         chunk_labels = {}
         line = ''
         if record.is_a?(Hash)
           @record_accessors&.each do |name, accessor|
-            new_key = name.gsub(%r{[.\-\/]}, '_')
+            new_key = name.gsub(%r{[.\-/]}, '_')
             chunk_labels[new_key] = accessor.call(record)
             accessor.delete(record)
           end
 
           if @extract_kubernetes_labels && record.key?('kubernetes')
             kubernetes_labels = record['kubernetes']['labels']
-            if !kubernetes_labels.nil?
-              kubernetes_labels.each_key do |l|
-                new_key = l.gsub(%r{[.\-\/]}, '_')
-                chunk_labels[new_key] = kubernetes_labels[l]
-              end
+            kubernetes_labels&.each_key do |l|
+              new_key = l.gsub(%r{[.\-/]}, '_')
+              chunk_labels[new_key] = kubernetes_labels[l]
             end
           end
 
@@ -332,7 +333,7 @@ module Fluent
         # unique per flush thread
         # note that flush thread != fluentd worker. if you use multiple workers you still need to
         # add the worker id as a label
-        if @buffer_config.flush_thread_count > 1
+        if @include_thread_label && @buffer_config.flush_thread_count > 1
           chunk_labels['fluentd_thread'] = Thread.current[:_fluentd_plugin_helper_thread_title].to_s
         end
 
@@ -342,6 +343,7 @@ module Fluent
           labels: chunk_labels
         }
       end
+      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       # iterate through each chunk and create a loki stream entry
       def chunk_to_loki(chunk)

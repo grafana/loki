@@ -1,6 +1,6 @@
 {
   _images+:: {
-    loki: 'grafana/loki:2.5.0',
+    loki: 'grafana/loki:2.7.3',
 
     read: self.loki,
     write: self.loki,

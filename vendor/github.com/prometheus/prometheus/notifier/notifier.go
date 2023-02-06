@@ -19,19 +19,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/go-openapi/strfmt"
-	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
@@ -304,12 +300,22 @@ func (n *Manager) nextBatch() []*Alert {
 // Run dispatches notifications continuously.
 func (n *Manager) Run(tsets <-chan map[string][]*targetgroup.Group) {
 	for {
+		// The select is split in two parts, such as we will first try to read
+		// new alertmanager targets if they are available, before sending new
+		// alerts.
 		select {
 		case <-n.ctx.Done():
 			return
 		case ts := <-tsets:
 			n.reload(ts)
-		case <-n.more:
+		default:
+			select {
+			case <-n.ctx.Done():
+				return
+			case ts := <-tsets:
+				n.reload(ts)
+			case <-n.more:
+			}
 		}
 		alerts := n.nextBatch()
 
@@ -353,7 +359,7 @@ func (n *Manager) Send(alerts ...*Alert) {
 			}
 		}
 
-		a.Labels = lb.Labels()
+		a.Labels = lb.Labels(a.Labels)
 	}
 
 	alerts = n.relabelAlerts(alerts)
@@ -583,13 +589,13 @@ func (n *Manager) sendOne(ctx context.Context, c *http.Client, url string, b []b
 		return err
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, resp.Body)
+		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}()
 
 	// Any HTTP status 2xx is OK.
 	if resp.StatusCode/100 != 2 {
-		return errors.Errorf("bad response status %s", resp.Status)
+		return fmt.Errorf("bad response status %s", resp.Status)
 	}
 
 	return nil
@@ -719,45 +725,9 @@ func AlertmanagerFromGroup(tg *targetgroup.Group, cfg *config.AlertmanagerConfig
 			continue
 		}
 
-		lb := labels.NewBuilder(lset)
-
-		// addPort checks whether we should add a default port to the address.
-		// If the address is not valid, we don't append a port either.
-		addPort := func(s string) bool {
-			// If we can split, a port exists and we don't have to add one.
-			if _, _, err := net.SplitHostPort(s); err == nil {
-				return false
-			}
-			// If adding a port makes it valid, the previous error
-			// was not due to an invalid address and we can append a port.
-			_, _, err := net.SplitHostPort(s + ":1234")
-			return err == nil
-		}
 		addr := lset.Get(model.AddressLabel)
-		// If it's an address with no trailing port, infer it based on the used scheme.
-		if addPort(addr) {
-			// Addresses reaching this point are already wrapped in [] if necessary.
-			switch lset.Get(model.SchemeLabel) {
-			case "http", "":
-				addr = addr + ":80"
-			case "https":
-				addr = addr + ":443"
-			default:
-				return nil, nil, errors.Errorf("invalid scheme: %q", cfg.Scheme)
-			}
-			lb.Set(model.AddressLabel, addr)
-		}
-
 		if err := config.CheckTargetAddress(model.LabelValue(addr)); err != nil {
 			return nil, nil, err
-		}
-
-		// Meta labels are deleted after relabelling. Other internal labels propagate to
-		// the target which decides whether they will be part of their label set.
-		for _, l := range lset {
-			if strings.HasPrefix(l.Name, model.MetaLabelPrefix) {
-				lb.Del(l.Name)
-			}
 		}
 
 		res = append(res, alertmanagerLabels{lset})

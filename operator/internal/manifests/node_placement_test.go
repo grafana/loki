@@ -3,7 +3,7 @@ package manifests
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/api/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
@@ -17,29 +17,33 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 		Effect:   corev1.TaintEffectNoSchedule,
 	}}
 	optsWithTolerations := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Tolerations: tolerations,
+					Replicas:    1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
@@ -49,24 +53,27 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 	}
 
 	optsWithoutTolerations := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -103,34 +110,43 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 		assert.Equal(t, tolerations, NewIndexGatewayStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
 		assert.Empty(t, NewIndexGatewayStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
 	})
+
+	t.Run("ruler", func(t *testing.T) {
+		assert.Equal(t, tolerations, NewRulerStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
+		assert.Empty(t, NewRulerStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
+	})
 }
 
 func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	nodeSelectors := map[string]string{"type": "storage"}
 	optsWithNodeSelectors := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+					Replicas:     1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
@@ -140,24 +156,27 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	}
 
 	optsWithoutNodeSelectors := Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: &lokiv1beta1.LokiTemplateSpec{
-				Compactor: &lokiv1beta1.LokiComponentSpec{
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Distributor: &lokiv1beta1.LokiComponentSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Ingester: &lokiv1beta1.LokiComponentSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				Querier: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -193,5 +212,10 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	t.Run("index_gateway", func(t *testing.T) {
 		assert.Equal(t, nodeSelectors, NewIndexGatewayStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
 		assert.Empty(t, NewIndexGatewayStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("ruler", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewRulerStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewRulerStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
 	})
 }

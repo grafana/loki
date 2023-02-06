@@ -10,8 +10,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
+	"google.golang.org/api/internal"
 )
 
 // ResumableUpload is used by the generated APIs to provide resumable uploads.
@@ -38,6 +42,11 @@ type ResumableUpload struct {
 	// ChunkRetryDeadline configures the per-chunk deadline after which no further
 	// retries should happen.
 	ChunkRetryDeadline time.Duration
+
+	// Track current request invocation ID and attempt count for retry metric
+	// headers.
+	invocationID string
+	attempts     int
 }
 
 // Progress returns the number of bytes uploaded at this point.
@@ -71,6 +80,10 @@ func (rx *ResumableUpload) doUploadRequest(ctx context.Context, data io.Reader, 
 	req.Header.Set("Content-Range", contentRange)
 	req.Header.Set("Content-Type", rx.MediaType)
 	req.Header.Set("User-Agent", rx.UserAgent)
+
+	baseXGoogHeader := "gl-go/" + GoVersion() + " gdcl/" + internal.Version
+	invocationHeader := fmt.Sprintf("gccl-invocation-id/%s gccl-attempt-count/%d", rx.invocationID, rx.attempts)
+	req.Header.Set("X-Goog-Api-Client", strings.Join([]string{baseXGoogHeader, invocationHeader}, " "))
 
 	// Google's upload endpoint uses status code 308 for a
 	// different purpose than the "308 Permanent Redirect"
@@ -178,22 +191,30 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 	for {
 		var pause time.Duration
 
-		// Each chunk gets its own initialized-at-zero backoff.
+		// Each chunk gets its own initialized-at-zero backoff and invocation ID.
 		bo := rx.Retry.backoff()
-		quitAfter := time.After(retryDeadline)
+		quitAfterTimer := time.NewTimer(retryDeadline)
+		rx.attempts = 1
+		rx.invocationID = uuid.New().String()
 
 		// Retry loop for a single chunk.
 		for {
+			pauseTimer := time.NewTimer(pause)
 			select {
 			case <-ctx.Done():
+				quitAfterTimer.Stop()
+				pauseTimer.Stop()
 				if err == nil {
 					err = ctx.Err()
 				}
 				return prepareReturn(resp, err)
-			case <-time.After(pause):
-			case <-quitAfter:
+			case <-pauseTimer.C:
+				quitAfterTimer.Stop()
+			case <-quitAfterTimer.C:
+				pauseTimer.Stop()
 				return prepareReturn(resp, err)
 			}
+			pauseTimer.Stop()
 
 			// Check for context cancellation or timeout once more. If more than one
 			// case in the select statement above was satisfied at the same time, Go
@@ -202,13 +223,15 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			// canceled before or the timeout was reached.
 			select {
 			case <-ctx.Done():
+				quitAfterTimer.Stop()
 				if err == nil {
 					err = ctx.Err()
 				}
 				return prepareReturn(resp, err)
-			case <-quitAfter:
+			case <-quitAfterTimer.C:
 				return prepareReturn(resp, err)
 			default:
+				quitAfterTimer.Stop()
 			}
 
 			resp, err = rx.transferChunk(ctx)
@@ -223,6 +246,7 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 				break
 			}
 
+			rx.attempts++
 			pause = bo.Pause()
 			if resp != nil && resp.Body != nil {
 				resp.Body.Close()

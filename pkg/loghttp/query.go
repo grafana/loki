@@ -337,3 +337,9 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 
 	return &result, nil
 }
+
+func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
+	// TODO(owen-d): use a specific type/validation instead
+	// of using range query parameters (superset)
+	return ParseRangeQuery(r)
+}

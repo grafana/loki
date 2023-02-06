@@ -3,6 +3,11 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 {
   _config+:: {
     htpasswd_contents: error 'must specify htpasswd contents',
+
+    // This is inserted into the gateway Nginx config file
+    // under the server directive
+    gateway_server_snippet: '',
+    gateway_tenant_id: '1',
   },
 
   _images+:: {
@@ -39,13 +44,13 @@ local k = import 'ksonnet-util/kausal.libsonnet';
           access_log   /dev/stderr  main;
           sendfile     on;
           tcp_nopush   on;
-          resolver kube-dns.kube-system.svc.cluster.local;
+          resolver %(dns_resolver)s;
 
           server {
             listen               80;
             auth_basic           “Prometheus”;
             auth_basic_user_file /etc/nginx/secrets/.htpasswd;
-            proxy_set_header     X-Scope-OrgID 1;
+            proxy_set_header     X-Scope-OrgID %(gateway_tenant_id);
 
             location = /api/prom/push {
               proxy_pass       http://distributor.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
@@ -74,6 +79,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
             location ~ /loki/api/.* {
               proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
+
+            %(gateway_server_snippet)s
           }
         }
       ||| % $._config,
@@ -103,5 +110,5 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1),
 
   gateway_service:
-    k.util.serviceFor($.gateway_deployment),
+    k.util.serviceFor($.gateway_deployment, $._config.service_ignored_labels),
 }

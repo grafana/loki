@@ -49,7 +49,7 @@ func FlowSchema(name string) *FlowSchemaApplyConfiguration {
 // ExtractFlowSchema extracts the applied configuration owned by fieldManager from
 // flowSchema. If no managedFields are found in flowSchema for fieldManager, a
 // FlowSchemaApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // flowSchema must be a unmodified FlowSchema API object that was retrieved from the Kubernetes API.
@@ -58,8 +58,19 @@ func FlowSchema(name string) *FlowSchemaApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractFlowSchema(flowSchema *flowcontrolv1beta1.FlowSchema, fieldManager string) (*FlowSchemaApplyConfiguration, error) {
+	return extractFlowSchema(flowSchema, fieldManager, "")
+}
+
+// ExtractFlowSchemaStatus is the same as ExtractFlowSchema except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractFlowSchemaStatus(flowSchema *flowcontrolv1beta1.FlowSchema, fieldManager string) (*FlowSchemaApplyConfiguration, error) {
+	return extractFlowSchema(flowSchema, fieldManager, "status")
+}
+
+func extractFlowSchema(flowSchema *flowcontrolv1beta1.FlowSchema, fieldManager string, subresource string) (*FlowSchemaApplyConfiguration, error) {
 	b := &FlowSchemaApplyConfiguration{}
-	err := managedfields.ExtractInto(flowSchema, internal.Parser().Type("io.k8s.api.flowcontrol.v1beta1.FlowSchema"), fieldManager, b)
+	err := managedfields.ExtractInto(flowSchema, internal.Parser().Type("io.k8s.api.flowcontrol.v1beta1.FlowSchema"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -110,15 +121,6 @@ func (b *FlowSchemaApplyConfiguration) WithGenerateName(value string) *FlowSchem
 func (b *FlowSchemaApplyConfiguration) WithNamespace(value string) *FlowSchemaApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *FlowSchemaApplyConfiguration) WithSelfLink(value string) *FlowSchemaApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -228,15 +230,6 @@ func (b *FlowSchemaApplyConfiguration) WithFinalizers(values ...string) *FlowSch
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *FlowSchemaApplyConfiguration) WithClusterName(value string) *FlowSchemaApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

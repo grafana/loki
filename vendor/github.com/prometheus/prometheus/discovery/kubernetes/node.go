@@ -15,12 +15,13 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"strconv"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -54,7 +55,7 @@ func NewNode(l log.Logger, inf cache.SharedInformer) *Node {
 		l = log.NewNopLogger()
 	}
 	n := &Node{logger: l, informer: inf, store: inf.GetStore(), queue: workqueue.NewNamed("node")}
-	n.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := n.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			nodeAddCount.Inc()
 			n.enqueue(o)
@@ -68,6 +69,9 @@ func NewNode(l log.Logger, inf cache.SharedInformer) *Node {
 			n.enqueue(o)
 		},
 	})
+	if err != nil {
+		level.Error(l).Log("msg", "Error adding nodes event handler.", "err", err)
+	}
 	return n
 }
 
@@ -85,7 +89,7 @@ func (n *Node) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 	defer n.queue.ShutDown()
 
 	if !cache.WaitForCacheSync(ctx.Done(), n.informer.HasSynced) {
-		if ctx.Err() != context.Canceled {
+		if !errors.Is(ctx.Err(), context.Canceled) {
 			level.Error(n.logger).Log("msg", "node informer unable to sync cache")
 		}
 		return
@@ -136,7 +140,7 @@ func convertToNode(o interface{}) (*apiv1.Node, error) {
 		return node, nil
 	}
 
-	return nil, errors.Errorf("received unexpected object: %v", o)
+	return nil, fmt.Errorf("received unexpected object: %v", o)
 }
 
 func nodeSource(n *apiv1.Node) string {

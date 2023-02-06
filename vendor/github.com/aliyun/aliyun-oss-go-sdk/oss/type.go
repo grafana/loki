@@ -53,7 +53,9 @@ type LifecycleRule struct {
 	Transitions          []LifecycleTransition          `xml:"Transition,omitempty"`           // The transition property
 	AbortMultipartUpload *LifecycleAbortMultipartUpload `xml:"AbortMultipartUpload,omitempty"` // The AbortMultipartUpload property
 	NonVersionExpiration *LifecycleVersionExpiration    `xml:"NoncurrentVersionExpiration,omitempty"`
-	NonVersionTransition *LifecycleVersionTransition    `xml:"NoncurrentVersionTransition,omitempty"`
+	// Deprecated: Use NonVersionTransitions instead.
+	NonVersionTransition  *LifecycleVersionTransition  `xml:"-"` // NonVersionTransition is not suggested to use
+	NonVersionTransitions []LifecycleVersionTransition `xml:"NoncurrentVersionTransition,omitempty"`
 }
 
 // LifecycleExpiration defines the rule's expiration property
@@ -121,7 +123,7 @@ func verifyLifecycleRules(rules []LifecycleRule) error {
 	if len(rules) == 0 {
 		return fmt.Errorf("invalid rules, the length of rules is zero")
 	}
-	for _, rule := range rules {
+	for k, rule := range rules {
 		if rule.Status != "Enabled" && rule.Status != "Disabled" {
 			return fmt.Errorf("invalid rule, the value of status must be Enabled or Disabled")
 		}
@@ -135,20 +137,19 @@ func verifyLifecycleRules(rules []LifecycleRule) error {
 
 		transitions := rule.Transitions
 		if len(transitions) > 0 {
-			if len(transitions) > 2 {
-				return fmt.Errorf("invalid count of transition lifecycles, the count must than less than 3")
-			}
-
 			for _, transition := range transitions {
 				if (transition.Days != 0 && transition.CreatedBeforeDate != "") || (transition.Days == 0 && transition.CreatedBeforeDate == "") {
 					return fmt.Errorf("invalid transition lifecycle, must be set one of CreatedBeforeDate and Days")
 				}
-				if transition.StorageClass != StorageIA && transition.StorageClass != StorageArchive {
-					return fmt.Errorf("invalid transition lifecylce, the value of storage class must be IA or Archive")
-				}
 			}
-		} else if rule.Expiration == nil && abortMPU == nil && rule.NonVersionExpiration == nil && rule.NonVersionTransition == nil {
-			return fmt.Errorf("invalid rule, must set one of Expiration, AbortMultipartUplaod, NonVersionExpiration, NonVersionTransition and Transitions")
+		}
+
+		// NonVersionTransition is not suggested to use
+		// to keep compatible
+		if rule.NonVersionTransition != nil && len(rule.NonVersionTransitions) > 0 {
+			return fmt.Errorf("NonVersionTransition and NonVersionTransitions cannot both have values")
+		} else if rule.NonVersionTransition != nil {
+			rules[k].NonVersionTransitions = append(rules[k].NonVersionTransitions, *rule.NonVersionTransition)
 		}
 	}
 
@@ -295,24 +296,27 @@ type GetBucketInfoResult struct {
 
 // BucketInfo defines Bucket information
 type BucketInfo struct {
-	XMLName          xml.Name  `xml:"Bucket"`
-	Name             string    `xml:"Name"`                     // Bucket name
-	Location         string    `xml:"Location"`                 // Bucket datacenter
-	CreationDate     time.Time `xml:"CreationDate"`             // Bucket creation time
-	ExtranetEndpoint string    `xml:"ExtranetEndpoint"`         // Bucket external endpoint
-	IntranetEndpoint string    `xml:"IntranetEndpoint"`         // Bucket internal endpoint
-	ACL              string    `xml:"AccessControlList>Grant"`  // Bucket ACL
-	RedundancyType   string    `xml:"DataRedundancyType"`       // Bucket DataRedundancyType
-	Owner            Owner     `xml:"Owner"`                    // Bucket owner
-	StorageClass     string    `xml:"StorageClass"`             // Bucket storage class
-	SseRule          SSERule   `xml:"ServerSideEncryptionRule"` // Bucket ServerSideEncryptionRule
-	Versioning       string    `xml:"Versioning"`               // Bucket Versioning
+	XMLName                xml.Name  `xml:"Bucket"`
+	Name                   string    `xml:"Name"`                     // Bucket name
+	Location               string    `xml:"Location"`                 // Bucket datacenter
+	CreationDate           time.Time `xml:"CreationDate"`             // Bucket creation time
+	ExtranetEndpoint       string    `xml:"ExtranetEndpoint"`         // Bucket external endpoint
+	IntranetEndpoint       string    `xml:"IntranetEndpoint"`         // Bucket internal endpoint
+	ACL                    string    `xml:"AccessControlList>Grant"`  // Bucket ACL
+	RedundancyType         string    `xml:"DataRedundancyType"`       // Bucket DataRedundancyType
+	Owner                  Owner     `xml:"Owner"`                    // Bucket owner
+	StorageClass           string    `xml:"StorageClass"`             // Bucket storage class
+	SseRule                SSERule   `xml:"ServerSideEncryptionRule"` // Bucket ServerSideEncryptionRule
+	Versioning             string    `xml:"Versioning"`               // Bucket Versioning
+	TransferAcceleration   string    `xml:"TransferAcceleration"`     // bucket TransferAcceleration
+	CrossRegionReplication string    `xml:"CrossRegionReplication"`   // bucket CrossRegionReplication
 }
 
 type SSERule struct {
-	XMLName        xml.Name `xml:"ServerSideEncryptionRule"` // Bucket ServerSideEncryptionRule
-	KMSMasterKeyID string   `xml:"KMSMasterKeyID"`           // Bucket KMSMasterKeyID
-	SSEAlgorithm   string   `xml:"SSEAlgorithm"`             // Bucket SSEAlgorithm
+	XMLName           xml.Name `xml:"ServerSideEncryptionRule"`    // Bucket ServerSideEncryptionRule
+	KMSMasterKeyID    string   `xml:"KMSMasterKeyID,omitempty"`    // Bucket KMSMasterKeyID
+	SSEAlgorithm      string   `xml:"SSEAlgorithm,omitempty"`      // Bucket SSEAlgorithm
+	KMSDataEncryption string   `xml:"KMSDataEncryption,omitempty"` //Bucket KMSDataEncryption
 }
 
 // ListObjectsResult defines the result from ListObjects request
@@ -338,6 +342,20 @@ type ObjectProperties struct {
 	Owner        Owner     `xml:"Owner"`        // Object owner information
 	LastModified time.Time `xml:"LastModified"` // Object last modified time
 	StorageClass string    `xml:"StorageClass"` // Object storage class (Standard, IA, Archive)
+}
+
+// ListObjectsResultV2 defines the result from ListObjectsV2 request
+type ListObjectsResultV2 struct {
+	XMLName               xml.Name           `xml:"ListBucketResult"`
+	Prefix                string             `xml:"Prefix"`                // The object prefix
+	StartAfter            string             `xml:"StartAfter"`            // the input StartAfter
+	ContinuationToken     string             `xml:"ContinuationToken"`     // the input ContinuationToken
+	MaxKeys               int                `xml:"MaxKeys"`               // Max keys to return
+	Delimiter             string             `xml:"Delimiter"`             // The delimiter for grouping objects' name
+	IsTruncated           bool               `xml:"IsTruncated"`           // Flag indicates if all results are returned (when it's false)
+	NextContinuationToken string             `xml:"NextContinuationToken"` // The start point of the next NextContinuationToken
+	Objects               []ObjectProperties `xml:"Contents"`              // Object list
+	CommonPrefixes        []string           `xml:"CommonPrefixes>Prefix"` // You can think of commonprefixes as "folders" whose names end with the delimiter
 }
 
 // ListObjectVersionsResult defines the result from ListObjectVersions request
@@ -446,17 +464,17 @@ type UploadPart struct {
 	ETag       string   `xml:"ETag"`       // ETag value of the part's data
 }
 
-type uploadParts []UploadPart
+type UploadParts []UploadPart
 
-func (slice uploadParts) Len() int {
+func (slice UploadParts) Len() int {
 	return len(slice)
 }
 
-func (slice uploadParts) Less(i, j int) bool {
+func (slice UploadParts) Less(i, j int) bool {
 	return slice[i].PartNumber < slice[j].PartNumber
 }
 
-func (slice uploadParts) Swap(i, j int) {
+func (slice UploadParts) Swap(i, j int) {
 	slice[i], slice[j] = slice[j], slice[i]
 }
 
@@ -562,6 +580,40 @@ func decodeListObjectsResult(result *ListObjectsResult) error {
 		return err
 	}
 	result.NextMarker, err = url.QueryUnescape(result.NextMarker)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(result.Objects); i++ {
+		result.Objects[i].Key, err = url.QueryUnescape(result.Objects[i].Key)
+		if err != nil {
+			return err
+		}
+	}
+	for i := 0; i < len(result.CommonPrefixes); i++ {
+		result.CommonPrefixes[i], err = url.QueryUnescape(result.CommonPrefixes[i])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// decodeListObjectsResult decodes list objects result in URL encoding
+func decodeListObjectsResultV2(result *ListObjectsResultV2) error {
+	var err error
+	result.Prefix, err = url.QueryUnescape(result.Prefix)
+	if err != nil {
+		return err
+	}
+	result.StartAfter, err = url.QueryUnescape(result.StartAfter)
+	if err != nil {
+		return err
+	}
+	result.Delimiter, err = url.QueryUnescape(result.Delimiter)
+	if err != nil {
+		return err
+	}
+	result.NextContinuationToken, err = url.QueryUnescape(result.NextContinuationToken)
 	if err != nil {
 		return err
 	}
@@ -696,6 +748,7 @@ type createBucketConfiguration struct {
 	XMLName            xml.Name           `xml:"CreateBucketConfiguration"`
 	StorageClass       StorageClassType   `xml:"StorageClass,omitempty"`
 	DataRedundancyType DataRedundancyType `xml:"DataRedundancyType,omitempty"`
+	ObjectHashFunction ObjecthashFuncType `xml:"ObjectHashFunction,omitempty"`
 }
 
 // LiveChannelConfiguration defines the configuration for live-channel
@@ -828,9 +881,10 @@ type ServerEncryptionRule struct {
 
 // Server Encryption deafult rule for the bucket
 type SSEDefaultRule struct {
-	XMLName        xml.Name `xml:"ApplyServerSideEncryptionByDefault"`
-	SSEAlgorithm   string   `xml:"SSEAlgorithm"`
-	KMSMasterKeyID string   `xml:"KMSMasterKeyID"`
+	XMLName           xml.Name `xml:"ApplyServerSideEncryptionByDefault"`
+	SSEAlgorithm      string   `xml:"SSEAlgorithm,omitempty"`
+	KMSMasterKeyID    string   `xml:"KMSMasterKeyID,omitempty"`
+	KMSDataEncryption string   `xml:"KMSDataEncryption,,omitempty"`
 }
 
 type GetBucketEncryptionResult ServerEncryptionRule
@@ -1077,4 +1131,132 @@ type MetaEndFrameJSON struct {
 	SplitsCount  int32
 	RowsCount    int64
 	ErrorMsg     string
+}
+
+// InventoryConfiguration is Inventory config
+type InventoryConfiguration struct {
+	XMLName                xml.Name             `xml:"InventoryConfiguration"`
+	Id                     string               `xml:"Id,omitempty"`
+	IsEnabled              *bool                `xml:"IsEnabled,omitempty"`
+	Prefix                 string               `xml:"Filter>Prefix,omitempty"`
+	OSSBucketDestination   OSSBucketDestination `xml:"Destination>OSSBucketDestination,omitempty"`
+	Frequency              string               `xml:"Schedule>Frequency,omitempty"`
+	IncludedObjectVersions string               `xml:"IncludedObjectVersions,omitempty"`
+	OptionalFields         OptionalFields       `xml:OptionalFields,omitempty`
+}
+
+type OptionalFields struct {
+	XMLName xml.Name `xml:"OptionalFields,omitempty`
+	Field   []string `xml:"Field,omitempty`
+}
+
+type OSSBucketDestination struct {
+	XMLName    xml.Name       `xml:"OSSBucketDestination"`
+	Format     string         `xml:"Format,omitempty"`
+	AccountId  string         `xml:"AccountId,omitempty"`
+	RoleArn    string         `xml:"RoleArn,omitempty"`
+	Bucket     string         `xml:"Bucket,omitempty"`
+	Prefix     string         `xml:"Prefix,omitempty"`
+	Encryption *InvEncryption `xml:"Encryption,omitempty"`
+}
+
+type InvEncryption struct {
+	XMLName xml.Name   `xml:"Encryption"`
+	SseOss  *InvSseOss `xml:"SSE-OSS"`
+	SseKms  *InvSseKms `xml:"SSE-KMS"`
+}
+
+type InvSseOss struct {
+	XMLName xml.Name `xml:"SSE-OSS"`
+}
+
+type InvSseKms struct {
+	XMLName xml.Name `xml:"SSE-KMS"`
+	KmsId   string   `xml:"KeyId,omitempty"`
+}
+
+type ListInventoryConfigurationsResult struct {
+	XMLName                xml.Name                 `xml:"ListInventoryConfigurationsResult"`
+	InventoryConfiguration []InventoryConfiguration `xml:"InventoryConfiguration,omitempty`
+	IsTruncated            *bool                    `xml:"IsTruncated,omitempty"`
+	NextContinuationToken  string                   `xml:"NextContinuationToken,omitempty"`
+}
+
+// RestoreConfiguration for RestoreObject
+type RestoreConfiguration struct {
+	XMLName xml.Name `xml:"RestoreRequest"`
+	Days    int32    `xml:"Days,omitempty"`
+	Tier    string   `xml:"JobParameters>Tier,omitempty"`
+}
+
+// AsyncFetchTaskConfiguration for SetBucketAsyncFetchTask
+type AsyncFetchTaskConfiguration struct {
+	XMLName       xml.Name `xml:"AsyncFetchTaskConfiguration"`
+	Url           string   `xml:"Url,omitempty"`
+	Object        string   `xml:"Object,omitempty"`
+	Host          string   `xml:"Host,omitempty"`
+	ContentMD5    string   `xml:"ContentMD5,omitempty"`
+	Callback      string   `xml:"Callback,omitempty"`
+	StorageClass  string   `xml:"StorageClass,omitempty"`
+	IgnoreSameKey bool     `xml:"IgnoreSameKey"`
+}
+
+// AsyncFetchTaskResult for SetBucketAsyncFetchTask result
+type AsyncFetchTaskResult struct {
+	XMLName xml.Name `xml:"AsyncFetchTaskResult"`
+	TaskId  string   `xml:"TaskId,omitempty"`
+}
+
+// AsynFetchTaskInfo for GetBucketAsyncFetchTask result
+type AsynFetchTaskInfo struct {
+	XMLName  xml.Name      `xml:"AsyncFetchTaskInfo"`
+	TaskId   string        `xml:"TaskId,omitempty"`
+	State    string        `xml:"State,omitempty"`
+	ErrorMsg string        `xml:"ErrorMsg,omitempty"`
+	TaskInfo AsyncTaskInfo `xml:"TaskInfo,omitempty"`
+}
+
+// AsyncTaskInfo for async task information
+type AsyncTaskInfo struct {
+	XMLName       xml.Name `xml:"TaskInfo"`
+	Url           string   `xml:"Url,omitempty"`
+	Object        string   `xml:"Object,omitempty"`
+	Host          string   `xml:"Host,omitempty"`
+	ContentMD5    string   `xml:"ContentMD5,omitempty"`
+	Callback      string   `xml:"Callback,omitempty"`
+	StorageClass  string   `xml:"StorageClass,omitempty"`
+	IgnoreSameKey bool     `xml:"IgnoreSameKey"`
+}
+
+// InitiateWormConfiguration define InitiateBucketWorm configuration
+type InitiateWormConfiguration struct {
+	XMLName               xml.Name `xml:"InitiateWormConfiguration"`
+	RetentionPeriodInDays int      `xml:"RetentionPeriodInDays"` // specify retention days
+}
+
+// ExtendWormConfiguration define ExtendWormConfiguration configuration
+type ExtendWormConfiguration struct {
+	XMLName               xml.Name `xml:"ExtendWormConfiguration"`
+	RetentionPeriodInDays int      `xml:"RetentionPeriodInDays"` // specify retention days
+}
+
+// WormConfiguration define WormConfiguration
+type WormConfiguration struct {
+	XMLName               xml.Name `xml:"WormConfiguration"`
+	WormId                string   `xml:"WormId,omitempty"`
+	State                 string   `xml:"State,omitempty"`
+	RetentionPeriodInDays int      `xml:"RetentionPeriodInDays"` // specify retention days
+	CreationDate          string   `xml:"CreationDate,omitempty"`
+}
+
+// TransferAccConfiguration define transfer acceleration configuration
+type TransferAccConfiguration struct {
+	XMLName xml.Name `xml:"TransferAccelerationConfiguration"`
+	Enabled bool     `xml:"Enabled"`
+}
+
+// ReplicationXML defines simple replication xml, and ReplicationXML is used for "DeleteBucketReplication" in client.go
+type ReplicationXML struct {
+	XMLName xml.Name `xml:"ReplicationRules"`
+	ID      string   `xml:"ID,omitempty"`
 }

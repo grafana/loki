@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	io "io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
@@ -259,6 +260,17 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			EndTs:   *req.End,
 			Path:    r.URL.Path,
 		}, nil
+	case IndexStatsOp:
+		req, err := loghttp.ParseIndexStatsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &logproto.IndexStatsRequest{
+			From:     from,
+			Through:  through,
+			Matchers: req.Query,
+		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -331,7 +343,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		u := &url.URL{
-			Path:     "/loki/api/v1/labels",
+			Path:     request.Path, // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -366,6 +378,24 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 
 		return req.WithContext(ctx), nil
+	case *logproto.IndexStatsRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+		u := &url.URL{
+			Path:     "/loki/api/v1/index/stats",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
@@ -377,7 +407,7 @@ type Buffer interface {
 
 func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
-		body, _ := ioutil.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
@@ -386,7 +416,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	if buffer, ok := r.Body.(Buffer); ok {
 		buf = buffer.Bytes()
 	} else {
-		buf, err = ioutil.ReadAll(r.Body)
+		buf, err = io.ReadAll(r.Body)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
@@ -423,6 +453,15 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    resp.Data,
 			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
+		}, nil
+	case *logproto.IndexStatsRequest:
+		var resp logproto.IndexStatsResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &IndexStatsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
@@ -536,6 +575,11 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 				return nil, err
 			}
 		}
+	case *IndexStatsResponse:
+		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
+			return nil, err
+		}
+
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
@@ -546,7 +590,7 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(&buf),
+		Body:       io.NopCloser(&buf),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil
@@ -779,8 +823,16 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsInstantWrapper{
 			LokiInstantRequest: r,
 		}, nil
+	case *LokiSeriesRequest:
+		return &paramsSeriesWrapper{
+			LokiSeriesRequest: r,
+		}, nil
+	case *LokiLabelNamesRequest:
+		return &paramsLabelNamesWrapper{
+			LokiLabelNamesRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
 	}
 }
 
@@ -840,6 +892,62 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+type paramsSeriesWrapper struct {
+	*LokiSeriesRequest
+}
+
+func (p paramsSeriesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsSeriesWrapper) Start() time.Time {
+	return p.LokiSeriesRequest.GetStartTs()
+}
+
+func (p paramsSeriesWrapper) End() time.Time {
+	return p.LokiSeriesRequest.GetEndTs()
+}
+
+func (p paramsSeriesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsSeriesWrapper) Interval() time.Duration { return 0 }
+func (p paramsSeriesWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsSeriesWrapper) Limit() uint32 { return 0 }
+func (p paramsSeriesWrapper) Shards() []string {
+	return p.GetShards()
+}
+
+type paramsLabelNamesWrapper struct {
+	*LokiLabelNamesRequest
+}
+
+func (p paramsLabelNamesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsLabelNamesWrapper) Start() time.Time {
+	return p.LokiLabelNamesRequest.GetStartTs()
+}
+
+func (p paramsLabelNamesWrapper) End() time.Time {
+	return p.LokiLabelNamesRequest.GetEndTs()
+}
+
+func (p paramsLabelNamesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
+func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 }
+func (p paramsLabelNamesWrapper) Shards() []string {
+	return make([]string, 0)
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {

@@ -1,6 +1,7 @@
 package log
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -12,15 +13,15 @@ import (
 
 func TestNoopPipeline(t *testing.T) {
 	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
-	l, lbr, ok := NewNoopPipeline().ForStream(lbs).Process(0, []byte(""))
+	l, lbr, matches := NewNoopPipeline().ForStream(lbs).Process(0, []byte(""))
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
-	require.Equal(t, true, ok)
+	require.Equal(t, true, matches)
 
-	ls, lbr, ok := NewNoopPipeline().ForStream(lbs).ProcessString(0, "")
+	ls, lbr, matches := NewNoopPipeline().ForStream(lbs).ProcessString(0, "")
 	require.Equal(t, "", ls)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
-	require.Equal(t, true, ok)
+	require.Equal(t, true, matches)
 }
 
 func TestPipeline(t *testing.T) {
@@ -29,25 +30,25 @@ func TestPipeline(t *testing.T) {
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		newMustLineFormatter("lbs {{.foo}}"),
 	})
-	l, lbr, ok := p.ForStream(lbs).Process(0, []byte("line"))
+	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"))
 	require.Equal(t, []byte("lbs bar"), l)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
-	require.Equal(t, true, ok)
+	require.Equal(t, true, matches)
 
-	ls, lbr, ok := p.ForStream(lbs).ProcessString(0, "line")
+	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line")
 	require.Equal(t, "lbs bar", ls)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
-	require.Equal(t, true, ok)
+	require.Equal(t, true, matches)
 
-	l, lbr, ok = p.ForStream(labels.Labels{}).Process(0, []byte("line"))
+	l, lbr, matches = p.ForStream(labels.Labels{}).Process(0, []byte("line"))
 	require.Equal(t, []byte(nil), l)
 	require.Equal(t, nil, lbr)
-	require.Equal(t, false, ok)
+	require.Equal(t, false, matches)
 
-	ls, lbr, ok = p.ForStream(labels.Labels{}).ProcessString(0, "line")
+	ls, lbr, matches = p.ForStream(labels.Labels{}).ProcessString(0, "line")
 	require.Equal(t, "", ls)
 	require.Equal(t, nil, lbr)
-	require.Equal(t, false, ok)
+	require.Equal(t, false, matches)
 }
 
 func TestFilteringPipeline(t *testing.T) {
@@ -74,11 +75,11 @@ func TestFilteringPipeline(t *testing.T) {
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, ok := p.ForStream(test.inputStreamLabels).Process(test.ts, []byte(test.line))
-			require.Equal(t, test.ok, ok)
+			_, _, matches := p.ForStream(test.inputStreamLabels).Process(test.ts, []byte(test.line))
+			require.Equal(t, test.ok, matches)
 
-			_, _, ok = p.ForStream(test.inputStreamLabels).ProcessString(test.ts, test.line)
-			require.Equal(t, test.ok, ok)
+			_, _, matches = p.ForStream(test.inputStreamLabels).ProcessString(test.ts, test.line)
+			require.Equal(t, test.ok, matches)
 		})
 	}
 }
@@ -127,13 +128,116 @@ func (p *stubStreamPipeline) ProcessString(ts int64, line string) (string, Label
 }
 
 var (
-	resOK         bool
+	resMatches    bool
 	resLine       []byte
 	resLineString string
 	resLbs        LabelsResult
 	resSample     float64
 )
 
+func TestDropLabelsPipeline(t *testing.T) {
+	tests := []struct {
+		name       string
+		stages     []Stage
+		lines      [][]byte
+		wantLine   [][]byte
+		wantLabels []labels.Labels
+	}{
+		{
+			"drop __error__",
+			[]Stage{
+				NewLogfmtParser(),
+				NewJSONParser(),
+				NewDropLabels([]DropLabel{
+					{
+						nil,
+						"__error__",
+					},
+					{
+						nil,
+						"__error_details__",
+					},
+				}),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[]labels.Labels{
+				{
+					{Name: "level", Value: "info"},
+					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
+					{Name: "caller", Value: "metrics.go:81"},
+					{Name: "status", Value: "200"},
+				},
+				{
+					{Name: "app", Value: "foo"},
+					{Name: "namespace", Value: "prod"},
+					{Name: "pod_uuid", Value: "foo"},
+					{Name: "pod_deployment_ref", Value: "foobar"},
+				},
+			},
+		},
+		{
+			"drop __error__ with matching value",
+			[]Stage{
+				NewLogfmtParser(),
+				NewJSONParser(),
+				NewDropLabels([]DropLabel{
+					{
+						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
+						"",
+					},
+					{
+						labels.MustNewMatcher(labels.MatchEqual, "status", "200"),
+						"",
+					},
+					{
+						nil,
+						"app",
+					},
+				}),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[]labels.Labels{
+				{
+					{Name: "level", Value: "info"},
+					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
+					{Name: "caller", Value: "metrics.go:81"},
+					{Name: logqlmodel.ErrorLabel, Value: errJSON},
+					{Name: logqlmodel.ErrorDetailsLabel, Value: "Value looks like object, but can't find closing '}' symbol"},
+				},
+				{
+					{Name: "namespace", Value: "prod"},
+					{Name: "pod_uuid", Value: "foo"},
+					{Name: "pod_deployment_ref", Value: "foobar"},
+					{Name: logqlmodel.ErrorDetailsLabel, Value: "logfmt syntax error at pos 2 : unexpected '\"'"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		p := NewPipeline(tt.stages)
+		sp := p.ForStream(labels.Labels{})
+		for i, line := range tt.lines {
+			_, finalLbs, _ := sp.Process(0, line)
+			sort.Sort(tt.wantLabels[i])
+			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
+		}
+	}
+
+}
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
@@ -168,13 +272,13 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("pipeline bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resLine, resLbs, resOK = sp.Process(0, line)
+			resLine, resLbs, resMatches = sp.Process(0, line)
 		}
 	})
 	b.Run("pipeline string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resLineString, resLbs, resOK = sp.ProcessString(0, lineString)
+			resLineString, resLbs, resMatches = sp.ProcessString(0, lineString)
 		}
 	})
 
@@ -184,13 +288,13 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resOK = ex.Process(0, line)
+			resSample, resLbs, resMatches = ex.Process(0, line)
 		}
 	})
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resOK = ex.ProcessString(0, lineString)
+			resSample, resLbs, resMatches = ex.ProcessString(0, lineString)
 		}
 	})
 
@@ -201,13 +305,13 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resOK = ex.Process(0, line)
+			resSample, resLbs, resMatches = ex.Process(0, line)
 		}
 	})
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resOK = ex.ProcessString(0, lineString)
+			resSample, resLbs, resMatches = ex.ProcessString(0, lineString)
 		}
 	})
 }
@@ -240,9 +344,9 @@ func jsonBenchmark(b *testing.B, parser Stage) {
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resOK = sp.Process(0, line)
+		resLine, resLbs, resMatches = sp.Process(0, line)
 
-		if !resOK {
+		if !resMatches {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
@@ -263,9 +367,9 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 	b.ResetTimer()
 	sp := p.ForStream(labels.Labels{})
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resOK = sp.Process(0, line)
+		resLine, resLbs, resMatches = sp.Process(0, line)
 
-		if !resOK {
+		if !resMatches {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 

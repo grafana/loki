@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
@@ -43,31 +45,30 @@ operand expression can take advantage of the parallel execution model:
 // querying the underlying backend shards individually and re-aggregating them.
 type DownstreamEngine struct {
 	logger         log.Logger
-	timeout        time.Duration
+	opts           EngineOpts
 	downstreamable Downstreamable
 	limits         Limits
-	metrics        *ShardingMetrics
 }
 
 // NewDownstreamEngine constructs a *DownstreamEngine
-func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *DownstreamEngine {
+func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, limits Limits, logger log.Logger) *DownstreamEngine {
 	opts.applyDefault()
 	return &DownstreamEngine{
 		logger:         logger,
-		timeout:        opts.Timeout,
+		opts:           opts,
 		downstreamable: downstreamable,
-		metrics:        metrics,
 		limits:         limits,
 	}
 }
 
+func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
+
 // Query constructs a Query
-func (ng *DownstreamEngine) Query(p Params, mapped syntax.Expr) Query {
+func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.Expr) Query {
 	return &query{
 		logger:    ng.logger,
-		timeout:   ng.timeout,
 		params:    p,
-		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
+		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
@@ -97,6 +98,8 @@ func (d DownstreamLogSelectorExpr) String() string {
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
 
+var defaultMaxDepth = 4
+
 // ConcatSampleExpr is an expr for concatenating multiple SampleExpr
 // Contract: The embedded SampleExprs within a linked list of ConcatSampleExprs must be of the
 // same structure. This makes special implementations of SampleExpr.Associative() unnecessary.
@@ -110,7 +113,19 @@ func (c ConcatSampleExpr) String() string {
 		return c.DownstreamSampleExpr.String()
 	}
 
-	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.String())
+	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(defaultMaxDepth-1))
+}
+
+// in order to not display huge queries with thousands of shards,
+// we can limit the number of stringified subqueries.
+func (c ConcatSampleExpr) string(maxDepth int) string {
+	if c.next == nil {
+		return c.DownstreamSampleExpr.String()
+	}
+	if maxDepth <= 1 {
+		return fmt.Sprintf("%s ++ ...", c.DownstreamSampleExpr.String())
+	}
+	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
 func (c ConcatSampleExpr) Walk(f syntax.WalkFn) {
@@ -129,7 +144,19 @@ func (c ConcatLogSelectorExpr) String() string {
 		return c.DownstreamLogSelectorExpr.String()
 	}
 
-	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.String())
+	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(defaultMaxDepth-1))
+}
+
+// in order to not display huge queries with thousands of shards,
+// we can limit the number of stringified subqueries.
+func (c ConcatLogSelectorExpr) string(maxDepth int) string {
+	if c.next == nil {
+		return c.DownstreamLogSelectorExpr.String()
+	}
+	if maxDepth <= 1 {
+		return fmt.Sprintf("%s ++ ...", c.DownstreamLogSelectorExpr.String())
+	}
+	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
 type Shards []astmapper.ShardAnnotation
@@ -160,7 +187,7 @@ func ParseShards(strs []string) (Shards, error) {
 }
 
 type Downstreamable interface {
-	Downstreamer() Downstreamer
+	Downstreamer(context.Context) Downstreamer
 }
 
 type DownstreamQuery struct {
@@ -190,6 +217,13 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 	for _, res := range results {
 		stats.JoinResults(ctx, res.Statistics)
+	}
+
+	for _, res := range results {
+		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+			break
+		}
 	}
 
 	return results, nil

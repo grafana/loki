@@ -3,7 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	jsoniter "github.com/json-iterator/go"
@@ -64,7 +64,7 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(bytes.NewBuffer(b)),
+		Body:       io.NopCloser(bytes.NewBuffer(b)),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil

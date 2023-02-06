@@ -1,12 +1,13 @@
 ---
 title: Recording Rules
+description: Working with recording rules.
 ---
 
 # Recording Rules
 
 Recording rules are evaluated by the `ruler` component. Each `ruler` acts as its own `querier`, in the sense that it
 executes queries against the store without using the `query-frontend` or `querier` components. It will respect all query
-[limits](https://grafana.com/docs/loki/latest/configuration/#limits_config) put in place for the `querier`.
+[limits]({{< relref "../configuration/#limits_config" >}}) put in place for the `querier`.
 
 Loki's implementation of recording rules largely reuses Prometheus' code.
 
@@ -27,7 +28,7 @@ is that Prometheus will, for example, reject a remote-write request with 100 sam
 When the `ruler` starts up, it will load the WALs for the tenants who have recording rules. These WAL files are stored
 on disk and are loaded into memory.
 
-Note: WALs are loaded one at a time upon start-up. This is a current limitation of the Cortex Ruler which Loki inherits.
+Note: WALs are loaded one at a time upon start-up. This is a current limitation of the Loki ruler.
 For this reason, it is adviseable that the number of rule groups serviced by a ruler be kept to a reasonable size, since
 _no rule evaluation occurs while WAL replay is in progress (this includes alerting rules)_.
 
@@ -48,9 +49,7 @@ excessively large due to truncation.
 
 ## Scaling
 
-Loki's `ruler` component is based on Cortex's `ruler`.
-
-See Cortex's guide for [horizontally scaling the `ruler`](https://cortexmetrics.io/docs/guides/ruler-sharding/) using the ring.
+See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/operators-guide/configuring/configuring-hash-rings/) for scaling the ruler using a ring.
 
 Note: the `ruler` shards by rule _group_, not by individual rules. This is an artifact of the fact that Prometheus
 recording rules need to run in order since one recording rule can reuse another - but this is not possible in Loki.
@@ -71,14 +70,21 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here](../../configuration/#ruler)
-have [override options](../../configuration/#limits_config) (which can be also applied at runtime!).
+a per-tenant basis. Most of the configuration options [defined here]({{<relref "../configuration/#ruler">}})
+have [override options]({{<relref "../configuration/#limits_config">}}) (which can be also applied at runtime!).
 
 ### Tuning
 
 Remote-write can be tuned if the default configuration is insufficient (see [Failure Modes](#failure-modes) below).
 
 There is a [guide](https://prometheus.io/docs/practices/remote_write/) on the Prometheus website, all of which applies to Loki, too.
+
+Rules can be evenly distributed across available rulers by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy="by-rule"`.
+Rule groups execute in order; this is a feature inherited from Prometheus' rule engine (which Loki uses), but Loki has no
+need for this constraint because rules cannot depend on each other. The default sharding strategy will shard by rule groups,
+but this may be undesirable as some rule groups could contain more expensive rules, which can lead to subsequent rules missing evaluations.
+The `by-rule` sharding strategy creates one rule group for each rule the ruler instance "owns" (based on its hash ring), and these rings
+are all executed concurrently.
 
 ## Observability
 
@@ -124,7 +130,7 @@ aware that if the remote storage is down for longer than `ruler.wal.max-age`, da
 
 In cases 2 & 3, you should consider [tuning](#tuning) remote-write appropriately.
 
-Further reading: see [this blog post](https://grafana.com/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus/)
+Further reading: see [this blog post](/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus/)
 by Prometheus maintainer Callum Styan.
 
 ### Appender Not Ready

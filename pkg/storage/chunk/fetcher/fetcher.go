@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -57,6 +58,7 @@ type Fetcher struct {
 	maxAsyncBufferSize  int
 
 	asyncQueue chan []chunk.Chunk
+	stopOnce   sync.Once
 	stop       chan struct{}
 }
 
@@ -126,10 +128,12 @@ func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
 
 // Stop the ChunkFetcher.
 func (c *Fetcher) Stop() {
-	close(c.decodeRequests)
-	c.wait.Wait()
-	c.cache.Stop()
-	close(c.stop)
+	c.stopOnce.Do(func() {
+		close(c.decodeRequests)
+		c.wait.Wait()
+		c.cache.Stop()
+		close(c.stop)
+	})
 }
 
 func (c *Fetcher) worker() {
@@ -178,6 +182,17 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	if len(missing) > 0 {
 		fromStorage, err = c.storage.GetChunks(ctx, missing)
 	}
+
+	// normally these stats would be collected by the cache.statsCollector wrapper, but chunks are written back
+	// to the cache asynchronously in the background and we lose the context
+	var bytes int
+	for _, c := range fromStorage {
+		bytes += c.Size()
+	}
+
+	st := stats.FromContext(ctx)
+	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
+	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
 	// Always cache any chunks we did get
 	if cacheErr := c.writeBackCacheAsync(fromStorage); cacheErr != nil {

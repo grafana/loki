@@ -131,3 +131,99 @@ func TestNewDisableableTicker_Disabled(t *testing.T) {
 		break
 	}
 }
+
+type timeInterval struct {
+	from, through time.Time
+}
+
+func TestForInterval(t *testing.T) {
+	splitInterval := 10 * time.Second
+	for _, tc := range []struct {
+		name              string
+		inp               timeInterval
+		expectedIntervals []timeInterval
+		endTimeInclusive  bool
+	}{
+		{
+			name: "range smaller than split interval",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(8, 0),
+			},
+			expectedIntervals: []timeInterval{
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(8, 0),
+				},
+			},
+		},
+		{
+			name: "range exactly equal and aligned to split interval",
+			inp: timeInterval{
+				from:    time.Unix(10, 0),
+				through: time.Unix(20, 0),
+			},
+			expectedIntervals: []timeInterval{
+				{
+					from:    time.Unix(10, 0),
+					through: time.Unix(20, 0),
+				},
+			},
+		},
+		{
+			name: "multiple splits with end time not inclusive",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(28, 0),
+			},
+			expectedIntervals: []timeInterval{
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(10, 0),
+				},
+				{
+					from:    time.Unix(10, 0),
+					through: time.Unix(20, 0),
+				},
+				{
+					from:    time.Unix(20, 0),
+					through: time.Unix(28, 0),
+				},
+			},
+		},
+		{
+			name: "multiple splits with end time inclusive",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(28, 0),
+			},
+			endTimeInclusive: true,
+			expectedIntervals: []timeInterval{
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(10, 0).Add(-time.Millisecond),
+				},
+				{
+					from:    time.Unix(10, 0),
+					through: time.Unix(20, 0).Add(-time.Millisecond),
+				},
+				{
+					from:    time.Unix(20, 0),
+					through: time.Unix(28, 0),
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var actualIntervals []timeInterval
+			ForInterval(splitInterval, tc.inp.from, tc.inp.through, tc.endTimeInclusive, func(start, end time.Time) {
+				actualIntervals = append(actualIntervals, timeInterval{
+					from:    start,
+					through: end,
+				})
+			})
+
+			require.Equal(t, tc.expectedIntervals, actualIntervals)
+		})
+	}
+}

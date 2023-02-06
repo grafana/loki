@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const samplesPerChunk = 120
@@ -31,6 +33,10 @@ type bigchunk struct {
 func newBigchunk() *bigchunk {
 	return &bigchunk{}
 }
+
+// TODO(owen-d): remove bigchunk from our code, we don't use it.
+// Hack an Entries() impl
+func (b *bigchunk) Entries() int { return 0 }
 
 func (b *bigchunk) Add(sample model.SamplePair) (Data, error) {
 	if b.remainingSamples == 0 {
@@ -85,7 +91,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Rebound(start, end model.Time) (Data, error) {
+func (b *bigchunk) Rebound(start, end model.Time, filter filter.Func) (Data, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -166,6 +172,9 @@ func (b *bigchunk) Len() int {
 	return sum
 }
 
+// Unused, but for compatibility
+func (b *bigchunk) UncompressedSize() int { return b.Size() }
+
 func (b *bigchunk) Size() int {
 	sum := 2 // For the number of sub chunks.
 	for _, c := range b.chunks {
@@ -240,7 +249,7 @@ func addToOverflowChunk(s model.SamplePair) (Data, error) {
 func firstTime(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, chunkenc.Iterator, error) {
 	var first int64
 	iter = c.Iterator(iter)
-	if iter.Next() {
+	if iter.Next() != chunkenc.ValNone {
 		first, _ = iter.At()
 	}
 	return first, iter, iter.Err()

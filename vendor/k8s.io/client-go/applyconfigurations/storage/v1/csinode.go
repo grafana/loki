@@ -48,7 +48,7 @@ func CSINode(name string) *CSINodeApplyConfiguration {
 // ExtractCSINode extracts the applied configuration owned by fieldManager from
 // cSINode. If no managedFields are found in cSINode for fieldManager, a
 // CSINodeApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // cSINode must be a unmodified CSINode API object that was retrieved from the Kubernetes API.
@@ -57,8 +57,19 @@ func CSINode(name string) *CSINodeApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractCSINode(cSINode *apistoragev1.CSINode, fieldManager string) (*CSINodeApplyConfiguration, error) {
+	return extractCSINode(cSINode, fieldManager, "")
+}
+
+// ExtractCSINodeStatus is the same as ExtractCSINode except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractCSINodeStatus(cSINode *apistoragev1.CSINode, fieldManager string) (*CSINodeApplyConfiguration, error) {
+	return extractCSINode(cSINode, fieldManager, "status")
+}
+
+func extractCSINode(cSINode *apistoragev1.CSINode, fieldManager string, subresource string) (*CSINodeApplyConfiguration, error) {
 	b := &CSINodeApplyConfiguration{}
-	err := managedfields.ExtractInto(cSINode, internal.Parser().Type("io.k8s.api.storage.v1.CSINode"), fieldManager, b)
+	err := managedfields.ExtractInto(cSINode, internal.Parser().Type("io.k8s.api.storage.v1.CSINode"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -109,15 +120,6 @@ func (b *CSINodeApplyConfiguration) WithGenerateName(value string) *CSINodeApply
 func (b *CSINodeApplyConfiguration) WithNamespace(value string) *CSINodeApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *CSINodeApplyConfiguration) WithSelfLink(value string) *CSINodeApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -227,15 +229,6 @@ func (b *CSINodeApplyConfiguration) WithFinalizers(values ...string) *CSINodeApp
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *CSINodeApplyConfiguration) WithClusterName(value string) *CSINodeApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

@@ -85,6 +85,11 @@ func (k KeyError) Error() string {
 	return fmt.Sprintf("couldn't create key for object %+v: %v", k.Obj, k.Err)
 }
 
+// Unwrap implements errors.Unwrap
+func (k KeyError) Unwrap() error {
+	return k.Err
+}
+
 // ExplicitKey can be passed to MetaNamespaceKeyFunc if you have the key for
 // the object but not the object itself.
 type ExplicitKey string
@@ -194,8 +199,11 @@ func (c *cache) Index(indexName string, obj interface{}) ([]interface{}, error) 
 	return c.cacheStorage.Index(indexName, obj)
 }
 
-func (c *cache) IndexKeys(indexName, indexKey string) ([]string, error) {
-	return c.cacheStorage.IndexKeys(indexName, indexKey)
+// IndexKeys returns the storage keys of the stored objects whose set of
+// indexed values for the named index includes the given indexed value.
+// The returned keys are suitable to pass to GetByKey().
+func (c *cache) IndexKeys(indexName, indexedValue string) ([]string, error) {
+	return c.cacheStorage.IndexKeys(indexName, indexedValue)
 }
 
 // ListIndexFuncValues returns the list of generated values of an Index func
@@ -203,8 +211,10 @@ func (c *cache) ListIndexFuncValues(indexName string) []string {
 	return c.cacheStorage.ListIndexFuncValues(indexName)
 }
 
-func (c *cache) ByIndex(indexName, indexKey string) ([]interface{}, error) {
-	return c.cacheStorage.ByIndex(indexName, indexKey)
+// ByIndex returns the stored objects whose set of indexed values
+// for the named index includes the given indexed value.
+func (c *cache) ByIndex(indexName, indexedValue string) ([]interface{}, error) {
+	return c.cacheStorage.ByIndex(indexName, indexedValue)
 }
 
 func (c *cache) AddIndexers(newIndexers Indexers) error {

@@ -50,7 +50,8 @@ func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheM
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
 // In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
-func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
+func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shouldCache queryrangebase.ShouldCacheFn,
+	transformer UserIDTransformer, metrics *LogResultCacheMetrics) queryrangebase.Middleware {
 	if metrics == nil {
 		metrics = NewLogResultCacheMetrics(nil)
 	}
@@ -61,6 +62,7 @@ func NewLogResultCache(logger log.Logger, limits Limits, cache cache.Cache, shou
 			cache:       cache,
 			logger:      logger,
 			shouldCache: shouldCache,
+			transformer: transformer,
 			metrics:     metrics,
 		}
 	})
@@ -71,6 +73,7 @@ type logResultCache struct {
 	limits      Limits
 	cache       cache.Cache
 	shouldCache queryrangebase.ShouldCacheFn
+	transformer UserIDTransformer
 
 	metrics *LogResultCacheMetrics
 	logger  log.Logger
@@ -105,7 +108,17 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	// The first subquery might not be aligned.
 	alignedStart := time.Unix(0, lokiReq.GetStartTs().UnixNano()-(lokiReq.GetStartTs().UnixNano()%interval.Nanoseconds()))
 	// generate the cache key based on query, tenant and start time.
-	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(tenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
+
+	transformedTenantIDs := tenantIDs
+	if l.transformer != nil {
+		transformedTenantIDs = make([]string, 0, len(tenantIDs))
+
+		for _, tenantID := range tenantIDs {
+			transformedTenantIDs = append(transformedTenantIDs, l.transformer(ctx, tenantID))
+		}
+	}
+
+	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {
@@ -167,8 +180,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	result := emptyResponse(cachedRequest)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
-	if !lokiReq.GetStartTs().After(cachedRequest.GetStartTs()) && lokiReq.GetStartTs().Equal(cachedRequest.GetStartTs()) &&
-		!lokiReq.GetEndTs().Before(cachedRequest.GetEndTs()) && lokiReq.GetEndTs().Equal(cachedRequest.GetEndTs()) {
+	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
 		return result, nil
 	}
 	// we could be missing data at the start and the end.
@@ -227,7 +239,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			if startResp.Status != loghttp.QueryStatusSuccess {
 				return startResp, nil
 			}
-			result = mergeLokiResponse(startResp, result)
+			result = mergeLokiResponse(extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), startResp), result)
 		}
 	}
 
@@ -241,7 +253,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			if endResp.Status != loghttp.QueryStatusSuccess {
 				return endResp, nil
 			}
-			result = mergeLokiResponse(endResp, result)
+			result = mergeLokiResponse(extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), endResp), result)
 		}
 	}
 
@@ -259,6 +271,45 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		}
 	}
 	return result, nil
+}
+
+// extractLokiResponse extracts response with interval [start, end)
+func extractLokiResponse(start, end time.Time, r *LokiResponse) *LokiResponse {
+	extractedResp := LokiResponse{
+		Status:     r.Status,
+		Direction:  r.Direction,
+		Limit:      r.Limit,
+		Version:    r.Version,
+		ErrorType:  r.ErrorType,
+		Error:      r.Error,
+		Statistics: r.Statistics,
+		Data: LokiData{
+			ResultType: r.Data.ResultType,
+			Result:     []logproto.Stream{},
+		},
+	}
+	for _, stream := range r.Data.Result {
+		if stream.Entries[0].Timestamp.After(end) || stream.Entries[len(stream.Entries)-1].Timestamp.Before(start) {
+			continue
+		}
+
+		extractedStream := logproto.Stream{
+			Labels:  stream.Labels,
+			Entries: []logproto.Entry{},
+			Hash:    stream.Hash,
+		}
+		for _, entry := range stream.Entries {
+			if entry.Timestamp.Before(start) || entry.Timestamp.After(end) || entry.Timestamp.Equal(end) {
+				continue
+			}
+
+			extractedStream.Entries = append(extractedStream.Entries, entry)
+		}
+
+		extractedResp.Data.Result = append(extractedResp.Data.Result, extractedStream)
+	}
+
+	return &extractedResp
 }
 
 func isEmpty(lokiRes *LokiResponse) bool {

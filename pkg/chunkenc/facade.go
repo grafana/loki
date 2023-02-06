@@ -2,10 +2,12 @@ package chunkenc
 
 import (
 	"io"
+	"time"
 
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 // GzipLogChunk is a cortex encoding type for our chunks.
@@ -41,6 +43,10 @@ func NewFacade(c Chunk, blockSize, targetSize int) chunk.Data {
 	}
 }
 
+func (f Facade) Bounds() (time.Time, time.Time) {
+	return f.c.Bounds()
+}
+
 // Marshal implements chunk.Chunk.
 func (f Facade) Marshal(w io.Writer) error {
 	if f.c == nil {
@@ -72,7 +78,9 @@ func (f Facade) Utilization() float64 {
 	return f.c.Utilization()
 }
 
-// Size implements encoding.Chunk.
+// Size implements encoding.Chunk, which unfortunately uses
+// the Size method to refer to the byte size and not the entry count
+// like chunkenc.Chunk does.
 func (f Facade) Size() int {
 	if f.c == nil {
 		return 0
@@ -81,13 +89,27 @@ func (f Facade) Size() int {
 	return f.c.CompressedSize()
 }
 
+func (f Facade) UncompressedSize() int {
+	if f.c == nil {
+		return 0
+	}
+	return f.c.UncompressedSize()
+}
+
+func (f Facade) Entries() int {
+	if f.c == nil {
+		return 0
+	}
+	return f.c.Size()
+}
+
 // LokiChunk returns the chunkenc.Chunk.
 func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time) (chunk.Data, error) {
-	newChunk, err := f.c.Rebound(start.Time(), end.Time())
+func (f Facade) Rebound(start, end model.Time, filter filter.Func) (chunk.Data, error) {
+	newChunk, err := f.c.Rebound(start.Time(), end.Time(), filter)
 	if err != nil {
 		return nil, err
 	}

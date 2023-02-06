@@ -1,7 +1,7 @@
 package ingester
 
 import (
-	io "io"
+	"io"
 	"runtime"
 	"sync"
 
@@ -9,9 +9,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"golang.org/x/net/context"
 
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -30,40 +31,6 @@ func (NoopWALReader) Err() error     { return nil }
 func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
-// If startSegment is <0, it means all the segments.
-func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) {
-	var (
-		segmentReader io.ReadCloser
-		err           error
-	)
-	if startSegment < 0 {
-		segmentReader, err = wal.NewSegmentsReader(dir)
-		if err != nil {
-			return nil, nil, err
-		}
-	} else {
-		first, last, err := wal.Segments(dir)
-		if err != nil {
-			return nil, nil, err
-		}
-		if startSegment > last {
-			return nil, nil, errors.New("start segment is beyond the last WAL segment")
-		}
-		if first > startSegment {
-			startSegment = first
-		}
-		segmentReader, err = wal.NewSegmentsRangeReader(wal.SegmentRange{
-			Dir:   dir,
-			First: startSegment,
-			Last:  -1, // Till the end.
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	return wal.NewReader(segmentReader), segmentReader, nil
-}
-
 func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 	lastCheckpointDir, idx, err := lastCheckpoint(dir)
 	if err != nil {
@@ -75,18 +42,18 @@ func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 		return reader, reader, nil
 	}
 
-	r, err := wal.NewSegmentsReader(lastCheckpointDir)
+	r, err := wlog.NewSegmentsReader(lastCheckpointDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	return wal.NewReader(r), r, nil
+	return wlog.NewReader(r), r, nil
 }
 
 type Recoverer interface {
 	NumWorkers() int
 	Series(series *Series) error
 	SetStream(userID string, series record.RefSeries) error
-	Push(userID string, entries RefEntries) error
+	Push(userID string, entries wal.RefEntries) error
 	Done() <-chan struct{}
 }
 
@@ -112,7 +79,10 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 func (r *ingesterRecoverer) Series(series *Series) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 
-		inst := r.ing.GetOrCreateInstance(series.UserID)
+		inst, err := r.ing.GetOrCreateInstance(series.UserID)
+		if err != nil {
+			return err
+		}
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
@@ -132,7 +102,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		if err != nil {
 			return err
 		}
-		memoryChunks.Add(float64(len(series.Chunks)))
+		r.ing.metrics.memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))
@@ -160,7 +130,10 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
 func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
-	inst := r.ing.GetOrCreateInstance(userID)
+	inst, err := r.ing.GetOrCreateInstance(userID)
+	if err != nil {
+		return err
+	}
 
 	stream, err := inst.getOrCreateStream(
 		logproto.Stream{
@@ -180,7 +153,7 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 	return nil
 }
 
-func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
+func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
@@ -193,7 +166,7 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false)
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -260,7 +233,7 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
 		rec := recordPool.GetRecord()
-		if err := decodeWALRecord(b, rec); err != nil {
+		if err := wal.DecodeRecord(b, rec); err != nil {
 			return err
 		}
 
@@ -295,7 +268,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 				if !ok {
 					return
 				}
-				entries, ok := next.data.(RefEntries)
+				entries, ok := next.data.(wal.RefEntries)
 				var err error
 				if !ok {
 					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)

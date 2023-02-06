@@ -51,7 +51,7 @@ func EndpointSlice(name, namespace string) *EndpointSliceApplyConfiguration {
 // ExtractEndpointSlice extracts the applied configuration owned by fieldManager from
 // endpointSlice. If no managedFields are found in endpointSlice for fieldManager, a
 // EndpointSliceApplyConfiguration is returned with only the Name, Namespace (if applicable),
-// APIVersion and Kind populated. Is is possible that no managed fields were found for because other
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
 // endpointSlice must be a unmodified EndpointSlice API object that was retrieved from the Kubernetes API.
@@ -60,8 +60,19 @@ func EndpointSlice(name, namespace string) *EndpointSliceApplyConfiguration {
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
 // Experimental!
 func ExtractEndpointSlice(endpointSlice *discoveryv1.EndpointSlice, fieldManager string) (*EndpointSliceApplyConfiguration, error) {
+	return extractEndpointSlice(endpointSlice, fieldManager, "")
+}
+
+// ExtractEndpointSliceStatus is the same as ExtractEndpointSlice except
+// that it extracts the status subresource applied configuration.
+// Experimental!
+func ExtractEndpointSliceStatus(endpointSlice *discoveryv1.EndpointSlice, fieldManager string) (*EndpointSliceApplyConfiguration, error) {
+	return extractEndpointSlice(endpointSlice, fieldManager, "status")
+}
+
+func extractEndpointSlice(endpointSlice *discoveryv1.EndpointSlice, fieldManager string, subresource string) (*EndpointSliceApplyConfiguration, error) {
 	b := &EndpointSliceApplyConfiguration{}
-	err := managedfields.ExtractInto(endpointSlice, internal.Parser().Type("io.k8s.api.discovery.v1.EndpointSlice"), fieldManager, b)
+	err := managedfields.ExtractInto(endpointSlice, internal.Parser().Type("io.k8s.api.discovery.v1.EndpointSlice"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
@@ -113,15 +124,6 @@ func (b *EndpointSliceApplyConfiguration) WithGenerateName(value string) *Endpoi
 func (b *EndpointSliceApplyConfiguration) WithNamespace(value string) *EndpointSliceApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.Namespace = &value
-	return b
-}
-
-// WithSelfLink sets the SelfLink field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SelfLink field is set to the value of the last call.
-func (b *EndpointSliceApplyConfiguration) WithSelfLink(value string) *EndpointSliceApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.SelfLink = &value
 	return b
 }
 
@@ -231,15 +233,6 @@ func (b *EndpointSliceApplyConfiguration) WithFinalizers(values ...string) *Endp
 	for i := range values {
 		b.Finalizers = append(b.Finalizers, values[i])
 	}
-	return b
-}
-
-// WithClusterName sets the ClusterName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClusterName field is set to the value of the last call.
-func (b *EndpointSliceApplyConfiguration) WithClusterName(value string) *EndpointSliceApplyConfiguration {
-	b.ensureObjectMetaApplyConfigurationExists()
-	b.ClusterName = &value
 	return b
 }
 

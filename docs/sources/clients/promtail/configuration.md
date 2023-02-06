@@ -1,7 +1,8 @@
 ---
 title: Configuration
+description: Configuring Promtaim
 ---
-# Configuring Promtail
+# Configuration
 
 Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
@@ -34,8 +35,8 @@ defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
 For more detailed information on configuring how to discover and scrape logs from
-targets, see [Scraping](../scraping/). For more information on transforming logs
-from scraped targets, see [Pipelines](../pipelines/).
+targets, see [Scraping]({{<relref "scraping">}}). For more information on transforming logs
+from scraped targets, see [Pipelines]({{<relref "pipelines">}}).
 
 ### Use environment variables in the configuration
 
@@ -55,12 +56,17 @@ References to undefined variables are replaced by empty strings unless you speci
 To specify a default value, use:
 
 ```
-${VAR:default_value}
+${VAR:-default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
 
-### Generic placeholders:
+**Note**: With `expand-env=true` the configuration will first run through
+[envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
+slashes with single slashes. Because of this every use of a slash `\` needs to
+be replaced with a double slash `\\`
+
+### Generic placeholders
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
 - `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
@@ -103,6 +109,9 @@ scrape_configs:
 
 # Configures additional promtail configurations.
 [options: <options_config>]
+
+# Configures tracing support
+[tracing: <tracing_config>]
 ```
 
 ## server
@@ -112,6 +121,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 ```yaml
 # Disable the HTTP and GRPC server.
 [disable: <boolean> | default = false]
+
+# Enable the /debug/fgprof and /debug/pprof endpoints for profiling.
+[profiling_enabled: <boolean> | default = false]
 
 # HTTP server listen host
 [http_listen_address: <string>]
@@ -158,6 +170,9 @@ The `server` block configures Promtail's behavior as an HTTP server:
 
 # Target managers check flag for Promtail readiness, if set to false the check is ignored
 [health_check_target: <bool> | default = true]
+
+# Enable reload via HTTP request.
+[enable_runtime_reload: <bool> | default = false]
 ```
 
 ## clients
@@ -171,6 +186,12 @@ Loki:
 # URL for the Distributor. Path to the push API needs to be included.
 # Example: http://example.com:3100/loki/api/v1/push
 url: <string>
+
+# Custom HTTP headers to be sent along with each push request.
+# Be aware that headers that are set by Promtail itself (e.g. X-Scope-OrgID) can't be overwritten.
+headers:
+  # Example: CF-Access-Client-Id: xxx
+  [ <labelname>: <labelvalue> ... ]
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
 # it assumes Loki is running in single-tenant mode and no X-Scope-OrgID header
@@ -263,6 +284,10 @@ backoff_config:
   # Maximum number of retries to do
   [max_retries: <int> | default = 10]
 
+# Disable retries of batches that Loki responds to with a 429 status code (TooManyRequests). This reduces
+# impacts on batches from other tenants, which could end up being delayed or dropped due to exponential backoff.
+[drop_rate_limited_batches: <boolean> | default = false]
+
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
 # value bar.
@@ -313,6 +338,9 @@ job_name: <string>
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
 
+# Describes from which encoding a scraped file should be converted.
+[encoding: <iana_encoding_name>]
+
 # Describes how to receive logs from syslog.
 [syslog: <syslog_config>]
 
@@ -322,6 +350,9 @@ job_name: <string>
 # Describes how to scrape logs from the Windows event logs.
 [windows_events: <windows_events_config>]
 
+# Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
+[gcplog: <gcplog_config>]
+
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
 
@@ -330,6 +361,9 @@ job_name: <string>
 
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
+
+# Configuration describing how to pull logs from a Heroku LogPlex drain.
+[heroku_drain: <heroku_drain>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
@@ -367,7 +401,7 @@ docker_sd_configs:
 
 ### pipeline_stages
 
-[Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
+[Pipeline]({{<relref "pipelines">}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
 In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
@@ -408,9 +442,10 @@ The Docker stage is just a convenience wrapper for this definition:
 
 ```yaml
 - json:
-    output: log
-    stream: stream
-    timestamp: time
+    expressions:
+      output: log
+      stream: stream
+      timestamp: time
 - labels:
     stream:
 - timestamp:
@@ -512,7 +547,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL](../../../logql/) stream selector.
+a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
 
 ```yaml
 match:
@@ -778,8 +813,8 @@ Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
-[syslog-ng](../scraping#syslog-ng-output-configuration) and
-[rsyslog](../scraping#rsyslog-output-configuration). Both configurations enable
+[syslog-ng]({{<relref "scraping#syslog-ng-output-configuration">}}) and
+[rsyslog]({{<relref "scraping#rsyslog-output-configuration">}}). Both configurations enable
 IETF Syslog with octet-counting.
 
 You may need to increase the open files limit for the Promtail process
@@ -833,7 +868,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../api#push-log-entries-to-loki">}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -907,6 +942,9 @@ You can add additional labels with the `labels` property.
 # Allows to exclude the xml event data.
 [exclude_event_data: <bool> | default = false]
 
+# Allows to exclude the human-friendly event message.
+[exclude_event_message: <bool> | default = false]
+
 # Allows to exclude the user data of each windows event.
 [exclude_user_data: <bool> | default = false]
 
@@ -918,6 +956,63 @@ labels:
 # When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
+
+### GCP Log
+
+The `gcplog` block configures how Promtail receives GCP logs. There are two strategies, based on the configuration of `subscription_type`:
+- **Pull**: Using GCP Pub/Sub [pull subscriptions](https://cloud.google.com/pubsub/docs/pull). Promtail will consume log messages directly from the configured GCP Pub/Sub topic.
+- **Push**: Using GCP Pub/Sub [push subscriptions](https://cloud.google.com/pubsub/docs/push). Promtail will expose an HTTP server, and GCP will deliver logs to that server.
+
+When using the `push` subscription type, keep in mind:
+- The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for target that requires so.
+- An endpoint at `POST /gcp/api/v1/push`, which expects requests from GCP PubSub message delivery system.
+
+```yaml
+# Type of subscription used to fetch logs from GCP. Can be either `pull` (default) or `push`.
+[subscription_type: <string> | default = "pull"]
+
+# If the subscription_type is pull,  the GCP project ID
+[project_id: <string>]
+
+# If the subscription_type is pull, GCP PubSub subscription from where Promtail will pull logs from
+[subscription: <string>]
+
+# If the subscription_type is push, the server configuration options
+[server: <server_config>]
+
+# Whether Promtail should pass on the timestamp from the incoming GCP Log message.
+# When false, or if no timestamp is present in the GCP Log message, Promtail will assign the current
+# timestamp to the log when it was processed.
+[use_incoming_timestamp: <boolean> | default = false]
+
+# If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
+# than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
+# and respond with a 503 HTTP status code.
+[push_timeout: <duration>|  default = 0 (no timeout)]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+### Available Labels
+
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
+
+**Internal labels available for pull**
+
+- `__gcp_logname`
+- `__gcp_resource_type`
+- `__gcp_resource_labels_<NAME>`
+
+**Internal labels available for push**
+
+- `__gcp_message_id`
+- `__gcp_subscription_name`
+- `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
+- `__gcp_logname`
+- `__gcp_resource_type`
+- `__gcp_resource_labels_<NAME>`
 
 ### kafka
 
@@ -1014,7 +1109,7 @@ The list of labels below are discovered when consuming kafka:
 - `__meta_kafka_partition`: The partition id where the message has been read.
 - `__meta_kafka_member_id`: The consumer group member id.
 - `__meta_kafka_group_id`: The consumer group id.
-- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'. 
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 
@@ -1032,7 +1127,7 @@ Each GELF message received will be encoded in JSON as the log line. For example:
 {"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
 ```
 
-You can leverage [pipeline stages](pipeline_stages) with the GELF target,
+You can leverage [pipeline stages]({{<relref "./stages">}}) with the GELF target,
 if for example, you want to parse the log line and extract more labels or change the log line format.
 
 ```yaml
@@ -1080,7 +1175,7 @@ zone_id: <string>
 # The quantity of workers that will pull logs.
 [workers: <int> | default = 3]
 
-# The type list of fields to fetch for logs. 
+# The type list of fields to fetch for logs.
 # Supported values: default, minimal, extended, all.
 [fields_type: <string> | default = default]
 
@@ -1103,8 +1198,8 @@ Here are the different set of fields type available and the fields they include 
 "WorkerCPUTime", "WorkerStatus", "WorkerSubrequest", "WorkerSubrequestCount", "OriginIP", "OriginResponseStatus", "OriginSSLProtocol",
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
-- `all` includes all `extended` fields and adds `"ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
+- `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1169,6 +1264,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
+  "RequestHeaders": [],
+  "ResponseHeaders": [
+    "x-foo": "bar"
+  ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",
@@ -1184,7 +1283,49 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You can leverage [pipeline stages]({{<relref "./stages">}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+
+### heroku_drain
+
+The `heroku_drain` block configures Promtail to expose a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
+
+Each job configured with a Heroku Drain will expose a Drain and will require a separate port.
+
+The `server` configuration is the same as [server](#server), since Promtail exposes an HTTP server for each new drain.
+
+Promtail exposes an endpoint at `/heroku/api/v1/drain`, which expects requests from Heroku's log delivery.
+
+```yaml
+# The Heroku drain server configuration options
+[server: <server_config>]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# Whether Promtail should pass on the timestamp from the incoming Heroku drain message.
+# When false, or if no timestamp is present in the syslog message, Promtail will assign the current
+# timestamp to the log when it was processed.
+[use_incoming_timestamp: <boolean> | default = false]
+
+```
+
+#### Available Labels
+
+Heroku Log drains send logs in [Syslog-formatted messages](https://datatracker.ietf.org/doc/html/rfc5424#section-6) (with
+some [minor tweaks](https://devcenter.heroku.com/articles/log-drains#https-drain-caveats); they are not RFC-compatible).
+
+The Heroku Drain target exposes for each log entry the received syslog fields with the following labels:
+
+- `__heroku_drain_host`: The [HOSTNAME](https://tools.ietf.org/html/rfc5424#section-6.2.4) field parsed from the message.
+- `__heroku_drain_app`: The [APP-NAME](https://tools.ietf.org/html/rfc5424#section-6.2.5) field parsed from the message.
+- `__heroku_drain_proc`: The [PROCID](https://tools.ietf.org/html/rfc5424#section-6.2.6) field parsed from the message.
+- `__heroku_drain_log_id`: The [MSGID](https://tools.ietf.org/html/rfc5424#section-6.2.7) field parsed from the message.
+
+Additionally, the Heroku drain target will read all url query parameters from the
+configured drain target url and make them available as
+`__heroku_drain_param_<name>` labels, multiple instances of the same parameter
+will appear as comma separated strings
 
 ### relabel_configs
 
@@ -1284,6 +1425,9 @@ labels:
   # The path to load logs from. Can use glob patterns (e.g., /var/log/*.log).
   __path__: <string>
 
+  # Used to exclude files from being loaded. Can also use glob patterns.
+  __path_exclude__: <string>
+
   # Additional labels to assign to the logs
   [ <labelname>: <labelvalue> ... ]
 ```
@@ -1318,7 +1462,7 @@ As a fallback, the file contents are also re-read periodically at the specified
 refresh interval.
 
 Each target has a meta label `__meta_filepath` during the
-[relabeling phase](#relabel_config). Its value is set to the
+[relabeling phase](#relabel_configs). Its value is set to the
 filepath from which the target was extracted.
 
 ```yaml
@@ -1495,6 +1639,25 @@ tls_config:
 namespaces:
   names:
     [ - <string> ]
+
+# Optional label and field selectors to limit the discovery process to a subset of available
+#  resources. See
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/
+# and https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ to learn
+# more about the possible filters that can be used. The endpoints role supports pod,
+# service, and endpoint selectors. Roles only support selectors matching the role itself;
+# for example, the node role can only contain node selectors.
+# Note: When making decisions about using field/label selectors, make sure that this
+# is the best approach. It will prevent Promtail from reusing single list/watch
+# for all scrape configurations. This might result in a bigger load on the Kubernetes API,
+# because for each selector combination, there will be additional LIST/WATCH.
+# On the other hand, if you want to monitor a small subset of pods of a large cluster,
+# we recommend using selectors. The decision on the use of selectors or not depends
+# on the particular situation.
+[ selectors:
+          [ - role: <string>
+                  [ label: <string> ]
+                  [ field: <string> ] ]]
 ```
 
 Where `<role>` must be `endpoints`, `service`, `pod`, `node`, or
@@ -1746,13 +1909,13 @@ These labels can be used during relabeling. For instance, the following configur
 
 ```yaml
 scrape_configs:
-  - job_name: flog_scrape 
+  - job_name: flog_scrape
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
         filters:
           - name: name
-            values: [flog] 
+            values: [flog]
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
@@ -1778,6 +1941,17 @@ The optional `limits_config` block configures global limits for this instance of
 # log lines, rather than sending them to Loki. When false, exceeding the rate limit
 # causes this instance of Promtail to temporarily hold off on sending the log lines and retry later.
 [readline_rate_drop: <bool> | default = true]
+
+# Limits the max number of active streams.
+# Limiting the number of streams is useful as a mechanism to limit memory usage by Promtail, which helps
+# to avoid OOM scenarios.
+# 0 means it is disabled.
+[max_streams: <int> | default = 0]
+
+# Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+[max_line_size: <int> | default = 0]
+# Whether to truncate lines that exceed max_line_size. No effect if max_line_size is disabled
+[max_line_size_truncate: <bool> | default = false]
 ```
 
 ## target_config
@@ -1794,16 +1968,27 @@ sync_period: "10s"
 ## options_config
 
 ```yaml
-# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
-# The default value is "filename". A "host" label is always included.
-# The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about using too many labels, as it can increase cardinality.
+# Deprecated.
+# A comma-separated list of labels to include in the stream lag metric
+# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
+# always included. The stream lag metric indicates which streams are falling behind
+# on writes to Loki; be mindful about using too many labels,
+# as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
+```
+
+## tracing_config
+
+The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# When true,
+[enabled: <boolean> | default = false]
 ```
 
 ## Example Docker Config
 
-It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
 If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
@@ -1916,7 +2101,7 @@ scrape_configs:
 
 ## Example Push Config
 
-The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Dirver:
+The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Driver:
 
 ```yaml
 server:

@@ -13,13 +13,12 @@ import (
 
 const (
 	testTableName = "test-table"
-	uploader      = "test-uploader"
 )
 
 func TestTable(t *testing.T) {
 	tempDir := t.TempDir()
 	storageClient := buildTestStorageClient(t, tempDir)
-	testTable := NewTable(testTableName, uploader, storageClient)
+	testTable := NewTable(testTableName, storageClient)
 	defer testTable.Stop()
 
 	for userIdx := 0; userIdx < 2; userIdx++ {
@@ -36,7 +35,7 @@ func TestTable(t *testing.T) {
 
 			// see if we can find all the added indexes in the table.
 			indexesFound := map[string]*mockIndex{}
-			err := testTable.ForEach(userID, func(index index.Index) error {
+			err := testTable.ForEach(userID, func(_ bool, index index.Index) error {
 				indexesFound[index.Path()] = index.(*mockIndex)
 				return nil
 			})

@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/go-gelf/v2/gelf"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -122,7 +122,7 @@ func (t *Target) handleMessage(msg *gelf.Message) {
 	lb.Set("__gelf_message_version", msg.Version)
 	lb.Set("__gelf_message_facility", msg.Facility)
 
-	processed := relabel.Process(lb.Labels(), t.relabelConfig...)
+	processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
 
 	filtered := make(model.LabelSet)
 	for _, lbl := range processed {

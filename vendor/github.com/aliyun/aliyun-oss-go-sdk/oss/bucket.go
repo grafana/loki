@@ -34,7 +34,7 @@ type Bucket struct {
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) PutObject(objectKey string, reader io.Reader, options ...Option) error {
-	opts := addContentType(options, objectKey)
+	opts := AddContentType(options, objectKey)
 
 	request := &PutObjectRequest{
 		ObjectKey: objectKey,
@@ -64,7 +64,7 @@ func (bucket Bucket) PutObjectFromFile(objectKey, filePath string, options ...Op
 	}
 	defer fd.Close()
 
-	opts := addContentType(options, filePath, objectKey)
+	opts := AddContentType(options, filePath, objectKey)
 
 	request := &PutObjectRequest{
 		ObjectKey: objectKey,
@@ -88,12 +88,12 @@ func (bucket Bucket) PutObjectFromFile(objectKey, filePath string, options ...Op
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) DoPutObject(request *PutObjectRequest, options []Option) (*Response, error) {
-	isOptSet, _, _ := isOptionSet(options, HTTPHeaderContentType)
+	isOptSet, _, _ := IsOptionSet(options, HTTPHeaderContentType)
 	if !isOptSet {
-		options = addContentType(options, request.ObjectKey)
+		options = AddContentType(options, request.ObjectKey)
 	}
 
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	params := map[string]interface{}{}
 	resp, err := bucket.do("PUT", request.ObjectKey, params, options, request.Reader, listener)
@@ -101,14 +101,14 @@ func (bucket Bucket) DoPutObject(request *PutObjectRequest, options []Option) (*
 		return nil, err
 	}
 
-	if bucket.getConfig().IsEnableCRC {
-		err = checkCRC(resp, "DoPutObject")
+	if bucket.GetConfig().IsEnableCRC {
+		err = CheckCRC(resp, "DoPutObject")
 		if err != nil {
 			return resp, err
 		}
 	}
 
-	err = checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	err = CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 
 	return resp, err
 }
@@ -164,15 +164,15 @@ func (bucket Bucket) GetObjectToFile(objectKey, filePath string, options ...Opti
 	}
 
 	// Compares the CRC value
-	hasRange, _, _ := isOptionSet(options, HTTPHeaderRange)
-	encodeOpt, _ := findOption(options, HTTPHeaderAcceptEncoding, nil)
+	hasRange, _, _ := IsOptionSet(options, HTTPHeaderRange)
+	encodeOpt, _ := FindOption(options, HTTPHeaderAcceptEncoding, nil)
 	acceptEncoding := ""
 	if encodeOpt != nil {
 		acceptEncoding = encodeOpt.(string)
 	}
-	if bucket.getConfig().IsEnableCRC && !hasRange && acceptEncoding != "gzip" {
+	if bucket.GetConfig().IsEnableCRC && !hasRange && acceptEncoding != "gzip" {
 		result.Response.ClientCRC = result.ClientCRC.Sum64()
-		err = checkCRC(result.Response, "GetObjectToFile")
+		err = CheckCRC(result.Response, "GetObjectToFile")
 		if err != nil {
 			os.Remove(tempFilePath)
 			return err
@@ -191,7 +191,7 @@ func (bucket Bucket) GetObjectToFile(objectKey, filePath string, options ...Opti
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) DoGetObject(request *GetObjectRequest, options []Option) (*GetObjectResult, error) {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	resp, err := bucket.do("GET", request.ObjectKey, params, options, nil, nil)
 	if err != nil {
 		return nil, err
@@ -203,15 +203,15 @@ func (bucket Bucket) DoGetObject(request *GetObjectRequest, options []Option) (*
 
 	// CRC
 	var crcCalc hash.Hash64
-	hasRange, _, _ := isOptionSet(options, HTTPHeaderRange)
-	if bucket.getConfig().IsEnableCRC && !hasRange {
-		crcCalc = crc64.New(crcTable())
+	hasRange, _, _ := IsOptionSet(options, HTTPHeaderRange)
+	if bucket.GetConfig().IsEnableCRC && !hasRange {
+		crcCalc = crc64.New(CrcTable())
 		result.ServerCRC = resp.ServerCRC
 		result.ClientCRC = crcCalc
 	}
 
 	// Progress
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	contentLen, _ := strconv.ParseInt(resp.Headers.Get(HTTPHeaderContentLength), 10, 64)
 	resp.Body = TeeReader(resp.Body, crcCalc, contentLen, listener, nil)
@@ -236,11 +236,11 @@ func (bucket Bucket) CopyObject(srcObjectKey, destObjectKey string, options ...O
 
 	//first find version id
 	versionIdKey := "versionId"
-	versionId, _ := findOption(options, versionIdKey, nil)
+	versionId, _ := FindOption(options, versionIdKey, nil)
 	if versionId == nil {
 		options = append(options, CopySource(bucket.BucketName, url.QueryEscape(srcObjectKey)))
 	} else {
-		options = deleteOption(options, versionIdKey)
+		options = DeleteOption(options, versionIdKey)
 		options = append(options, CopySourceVersion(bucket.BucketName, url.QueryEscape(srcObjectKey), versionId.(string)))
 	}
 
@@ -294,11 +294,11 @@ func (bucket Bucket) copy(srcObjectKey, destBucketName, destObjectKey string, op
 
 	//first find version id
 	versionIdKey := "versionId"
-	versionId, _ := findOption(options, versionIdKey, nil)
+	versionId, _ := FindOption(options, versionIdKey, nil)
 	if versionId == nil {
 		options = append(options, CopySource(bucket.BucketName, url.QueryEscape(srcObjectKey)))
 	} else {
-		options = deleteOption(options, versionIdKey)
+		options = DeleteOption(options, versionIdKey)
 		options = append(options, CopySourceVersion(bucket.BucketName, url.QueryEscape(srcObjectKey), versionId.(string)))
 	}
 
@@ -311,7 +311,7 @@ func (bucket Bucket) copy(srcObjectKey, destBucketName, destObjectKey string, op
 	resp, err := bucket.Client.Conn.Do("PUT", destBucketName, destObjectKey, params, headers, nil, 0, nil)
 
 	// get response header
-	respHeader, _ := findOption(options, responseHeader, nil)
+	respHeader, _ := FindOption(options, responseHeader, nil)
 	if respHeader != nil {
 		pRespHeader := respHeader.(*http.Header)
 		*pRespHeader = resp.Headers
@@ -371,23 +371,23 @@ func (bucket Bucket) DoAppendObject(request *AppendObjectRequest, options []Opti
 	params["position"] = strconv.FormatInt(request.Position, 10)
 	headers := make(map[string]string)
 
-	opts := addContentType(options, request.ObjectKey)
+	opts := AddContentType(options, request.ObjectKey)
 	handleOptions(headers, opts)
 
 	var initCRC uint64
-	isCRCSet, initCRCOpt, _ := isOptionSet(options, initCRC64)
+	isCRCSet, initCRCOpt, _ := IsOptionSet(options, initCRC64)
 	if isCRCSet {
 		initCRC = initCRCOpt.(uint64)
 	}
 
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	handleOptions(headers, opts)
 	resp, err := bucket.Client.Conn.Do("POST", bucket.BucketName, request.ObjectKey, params, headers,
 		request.Reader, initCRC, listener)
 
 	// get response header
-	respHeader, _ := findOption(options, responseHeader, nil)
+	respHeader, _ := FindOption(options, responseHeader, nil)
 	if respHeader != nil {
 		pRespHeader := respHeader.(*http.Header)
 		*pRespHeader = resp.Headers
@@ -404,8 +404,8 @@ func (bucket Bucket) DoAppendObject(request *AppendObjectRequest, options []Opti
 		CRC:          resp.ServerCRC,
 	}
 
-	if bucket.getConfig().IsEnableCRC && isCRCSet {
-		err = checkCRC(resp, "AppendObject")
+	if bucket.GetConfig().IsEnableCRC && isCRCSet {
+		err = CheckCRC(resp, "AppendObject")
 		if err != nil {
 			return result, err
 		}
@@ -421,13 +421,13 @@ func (bucket Bucket) DoAppendObject(request *AppendObjectRequest, options []Opti
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) DeleteObject(objectKey string, options ...Option) error {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	resp, err := bucket.do("DELETE", objectKey, params, options, nil, nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // DeleteObjects deletes multiple objects.
@@ -446,7 +446,7 @@ func (bucket Bucket) DeleteObjects(objectKeys []string, options ...Option) (Dele
 		dxml.Objects = append(dxml.Objects, DeleteObject{Key: key})
 	}
 
-	isQuiet, _ := findOption(options, deleteObjectsQuiet, false)
+	isQuiet, _ := FindOption(options, deleteObjectsQuiet, false)
 	dxml.Quiet = isQuiet.(bool)
 
 	bs, err := xml.Marshal(dxml)
@@ -502,7 +502,7 @@ func (bucket Bucket) DeleteObjectVersions(objectVersions []DeleteObject, options
 	dxml := deleteXML{}
 	dxml.Objects = objectVersions
 
-	isQuiet, _ := findOption(options, deleteObjectsQuiet, false)
+	isQuiet, _ := FindOption(options, deleteObjectsQuiet, false)
 	dxml.Quiet = isQuiet.(bool)
 
 	bs, err := xml.Marshal(dxml)
@@ -576,13 +576,13 @@ func (bucket Bucket) IsObjectExist(objectKey string, options ...Option) (bool, e
 //
 //            For common usage scenario, check out sample/list_object.go.
 //
-// ListObjectsResponse    the return value after operation succeeds (only valid when error is nil).
+// ListObjectsResult    the return value after operation succeeds (only valid when error is nil).
 //
 func (bucket Bucket) ListObjects(options ...Option) (ListObjectsResult, error) {
 	var out ListObjectsResult
 
 	options = append(options, EncodingType("url"))
-	params, err := getRawParams(options)
+	params, err := GetRawParams(options)
 	if err != nil {
 		return out, err
 	}
@@ -602,12 +602,40 @@ func (bucket Bucket) ListObjects(options ...Option) (ListObjectsResult, error) {
 	return out, err
 }
 
+// Recommend to use ListObjectsV2 to replace ListObjects
+// ListOListObjectsV2bjects lists the objects under the current bucket.
+// ListObjectsResultV2    the return value after operation succeeds (only valid when error is nil).
+func (bucket Bucket) ListObjectsV2(options ...Option) (ListObjectsResultV2, error) {
+	var out ListObjectsResultV2
+
+	options = append(options, EncodingType("url"))
+	options = append(options, ListType(2))
+	params, err := GetRawParams(options)
+	if err != nil {
+		return out, err
+	}
+
+	resp, err := bucket.do("GET", "", params, options, nil, nil)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+
+	err = xmlUnmarshal(resp.Body, &out)
+	if err != nil {
+		return out, err
+	}
+
+	err = decodeListObjectsResultV2(&out)
+	return out, err
+}
+
 // ListObjectVersions lists objects of all versions under the current bucket.
 func (bucket Bucket) ListObjectVersions(options ...Option) (ListObjectVersionsResult, error) {
 	var out ListObjectVersionsResult
 
 	options = append(options, EncodingType("url"))
-	params, err := getRawParams(options)
+	params, err := GetRawParams(options)
 	if err != nil {
 		return out, err
 	}
@@ -652,7 +680,7 @@ func (bucket Bucket) SetObjectMeta(objectKey string, options ...Option) error {
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) GetObjectDetailedMeta(objectKey string, options ...Option) (http.Header, error) {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	resp, err := bucket.do("HEAD", objectKey, params, options, nil, nil)
 	if err != nil {
 		return nil, err
@@ -673,7 +701,7 @@ func (bucket Bucket) GetObjectDetailedMeta(objectKey string, options ...Option) 
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) GetObjectMeta(objectKey string, options ...Option) (http.Header, error) {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["objectMeta"] = nil
 	//resp, err := bucket.do("GET", objectKey, "?objectMeta", "", nil, nil, nil)
 	resp, err := bucket.do("HEAD", objectKey, params, options, nil, nil)
@@ -703,14 +731,14 @@ func (bucket Bucket) GetObjectMeta(objectKey string, options ...Option) (http.He
 //
 func (bucket Bucket) SetObjectACL(objectKey string, objectACL ACLType, options ...Option) error {
 	options = append(options, ObjectACL(objectACL))
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["acl"] = nil
 	resp, err := bucket.do("PUT", objectKey, params, options, nil, nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetObjectACL gets object's ACL
@@ -722,7 +750,7 @@ func (bucket Bucket) SetObjectACL(objectKey string, objectACL ACLType, options .
 //
 func (bucket Bucket) GetObjectACL(objectKey string, options ...Option) (GetObjectACLResult, error) {
 	var out GetObjectACLResult
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["acl"] = nil
 	resp, err := bucket.do("GET", objectKey, params, options, nil, nil)
 	if err != nil {
@@ -749,14 +777,14 @@ func (bucket Bucket) GetObjectACL(objectKey string, options ...Option) (GetObjec
 //
 func (bucket Bucket) PutSymlink(symObjectKey string, targetObjectKey string, options ...Option) error {
 	options = append(options, symlinkTarget(url.QueryEscape(targetObjectKey)))
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["symlink"] = nil
 	resp, err := bucket.do("PUT", symObjectKey, params, options, nil, nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetSymlink gets the symlink object with the specified key.
@@ -768,7 +796,7 @@ func (bucket Bucket) PutSymlink(symObjectKey string, targetObjectKey string, opt
 //          When error is nil, the target file key is in the X-Oss-Symlink-Target header of the returned object.
 //
 func (bucket Bucket) GetSymlink(objectKey string, options ...Option) (http.Header, error) {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["symlink"] = nil
 	resp, err := bucket.do("GET", objectKey, params, options, nil, nil)
 	if err != nil {
@@ -798,14 +826,66 @@ func (bucket Bucket) GetSymlink(objectKey string, options ...Option) (http.Heade
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) RestoreObject(objectKey string, options ...Option) error {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["restore"] = nil
 	resp, err := bucket.do("POST", objectKey, params, options, nil, nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK, http.StatusAccepted})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK, http.StatusAccepted})
+}
+
+// RestoreObjectDetail support more features than RestoreObject
+func (bucket Bucket) RestoreObjectDetail(objectKey string, restoreConfig RestoreConfiguration, options ...Option) error {
+	if restoreConfig.Tier == "" {
+		// Expedited, Standard, Bulk
+		restoreConfig.Tier = string(RestoreStandard)
+	}
+
+	if restoreConfig.Days == 0 {
+		restoreConfig.Days = 1
+	}
+
+	bs, err := xml.Marshal(restoreConfig)
+	if err != nil {
+		return err
+	}
+
+	buffer := new(bytes.Buffer)
+	buffer.Write(bs)
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	options = append(options, ContentType(contentType))
+
+	params, _ := GetRawParams(options)
+	params["restore"] = nil
+
+	resp, err := bucket.do("POST", objectKey, params, options, buffer, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK, http.StatusAccepted})
+}
+
+// RestoreObjectXML support more features than RestoreObject
+func (bucket Bucket) RestoreObjectXML(objectKey, configXML string, options ...Option) error {
+	buffer := new(bytes.Buffer)
+	buffer.Write([]byte(configXML))
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	options = append(options, ContentType(contentType))
+
+	params, _ := GetRawParams(options)
+	params["restore"] = nil
+
+	resp, err := bucket.do("POST", objectKey, params, options, buffer, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK, http.StatusAccepted})
 }
 
 // SignURL signs the URL. Users could access the object directly with this URL without getting the AK.
@@ -822,7 +902,7 @@ func (bucket Bucket) SignURL(objectKey string, method HTTPMethod, expiredInSec i
 	}
 	expiration := time.Now().Unix() + expiredInSec
 
-	params, err := getRawParams(options)
+	params, err := GetRawParams(options)
 	if err != nil {
 		return "", err
 	}
@@ -892,7 +972,7 @@ func (bucket Bucket) PutObjectFromFileWithURL(signedURL, filePath string, option
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) DoPutObjectWithURL(signedURL string, reader io.Reader, options []Option) (*Response, error) {
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	params := map[string]interface{}{}
 	resp, err := bucket.doURL("PUT", signedURL, params, options, reader, listener)
@@ -900,14 +980,14 @@ func (bucket Bucket) DoPutObjectWithURL(signedURL string, reader io.Reader, opti
 		return nil, err
 	}
 
-	if bucket.getConfig().IsEnableCRC {
-		err = checkCRC(resp, "DoPutObjectWithURL")
+	if bucket.GetConfig().IsEnableCRC {
+		err = CheckCRC(resp, "DoPutObjectWithURL")
 		if err != nil {
 			return resp, err
 		}
 	}
 
-	err = checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	err = CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 
 	return resp, err
 }
@@ -962,16 +1042,16 @@ func (bucket Bucket) GetObjectToFileWithURL(signedURL, filePath string, options 
 	}
 
 	// Compare the CRC value. If CRC values do not match, return error.
-	hasRange, _, _ := isOptionSet(options, HTTPHeaderRange)
-	encodeOpt, _ := findOption(options, HTTPHeaderAcceptEncoding, nil)
+	hasRange, _, _ := IsOptionSet(options, HTTPHeaderRange)
+	encodeOpt, _ := FindOption(options, HTTPHeaderAcceptEncoding, nil)
 	acceptEncoding := ""
 	if encodeOpt != nil {
 		acceptEncoding = encodeOpt.(string)
 	}
 
-	if bucket.getConfig().IsEnableCRC && !hasRange && acceptEncoding != "gzip" {
+	if bucket.GetConfig().IsEnableCRC && !hasRange && acceptEncoding != "gzip" {
 		result.Response.ClientCRC = result.ClientCRC.Sum64()
-		err = checkCRC(result.Response, "GetObjectToFileWithURL")
+		err = CheckCRC(result.Response, "GetObjectToFileWithURL")
 		if err != nil {
 			os.Remove(tempFilePath)
 			return err
@@ -990,7 +1070,7 @@ func (bucket Bucket) GetObjectToFileWithURL(signedURL, filePath string, options 
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (bucket Bucket) DoGetObjectWithURL(signedURL string, options []Option) (*GetObjectResult, error) {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	resp, err := bucket.doURL("GET", signedURL, params, options, nil, nil)
 	if err != nil {
 		return nil, err
@@ -1002,15 +1082,15 @@ func (bucket Bucket) DoGetObjectWithURL(signedURL string, options []Option) (*Ge
 
 	// CRC
 	var crcCalc hash.Hash64
-	hasRange, _, _ := isOptionSet(options, HTTPHeaderRange)
-	if bucket.getConfig().IsEnableCRC && !hasRange {
-		crcCalc = crc64.New(crcTable())
+	hasRange, _, _ := IsOptionSet(options, HTTPHeaderRange)
+	if bucket.GetConfig().IsEnableCRC && !hasRange {
+		crcCalc = crc64.New(CrcTable())
 		result.ServerCRC = resp.ServerCRC
 		result.ClientCRC = crcCalc
 	}
 
 	// Progress
-	listener := getProgressListener(options)
+	listener := GetProgressListener(options)
 
 	contentLen, _ := strconv.ParseInt(resp.Headers.Get(HTTPHeaderContentLength), 10, 64)
 	resp.Body = TeeReader(resp.Body, crcCalc, contentLen, listener, nil)
@@ -1032,7 +1112,7 @@ func (bucket Bucket) DoGetObjectWithURL(signedURL string, options []Option) (*Ge
 //
 func (bucket Bucket) ProcessObject(objectKey string, process string, options ...Option) (ProcessObjectResult, error) {
 	var out ProcessObjectResult
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["x-oss-process"] = nil
 	processData := fmt.Sprintf("%v=%v", "x-oss-process", process)
 	data := strings.NewReader(processData)
@@ -1063,7 +1143,7 @@ func (bucket Bucket) PutObjectTagging(objectKey string, tagging Tagging, options
 	buffer := new(bytes.Buffer)
 	buffer.Write(bs)
 
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["tagging"] = nil
 	resp, err := bucket.do("PUT", objectKey, params, options, buffer, nil)
 	if err != nil {
@@ -1084,7 +1164,7 @@ func (bucket Bucket) PutObjectTagging(objectKey string, tagging Tagging, options
 
 func (bucket Bucket) GetObjectTagging(objectKey string, options ...Option) (GetObjectTaggingResult, error) {
 	var out GetObjectTaggingResult
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["tagging"] = nil
 
 	resp, err := bucket.do("GET", objectKey, params, options, nil, nil)
@@ -1105,7 +1185,7 @@ func (bucket Bucket) GetObjectTagging(objectKey string, options ...Option) (GetO
 // error      nil if success, otherwise error
 //
 func (bucket Bucket) DeleteObjectTagging(objectKey string, options ...Option) error {
-	params, _ := getRawParams(options)
+	params, _ := GetRawParams(options)
 	params["tagging"] = nil
 
 	if objectKey == "" {
@@ -1118,7 +1198,7 @@ func (bucket Bucket) DeleteObjectTagging(objectKey string, options ...Option) er
 	}
 	defer resp.Body.Close()
 
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 func (bucket Bucket) OptionsMethod(objectKey string, options ...Option) (http.Header, error) {
@@ -1130,6 +1210,12 @@ func (bucket Bucket) OptionsMethod(objectKey string, options ...Option) (http.He
 	defer resp.Body.Close()
 	out = resp.Headers
 	return out, nil
+}
+
+// public
+func (bucket Bucket) Do(method, objectName string, params map[string]interface{}, options []Option,
+	data io.Reader, listener ProgressListener) (*Response, error) {
+	return bucket.do(method, objectName, params, options, data, listener)
 }
 
 // Private
@@ -1150,8 +1236,8 @@ func (bucket Bucket) do(method, objectName string, params map[string]interface{}
 		params, headers, data, 0, listener)
 
 	// get response header
-	respHeader, _ := findOption(options, responseHeader, nil)
-	if respHeader != nil {
+	respHeader, _ := FindOption(options, responseHeader, nil)
+	if respHeader != nil && resp != nil {
 		pRespHeader := respHeader.(*http.Header)
 		*pRespHeader = resp.Headers
 	}
@@ -1170,7 +1256,7 @@ func (bucket Bucket) doURL(method HTTPMethod, signedURL string, params map[strin
 	resp, err := bucket.Client.Conn.DoURL(method, signedURL, headers, data, 0, listener)
 
 	// get response header
-	respHeader, _ := findOption(options, responseHeader, nil)
+	respHeader, _ := FindOption(options, responseHeader, nil)
 	if respHeader != nil {
 		pRespHeader := respHeader.(*http.Header)
 		*pRespHeader = resp.Headers
@@ -1179,11 +1265,11 @@ func (bucket Bucket) doURL(method HTTPMethod, signedURL string, params map[strin
 	return resp, err
 }
 
-func (bucket Bucket) getConfig() *Config {
+func (bucket Bucket) GetConfig() *Config {
 	return bucket.Client.Config
 }
 
-func addContentType(options []Option, keys ...string) []Option {
+func AddContentType(options []Option, keys ...string) []Option {
 	typ := TypeByExtension("")
 	for _, key := range keys {
 		typ = TypeByExtension(key)

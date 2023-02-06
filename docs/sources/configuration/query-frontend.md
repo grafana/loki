@@ -1,7 +1,8 @@
 ---
 title: Query Frontend
+description: Kubernetes Query Frontend Example
 ---
-# Kubernetes Query Frontend Example
+# Query Frontend
 
 ## Disclaimer
 
@@ -29,7 +30,7 @@ metadata:
   namespace: <namespace>
 data:
   config.yaml: |
-    # Disable the requirement that every request to Cortex has a
+    # Disable the requirement that every request to Loki has a
     # X-Scope-OrgID header. `fake` will be substituted in instead.
     auth_enabled: false
 

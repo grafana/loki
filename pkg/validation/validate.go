@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/util/flagext"
 )
@@ -30,8 +31,17 @@ const (
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
-	OutOfOrder      = "out_of_order"
-	TooFarBehind    = "too_far_behind"
+	// OutOfOrder is a reason for discarding lines when Loki doesn't accept out
+	// of order log lines (parameter `-ingester.unordered-writes` is set to
+	// `false`) and the lines in question are older than the newest line in the
+	// stream.
+	OutOfOrder = "out_of_order"
+	// TooFarBehind is a reason for discarding lines when Loki accepts
+	// unordered ingest  (parameter `-ingester.unordered-writes` is set to
+	// `true`, which is the default) and the lines in question are older than
+	// half of `-ingester.max-chunk-age` compared to the newest line in the
+	// stream.
+	TooFarBehind = "too_far_behind"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
 	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v, oldest acceptable timestamp is: %v"
@@ -66,7 +76,7 @@ func (e *ErrStreamRateLimit) Error() string {
 }
 
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
-var MutatedSamples = prometheus.NewCounterVec(
+var MutatedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "mutated_samples_total",
@@ -76,7 +86,7 @@ var MutatedSamples = prometheus.NewCounterVec(
 )
 
 // MutatedBytes is a metric of the total mutated bytes, by reason.
-var MutatedBytes = prometheus.NewCounterVec(
+var MutatedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "mutated_bytes_total",
@@ -86,7 +96,7 @@ var MutatedBytes = prometheus.NewCounterVec(
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
-var DiscardedBytes = prometheus.NewCounterVec(
+var DiscardedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "discarded_bytes_total",
@@ -96,7 +106,7 @@ var DiscardedBytes = prometheus.NewCounterVec(
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
-var DiscardedSamples = prometheus.NewCounterVec(
+var DiscardedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "discarded_samples_total",
@@ -105,6 +115,9 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	[]string{ReasonLabel, "tenant"},
 )
 
-func init() {
-	prometheus.MustRegister(DiscardedSamples, DiscardedBytes)
-}
+var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
+	Namespace: "loki",
+	Name:      "bytes_per_line",
+	Help:      "The total number of bytes per line.",
+	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB
+})
