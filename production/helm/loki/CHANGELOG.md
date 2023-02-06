@@ -17,6 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix rendering of namespace in provisioner job.
 - [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
+- [BUGFIX] Correctly set `compactor_address` for 3 target scalable configuration.
 
 ## 4.5
 
