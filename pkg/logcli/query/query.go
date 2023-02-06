@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"sort"
@@ -63,10 +64,31 @@ type Query struct {
 	ColoredOutput          bool
 	LocalConfig            string
 	FetchSchemaFromStorage bool
-	ParallelDuration       time.Duration
-	ParallelMaxWorkers     int
-	PartFilePrefix         string
-	OverwriteCompleted     bool
+
+	// Parallelization parameters.
+
+	// The duration of each part/job.
+	ParallelDuration time.Duration
+
+	// Number of workers to start.
+	ParallelMaxWorkers int
+
+	// Prefix of the name for each part file.
+	// The idea for this is to allow the user to download many different queries at the same
+	// time, and/or give a directory for the part files to be placed.
+	PartFilePrefix string
+
+	// By default (false value), if the part file has finished downloading, and another job with
+	// the same filename is run, it will skip the completed files. This will remove the completed
+	// files as each worker gets to that part file, so the part will be downloaded again.
+	OverwriteCompleted bool
+
+	// If true, the part files will be read in order, and the data will be output to stdout.
+	MergePartFiles bool
+
+	// If MergeParts is false, this parameter has no effect, part files will be kept.
+	// Otherwise, if this is true, the part files will not be deleted once they have been merged.
+	KeepPartFiles bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -95,7 +117,6 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 
 	if partFile != nil {
 		defer partFile.Close()
-
 		out = out.WithWriter(partFile)
 	}
 
@@ -220,11 +241,104 @@ func (q *Query) createPartFile() (*PartFile, bool) {
 	return partFile, false
 }
 
-func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) {
-	wg := sync.WaitGroup{}
-	jobs := make(chan Query)
+// rounds up duration d by the multiple m, and then divides by m.
+func durationCeilDiv(d, m time.Duration) int64 {
+	return int64((d + m - 1) / m)
+}
 
-	// Start workers
+// Returns the next job's start and end times.
+func (q *Query) nextJob(start, end time.Time) (time.Time, time.Time) {
+	if q.Forward {
+		start = end
+		return start, minTime(start.Add(q.ParallelDuration), q.End)
+	}
+
+	end = start
+	return maxTime(end.Add(-q.ParallelDuration), q.Start), end
+}
+
+type parallelJob struct {
+	q    Query
+	done chan struct{}
+}
+
+func newParallelJob(q Query) *parallelJob {
+	return &parallelJob{
+		q:    q,
+		done: make(chan struct{}),
+	}
+}
+
+func (j *parallelJob) run(c client.Client, out output.LogOutput, statistics bool) {
+	j.q.DoQuery(c, out, statistics)
+	j.done <- struct{}{}
+}
+
+func (q *Query) parallelJobs() (chan Query, []*parallelJob) {
+	nJobs := durationCeilDiv(q.End.Sub(q.Start), q.ParallelDuration)
+	jobsChan := make(chan Query, nJobs)
+	jobsArr := make([]*parallelJob, 0, nJobs)
+
+	// Normally `nextJob` will swap the start/end to get the next job. Here, we swap them
+	// on input so that we calculate the starting job instead of the next job.
+	start, end := q.nextJob(q.End, q.Start)
+
+	// Queue up jobs
+	for i := nJobs; i != 0; i-- {
+		rq := *q
+		rq.Start = start
+		rq.End = end
+
+		jobsChan <- rq
+		jobsArr = append(jobsArr, newParallelJob(rq))
+
+		start, end = q.nextJob(start, end)
+	}
+
+	close(jobsChan)
+
+	return jobsChan, jobsArr
+}
+
+// Waits for each job to finish in order, reads the part file and copies it to stdout
+func (q *Query) mergeJobs(jobs []*parallelJob) error {
+	if !q.MergePartFiles {
+		return nil
+	}
+
+	for _, job := range jobs {
+		// wait for the next job to finish
+		<-job.done
+
+		f, err := os.Open(job.q.outputFilename())
+		if err != nil {
+			return fmt.Errorf("open file error: %w", err)
+		}
+
+		_, err = io.Copy(os.Stdout, f)
+		if err != nil {
+			return fmt.Errorf("copying file error: %w", err)
+		}
+
+		if !q.KeepPartFiles {
+			err := os.Remove(job.q.outputFilename())
+			if err != nil {
+				return fmt.Errorf("removing file error: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (q *Query) startWorkers(
+	jobs chan Query,
+	c client.Client,
+	out output.LogOutput,
+	statistics bool,
+) *sync.WaitGroup {
+	wg := sync.WaitGroup{}
+
 	for w := 0; w < q.ParallelMaxWorkers; w++ {
 		wg.Add(1)
 
@@ -236,31 +350,34 @@ func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistic
 		}()
 	}
 
-	start := q.Start
-	end := minTime(start.Add(q.ParallelDuration), q.End)
+	return &wg
+}
 
-	// Queue up jobs
-	for {
-		rq := *q
-		rq.Start = start
-		rq.End = end
-
-		jobs <- rq
-
-		if end.Equal(q.End) {
-			break
-		}
-
-		start = end
-		end = minTime(start.Add(q.ParallelDuration), q.End)
+func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) {
+	if q.ParallelDuration < 1 {
+		log.Fatalf("Parallel duration has to be a positive value\n")
 	}
-	close(jobs)
+
+	jobsChan, jobs := q.parallelJobs()
+
+	wg := q.startWorkers(jobsChan, c, out, statistics)
+
+	if err := q.mergeJobs(jobs); err != nil {
+		log.Fatalf("Merging part files error: %s\n", err)
+	}
 
 	wg.Wait()
 }
 
 func minTime(t1, t2 time.Time) time.Time {
 	if t1.Before(t2) {
+		return t1
+	}
+	return t2
+}
+
+func maxTime(t1, t2 time.Time) time.Time {
+	if t1.After(t2) {
 		return t1
 	}
 	return t2

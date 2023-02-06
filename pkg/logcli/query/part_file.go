@@ -4,23 +4,24 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 )
 
 // PartFile partially complete file.
 // Expected usage:
 //  1. Create the temp file: CreateTemp
 //  2. Write the data to the file
-//  3. When you're done, call Complete and the temp file will be renamed
+//  3. When you're done, call Complete and the temp file will be closed and renamed
 type PartFile struct {
-	fd           *os.File
 	completeName string
+	fd           *os.File
+	lock         sync.Mutex
 }
 
 // NewPartFile creates a new partial file, setting the filename which will be used
 // when the file is closed with the Complete function.
 func NewPartFile(filename string) *PartFile {
 	return &PartFile{
-		fd:           nil,
 		completeName: filename,
 	}
 }
@@ -41,6 +42,9 @@ func (f *PartFile) Exists() (bool, error) {
 
 // CreateTemp creates the temp file to store the data before Complete is called.
 func (f *PartFile) CreateTemp() error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
 	tmpName := f.completeName + ".tmp"
 
 	fd, err := os.Create(tmpName)
@@ -61,6 +65,9 @@ func (f *PartFile) Write(b []byte) (int, error) {
 // Double close is handled gracefully without error so that Close can be deferred for errors,
 // and is also called when Complete is called.
 func (f *PartFile) Close() error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
 	// Prevent double close
 	if f.fd == nil {
 		return nil
@@ -87,6 +94,9 @@ func (f *PartFile) Complete() error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("failed to close part file: %s: %s", tmpFileName, err)
 	}
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
 
 	if err := os.Rename(tmpFileName, f.completeName); err != nil {
 		return fmt.Errorf("failed to rename part file: %s: %s", tmpFileName, err)

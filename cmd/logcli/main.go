@@ -76,7 +76,54 @@ data points between the start and end query time. This output is used to
 build graphs, similar to what is seen in the Grafana Explore graph view.
 If you are querying metrics and just want the most recent data point
 (like what is seen in the Grafana Explore table view), then you should use
-the "instant-query" command instead.`)
+the "instant-query" command instead.
+
+Parallelization:
+
+You can download logs in parallel, there are a few flags which control this
+behaviour:
+
+	--parallel-duration
+	--parallel-max-workers
+	--part-file-prefix
+	--overwrite-completed-parts
+	--merge-part-files
+	--keep-part-files
+
+Refer to the help of these specific flags to understand what each of them do.
+
+Example:
+
+	logcli query
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output=jsonl
+	   --parallel-duration="15m"
+	   --parallel-max-workers="10"
+	   --part-file-prefix="/tmp/my_query"
+	   --merge-part-files
+	   'my-query'
+
+This will start 10 workers, and they will each start downloading 15 minute
+slices of the specified time range.
+
+Each worker will save a "part" file to the location specified in the prefix.
+Different prefixes can be used to run multiple queries at the same time.
+The timestamp of the start and end of the part is in the file name.
+While the part is being downloaded, the filename will end in ".part", when it
+is complete, the file will be renamed to remove this ".part" extension.
+By default, if a completed part file is found, that part will not be downloaded
+again. This can be overridden with the --overwrite-completed-parts flag.
+
+If you do not specify the --merge-part-files flag, the part files will be
+downloaded, and logcli will exit, and you can process the files as you wish.
+With the flag specified, the part files will be read in order, and the output
+printed to the terminal. The lines will be printed as soon as the next part is
+complete, you don't have to wait for all the parts to download before getting
+output. --merge-part-files will remove the part files when it is done reading
+each of them, to change this, you can add --keep-part-files and the part file
+wParallelizationill not be removed.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
 	follow     = queryCmd.Flag("follow", "Alias for --tail").Short('f').Default("false").Bool()
@@ -380,6 +427,8 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.").Default("1").IntVar(&q.ParallelMaxWorkers)
 		cmd.Flag("part-file-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-unix_start-unix_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartFilePrefix)
 		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
+		cmd.Flag("merge-part-files", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").Default("false").BoolVar(&q.MergePartFiles)
+		cmd.Flag("keep-part-files", "Overrides the default behaviour of --merge-part-files which will delete the part files once all the files have been read. This option will keep the part files.").Default("false").BoolVar(&q.KeepPartFiles)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)
