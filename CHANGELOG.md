@@ -65,6 +65,12 @@
 
 ##### Changes
 
+#### LogCLI
+
+##### Enhancement
+
+* []() **chaudum**: Try to load tenant-specific `schemaconfig-{orgID}.yaml` when using `--remote-schema` argument and fallback to global `schemaconfig.yaml`.
+
 #### Fluent Bit
 
 #### Loki Canary
