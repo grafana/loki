@@ -3,13 +3,20 @@ version: "3.8"
 networks:
   loki:
 
+
+volumes:
+  prometheus:
+  grafana:
+  alertmanager-data:
+
+
 services:
 
   # Since the Loki containers are running as user 10001 and the mounted data volume is owned by root,
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: grafana/loki:2.6.1
+    image: grafana/loki:2.7.3
     user: root
     entrypoint:
       - "chown"
@@ -21,7 +28,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:8.5.9
+    image: grafana/grafana:9.1.6
     ports:
       - "3000:3000"
     environment:
@@ -41,7 +48,12 @@ services:
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
       - prometheus:/prometheus
-    command: [ '--log.level=debug', '--config.file=/etc/prometheus/prometheus.yml', '--query.lookback-delta=30s' ]
+    command:
+      [
+        '--log.level=debug',
+        '--config.file=/etc/prometheus/prometheus.yml',
+        '--query.lookback-delta=30s'
+      ]
     networks:
       - loki
 
@@ -51,8 +63,8 @@ services:
     command:
       - --loop
       - --format=json
-      - --number=10    # number of log lines to generate per second
-      - --delay=100ms  # delay between log lines
+      - --number=10 # number of log lines to generate per second
+      - --delay=100ms # delay between log lines
       - --output=/var/log/generated-logs.txt
       - --overwrite
       - --type=log
@@ -60,7 +72,7 @@ services:
       - ./loki/:/var/log/
 
   promtail:
-    image: grafana/promtail:2.6.1
+    image: grafana/promtail:2.7.3
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
@@ -101,33 +113,19 @@ services:
     networks:
       - loki
 
-  loki-frontend:
-    image: grafana/loki:2.6.1
-    volumes:
-        - ./config:/etc/loki/
-    ports:
-        - "3100"
-    command: "-config.file=/etc/loki/loki.yaml -target=query-frontend -frontend.downstream-url=http://loki-read:3100"
-    networks:
-      - loki
-    deploy:
-      mode: replicated
-      replicas: 2
-
   loki-read:
-    image: grafana/loki:2.6.1
+    image: grafana/loki:2.7.3
     volumes:
       - ./config:/etc/loki/
     ports:
       - "3100"
       - "7946"
-
-    # uncomment to use interactive debugging
+      # uncomment to use interactive debugging
       # - "40000-40002:40000" # # makes the replicas available on ports 40000, 40001, 40002
-    #cap_add:
-    #  - SYS_PTRACE
-    #security_opt:
-    #  - apparmor=unconfined
+      #cap_add:
+      #  - SYS_PTRACE
+      #security_opt:
+      #  - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=read"
     networks:
       - loki
@@ -138,19 +136,18 @@ services:
     # only needed for interactive debugging with dlv
 
   loki-write:
-    image: grafana/loki:2.6.1
+    image: grafana/loki:2.7.3
     volumes:
       - ./config:/etc/loki/
     ports:
       - "3100"
       - "7946"
-
-    # uncomment to use interactive debugging
+      # uncomment to use interactive debugging
       # - "50000-50002:40000" # makes the replicas available on ports 50000, 50001, 50002
-    # cap_add:
-    #   - SYS_PTRACE
-    # security_opt:
-    #   - apparmor=unconfined
+      # cap_add:
+      #   - SYS_PTRACE
+      # security_opt:
+      #   - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=write"
     networks:
       - loki
@@ -159,6 +156,15 @@ services:
       mode: replicated
       replicas: 3
 
-volumes:
-  prometheus:
-  grafana:
+  # alertmanager to enable receiving alerts
+  alertmanager:
+    image: prom/alertmanager:v0.23.0
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - "./config:/config"
+      - alertmanager-data:/data
+    command: --config.file=/config/alertmanager.yml --log.level=debug
+    networks:
+      - loki

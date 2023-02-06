@@ -111,8 +111,9 @@ type PackConfig struct {
 	IngestTimestamp *bool    `mapstructure:"ingest_timestamp"`
 }
 
-//nolint:unparam // Always returns nil until someone adds more validation and can remove this.
 // validatePackConfig validates the PackConfig for the packStage
+//
+//nolint:unparam // Always returns nil until someone adds more validation and can remove this.
 func validatePackConfig(cfg *PackConfig) error {
 	// Default the IngestTimestamp value to be true
 	if cfg.IngestTimestamp == nil {

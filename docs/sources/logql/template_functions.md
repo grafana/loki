@@ -1,5 +1,6 @@
 ---
 title: Template functions
+description: Template functions
 weight: 30
 ---
 
@@ -51,6 +52,7 @@ Signature:
 "{{ __timestamp__ }}"
 `{{ __timestamp__ | date "2006-01-02T15:04:05.00Z-07:00" }}`
 `{{ __timestamp__ | unixEpoch }}`
+```
 
 See the blog: [Parsing and formatting date/time in Go](https://www.pauladamsmith.com/blog/2011/05/go_time.html) for more information.
 
@@ -148,8 +150,6 @@ Signature:
 ```template
 `{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
 ```
-
-You can combine multiple functions using pipe. For example, to strip out spaces and make the request method in capital, you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
 
 ## lower
 
@@ -697,4 +697,52 @@ Examples:
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
 ```logql
 {job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
+```
+
+## count
+
+`count` counts occurrences of the regex (`regex`) in (`src`).
+
+Signature: `count(regex string, src string) int`
+
+Examples:
+
+```template
+{{ count "a|b" "abab" }} // output: 4
+{{ count "o" "foo" }}    // output: 2
+```
+
+Example of a query to print how many times XYZ occurs in a line:
+```logql
+{job="xyzlog"} | line_format `{{ __line__ | count "XYZ"}}`
+```
+
+## urlencode
+
+Use this function to encode the URL(s) in log messages.
+
+Signature:
+
+`urlencode(string) string`
+
+Examples:
+
+```template
+"{{ .request_url | urlencode }}"
+`{{ urlencode  .request_url}}`
+```
+
+## urldecode
+
+Use this function to decode the URL(s) in log messages.
+
+Signature:
+
+`urldecode(string) string`
+
+Examples:
+
+```template
+"{{ .request_url | urldecode }}"
+`{{ urldecode  .request_url}}`
 ```

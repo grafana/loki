@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -184,7 +183,7 @@ func (tm *TableManager) handoverIndexesToShipper(force bool) {
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	localTables := make(map[string]*Table)
-	filesInfo, err := ioutil.ReadDir(tm.cfg.IndexDir)
+	dirEntries, err := os.ReadDir(tm.cfg.IndexDir)
 	if err != nil {
 		return nil, err
 	}
@@ -195,16 +194,16 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		return nil, err
 	}
 
-	for _, fileInfo := range filesInfo {
-		if !re.MatchString(fileInfo.Name()) {
+	for _, entry := range dirEntries {
+		if !re.MatchString(entry.Name()) {
 			continue
 		}
 
 		// since we are moving to keeping files for same table in a folder, if current element is a file we need to move it inside a directory with the same name
 		// i.e file index_123 would be moved to path index_123/index_123.
-		if !fileInfo.IsDir() {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", fileInfo.Name()))
-			filePath := filepath.Join(tm.cfg.IndexDir, fileInfo.Name())
+		if !entry.IsDir() {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", entry.Name()))
+			filePath := filepath.Join(tm.cfg.IndexDir, entry.Name())
 
 			// create a folder with .temp suffix since we can't create a directory with same name as file.
 			tempDirPath := filePath + ".temp"
@@ -213,7 +212,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			}
 
 			// move the file to temp dir.
-			if err := os.Rename(filePath, filepath.Join(tempDirPath, fileInfo.Name())); err != nil {
+			if err := os.Rename(filePath, filepath.Join(tempDirPath, entry.Name())); err != nil {
 				return nil, err
 			}
 
@@ -223,17 +222,17 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			}
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
-		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.indexShipper, tm.cfg.MakePerTenantBuckets, tm.metrics)
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", entry.Name()))
+		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, entry.Name()), tm.cfg.Uploader, tm.indexShipper, tm.cfg.MakePerTenantBuckets, tm.metrics)
 		if err != nil {
 			return nil, err
 		}
 
 		if table == nil {
 			// if table is nil it means it has no files in it so remove the folder for that table.
-			err := os.Remove(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()))
+			err := os.Remove(filepath.Join(tm.cfg.IndexDir, entry.Name()))
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
+				level.Error(util_log.Logger).Log("msg", "failed to remove empty table folder", "table", entry.Name(), "err", err)
 			}
 			continue
 		}
@@ -250,7 +249,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			return nil, err
 		}
 
-		localTables[fileInfo.Name()] = table
+		localTables[entry.Name()] = table
 	}
 
 	return localTables, nil

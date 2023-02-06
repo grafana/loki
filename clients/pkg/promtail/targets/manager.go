@@ -41,6 +41,17 @@ const (
 	HerokuDrainConfigs   = "herokuDrainConfigs"
 )
 
+var (
+	fileMetrics        *file.Metrics
+	syslogMetrics      *syslog.Metrics
+	gcplogMetrics      *gcplog.Metrics
+	gelfMetrics        *gelf.Metrics
+	cloudflareMetrics  *cloudflare.Metrics
+	dockerMetrics      *docker.Metrics
+	journalMetrics     *journal.Metrics
+	herokuDrainMetrics *heroku.Metrics
+)
+
 type targetManager interface {
 	Ready() bool
 	Stop()
@@ -119,38 +130,28 @@ func NewTargetManagers(
 		return positionFile, nil
 	}
 
-	var (
-		fileMetrics        *file.Metrics
-		syslogMetrics      *syslog.Metrics
-		gcplogMetrics      *gcplog.Metrics
-		gelfMetrics        *gelf.Metrics
-		cloudflareMetrics  *cloudflare.Metrics
-		dockerMetrics      *docker.Metrics
-		journalMetrics     *journal.Metrics
-		herokuDrainMetrics *heroku.Metrics
-	)
-	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
+	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 && fileMetrics == nil {
 		fileMetrics = file.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[SyslogScrapeConfigs]) > 0 {
+	if len(targetScrapeConfigs[SyslogScrapeConfigs]) > 0 && syslogMetrics == nil {
 		syslogMetrics = syslog.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[GcplogScrapeConfigs]) > 0 {
+	if len(targetScrapeConfigs[GcplogScrapeConfigs]) > 0 && gcplogMetrics == nil {
 		gcplogMetrics = gcplog.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[GelfConfigs]) > 0 {
+	if len(targetScrapeConfigs[GelfConfigs]) > 0 && gelfMetrics == nil {
 		gelfMetrics = gelf.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 {
+	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 && cloudflareMetrics == nil {
 		cloudflareMetrics = cloudflare.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0 {
+	if (len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0) && dockerMetrics == nil {
 		dockerMetrics = docker.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[JournalScrapeConfigs]) > 0 {
+	if len(targetScrapeConfigs[JournalScrapeConfigs]) > 0 && journalMetrics == nil {
 		journalMetrics = journal.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[HerokuDrainConfigs]) > 0 {
+	if len(targetScrapeConfigs[HerokuDrainConfigs]) > 0 && herokuDrainMetrics == nil {
 		herokuDrainMetrics = heroku.NewMetrics(reg)
 	}
 

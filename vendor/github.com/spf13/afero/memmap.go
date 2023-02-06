@@ -142,6 +142,11 @@ func (m *MemMapFs) Mkdir(name string, perm os.FileMode) error {
 	}
 
 	m.mu.Lock()
+	// Dobule check that it doesn't exist.
+	if _, ok := m.getData()[name]; ok {
+		m.mu.Unlock()
+		return &os.PathError{Op: "mkdir", Path: name, Err: ErrFileExists}
+	}
 	item := mem.CreateDir(name)
 	mem.SetMode(item, os.ModeDir|perm)
 	m.getData()[name] = item
@@ -279,7 +284,7 @@ func (m *MemMapFs) RemoveAll(path string) error {
 	defer m.mu.RUnlock()
 
 	for p := range m.getData() {
-		if strings.HasPrefix(p, path) {
+		if p == path || strings.HasPrefix(p, path+FilePathSeparator) {
 			m.mu.RUnlock()
 			m.mu.Lock()
 			delete(m.getData(), p)

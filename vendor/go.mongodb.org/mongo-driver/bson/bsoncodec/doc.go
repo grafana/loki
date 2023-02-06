@@ -1,3 +1,9 @@
+// Copyright (C) MongoDB, Inc. 2022-present.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
 // Package bsoncodec provides a system for encoding values to BSON representations and decoding
 // values from BSON representations. This package considers both binary BSON and ExtendedJSON as
 // BSON representations. The types in this package enable a flexible system for handling this
@@ -11,7 +17,7 @@
 // 2) A Registry that holds these ValueEncoders and ValueDecoders and provides methods for
 // retrieving them.
 //
-// ValueEncoders and ValueDecoders
+// # ValueEncoders and ValueDecoders
 //
 // The ValueEncoder interface is implemented by types that can encode a provided Go type to BSON.
 // The value to encode is provided as a reflect.Value and a bsonrw.ValueWriter is used within the
@@ -25,7 +31,7 @@
 // allow the use of a function with the correct signature as a ValueDecoder. A DecodeContext
 // instance is provided and serves similar functionality to the EncodeContext.
 //
-// Registry and RegistryBuilder
+// # Registry and RegistryBuilder
 //
 // A Registry is an immutable store for ValueEncoders, ValueDecoders, and a type map. See the Registry type
 // documentation for examples of registering various custom encoders and decoders. A Registry can be constructed using a
@@ -47,15 +53,15 @@
 // values decode as Go int32 and int64 instances, respectively, when decoding into a bson.D. The following code would
 // change the behavior so these values decode as Go int instances instead:
 //
-//		intType := reflect.TypeOf(int(0))
-//		registryBuilder.RegisterTypeMapEntry(bsontype.Int32, intType).RegisterTypeMapEntry(bsontype.Int64, intType)
+//	intType := reflect.TypeOf(int(0))
+//	registryBuilder.RegisterTypeMapEntry(bsontype.Int32, intType).RegisterTypeMapEntry(bsontype.Int64, intType)
 //
 // 4. Kind encoder/decoders - These can be registered using the RegisterDefaultEncoder and RegisterDefaultDecoder
 // methods. The registered codec will be invoked when encoding or decoding values whose reflect.Kind matches the
 // registered reflect.Kind as long as the value's type doesn't match a registered type or hook encoder/decoder first.
 // These methods should be used to change the behavior for all values for a specific kind.
 //
-// Registry Lookup Procedure
+// # Registry Lookup Procedure
 //
 // When looking up an encoder in a Registry, the precedence rules are as follows:
 //
@@ -73,7 +79,7 @@
 // rules apply for decoders, with the exception that an error of type ErrNoDecoder will be returned if no decoder is
 // found.
 //
-// DefaultValueEncoders and DefaultValueDecoders
+// # DefaultValueEncoders and DefaultValueDecoders
 //
 // The DefaultValueEncoders and DefaultValueDecoders types provide a full set of ValueEncoders and
 // ValueDecoders for handling a wide range of Go types, including all of the types within the

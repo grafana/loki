@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -136,8 +135,7 @@ func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager
 			indices = append(indices, m.activeHeads)
 		}
 
-		return NewMultiIndex(indices...)
-
+		return NewMultiIndex(IndexSlice(indices)), nil
 	})
 
 	return m
@@ -233,18 +231,18 @@ func (m *HeadManager) Stop() error {
 	return m.buildTSDBFromHead(m.activeHeads)
 }
 
-func (m *HeadManager) Append(userID string, ls labels.Labels, chks index.ChunkMetas) error {
+func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) error {
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	// We must create a copy of the labels here to avoid mutating the existing
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
 	b.Del(labels.MetricName)
-	ls = b.Labels()
+	ls = b.Labels(nil)
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	rec := m.activeHeads.Append(userID, ls, chks)
+	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
 }
 
@@ -423,7 +421,7 @@ func walsByPeriod(dir string, period period) ([]WalGroup, error) {
 }
 
 func walGroups(dir string, period period) (map[int]*WalGroup, error) {
-	files, err := ioutil.ReadDir(managerWalDir(dir))
+	files, err := os.ReadDir(managerWalDir(dir))
 	if err != nil {
 		return nil, err
 	}
@@ -498,7 +496,11 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 			// map of users -> ref -> series.
 			// Keep track of which ref corresponds to which series
 			// for each WAL so we replay into the correct series
-			seriesMap := make(map[string]map[uint64]labels.Labels)
+			type labelsWithFp struct {
+				ls labels.Labels
+				fp uint64
+			}
+			seriesMap := make(map[string]map[uint64]*labelsWithFp)
 
 			for reader.Next() {
 				rec := &WALRecord{}
@@ -510,22 +512,25 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 				if len(rec.Series.Labels) > 0 {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
-						tenant = make(map[uint64]labels.Labels)
+						tenant = make(map[uint64]*labelsWithFp)
 						seriesMap[rec.UserID] = tenant
 					}
-					tenant[uint64(rec.Series.Ref)] = rec.Series.Labels
+					tenant[uint64(rec.Series.Ref)] = &labelsWithFp{
+						ls: rec.Series.Labels,
+						fp: rec.Fingerprint,
+					}
 				}
 
 				if len(rec.Chks.Chks) > 0 {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
-						return errors.New("found tsdb chunk metas without user in WAL replay")
+						return fmt.Errorf("found tsdb chunk metas without user in WAL replay (period=%s): %+v", id.String(), *rec)
 					}
-					ls, ok := tenant[rec.Chks.Ref]
+					x, ok := tenant[rec.Chks.Ref]
 					if !ok {
-						return errors.New("found tsdb chunk metas without series in WAL replay")
+						return fmt.Errorf("found tsdb chunk metas without series in WAL replay (period=%s): %+v", id.String(), *rec)
 					}
-					_ = heads.Append(rec.UserID, ls, rec.Chks.Chks)
+					_ = heads.Append(rec.UserID, x.ls, x.fp, rec.Chks.Chks)
 				}
 			}
 			return reader.Err()
@@ -542,6 +547,10 @@ func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
 
 type WALIdentifier struct {
 	ts time.Time
+}
+
+func (w WALIdentifier) String() string {
+	return fmt.Sprint(w.ts.Unix())
 }
 
 func parseWALPath(p string) (id WALIdentifier, ok bool) {
@@ -582,7 +591,7 @@ func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Lo
 	return res
 }
 
-func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMetas) *WALRecord {
+func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) *WALRecord {
 	var mint, maxt int64
 	for _, chk := range chks {
 		if chk.MinTime < mint || mint == 0 {
@@ -596,7 +605,7 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	updateMintMaxt(mint, maxt, &t.mint, &t.maxt)
 
 	head := t.getOrCreateTenantHead(userID)
-	newStream, refID := head.Append(ls, chks)
+	newStream, refID := head.Append(ls, fprint, chks)
 
 	rec := &WALRecord{
 		UserID: userID,
@@ -607,6 +616,7 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, chks index.ChunkMe
 	}
 
 	if newStream {
+		rec.Fingerprint = fprint
 		rec.Series = record.RefSeries{
 			Ref:    chunks.HeadSeriesRef(refID),
 			Labels: ls,
@@ -719,7 +729,7 @@ func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through mo
 }
 
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.ChunkMetas) error) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
@@ -737,13 +747,13 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, chks index.C
 					chks []index.ChunkMeta
 				)
 
-				_, err := idx.Series(ps.At(), &ls, &chks)
+				fp, err := idx.Series(ps.At(), &ls, &chks)
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
 				}
 
-				if err := fn(user, ls, chks); err != nil {
+				if err := fn(user, ls, fp, chks); err != nil {
 					return err
 				}
 			}

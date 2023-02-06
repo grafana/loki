@@ -28,7 +28,7 @@ func NewDistributorServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(DistributorName(opts.Name))
 	serviceName := serviceNameDistributorHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -39,7 +39,7 @@ func NewIngesterServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(IngesterName(opts.Name))
 	serviceName := serviceNameIngesterHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -50,7 +50,7 @@ func NewQuerierServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(QuerierName(opts.Name))
 	serviceName := serviceNameQuerierHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -61,7 +61,7 @@ func NewCompactorServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(CompactorName(opts.Name))
 	serviceName := serviceNameCompactorHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -72,7 +72,7 @@ func NewQueryFrontendServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(QueryFrontendName(opts.Name))
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -83,7 +83,7 @@ func NewIndexGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(IndexGatewayName(opts.Name))
 	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -94,7 +94,7 @@ func NewRulerServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(RulerName(opts.Name))
 	serviceName := serviceNameRulerHTTP(opts.Name)
-	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
@@ -103,14 +103,15 @@ func NewRulerServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
 
-	serviceMonitorName := serviceMonitorName(GatewayName(opts.Name))
+	gatewayName := GatewayName(opts.Name)
+	serviceMonitorName := serviceMonitorName(gatewayName)
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	gwEndpoint := serviceMonitorEndpoint(gatewayInternalPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	gwEndpoint := gatewayServiceMonitorEndpoint(gatewayName, gatewayInternalPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
 
 	sm := newServiceMonitor(opts.Namespace, serviceMonitorName, l, gwEndpoint)
 
 	if opts.Stack.Tenants != nil {
-		if err := configureGatewayServiceMonitorForMode(sm, opts.Stack.Tenants.Mode, opts.Gates); err != nil {
+		if err := configureGatewayServiceMonitorForMode(sm, opts); err != nil {
 			return sm
 		}
 	}

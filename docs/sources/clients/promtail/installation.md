@@ -1,15 +1,16 @@
 ---
 title: Installation
+description: Install Promtail
 ---
-# Install Promtail
+# Installation
 
 Promtail is distributed as a binary, in a Docker container,
 or there is a Helm chart to install it in a Kubernetes cluster.
 
 ## Binary
 
-Every release includes binaries for Promtail which can be found on the
-[Releases page](https://github.com/grafana/loki/releases).
+Every Grafana Loki release includes binaries for Promtail which can be found on the
+[Releases page](https://github.com/grafana/loki/releases) as part of the release assets. 
 
 ## Docker
 
@@ -37,7 +38,7 @@ helm repo update
 Finally, Promtail can be deployed with:
 
 ```bash
-$ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
+helm upgrade --install promtail grafana/promtail
 ```
 
 ## Kubernetes

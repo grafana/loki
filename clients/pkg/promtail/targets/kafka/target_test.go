@@ -48,6 +48,11 @@ func (c testConsumerGroupHandler) Close() error {
 	return nil
 }
 
+func (c testConsumerGroupHandler) Pause(partitions map[string][]int32)  {}
+func (c testConsumerGroupHandler) Resume(partitions map[string][]int32) {}
+func (c testConsumerGroupHandler) PauseAll()                            {}
+func (c testConsumerGroupHandler) ResumeAll()                           {}
+
 type testSession struct {
 	markedMessage []*sarama.ConsumerMessage
 }

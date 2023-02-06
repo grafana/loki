@@ -4,10 +4,6 @@ package miniredis
 
 import "github.com/alicebob/miniredis/v2/server"
 
-func commandsCommand(m *Miniredis) {
-	_ = m.srv.Register("COMMAND", m.cmdCommand)
-}
-
 func (m *Miniredis) cmdCommand(c *server.Peer, cmd string, args []string) {
 	// Got from redis 5.0.7 with
 	// echo 'COMMAND' | nc redis_addr redis_port

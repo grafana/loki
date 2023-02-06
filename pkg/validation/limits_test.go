@@ -72,6 +72,13 @@ ruler_remote_write_sigv4_config:
 per_tenant_override_config: ""
 per_tenant_override_period: 230s
 query_timeout: 5m
+shard_streams:
+  enabled: true
+  desired_rate: 4mb
+  logging_enabled: true
+blocked_queries:
+  - pattern: ".*foo.*"
+    regex: true
 `
 	inputJSON := `
  {
@@ -108,7 +115,18 @@ query_timeout: 5m
   },
   "per_tenant_override_config": "",
   "per_tenant_override_period": "230s",
-  "query_timeout": "5m"
+  "query_timeout": "5m",
+  "shard_streams": {
+    "desired_rate": "4mb",
+    "enabled": true,
+    "logging_enabled": true
+  },
+  "blocked_queries": [
+	{
+		"pattern": ".*foo.*",
+		"regex": true
+	}
+  ]
  }
 `
 

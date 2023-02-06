@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/go-immutable-radix"
+	iradix "github.com/hashicorp/go-immutable-radix"
 )
 
 type Label struct {
@@ -169,6 +169,12 @@ func (m *Metrics) UpdateFilterAndLabels(allow, block, allowedLabels, blockedLabe
 	}
 	for _, prefix := range m.BlockedPrefixes {
 		m.filter, _, _ = m.filter.Insert([]byte(prefix), false)
+	}
+}
+
+func (m *Metrics) Shutdown() {
+	if ss, ok := m.sink.(ShutdownSink); ok {
+		ss.Shutdown()
 	}
 }
 

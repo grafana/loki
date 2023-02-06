@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -85,7 +84,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 	)
 
 	if r.Body != nil {
-		body, err = ioutil.ReadAll(r.Body)
+		body, err = io.ReadAll(r.Body)
 		if err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to read request body", "err", err)
 			return
@@ -94,7 +93,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			level.Warn(p.logger).Log("msg", "Unable to close request body", "err", err)
 		}
 
-		r.Body = ioutil.NopCloser(bytes.NewReader(body))
+		r.Body = io.NopCloser(bytes.NewReader(body))
 		if err := r.ParseForm(); err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to parse form", "err", err)
 		}
@@ -115,7 +114,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				start      = time.Now()
 			)
 			if len(body) > 0 {
-				bodyReader = ioutil.NopCloser(bytes.NewReader(body))
+				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
 			status, body, err := b.ForwardRequest(r, bodyReader)

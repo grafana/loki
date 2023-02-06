@@ -8,14 +8,14 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: lokistack-dev-ca-bundle
+  name: lokistack-dev-signing-ca
 spec:
   isCA: true
   commonName: lokistack-dev-gateway-http.default.svc
   dnsNames:
   - "*.default.svc"
   - "*.default.svc.cluster.local"
-  secretName: lokistack-dev-ca-bundle
+  secretName: lokistack-dev-signing-ca
   privateKey:
     algorithm: ECDSA
     size: 256
@@ -30,7 +30,7 @@ metadata:
   name: kind-issuer
 spec:
   ca:
-    secretName: lokistack-dev-ca-bundle
+    secretName: lokistack-dev-signing-ca
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -48,10 +48,32 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-gateway-http.default.svc"
   - "lokistack-dev-gateway-http.default.svc.cluster.local"
+  issuerRef:
+    name: kind-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lokistack-dev-gateway-client-http
+  namespace: default
+spec:
+  secretName: lokistack-dev-gateway-client-http
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  commonName: lokistack-dev-gateway-http.default.svc
+  privateKey:
+    rotationPolicy: Never
+    algorithm: ECDSA
+    encoding: PKCS8
+    size: 256
+  usages:
+    - client auth
   issuerRef:
     name: kind-issuer
     kind: Issuer
@@ -72,6 +94,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-distributor-grpc.default.svc"
@@ -96,6 +119,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-distributor-http.default.svc"
@@ -120,6 +144,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-ingester-grpc.default.svc"
@@ -144,6 +169,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-ingester-http.default.svc"
@@ -168,6 +194,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-query-frontend-grpc.default.svc"
@@ -192,6 +219,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-query-frontend-http.default.svc"
@@ -216,6 +244,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-querier-grpc.default.svc"
@@ -240,6 +269,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-querier-http.default.svc"
@@ -264,6 +294,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-index-gateway-grpc.default.svc"
@@ -288,6 +319,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-index-gateway-http.default.svc"
@@ -312,6 +344,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-compactor-grpc.default.svc"
@@ -336,6 +369,7 @@ spec:
     encoding: PKCS8
     size: 256
   usages:
+    - client auth
     - server auth
   dnsNames:
   - "lokistack-dev-compactor-http.default.svc"

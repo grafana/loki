@@ -1,10 +1,11 @@
 ---
 title: Ordering Constraint Removal
+description: Ordering Constraint Removal
 weight: 40
 ---
 ## Ordering Constraint Removal
 
-Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
+Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](/))
 
 Date: 28/01/2021
 

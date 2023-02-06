@@ -7,11 +7,19 @@ package gocommand
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
-// GoVersion checks the go version by running "go list" with modules off.
-// It returns the X in Go 1.X.
+// GoVersion reports the minor version number of the highest release
+// tag built into the go command on the PATH.
+//
+// Note that this may be higher than the version of the go tool used
+// to build this application, and thus the versions of the standard
+// go/{scanner,parser,ast,types} packages that are linked into it.
+// In that case, callers should either downgrade to the version of
+// go used to build the application, or report an error that the
+// application is too old to use the go command on the PATH.
 func GoVersion(ctx context.Context, inv Invocation, r *Runner) (int, error) {
 	inv.Verb = "list"
 	inv.Args = []string{"-e", "-f", `{{context.ReleaseTags}}`, `--`, `unsafe`}
@@ -38,7 +46,7 @@ func GoVersion(ctx context.Context, inv Invocation, r *Runner) (int, error) {
 	if len(stdout) < 3 {
 		return 0, fmt.Errorf("bad ReleaseTags output: %q", stdout)
 	}
-	// Split up "[go1.1 go1.15]"
+	// Split up "[go1.1 go1.15]" and return highest go1.X value.
 	tags := strings.Fields(stdout[1 : len(stdout)-2])
 	for i := len(tags) - 1; i >= 0; i-- {
 		var version int
@@ -48,4 +56,24 @@ func GoVersion(ctx context.Context, inv Invocation, r *Runner) (int, error) {
 		return version, nil
 	}
 	return 0, fmt.Errorf("no parseable ReleaseTags in %v", tags)
+}
+
+// GoVersionString reports the go version string as shown in `go version` command output.
+// When `go version` outputs in non-standard form, this returns an empty string.
+func GoVersionString(ctx context.Context, inv Invocation, r *Runner) (string, error) {
+	inv.Verb = "version"
+	goVersion, err := r.Run(ctx, inv)
+	if err != nil {
+		return "", err
+	}
+	return parseGoVersionOutput(goVersion.Bytes()), nil
+}
+
+func parseGoVersionOutput(data []byte) string {
+	re := regexp.MustCompile(`^go version (go\S+|devel \S+)`)
+	m := re.FindSubmatch(data)
+	if len(m) != 2 {
+		return "" // unrecognized version
+	}
+	return string(m[1])
 }

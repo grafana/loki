@@ -23,6 +23,7 @@ import (
 type WorkerServiceConfig struct {
 	AllEnabled            bool
 	ReadEnabled           bool
+	GrpcListenAddress     string
 	GrpcListenPort        int
 	QuerierMaxConcurrent  int
 	QuerierWorkerConfig   *querier_worker.Config
@@ -36,14 +37,13 @@ type WorkerServiceConfig struct {
 // the provided query routes/handlers. This router can either be registered with the external Loki HTTP server, or
 // be used internally by a querier worker so that it does not conflict with the routes registered by the Query Frontend module.
 //
-// 1. Query-Frontend Enabled: If Loki has an All or QueryFrontend target, the internal
-//    HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
-//    worker.
+//  1. Query-Frontend Enabled: If Loki has an All or QueryFrontend target, the internal
+//     HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
+//     worker.
 //
-// 2. Querier Standalone: The querier will register the internal HTTP router with the external
-//    HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
-//    as a http.Handler to the frontend worker.
-//
+//  2. Querier Standalone: The querier will register the internal HTTP router with the external
+//     HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
+//     as a http.Handler to the frontend worker.
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
@@ -113,7 +113,11 @@ func InitWorkerService(
 	// Since we must be running a querier with either a frontend and/or scheduler at this point, if no scheduler ring, frontend, or scheduler address
 	// is configured, Loki will default to using the frontend on localhost on it's own GRPC listening port.
 	if cfg.SchedulerRing == nil && (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
-		address := fmt.Sprintf("127.0.0.1:%d", cfg.GrpcListenPort)
+		listenAddress := "127.0.0.1"
+		if cfg.GrpcListenAddress != "" {
+			listenAddress = cfg.GrpcListenAddress
+		}
+		address := fmt.Sprintf("%s:%d", listenAddress, cfg.GrpcListenPort)
 		level.Warn(util_log.Logger).Log(
 			"msg", "Worker address is empty, attempting automatic worker configuration. If queries are unresponsive consider configuring the worker explicitly.",
 			"address", address)

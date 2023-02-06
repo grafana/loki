@@ -13,12 +13,14 @@ import (
 )
 
 var splittableVectorOp = map[string]struct{}{
-	syntax.OpTypeSum:   {},
-	syntax.OpTypeCount: {},
-	syntax.OpTypeMax:   {},
-	syntax.OpTypeMin:   {},
-	syntax.OpTypeAvg:   {},
-	syntax.OpTypeTopK:  {},
+	syntax.OpTypeSum:      {},
+	syntax.OpTypeCount:    {},
+	syntax.OpTypeMax:      {},
+	syntax.OpTypeMin:      {},
+	syntax.OpTypeAvg:      {},
+	syntax.OpTypeTopK:     {},
+	syntax.OpTypeSort:     {},
+	syntax.OpTypeSortDesc: {},
 }
 
 var splittableRangeVectorOp = map[string]struct{}{
@@ -36,20 +38,20 @@ var splittableRangeVectorOp = map[string]struct{}{
 // using the downstream engine.
 //
 // A rewrite is performed using the following rules:
-// 1) Check if query is splittable based on the range.
-// 2) Check if the query is splittable based on the query AST
-// 3) Range aggregations are split into multiple downstream range aggregation expressions
-//    that are concatenated with an appropriate vector aggregator with a grouping operator.
-//    If the range aggregation has a grouping, the grouping is also applied to
-//    the resultant vector aggregator expression.
-//    If the range aggregation has no grouping, a grouping operator using "without" is applied
-//    to the resultant vector aggregator expression to preserve the stream labels.
-// 4) Vector aggregations are split into multiple downstream vector aggregations
-//    that are merged with vector aggregation using "without" and then aggregated
-//    using the vector aggregation with the same operator,
-//    either with or without grouping.
-// 5) Left and right-hand side of binary operations are split individually
-//    using the same rules as above.
+//  1. Check if query is splittable based on the range.
+//  2. Check if the query is splittable based on the query AST
+//  3. Range aggregations are split into multiple downstream range aggregation expressions
+//     that are concatenated with an appropriate vector aggregator with a grouping operator.
+//     If the range aggregation has a grouping, the grouping is also applied to
+//     the resultant vector aggregator expression.
+//     If the range aggregation has no grouping, a grouping operator using "without" is applied
+//     to the resultant vector aggregator expression to preserve the stream labels.
+//  4. Vector aggregations are split into multiple downstream vector aggregations
+//     that are merged with vector aggregation using "without" and then aggregated
+//     using the vector aggregation with the same operator,
+//     either with or without grouping.
+//  5. Left and right-hand side of binary operations are split individually
+//     using the same rules as above.
 type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
@@ -155,6 +157,8 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		e.Left = lhsMapped
 		return e, nil
 	case *syntax.LiteralExpr:
+		return e, nil
+	case *syntax.VectorExpr:
 		return e, nil
 	default:
 		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
@@ -324,7 +328,7 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	// This does not work for `count()` and `topk()`, though.
 	// We also do not want to push down, if the inner expression is a binary operation.
 	var vectorAggrPushdown *syntax.VectorAggregationExpr
-	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK {
+	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK && expr.Operation != syntax.OpTypeSort && expr.Operation != syntax.OpTypeSortDesc {
 		vectorAggrPushdown = expr
 	}
 
@@ -438,6 +442,8 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
 	case *syntax.LabelReplaceExpr:
 		return isSplittableByRange(e.Left)
+	case *syntax.VectorExpr:
+		return false
 	default:
 		return false
 	}

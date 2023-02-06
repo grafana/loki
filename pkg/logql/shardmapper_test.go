@@ -263,6 +263,11 @@ func TestMappingStrings(t *testing.T) {
 			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
 			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
 		},
+		// should be noop if VectorExpr
+		{
+			in:  `vector(0)`,
+			out: `vector(0.000000)`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)

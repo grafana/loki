@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -34,7 +34,7 @@ func (b *MockBatch) createPushRequest() (*logproto.PushRequest, int) {
 }
 
 func ReadJSONFromFile(t *testing.T, inputFile string) []byte {
-	inputJSON, err := ioutil.ReadFile(inputFile)
+	inputJSON, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Errorf("could not open test file. details: %v", err)
 	}
@@ -43,7 +43,7 @@ func ReadJSONFromFile(t *testing.T, inputFile string) []byte {
 }
 
 func TestLambdaPromtail_KinesisParseEvents(t *testing.T) {
-	inputJson, err := ioutil.ReadFile("../testdata/kinesis-event.json")
+	inputJson, err := os.ReadFile("../testdata/kinesis-event.json")
 
 	if err != nil {
 		t.Errorf("could not open test file. details: %v", err)

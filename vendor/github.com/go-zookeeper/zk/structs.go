@@ -74,6 +74,7 @@ type ServerClients struct {
 
 // ServerStats is the information pulled from the Zookeeper `stat` command.
 type ServerStats struct {
+	Server      string
 	Sent        int64
 	Received    int64
 	NodeCount   int64

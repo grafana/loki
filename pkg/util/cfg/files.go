@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +20,7 @@ func JSON(f *string) Source {
 			return nil
 		}
 
-		j, err := ioutil.ReadFile(*f)
+		j, err := os.ReadFile(*f)
 		if err != nil {
 			return err
 		}
@@ -43,7 +42,7 @@ func dJSON(y []byte) Source {
 // using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
 func YAML(f string, expandEnvVars bool, strict bool) Source {
 	return func(dst Cloneable) error {
-		y, err := ioutil.ReadFile(f)
+		y, err := os.ReadFile(f)
 		if err != nil {
 			return err
 		}
@@ -59,6 +58,7 @@ func YAML(f string, expandEnvVars bool, strict bool) Source {
 		} else {
 			err = dYAML(y)(dst)
 		}
+
 		return errors.Wrap(err, f)
 	}
 }
@@ -78,7 +78,6 @@ func dYAML(y []byte) Source {
 }
 
 func ConfigFileLoader(args []string, name string, strict bool) Source {
-
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
 
@@ -113,7 +112,11 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 				expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
 			}
 			if _, err := os.Stat(val); err == nil {
-				return YAML(val, expandEnv, strict)(dst)
+				err := YAML(val, expandEnv, strict)(dst)
+				if err != nil && !expandEnv {
+					err = fmt.Errorf("%w. Use `-config.expand-env=true` flag if you want to expand environment variables in your config file", err)
+				}
+				return err
 			}
 		}
 		return fmt.Errorf("%s does not exist, set %s for custom config path", f.Value.String(), name)

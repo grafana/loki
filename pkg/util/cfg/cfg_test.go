@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"flag"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -69,7 +68,7 @@ tls:
 
 func TestDefaultUnmarshal(t *testing.T) {
 	testContext := func(yamlString string, args []string) TestConfigWrapper {
-		file, err := ioutil.TempFile("", "config.yaml")
+		file, err := os.CreateTemp("", "config.yaml")
 		defer func() {
 			os.Remove(file.Name())
 		}()

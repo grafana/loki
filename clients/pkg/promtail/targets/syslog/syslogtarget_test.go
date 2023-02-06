@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"testing"
@@ -656,7 +655,7 @@ func testSyslogTargetWithTLS(t *testing.T, fmtFunc formatFunc) {
 }
 
 func createTempFile(data []byte) (*os.File, error) {
-	tmpFile, err := ioutil.TempFile("", "")
+	tmpFile, err := os.CreateTemp("", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary file: %s", err)
 	}

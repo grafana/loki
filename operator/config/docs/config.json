@@ -1,0 +1,69 @@
+{
+    "hideMemberFields": [
+        "TypeMeta"
+    ],
+    "hideTypePatterns": [
+        "ParseError$",
+        "List$"
+    ],
+    "externalPackages": [
+        {
+            "typeMatchPrefix": "^k8s\\.io/apimachinery/pkg/apis/meta/v1\\.Duration$",
+            "docsURLTemplate": "https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1#Duration"
+        },
+        {
+            "typeMatchPrefix": "^k8s\\.io/apimachinery/pkg/util/intstr\\.IntOrString$",
+            "docsURLTemplate": "https://pkg.go.dev/k8s.io/apimachinery/pkg/util/intstr#IntOrString"
+        },
+        {
+            "typeMatchPrefix": "^k8s\\.io/(api|apimachinery/pkg/apis)/",
+            "docsURLTemplate": "https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#{{lower .TypeIdentifier}}-{{arrIndex .PackageSegments -1}}-{{arrIndex .PackageSegments -2}}"
+        },
+        {
+            "typeMatchPrefix": "^k8s\\.io/apiextensions-apiserver/pkg/apis/apiextensions/v1\\.JSON$",
+            "docsURLTemplate": "https://pkg.go.dev/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1#JSON"
+        },
+        {
+            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/apis/loki/v1",
+            "docsURLTemplate": "../v1/api.md#loki.grafana.com/v1.{{ .TypeIdentifier}}"
+        },
+        {
+            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/apis/loki/v1beta1",
+            "docsURLTemplate": "../v1beta1/api.md#loki-grafana.com-v1beta1-{{ .TypeIdentifier}}"
+        },
+        {
+            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/apis/loki/config/v1",
+            "docsURLTemplate": "../v1/feature-gates.md#loki-grafana-com-v1-{{ .TypeIdentifier}}"
+        },
+        {
+            "typeMatchPrefix": "^k8s\\.io/component-base/config/v1alpha1\\.LeaderElectionConfiguration$",
+            "docsURLTemplate": "https://pkg.go.dev/k8s.io/component-base/config#LeaderElectionConfiguration"
+        },
+        {
+            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerConfigurationSpec$",
+            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerConfigurationSpec"
+        },
+        {
+            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerMetrics$",
+            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerMetrics"
+        },
+        {
+            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerHealth$",
+            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerHealth"
+        },
+        {
+            "typeMatchPrefix": "^sigs\\.k8s\\.io/controller-runtime/pkg/config/v1alpha1\\.ControllerWebhook$",
+            "docsURLTemplate": "https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/config/v1alpha1#ControllerWebhook"
+        }
+    ],
+    "typeDisplayNamePrefixOverrides": {
+        "k8s.io/api/": "Kubernetes ",
+        "k8s.io/apimachinery/pkg/apis/": "Kubernetes ",
+        "k8s.io/component-base/config/": "Kubernetes ",
+        "sigs.k8s.io/controller-runtime/pkg/config/": "K8S Controller-runtime ",
+        "github.com/grafana/loki/operator/apis/loki/v1": "Loki Operator v1",
+        "github.com/grafana/loki/operator/apis/loki/v1beta1": "Loki Operator v1beta1",
+        "github.com/grafana/loki/operator/apis/loki/config/v1": "Feature Gates"
+    },
+    "markdownDisabled": false
+}

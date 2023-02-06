@@ -20,21 +20,43 @@ var (
 	//go:embed prometheus-alerts.yaml
 	alertsYAMLTmplFile embed.FS
 
+	//go:embed prometheus-rules.yaml
+	rulesYAMLTmplFile embed.FS
+
 	alertsYAMLTmpl = template.Must(template.New("").Delims("[[", "]]").ParseFS(alertsYAMLTmplFile, "prometheus-alerts.yaml"))
+
+	rulesYAMLTmpl = template.Must(template.New("").Delims("[[", "]]").ParseFS(rulesYAMLTmplFile, "prometheus-rules.yaml"))
 )
 
 // Build creates Prometheus alerts for the Loki stack
 func Build(opts Options) (*monitoringv1.PrometheusRuleSpec, error) {
-	spec := monitoringv1.PrometheusRuleSpec{}
-
-	// Build alerts yaml
-	w := bytes.NewBuffer(nil)
-	err := alertsYAMLTmpl.ExecuteTemplate(w, "prometheus-alerts.yaml", opts)
+	alerts, err := ruleSpec("prometheus-alerts.yaml", alertsYAMLTmpl, opts)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "failed to create prometheus alerts")
 	}
 
-	// Decode the spec
+	recordingRules, err := ruleSpec("prometheus-rules.yaml", rulesYAMLTmpl, opts)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed to create prometheus rules")
+	}
+
+	spec := alerts.DeepCopy()
+	spec.Groups = append(alerts.Groups, recordingRules.Groups...)
+
+	return spec, nil
+}
+
+func ruleSpec(file string, tmpl *template.Template, opts Options) (*monitoringv1.PrometheusRuleSpec, error) {
+	spec := monitoringv1.PrometheusRuleSpec{}
+
+	w := bytes.NewBuffer(nil)
+	err := tmpl.ExecuteTemplate(w, file, opts)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed to execute template",
+			"template", file,
+		)
+	}
+
 	r := io.Reader(w)
 	err = yaml.NewYAMLOrJSONDecoder(r, 1000).Decode(&spec)
 	if err != nil {

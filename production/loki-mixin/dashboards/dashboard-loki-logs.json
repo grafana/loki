@@ -8,6 +8,12 @@
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
+         "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
         "type": "dashboard"
       }
     ]
@@ -15,7 +21,6 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 8,
   "iteration": 1583185057230,
   "links": [],
   "panels": [
@@ -715,7 +720,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$logs",
+      "datasource": "$loki_datasource",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -816,7 +821,7 @@
       }
     },
     {
-      "datasource": "$logs",
+      "datasource": "$loki_datasource",
       "gridPos": {
         "h": 19,
         "w": 24,
@@ -868,5 +873,5 @@
   "timezone": "",
   "title": "Logs",
   "uid": "a7e130cb82be229d6f3edbfd0a438001",
-  "version": 1
+  "version": 9
 }

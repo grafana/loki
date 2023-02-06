@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/prometheus/common/model"
 )
 
 // Well-known label names used by Prometheus components.
@@ -134,6 +135,7 @@ func (ls Labels) MatchLabels(on bool, names ...string) Labels {
 }
 
 // Hash returns a hash value for the label set.
+// Note: the result is not guaranteed to be consistent across different runs of Prometheus.
 func (ls Labels) Hash() uint64 {
 	// Use xxhash.Sum64(b) for fast path as it's faster.
 	b := make([]byte, 0, 1024)
@@ -311,6 +313,19 @@ func (ls Labels) WithoutEmpty() Labels {
 	return ls
 }
 
+// IsValid checks if the metric name or label names are valid.
+func (ls Labels) IsValid() bool {
+	for _, l := range ls {
+		if l.Name == model.MetricNameLabel && !model.IsValidMetricName(model.LabelValue(l.Value)) {
+			return false
+		}
+		if !model.LabelName(l.Name).IsValid() || !model.LabelValue(l.Value).IsValid() {
+			return false
+		}
+	}
+	return true
+}
+
 // Equal returns whether the two label sets are equal.
 func Equal(ls, o Labels) bool {
 	if len(ls) != len(o) {
@@ -331,6 +346,11 @@ func (ls Labels) Map() map[string]string {
 		m[l.Name] = l.Value
 	}
 	return m
+}
+
+// EmptyLabels returns n empty Labels value, for convenience.
+func EmptyLabels() Labels {
+	return Labels{}
 }
 
 // New returns a sorted Labels from the given labels.
@@ -467,17 +487,25 @@ func (b *Builder) Set(n, v string) *Builder {
 	return b
 }
 
-// Labels returns the labels from the builder. If no modifications
-// were made, the original labels are returned.
-func (b *Builder) Labels() Labels {
+// Labels returns the labels from the builder, adding them to res if non-nil.
+// Argument res can be the same as b.base, if caller wants to overwrite that slice.
+// If no modifications were made, the original labels are returned.
+func (b *Builder) Labels(res Labels) Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		return b.base
 	}
 
-	// In the general case, labels are removed, modified or moved
-	// rather than added.
-	res := make(Labels, 0, len(b.base))
+	if res == nil {
+		// In the general case, labels are removed, modified or moved
+		// rather than added.
+		res = make(Labels, 0, len(b.base))
+	} else {
+		res = res[:0]
+	}
 Outer:
+	// Justification that res can be the same slice as base: in this loop
+	// we move forward through base, and either skip an element or assign
+	// it to res at its current position or an earlier position.
 	for _, l := range b.base {
 		for _, n := range b.del {
 			if l.Name == n {

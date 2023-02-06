@@ -5,6 +5,10 @@ metadata:
   creationTimestamp: null
   name: lokistack-manager
 rules:
+- nonResourceURLs:
+  - /api/v2/alerts
+  verbs:
+  - create
 - apiGroups:
   - ""
   resources:
@@ -12,6 +16,7 @@ rules:
   - endpoints
   - nodes
   - pods
+  - secrets
   - serviceaccounts
   - services
   verbs:
@@ -56,6 +61,7 @@ rules:
   resources:
   - apiservers
   - dnses
+  - proxies
   verbs:
   - get
   - list
@@ -172,6 +178,12 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - alertmanagers
+  verbs:
+  - patch
 - apiGroups:
   - monitoring.coreos.com
   resources:

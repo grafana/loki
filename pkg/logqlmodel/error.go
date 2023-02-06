@@ -13,6 +13,7 @@ var (
 	ErrParse          = errors.New("failed to parse the log query")
 	ErrPipeline       = errors.New("failed execute pipeline")
 	ErrLimit          = errors.New("limit reached while evaluating the query")
+	ErrBlocked        = errors.New("query blocked by policy")
 	ErrorLabel        = "__error__"
 	ErrorDetailsLabel = "__error_details__"
 )

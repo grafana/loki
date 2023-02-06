@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -303,7 +302,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 			"emptied table": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+					_, err := os.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
 				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
@@ -411,14 +410,14 @@ func validateTable(t *testing.T, path string, expectedNumCommonDBs, numUsers int
 }
 
 func listDir(t *testing.T, path string) (files, folders []string) {
-	filesInfo, err := ioutil.ReadDir(path)
+	dirEntries, err := os.ReadDir(path)
 	require.NoError(t, err)
 
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
-			folders = append(folders, fileInfo.Name())
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			folders = append(folders, entry.Name())
 		} else {
-			files = append(files, fileInfo.Name())
+			files = append(files, entry.Name())
 		}
 	}
 
@@ -446,7 +445,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	SetupTable(t, filepath.Join(objectStoragePath, tableName), IndexesConfig{NumCompactedFiles: numDBs}, PerUserIndexesConfig{})
 
 	// put a corrupt zip file in the table which should cause the compaction to fail in the middle because it would fail to open that file with boltdb client.
-	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInStorage, "fail.gz"), []byte("fail the compaction"), 0o666))
+	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, "fail.gz"), []byte("fail the compaction"), 0o666))
 
 	// do the compaction
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
@@ -460,7 +459,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.Error(t, table.compact(false))
 
 	// ensure that files in storage are intact.
-	files, err := ioutil.ReadDir(tablePathInStorage)
+	files, err := os.ReadDir(tablePathInStorage)
 	require.NoError(t, err)
 	require.Len(t, files, numDBs+1)
 

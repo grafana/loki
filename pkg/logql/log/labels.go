@@ -166,6 +166,16 @@ func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
 	return b
 }
 
+func (b *LabelsBuilder) ResetError() *LabelsBuilder {
+	b.err = ""
+	return b
+}
+
+func (b *LabelsBuilder) ResetErrorDetails() *LabelsBuilder {
+	b.errDetails = ""
+	return b
+}
+
 func (b *LabelsBuilder) GetErrorDetails() string {
 	return b.errDetails
 }
@@ -422,9 +432,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels()
+		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels(nil)
 	} else {
-		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
+		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels(nil)
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res

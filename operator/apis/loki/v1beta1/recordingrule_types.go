@@ -85,6 +85,7 @@ type RecordingRuleStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-recordingrule,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=recordingrules,verbs=create;update,versions=v1beta1,name=vrecordingrule.loki.grafana.com,admissionReviewVersions=v1
 
 // RecordingRule is the Schema for the recordingrules API
 //
