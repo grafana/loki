@@ -65,6 +65,7 @@ type NamedStores struct {
 	BOS        map[string]baidubce.BOSStorageConfig `yaml:"bos"`
 	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
 	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
+	OSS        map[string]alibaba.StorageConfig     `yaml:"oss"`
 	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
 
 	// contains mapping from named store reference name to store type
@@ -464,11 +465,6 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 
 	switch storeType {
 	case config.StorageTypeAWS, config.StorageTypeS3:
-		<<<<<<< HEAD
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
-	case config.StorageTypeAlibaba, config.StorageTypeOss:
-		return alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig.OssConfig)
-		====== =
 		s3Cfg := cfg.AWSStorageConfig.S3Config
 		if namedStore != "" {
 			awsCfg, ok := cfg.NamedStores.AWS[namedStore]
@@ -480,7 +476,16 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
-		>>>>>>> main
+	case config.StorageTypeAlibaba, config.StorageTypeOss:
+		ossCfg := cfg.AlibabaStorageConfig
+		if namedStore != "" {
+			var ok bool
+			ossCfg, ok = cfg.NamedStores.OSS[namedStore]
+			if !ok {
+				return nil, fmt.Errorf("Unrecognized named bos storage config %s", name)
+			}
+		}
+		return alibaba.NewOssObjectClient(context.Background(), ossCfg.OssConfig)
 	case config.StorageTypeGCS:
 		gcsCfg := cfg.GCSConfig
 		if namedStore != "" {
