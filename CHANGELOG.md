@@ -76,6 +76,7 @@
 
 * [8413](https://github.com/grafana/loki/pull/8413) **chaudum**: Try to load tenant-specific `schemaconfig-{orgID}.yaml` when using `--remote-schema` argument and fallback to global `schemaconfig.yaml`.
 * [8537](https://github.com/grafana/loki/pull/8537) **jeschkies**: Allow fetching all entries with `--limit=0`.
+* []() **chaudum**: Try to load tenant-specific `schemaconfig-{orgID}.yaml` when using `--remote-schema` argument and fallback to global `schemaconfig.yaml`.
 
 #### Fluent Bit
 
