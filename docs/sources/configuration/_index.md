@@ -98,112 +98,112 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ```yaml
 # A comma-separated list of components to run. The default value 'all' runs Loki
 # in single binary mode. The value 'read' is an alias to run only read-path
-        # related components such as the querier and query-frontend, but all in the same
-        # process. The value 'write' is an alias to run only write-path related
-        # components such as the distributor and compactor, but all in the same process.
-        # Supported values: all, compactor, distributor, ingester, querier,
-        # query-scheduler, ingester-querier, query-frontend, index-gateway, ruler,
-        # table-manager, read, write. A full list of available targets can be printed
-        # when running Loki with the '-list-targets' command line flag.
-        # CLI flag: -target
-        [target: <string> | default = "all"]
+# related components such as the querier and query-frontend, but all in the same
+# process. The value 'write' is an alias to run only write-path related
+# components such as the distributor and compactor, but all in the same process.
+# Supported values: all, compactor, distributor, ingester, querier,
+# query-scheduler, ingester-querier, query-frontend, index-gateway, ruler,
+# table-manager, read, write. A full list of available targets can be printed
+# when running Loki with the '-list-targets' command line flag.
+# CLI flag: -target
+[target: <string> | default = "all"]
 
-        # Enables authentication through the X-Scope-OrgID header, which must be present
-        # if true. If false, the OrgID will always be set to 'fake'.
-        # CLI flag: -auth.enabled
-        [auth_enabled: <boolean> | default = true]
+# Enables authentication through the X-Scope-OrgID header, which must be present
+# if true. If false, the OrgID will always be set to 'fake'.
+# CLI flag: -auth.enabled
+[auth_enabled: <boolean> | default = true]
 
-        # The amount of virtual memory in bytes to reserve as ballast in order to
-        # optimize garbage collection. Larger ballasts result in fewer garbage
-        # collection passes, reducing CPU overhead at the cost of heap size. The ballast
-        # will not consume physical memory, because it is never read from. It will,
-        # however, distort metrics, because it is counted as live memory.
-        # CLI flag: -config.ballast-bytes
-        [ballast_bytes: <int> | default = 0]
+# The amount of virtual memory in bytes to reserve as ballast in order to
+# optimize garbage collection. Larger ballasts result in fewer garbage
+# collection passes, reducing CPU overhead at the cost of heap size. The ballast
+# will not consume physical memory, because it is never read from. It will,
+# however, distort metrics, because it is counted as live memory.
+# CLI flag: -config.ballast-bytes
+[ballast_bytes: <int> | default = 0]
 
-        # Configures the server of the launched module(s).
-        [server: <server>]
+# Configures the server of the launched module(s).
+[server: <server>]
 
-        # Configures the distributor.
-        [distributor: <distributor>]
+# Configures the distributor.
+[distributor: <distributor>]
 
-        # Configures the querier. Only appropriate when running all modules or just the
-        # querier.
-        [querier: <querier>]
+# Configures the querier. Only appropriate when running all modules or just the
+# querier.
+[querier: <querier>]
 
-        # The query_scheduler block configures the Loki query scheduler. When configured
-        # it separates the tenant query queues from the query-frontend.
-        [query_scheduler: <query_scheduler>]
+# The query_scheduler block configures the Loki query scheduler. When configured
+# it separates the tenant query queues from the query-frontend.
+[query_scheduler: <query_scheduler>]
 
-        # The frontend block configures the Loki query-frontend.
-        [frontend: <frontend>]
+# The frontend block configures the Loki query-frontend.
+[frontend: <frontend>]
 
-        # The query_range block configures the query splitting and caching in the Loki
-        # query-frontend.
-        [query_range: <query_range>]
+# The query_range block configures the query splitting and caching in the Loki
+# query-frontend.
+[query_range: <query_range>]
 
-        # The ruler block configures the Loki ruler.
-        [ruler: <ruler>]
+# The ruler block configures the Loki ruler.
+[ruler: <ruler>]
 
-        # The ingester_client block configures how the distributor will connect to
-        # ingesters. Only appropriate when running all components, the distributor, or
-        # the querier.
-        [ingester_client: <ingester_client>]
+# The ingester_client block configures how the distributor will connect to
+# ingesters. Only appropriate when running all components, the distributor, or
+# the querier.
+[ingester_client: <ingester_client>]
 
-        # The ingester block configures the ingester and how the ingester will register
-        # itself to a key value store.
-        [ingester: <ingester>]
+# The ingester block configures the ingester and how the ingester will register
+# itself to a key value store.
+[ingester: <ingester>]
 
-        # The index_gateway block configures the Loki index gateway server, responsible
-        # for serving index queries without the need to constantly interact with the
-        # object store.
-        [index_gateway: <index_gateway>]
+# The index_gateway block configures the Loki index gateway server, responsible
+# for serving index queries without the need to constantly interact with the
+# object store.
+[index_gateway: <index_gateway>]
 
-        # The storage_config block configures one of many possible stores for both the
-        # index and chunks. Which configuration to be picked should be defined in
-        # schema_config block.
-        [storage_config: <storage_config>]
+# The storage_config block configures one of many possible stores for both the
+# index and chunks. Which configuration to be picked should be defined in
+# schema_config block.
+[storage_config: <storage_config>]
 
-        # The chunk_store_config block configures how chunks will be cached and how long
-        # to wait before saving them to the backing store.
-        [chunk_store_config: <chunk_store_config>]
+# The chunk_store_config block configures how chunks will be cached and how long
+# to wait before saving them to the backing store.
+[chunk_store_config: <chunk_store_config>]
 
-        # Configures the chunk index schema and where it is stored.
-        [schema_config: <schema_config>]
+# Configures the chunk index schema and where it is stored.
+[schema_config: <schema_config>]
 
-        # The compactor block configures the compactor component, which compacts index
-        # shards for performance.
-        [compactor: <compactor>]
+# The compactor block configures the compactor component, which compacts index
+# shards for performance.
+[compactor: <compactor>]
 
-        # The limits_config block configures global and per-tenant limits in Loki.
-        [limits_config: <limits_config>]
+# The limits_config block configures global and per-tenant limits in Loki.
+[limits_config: <limits_config>]
 
-        # The frontend_worker configures the worker - running within the Loki querier -
-        # picking up and executing queries enqueued by the query-frontend.
-        [frontend_worker: <frontend_worker>]
+# The frontend_worker configures the worker - running within the Loki querier -
+# picking up and executing queries enqueued by the query-frontend.
+[frontend_worker: <frontend_worker>]
 
-        # The table_manager block configures the table manager for retention.
-        [table_manager: <table_manager>]
+# The table_manager block configures the table manager for retention.
+[table_manager: <table_manager>]
 
-        # Configuration for 'runtime config' module, responsible for reloading runtime
-        # configuration file.
-        [runtime_config: <runtime_config>]
+# Configuration for 'runtime config' module, responsible for reloading runtime
+# configuration file.
+[runtime_config: <runtime_config>]
 
-        # Configuration for tracing.
-        [tracing: <tracing>]
+# Configuration for tracing.
+[tracing: <tracing>]
 
-        # Configuration for usage report.
-        [analytics: <analytics>]
+# Configuration for usage report.
+[analytics: <analytics>]
 
-        # Common configuration to be shared between multiple modules. If a more specific
-        # configuration is given in other sections, the related configuration within
-        # this section will be ignored.
-        [common: <common>]
+# Common configuration to be shared between multiple modules. If a more specific
+# configuration is given in other sections, the related configuration within
+# this section will be ignored.
+[common: <common>]
 
-        # How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki
-        # will report 503 Service Unavailable status via /ready endpoint.
-        # CLI flag: -shutdown-delay
-        [shutdown_delay: <duration> | default = 0s]
+# How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki
+# will report 503 Service Unavailable status via /ready endpoint.
+# CLI flag: -shutdown-delay
+[shutdown_delay: <duration> | default = 0s]
 ```
 
 ### server
@@ -1474,6 +1474,15 @@ ring:
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
 
 ```yaml
+alibaba:
+  [bucket: <string> | default = ""]
+
+  [endpoint: <string> | default = ""]
+
+  [access_key_id: <string> | default = ""]
+
+  [secret_access_key: <string> | default = ""]
+
 # The aws_storage_config block configures the connection to dynamoDB and S3
 # object storage. Either one of them or both can be configured.
 [aws: <aws_storage_config>]
@@ -4069,11 +4078,11 @@ Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
 storage_config:
-named_stores:
-aws:
-store-1:
-endpoint: s3://foo-bucket
-region: us-west1
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
@@ -4086,6 +4095,8 @@ Named store from this example can be used by setting object_store to store-1 in 
 [filesystem: <map of string to local_storage_config>]
 
 [gcs: <map of string to gcs_storage_config>]
+
+[oss: <map of string to StorageConfig>]
 
 [swift: <map of string to swift_storage_config>]
 ```
@@ -4132,7 +4143,7 @@ Out-of-order writes are enabled globally by default, but can be disabled/enabled
 on a cluster or per-tenant basis.
 
 - To disable out-of-order writes for all tenants,
-  place in the `limits_config` section:
+place in the `limits_config` section:
 
     ```
     limits_config:
@@ -4140,14 +4151,14 @@ on a cluster or per-tenant basis.
     ```
 
 - To disable out-of-order writes for specific tenants,
-  configure a runtime configuration file:
+configure a runtime configuration file:
 
     ```
     runtime_config: overrides.yaml
     ```
 
-  In the `overrides.yaml` file, add `unordered_writes` for each tenant
-  permitted to have out-of-order writes:
+    In the `overrides.yaml` file, add `unordered_writes` for each tenant
+    permitted to have out-of-order writes:
 
     ```
     overrides:
