@@ -14,9 +14,11 @@ eventlogmessage:
   # used by the windows_events scraper
   [source: <string> | default = message]
 
-  # When true, if previously extracted data exists for a key
-  # found in the Message, it will be overwriten by the value
-  # in the Message. Otherwise any such data will be ignored.
+  # If previously extracted data exists for a key that occurs
+  # in the Message, when true, the previous value will be
+  # overwriten by the value in the Message. Otherwise,
+  # '_extracted' will be appended to the key that is used for
+  # the value in the Message.
   [overwrite_existing: <bool> | default = false]
 
   # When true, keys extracted from the Message that are not
@@ -31,10 +33,7 @@ type conversions; downstream stages will need to perform correct type
 conversion of these values as necessary. Please refer to the
 [the `template` stage]({{<relref "template">}}) for how to do this.
 
-
-## Example
-
-### Combined with json
+## Example combined with json
 
 For the given pipeline:
 
