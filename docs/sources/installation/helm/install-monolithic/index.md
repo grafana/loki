@@ -12,7 +12,8 @@ keywords: []
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 
-If the `singleBinary.replicas` value is set to something greater than 0, it will configure Loki to run the `all` target in a [monolithic mode]({{<relref "../../../fundamentals/architecture/deployment-modes#monolithic-mode">}}), designed to work with a filesystem storage. If using just 1 replica, this *single binary* deployment will be configured to use object storage. If you would like to run *single binary* in a replicated, highly available mode, you must supply an object storage configuration and set `singleBinary.replicas` to a value greater than or equal to 2.
+If you set the `singleBinary.replicas` value to 1, this chart configures Loki to run the `all` target in a [monolithic mode]({{<relref "../../../fundamentals/architecture/deployment-modes#monolithic-mode">}}), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
+If you set the `singleBinary.replicas` value to 2 or more, this chart configures Loki to run a *single binary* in a replicated, highly available mode.  When running replicas of a single binary, you must configure object storage.
 
 **Before you begin: Software Requirements**
 
