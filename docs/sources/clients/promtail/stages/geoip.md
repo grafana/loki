@@ -20,7 +20,7 @@ Populated fields for City db:
 - geoip_subdivision_name
 - geoip_subdivision_code
 
-Populated fields for ASN db:
+Populated fields for ASN (Autonomous System Number) db:
 
 - geoip_autonomous_system_number
 - geoip_autonomous_system_organization
