@@ -37,9 +37,11 @@ pipeline_stages:
     overwrite_existing: true
 `
 
-var testEvtLogMsgSimple = "Key1: Value 1\r\nKey2: Value 2\r\nKey3: Value: 3"
-var testEvtLogMsgInvalidLabels = "Key 1: Value 1\r\n0Key2: Value 2\r\nKey@3: Value 3\r\n: Value 4"
-var testEvtLogMsgOverwriteTest = "test: new value"
+var (
+	testEvtLogMsgSimple        = "Key1: Value 1\r\nKey2: Value 2\r\nKey3: Value: 3"
+	testEvtLogMsgInvalidLabels = "Key 1: Value 1\r\n0Key2: Value 2\r\nKey@3: Value 3\r\n: Value 4"
+	testEvtLogMsgOverwriteTest = "test: new value"
+)
 
 func TestEventLogMessage_simple(t *testing.T) {
 	t.Parallel()
@@ -275,8 +277,10 @@ func TestEventLogMessage_Real(t *testing.T) {
 	}
 }
 
-var testEvtLogMsgInvalidStructure = "\n\rwhat; is this?\n\r"
-var testEvtLogMsgInvalidValue = "Key1: " + string([]byte{0xff, 0xfe, 0xfd})
+var (
+	testEvtLogMsgInvalidStructure = "\n\rwhat; is this?\n\r"
+	testEvtLogMsgInvalidValue     = "Key1: " + string([]byte{0xff, 0xfe, 0xfd})
+)
 
 func TestEventLogMessage_invalid(t *testing.T) {
 	t.Parallel()
@@ -339,9 +343,11 @@ func TestEventLogMessage_invalidString(t *testing.T) {
 	assert.Len(t, out, 0, "No output should be produced with a nil input")
 }
 
-var inputJustKey = "Key 1:"
-var inputBoth = "Key 1: Value 1"
-var RegexSplitKeyValue = regexp.MustCompile(": ?")
+var (
+	inputJustKey       = "Key 1:"
+	inputBoth          = "Key 1: Value 1"
+	RegexSplitKeyValue = regexp.MustCompile(": ?")
+)
 
 func BenchmarkSplittingKeyValuesRegex(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -363,11 +369,11 @@ func BenchmarkSplittingKeyValuesSplitTrim(b *testing.B) {
 		var val string
 		resultKey := strings.SplitN(inputJustKey, ":", 2)
 		if len(resultKey) > 1 {
-			val = strings.TrimLeft(resultKey[1], " ")
+			val = strings.TrimSpace(resultKey[1])
 		}
 		resultKeyValue := strings.SplitN(inputBoth, ":", 2)
 		if len(resultKey) > 1 {
-			val = strings.TrimLeft(resultKeyValue[1], " ")
+			val = strings.TrimSpace(resultKeyValue[1])
 		}
 		_ = val
 	}
