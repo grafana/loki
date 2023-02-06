@@ -122,17 +122,20 @@
   compactor_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   distributor_deployment+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   index_gateway_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
-  ingester_statefulset: if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled then {} else
+  ingester_statefulset+: if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled then {} else
     (super.ingester_statefulset + if !$._config.memberlist_ring_enabled then {} else gossipLabel),
-
-  ingester_zone_a_statefulset: if !$._config.multi_zone_ingester_enabled then {} else
-    (super.ingester_zone_a_statefulset + if !$._config.memberlist_ring_enabled then {} else gossipLabel),
-
-  ingester_zone_b_statefulset: if !$._config.multi_zone_ingester_enabled then {} else
-    (super.ingester_zone_b_statefulset + if !$._config.memberlist_ring_enabled then {} else gossipLabel),
-
-  ingester_zone_c_statefulset: if !$._config.multi_zone_ingester_enabled then {} else
-    (super.ingester_zone_c_statefulset + if !$._config.memberlist_ring_enabled then {} else gossipLabel),
+  ingester_zone_a_statefulset+:
+    if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
+    then gossipLabel
+    else {},
+  ingester_zone_b_statefulset+:
+    if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
+    then gossipLabel
+    else {},
+  ingester_zone_c_statefulset+:
+    if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
+    then gossipLabel
+    else {},
   query_scheduler_deployment+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   ruler_deployment+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled || $._config.stateful_rulers then {} else gossipLabel,
   ruler_statefulset+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled || !$._config.stateful_rulers then {} else gossipLabel,
