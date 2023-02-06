@@ -125,10 +125,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 				"key", mkey)
 			mkey += "_extracted"
 		}
-		mval := parts[1]
-		if len(mval) > 0 {
-			mval = mval[1:]
-		}
+		mval := strings.TrimSpace(parts[1])
 		if !model.LabelValue(mval).IsValid() {
 			if Debug {
 				level.Debug(m.logger).Log("msg", "invalid value parsed from message", "value", mval)
