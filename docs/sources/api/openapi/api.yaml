@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: Compactor API
+  version: 0.1.0
+paths:
+  /simulate_retention:
+    get:
+      tags:
+        - compactor
+      summary: Simulate retention behavior that will be exerced by compactor
+      description: Simulate retention behavior that will be exerced by compactor
+      operationId: simulateRetention
+      parameters:
+        - name: from
+          in: query
+          description: Starting date of the simulated chunk that will be checked by the compactor. Format is dd-MM-YYYY (31-01-2023).
+          required: true
+          schema:
+            type: string
+        - name: org_id
+          in: query
+          description: Tenant that owns the simulated chunk that will be checked by the compactor
+          required: true
+          schema:
+            type: string
+        - name: check_for_existance
+          in: query
+          description: Whether the simulation should validate the given org_id. If truthy, the compactor will look for at least one existing chunk owned by the given org_id. If no such chunk exists, simulation will report deletion as unkwnown.
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulationResult'
+components:
+  schemas:
+    SimulationResult:
+      type: object
+      properties:
+        result:
+          type: string
+          description: Deletion result of the simulation
+          default: keep
+          enum: [
+              "keep",
+              "delete",
+              "unknown",
+          ]
+        explanation:
+          type: string
+          default: "From interval (31-01-2023, 10 days ago) is shorther than the found configured retention (45 days)."
+          
