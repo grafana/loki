@@ -200,6 +200,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.frontend }}
+    frontend:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
 
@@ -301,6 +306,9 @@ loki:
 
   # --  Optional ingester configuration
   ingester: {}
+
+  # -- Optional frontend configuration
+  frontend: {}
 
 enterprise:
   # Enable enterprise features, license must be provided
