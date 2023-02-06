@@ -614,19 +614,28 @@ func TestLoadFromURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
-	// Missing schema.config file should error
-	schemaConfig, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+	filename := "schemaconfig.yaml"
+
+	// Missing schemaconfig.yaml file should error
+	schemaConfig, err := LoadSchemaUsingObjectClient(client, filename)
 	require.Error(t, err)
 	require.Nil(t, schemaConfig)
 
 	err = os.WriteFile(
-		filepath.Join(tmpDir, SchemaConfigFilename),
+		filepath.Join(tmpDir, filename),
 		[]byte(schemaConfigContents),
 		0666,
 	)
 	require.NoError(t, err)
 
-	schemaConfig, err = LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+	// Load single schemaconfig.yaml
+	schemaConfig, err = LoadSchemaUsingObjectClient(client, filename)
+
+	require.NoError(t, err)
+	require.NotNil(t, schemaConfig)
+
+	// Load multiple schemaconfig files
+	schemaConfig, err = LoadSchemaUsingObjectClient(client, "foo.yaml", filename, "bar.yaml")
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)

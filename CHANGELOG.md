@@ -65,6 +65,12 @@
 
 ##### Changes
 
+#### LogCLI
+
+##### Enhancement
+
+* [8413](https://github.com/grafana/loki/pull/8413) **chaudum**: Try to load tenant-specific `schemaconfig-{orgID}.yaml` when using `--remote-schema` argument and fallback to global `schemaconfig.yaml`.
+
 #### Fluent Bit
 
 #### Loki Canary
