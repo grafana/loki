@@ -291,7 +291,12 @@ func NewIndexClient(periodCfg config.PeriodConfig, getTableRange func() config.T
 			return client, nil
 		}
 
-		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+		objectType := periodCfg.ObjectType
+		if cfg.BoltDBShipperConfig.SharedStoreType != "" {
+			objectType = cfg.BoltDBShipperConfig.SharedStoreType
+		}
+
+		objectClient, err := NewObjectClient(objectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}

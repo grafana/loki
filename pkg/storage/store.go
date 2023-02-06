@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -162,20 +161,6 @@ func (s *store) init() error {
 			return err
 		}
 
-		if p.IndexType == config.BoltDBShipperType && s.cfg.BoltDBShipperConfig.SharedStoreType != "" &&
-			s.cfg.BoltDBShipperConfig.SharedStoreType != p.ObjectType {
-			level.Warn(s.logger).Log("skipping store init for this period as object-type does not match -boltdb.shipper.shared-store",
-				"from", p.From.String(), "object-type", p.ObjectType)
-			continue
-		}
-
-		if p.IndexType == config.TSDBType && s.cfg.TSDBShipperConfig.SharedStoreType != "" &&
-			s.cfg.TSDBShipperConfig.SharedStoreType != p.ObjectType {
-			level.Warn(s.logger).Log("skipping store init for this period as object-type does not match -tsdb.shipper.shared-store",
-				"from", p.From.String(), "object-type", p.ObjectType)
-			continue
-		}
-
 		// getTableRange is used only for initializing boltdb and tsdb index clients.
 		// Computing TableRange for other indexTypes might cause a panic if PeriodConfig.IndexTables.Period is not configured.
 		getTableRange := func() config.TableRange {
@@ -259,7 +244,12 @@ func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() confi
 			}, nil
 		}
 
-		objectClient, err := NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
+		objectType := p.ObjectType
+		if s.cfg.TSDBShipperConfig.SharedStoreType != "" {
+			objectType = s.cfg.TSDBShipperConfig.SharedStoreType
+		}
+
+		objectClient, err := NewObjectClient(objectType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}
