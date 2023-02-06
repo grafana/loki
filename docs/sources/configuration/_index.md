@@ -213,181 +213,181 @@ Configures the `server` of the launched module(s).
 ```yaml
 # HTTP server listen network, default tcp
 # CLI flag: -server.http-listen-network
-        [http_listen_network: <string> | default = "tcp"]
+[http_listen_network: <string> | default = "tcp"]
 
-        # HTTP server listen address.
-        # CLI flag: -server.http-listen-address
-        [http_listen_address: <string> | default = ""]
+# HTTP server listen address.
+# CLI flag: -server.http-listen-address
+[http_listen_address: <string> | default = ""]
 
-        # HTTP server listen port.
-        # CLI flag: -server.http-listen-port
-        [http_listen_port: <int> | default = 3100]
+# HTTP server listen port.
+# CLI flag: -server.http-listen-port
+[http_listen_port: <int> | default = 3100]
 
-        # Maximum number of simultaneous http connections, <=0 to disable
-        # CLI flag: -server.http-conn-limit
-        [http_listen_conn_limit: <int> | default = 0]
+# Maximum number of simultaneous http connections, <=0 to disable
+# CLI flag: -server.http-conn-limit
+[http_listen_conn_limit: <int> | default = 0]
 
-        # gRPC server listen network
-        # CLI flag: -server.grpc-listen-network
-        [grpc_listen_network: <string> | default = "tcp"]
+# gRPC server listen network
+# CLI flag: -server.grpc-listen-network
+[grpc_listen_network: <string> | default = "tcp"]
 
-        # gRPC server listen address.
-        # CLI flag: -server.grpc-listen-address
-        [grpc_listen_address: <string> | default = ""]
+# gRPC server listen address.
+# CLI flag: -server.grpc-listen-address
+[grpc_listen_address: <string> | default = ""]
 
-        # gRPC server listen port.
-        # CLI flag: -server.grpc-listen-port
-        [grpc_listen_port: <int> | default = 9095]
+# gRPC server listen port.
+# CLI flag: -server.grpc-listen-port
+[grpc_listen_port: <int> | default = 9095]
 
-        # Maximum number of simultaneous grpc connections, <=0 to disable
-        # CLI flag: -server.grpc-conn-limit
-        [grpc_listen_conn_limit: <int> | default = 0]
+# Maximum number of simultaneous grpc connections, <=0 to disable
+# CLI flag: -server.grpc-conn-limit
+[grpc_listen_conn_limit: <int> | default = 0]
 
-        # Comma-separated list of cipher suites to use. If blank, the default Go cipher
-        # suites is used.
-        # CLI flag: -server.tls-cipher-suites
-        [tls_cipher_suites: <string> | default = ""]
+# Comma-separated list of cipher suites to use. If blank, the default Go cipher
+# suites is used.
+# CLI flag: -server.tls-cipher-suites
+[tls_cipher_suites: <string> | default = ""]
 
-        # Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
-        # VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
-        # CLI flag: -server.tls-min-version
-        [tls_min_version: <string> | default = ""]
+# Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
+# VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
+# CLI flag: -server.tls-min-version
+[tls_min_version: <string> | default = ""]
 
 http_tls_config:
-        # HTTP server cert path.
-                # CLI flag: -server.http-tls-cert-path
-                [cert_file: <string> | default = ""]
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
 
-                # HTTP server key path.
-                # CLI flag: -server.http-tls-key-path
-                [key_file: <string> | default = ""]
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
 
-                # HTTP TLS Client Auth type.
-                # CLI flag: -server.http-tls-client-auth
-                [client_auth_type: <string> | default = ""]
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
 
-                # HTTP TLS Client CA path.
-                # CLI flag: -server.http-tls-ca-path
-                [client_ca_file: <string> | default = ""]
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
 grpc_tls_config:
-        # GRPC TLS server cert path.
-                # CLI flag: -server.grpc-tls-cert-path
-                [cert_file: <string> | default = ""]
+  # GRPC TLS server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
 
-                # GRPC TLS server key path.
-                # CLI flag: -server.grpc-tls-key-path
-                [key_file: <string> | default = ""]
+  # GRPC TLS server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
 
-                # GRPC TLS Client Auth type.
-                # CLI flag: -server.grpc-tls-client-auth
-                [client_auth_type: <string> | default = ""]
+  # GRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
 
-                # GRPC TLS Client CA path.
-                # CLI flag: -server.grpc-tls-ca-path
-                [client_ca_file: <string> | default = ""]
+  # GRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
 
-        # Register the intrumentation handlers (/metrics etc).
-        # CLI flag: -server.register-instrumentation
-        [register_instrumentation: <boolean> | default = true]
+# Register the intrumentation handlers (/metrics etc).
+# CLI flag: -server.register-instrumentation
+[register_instrumentation: <boolean> | default = true]
 
-        # Timeout for graceful shutdowns
-        # CLI flag: -server.graceful-shutdown-timeout
-        [graceful_shutdown_timeout: <duration> | default = 30s]
+# Timeout for graceful shutdowns
+# CLI flag: -server.graceful-shutdown-timeout
+[graceful_shutdown_timeout: <duration> | default = 30s]
 
-        # Read timeout for HTTP server
-        # CLI flag: -server.http-read-timeout
-        [http_server_read_timeout: <duration> | default = 30s]
+# Read timeout for HTTP server
+# CLI flag: -server.http-read-timeout
+[http_server_read_timeout: <duration> | default = 30s]
 
-        # Write timeout for HTTP server
-        # CLI flag: -server.http-write-timeout
-        [http_server_write_timeout: <duration> | default = 30s]
+# Write timeout for HTTP server
+# CLI flag: -server.http-write-timeout
+[http_server_write_timeout: <duration> | default = 30s]
 
-        # Idle timeout for HTTP server
-        # CLI flag: -server.http-idle-timeout
-        [http_server_idle_timeout: <duration> | default = 2m]
+# Idle timeout for HTTP server
+# CLI flag: -server.http-idle-timeout
+[http_server_idle_timeout: <duration> | default = 2m]
 
-        # Limit on the size of a gRPC message this server can receive (bytes).
-        # CLI flag: -server.grpc-max-recv-msg-size-bytes
-        [grpc_server_max_recv_msg_size: <int> | default = 4194304]
+# Limit on the size of a gRPC message this server can receive (bytes).
+# CLI flag: -server.grpc-max-recv-msg-size-bytes
+[grpc_server_max_recv_msg_size: <int> | default = 4194304]
 
-        # Limit on the size of a gRPC message this server can send (bytes).
-        # CLI flag: -server.grpc-max-send-msg-size-bytes
-        [grpc_server_max_send_msg_size: <int> | default = 4194304]
+# Limit on the size of a gRPC message this server can send (bytes).
+# CLI flag: -server.grpc-max-send-msg-size-bytes
+[grpc_server_max_send_msg_size: <int> | default = 4194304]
 
-        # Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
-        # CLI flag: -server.grpc-max-concurrent-streams
-        [grpc_server_max_concurrent_streams: <int> | default = 100]
+# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
+# CLI flag: -server.grpc-max-concurrent-streams
+[grpc_server_max_concurrent_streams: <int> | default = 100]
 
-        # The duration after which an idle connection should be closed. Default:
-        # infinity
-        # CLI flag: -server.grpc.keepalive.max-connection-idle
-        [grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
+# The duration after which an idle connection should be closed. Default:
+# infinity
+# CLI flag: -server.grpc.keepalive.max-connection-idle
+[grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
 
-        # The duration for the maximum amount of time a connection may exist before it
-        # will be closed. Default: infinity
-        # CLI flag: -server.grpc.keepalive.max-connection-age
-        [grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
+# The duration for the maximum amount of time a connection may exist before it
+# will be closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age
+[grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
 
-        # An additive period after max-connection-age after which the connection will be
-        # forcibly closed. Default: infinity
-        # CLI flag: -server.grpc.keepalive.max-connection-age-grace
-        [grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
+# An additive period after max-connection-age after which the connection will be
+# forcibly closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age-grace
+[grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
 
-        # Duration after which a keepalive probe is sent in case of no activity over the
-        # connection., Default: 2h
-        # CLI flag: -server.grpc.keepalive.time
-        [grpc_server_keepalive_time: <duration> | default = 2h]
+# Duration after which a keepalive probe is sent in case of no activity over the
+# connection., Default: 2h
+# CLI flag: -server.grpc.keepalive.time
+[grpc_server_keepalive_time: <duration> | default = 2h]
 
-        # After having pinged for keepalive check, the duration after which an idle
-        # connection should be closed, Default: 20s
-        # CLI flag: -server.grpc.keepalive.timeout
-        [grpc_server_keepalive_timeout: <duration> | default = 20s]
+# After having pinged for keepalive check, the duration after which an idle
+# connection should be closed, Default: 20s
+# CLI flag: -server.grpc.keepalive.timeout
+[grpc_server_keepalive_timeout: <duration> | default = 20s]
 
-        # Minimum amount of time a client should wait before sending a keepalive ping.
-        # If client sends keepalive ping more often, server will send GOAWAY and close
-        # the connection.
-        # CLI flag: -server.grpc.keepalive.min-time-between-pings
-        [grpc_server_min_time_between_pings: <duration> | default = 10s]
+# Minimum amount of time a client should wait before sending a keepalive ping.
+# If client sends keepalive ping more often, server will send GOAWAY and close
+# the connection.
+# CLI flag: -server.grpc.keepalive.min-time-between-pings
+[grpc_server_min_time_between_pings: <duration> | default = 10s]
 
-        # If true, server allows keepalive pings even when there are no active
-        # streams(RPCs). If false, and client sends ping when there are no active
-        # streams, server will send GOAWAY and close the connection.
-        # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
-        [grpc_server_ping_without_stream_allowed: <boolean> | default = true]
+# If true, server allows keepalive pings even when there are no active
+# streams(RPCs). If false, and client sends ping when there are no active
+# streams, server will send GOAWAY and close the connection.
+# CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
+[grpc_server_ping_without_stream_allowed: <boolean> | default = true]
 
-        # Output log messages in the given format. Valid formats: [logfmt, json]
-        # CLI flag: -log.format
-        [log_format: <string> | default = "logfmt"]
+# Output log messages in the given format. Valid formats: [logfmt, json]
+# CLI flag: -log.format
+[log_format: <string> | default = "logfmt"]
 
-        # Only log messages with the given severity or above. Valid levels: [debug,
-        # info, warn, error]
-        # CLI flag: -log.level
-        [log_level: <string> | default = "info"]
+# Only log messages with the given severity or above. Valid levels: [debug,
+# info, warn, error]
+# CLI flag: -log.level
+[log_level: <string> | default = "info"]
 
-        # Optionally log the source IPs.
-        # CLI flag: -server.log-source-ips-enabled
-        [log_source_ips_enabled: <boolean> | default = false]
+# Optionally log the source IPs.
+# CLI flag: -server.log-source-ips-enabled
+[log_source_ips_enabled: <boolean> | default = false]
 
-        # Header field storing the source IPs. Only used if
-        # server.log-source-ips-enabled is true. If not set the default Forwarded,
-        # X-Real-IP and X-Forwarded-For headers are used
-        # CLI flag: -server.log-source-ips-header
-        [log_source_ips_header: <string> | default = ""]
+# Header field storing the source IPs. Only used if
+# server.log-source-ips-enabled is true. If not set the default Forwarded,
+# X-Real-IP and X-Forwarded-For headers are used
+# CLI flag: -server.log-source-ips-header
+[log_source_ips_header: <string> | default = ""]
 
-        # Regex for matching the source IPs. Only used if server.log-source-ips-enabled
-        # is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For
-        # headers are used
-        # CLI flag: -server.log-source-ips-regex
-        [log_source_ips_regex: <string> | default = ""]
+# Regex for matching the source IPs. Only used if server.log-source-ips-enabled
+# is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For
+# headers are used
+# CLI flag: -server.log-source-ips-regex
+[log_source_ips_regex: <string> | default = ""]
 
-        # Optionally log requests at info level instead of debug level.
-        # CLI flag: -server.log-request-at-info-level-enabled
-        [log_request_at_info_level_enabled: <boolean> | default = false]
+# Optionally log requests at info level instead of debug level.
+# CLI flag: -server.log-request-at-info-level-enabled
+[log_request_at_info_level_enabled: <boolean> | default = false]
 
-        # Base path to serve all API routes from (e.g. /v1/)
-        # CLI flag: -server.path-prefix
-        [http_path_prefix: <string> | default = ""]
+# Base path to serve all API routes from (e.g. /v1/)
+# CLI flag: -server.path-prefix
+[http_path_prefix: <string> | default = ""]
 ```
 
 ### distributor
@@ -397,67 +397,67 @@ Configures the `distributor`.
 ```yaml
 ring:
   kvstore:
-          # Backend storage to use for the ring. Supported values are: consul, etcd,
-                  # inmemory, memberlist, multi.
-                  # CLI flag: -distributor.ring.store
-                  [store: <string> | default = "consul"]
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -distributor.ring.store
+    [store: <string> | default = "consul"]
 
-                  # The prefix for the keys in the store. Should end with a /.
-                  # CLI flag: -distributor.ring.prefix
-                  [prefix: <string> | default = "collectors/"]
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -distributor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
 
-                  # Configuration for a Consul client. Only applies if store is consul.
-                  # The CLI flags prefix for this block configuration is: distributor.ring
-                  [consul: <consul>]
+    # Configuration for a Consul client. Only applies if store is consul.
+    # The CLI flags prefix for this block configuration is: distributor.ring
+    [consul: <consul>]
 
-                  # Configuration for an ETCD v3 client. Only applies if store is etcd.
-                  # The CLI flags prefix for this block configuration is: distributor.ring
-                  [etcd: <etcd>]
+    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # The CLI flags prefix for this block configuration is: distributor.ring
+    [etcd: <etcd>]
 
-            multi:
-                    # Primary backend storage used by multi-client.
-                            # CLI flag: -distributor.ring.multi.primary
-                            [primary: <string> | default = ""]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -distributor.ring.multi.primary
+      [primary: <string> | default = ""]
 
-                            # Secondary backend storage used by multi-client.
-                            # CLI flag: -distributor.ring.multi.secondary
-                            [secondary: <string> | default = ""]
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -distributor.ring.multi.secondary
+      [secondary: <string> | default = ""]
 
-                            # Mirror writes to secondary store.
-                            # CLI flag: -distributor.ring.multi.mirror-enabled
-                            [mirror_enabled: <boolean> | default = false]
+      # Mirror writes to secondary store.
+      # CLI flag: -distributor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
 
-                            # Timeout for storing value to secondary store.
-                            # CLI flag: -distributor.ring.multi.mirror-timeout
-                            [mirror_timeout: <duration> | default = 2s]
+      # Timeout for storing value to secondary store.
+      # CLI flag: -distributor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
   # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -distributor.ring.heartbeat-period
-        [heartbeat_period: <duration> | default = 5s]
+  [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which distributors are considered unhealthy
   # within the ring. 0 = never (timeout disabled).
   # CLI flag: -distributor.ring.heartbeat-timeout
-        [heartbeat_timeout: <duration> | default = 1m]
+  [heartbeat_timeout: <duration> | default = 1m]
 
   # Name of network interface to read address from.
   # CLI flag: -distributor.ring.instance-interface-names
-        [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
 rate_store:
-        # The max number of concurrent requests to make to ingester stream apis
-                # CLI flag: -distributor.rate-store.max-request-parallelism
-                [max_request_parallelism: <int> | default = 200]
+  # The max number of concurrent requests to make to ingester stream apis
+  # CLI flag: -distributor.rate-store.max-request-parallelism
+  [max_request_parallelism: <int> | default = 200]
 
-                # The interval on which distributors will update current stream rates from
-                # ingesters
-                # CLI flag: -distributor.rate-store.stream-rate-update-interval
-                [stream_rate_update_interval: <duration> | default = 1s]
+  # The interval on which distributors will update current stream rates from
+  # ingesters
+  # CLI flag: -distributor.rate-store.stream-rate-update-interval
+  [stream_rate_update_interval: <duration> | default = 1s]
 
-                # Timeout for communication between distributors and any given ingester when
-                # updating rates
-                # CLI flag: -distributor.rate-store.ingester-request-timeout
-                [ingester_request_timeout: <duration> | default = 500ms]
+  # Timeout for communication between distributors and any given ingester when
+  # updating rates
+  # CLI flag: -distributor.rate-store.ingester-request-timeout
+  [ingester_request_timeout: <duration> | default = 500ms]
 ```
 
 ### querier
@@ -467,44 +467,44 @@ Configures the `querier`. Only appropriate when running all modules or just the 
 ```yaml
 # Maximum duration for which the live tailing requests are served.
 # CLI flag: -querier.tail-max-duration
-        [tail_max_duration: <duration> | default = 1h]
+[tail_max_duration: <duration> | default = 1h]
 
-        # Time to wait before sending more than the minimum successful query requests.
-        # CLI flag: -querier.extra-query-delay
-        [extra_query_delay: <duration> | default = 0s]
+# Time to wait before sending more than the minimum successful query requests.
+# CLI flag: -querier.extra-query-delay
+[extra_query_delay: <duration> | default = 0s]
 
-        # Maximum lookback beyond which queries are not sent to ingester. 0 means all
-        # queries are sent to ingester.
-        # CLI flag: -querier.query-ingesters-within
-        [query_ingesters_within: <duration> | default = 3h]
+# Maximum lookback beyond which queries are not sent to ingester. 0 means all
+# queries are sent to ingester.
+# CLI flag: -querier.query-ingesters-within
+[query_ingesters_within: <duration> | default = 3h]
 
 engine:
-        # Deprecated: Use querier.query-timeout instead. Timeout for query execution.
-                # CLI flag: -querier.engine.timeout
-                [timeout: <duration> | default = 5m]
+  # Deprecated: Use querier.query-timeout instead. Timeout for query execution.
+  # CLI flag: -querier.engine.timeout
+  [timeout: <duration> | default = 5m]
 
-                # The maximum amount of time to look back for log lines. Used only for instant
-                # log queries.
-                # CLI flag: -querier.engine.max-lookback-period
-                [max_look_back_period: <duration> | default = 30s]
+  # The maximum amount of time to look back for log lines. Used only for instant
+  # log queries.
+  # CLI flag: -querier.engine.max-lookback-period
+  [max_look_back_period: <duration> | default = 30s]
 
-        # The maximum number of concurrent queries allowed.
-        # CLI flag: -querier.max-concurrent
-        [max_concurrent: <int> | default = 10]
+# The maximum number of concurrent queries allowed.
+# CLI flag: -querier.max-concurrent
+[max_concurrent: <int> | default = 10]
 
-        # Only query the store, and not attempt any ingesters. This is useful for
-        # running a standalone querier pool operating only against stored data.
-        # CLI flag: -querier.query-store-only
-        [query_store_only: <boolean> | default = false]
+# Only query the store, and not attempt any ingesters. This is useful for
+# running a standalone querier pool operating only against stored data.
+# CLI flag: -querier.query-store-only
+[query_store_only: <boolean> | default = false]
 
-        # When true, queriers only query the ingesters, and not stored data. This is
-        # useful when the object store is unavailable.
-        # CLI flag: -querier.query-ingester-only
-        [query_ingester_only: <boolean> | default = false]
+# When true, queriers only query the ingesters, and not stored data. This is
+# useful when the object store is unavailable.
+# CLI flag: -querier.query-ingester-only
+[query_ingester_only: <boolean> | default = false]
 
-        # When true, allow queries to span multiple tenants.
-        # CLI flag: -querier.multi-tenant-queries-enabled
-        [multi_tenant_queries_enabled: <boolean> | default = false]
+# When true, allow queries to span multiple tenants.
+# CLI flag: -querier.multi-tenant-queries-enabled
+[multi_tenant_queries_enabled: <boolean> | default = false]
 ```
 
 ### query_scheduler
@@ -514,106 +514,106 @@ The `query_scheduler` block configures the Loki query scheduler. When configured
 ```yaml
 # Maximum number of outstanding requests per tenant per query-scheduler.
 # In-flight requests above this limit will fail with HTTP response status code
-        # 429.
-        # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
-        [max_outstanding_requests_per_tenant: <int> | default = 100]
+# 429.
+# CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
+[max_outstanding_requests_per_tenant: <int> | default = 100]
 
-        # If a querier disconnects without sending notification about graceful shutdown,
-        # the query-scheduler will keep the querier in the tenant's shard until the
-        # forget delay has passed. This feature is useful to reduce the blast radius
-        # when shuffle-sharding is enabled.
-        # CLI flag: -query-scheduler.querier-forget-delay
-        [querier_forget_delay: <duration> | default = 0s]
+# If a querier disconnects without sending notification about graceful shutdown,
+# the query-scheduler will keep the querier in the tenant's shard until the
+# forget delay has passed. This feature is useful to reduce the blast radius
+# when shuffle-sharding is enabled.
+# CLI flag: -query-scheduler.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0s]
 
-        # This configures the gRPC client used to report errors back to the
-        # query-frontend.
-        # The CLI flags prefix for this block configuration is:
-        # query-scheduler.grpc-client-config
-        [grpc_client_config: <grpc_client>]
+# This configures the gRPC client used to report errors back to the
+# query-frontend.
+# The CLI flags prefix for this block configuration is:
+# query-scheduler.grpc-client-config
+[grpc_client_config: <grpc_client>]
 
-        # Set to true to have the query schedulers create and place themselves in a
-        # ring. If no frontend_address or scheduler_address are present anywhere else in
-        # the configuration, Loki will toggle this value to true.
-        # CLI flag: -query-scheduler.use-scheduler-ring
-        [use_scheduler_ring: <boolean> | default = false]
+# Set to true to have the query schedulers create and place themselves in a
+# ring. If no frontend_address or scheduler_address are present anywhere else in
+# the configuration, Loki will toggle this value to true.
+# CLI flag: -query-scheduler.use-scheduler-ring
+[use_scheduler_ring: <boolean> | default = false]
 
-        # The hash ring configuration. This option is required only if
-        # use_scheduler_ring is true.
+# The hash ring configuration. This option is required only if
+# use_scheduler_ring is true.
 scheduler_ring:
   kvstore:
-          # Backend storage to use for the ring. Supported values are: consul, etcd,
-                  # inmemory, memberlist, multi.
-                  # CLI flag: -query-scheduler.ring.store
-                  [store: <string> | default = "consul"]
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -query-scheduler.ring.store
+    [store: <string> | default = "consul"]
 
-                  # The prefix for the keys in the store. Should end with a /.
-                  # CLI flag: -query-scheduler.ring.prefix
-                  [prefix: <string> | default = "collectors/"]
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -query-scheduler.ring.prefix
+    [prefix: <string> | default = "collectors/"]
 
-                  # Configuration for a Consul client. Only applies if store is consul.
-                  # The CLI flags prefix for this block configuration is: query-scheduler.ring
-                  [consul: <consul>]
+    # Configuration for a Consul client. Only applies if store is consul.
+    # The CLI flags prefix for this block configuration is: query-scheduler.ring
+    [consul: <consul>]
 
-                  # Configuration for an ETCD v3 client. Only applies if store is etcd.
-                  # The CLI flags prefix for this block configuration is: query-scheduler.ring
-                  [etcd: <etcd>]
+    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # The CLI flags prefix for this block configuration is: query-scheduler.ring
+    [etcd: <etcd>]
 
-            multi:
-                    # Primary backend storage used by multi-client.
-                            # CLI flag: -query-scheduler.ring.multi.primary
-                            [primary: <string> | default = ""]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -query-scheduler.ring.multi.primary
+      [primary: <string> | default = ""]
 
-                            # Secondary backend storage used by multi-client.
-                            # CLI flag: -query-scheduler.ring.multi.secondary
-                            [secondary: <string> | default = ""]
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -query-scheduler.ring.multi.secondary
+      [secondary: <string> | default = ""]
 
-                            # Mirror writes to secondary store.
-                            # CLI flag: -query-scheduler.ring.multi.mirror-enabled
-                            [mirror_enabled: <boolean> | default = false]
+      # Mirror writes to secondary store.
+      # CLI flag: -query-scheduler.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
 
-                            # Timeout for storing value to secondary store.
-                            # CLI flag: -query-scheduler.ring.multi.mirror-timeout
-                            [mirror_timeout: <duration> | default = 2s]
+      # Timeout for storing value to secondary store.
+      # CLI flag: -query-scheduler.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
   # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -query-scheduler.ring.heartbeat-period
-        [heartbeat_period: <duration> | default = 15s]
+  [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
   # the ring. 0 = never (timeout disabled).
   # CLI flag: -query-scheduler.ring.heartbeat-timeout
-        [heartbeat_timeout: <duration> | default = 1m]
+  [heartbeat_timeout: <duration> | default = 1m]
 
   # File path where tokens are stored. If empty, tokens are not stored at
   # shutdown and restored at startup.
   # CLI flag: -query-scheduler.ring.tokens-file-path
-        [tokens_file_path: <string> | default = ""]
+  [tokens_file_path: <string> | default = ""]
 
   # True to enable zone-awareness and replicate blocks across different
   # availability zones.
   # CLI flag: -query-scheduler.ring.zone-awareness-enabled
-        [zone_awareness_enabled: <boolean> | default = false]
+  [zone_awareness_enabled: <boolean> | default = false]
 
   # Instance ID to register in the ring.
   # CLI flag: -query-scheduler.ring.instance-id
-        [instance_id: <string> | default = "<hostname>"]
+  [instance_id: <string> | default = "<hostname>"]
 
   # Name of network interface to read address from.
   # CLI flag: -query-scheduler.ring.instance-interface-names
-        [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
   # Port to advertise in the ring (defaults to server.grpc-listen-port).
   # CLI flag: -query-scheduler.ring.instance-port
-        [instance_port: <int> | default = 0]
+  [instance_port: <int> | default = 0]
 
   # IP address to advertise in the ring.
   # CLI flag: -query-scheduler.ring.instance-addr
-        [instance_addr: <string> | default = ""]
+  [instance_addr: <string> | default = ""]
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.
   # CLI flag: -query-scheduler.ring.instance-availability-zone
-        [instance_availability_zone: <string> | default = ""]
+  [instance_availability_zone: <string> | default = ""]
 ```
 
 ### frontend
@@ -623,80 +623,80 @@ The `frontend` block configures the Loki query-frontend.
 ```yaml
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.
-        # CLI flag: -frontend.log-queries-longer-than
-        [log_queries_longer_than: <duration> | default = 0s]
+# CLI flag: -frontend.log-queries-longer-than
+[log_queries_longer_than: <duration> | default = 0s]
 
-        # Max body size for downstream prometheus.
-        # CLI flag: -frontend.max-body-size
-        [max_body_size: <int> | default = 10485760]
+# Max body size for downstream prometheus.
+# CLI flag: -frontend.max-body-size
+[max_body_size: <int> | default = 10485760]
 
-        # True to enable query statistics tracking. When enabled, a message with some
-        # statistics is logged for every query.
-        # CLI flag: -frontend.query-stats-enabled
-        [query_stats_enabled: <boolean> | default = false]
+# True to enable query statistics tracking. When enabled, a message with some
+# statistics is logged for every query.
+# CLI flag: -frontend.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
 
-        # Maximum number of outstanding requests per tenant per frontend; requests
-        # beyond this error with HTTP 429.
-        # CLI flag: -querier.max-outstanding-requests-per-tenant
-        [max_outstanding_per_tenant: <int> | default = 2048]
+# Maximum number of outstanding requests per tenant per frontend; requests
+# beyond this error with HTTP 429.
+# CLI flag: -querier.max-outstanding-requests-per-tenant
+[max_outstanding_per_tenant: <int> | default = 2048]
 
-        # In the event a tenant is repeatedly sending queries that lead the querier to
-        # crash or be killed due to an out-of-memory error, the crashed querier will be
-        # disconnected from the query frontend and a new querier will be immediately
-        # assigned to the tenant’s shard. This invalidates the assumption that shuffle
-        # sharding can be used to reduce the impact on tenants. This option mitigates
-        # the impact by configuring a delay between when a querier disconnects because
-        # of a crash and when the crashed querier is actually removed from the tenant's
-        # shard.
-        # CLI flag: -query-frontend.querier-forget-delay
-        [querier_forget_delay: <duration> | default = 0s]
+# In the event a tenant is repeatedly sending queries that lead the querier to
+# crash or be killed due to an out-of-memory error, the crashed querier will be
+# disconnected from the query frontend and a new querier will be immediately
+# assigned to the tenant’s shard. This invalidates the assumption that shuffle
+# sharding can be used to reduce the impact on tenants. This option mitigates
+# the impact by configuring a delay between when a querier disconnects because
+# of a crash and when the crashed querier is actually removed from the tenant's
+# shard.
+# CLI flag: -query-frontend.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0s]
 
-        # DNS hostname used for finding query-schedulers.
-        # CLI flag: -frontend.scheduler-address
-        [scheduler_address: <string> | default = ""]
+# DNS hostname used for finding query-schedulers.
+# CLI flag: -frontend.scheduler-address
+[scheduler_address: <string> | default = ""]
 
-        # How often to resolve the scheduler-address, in order to look for new
-        # query-scheduler instances. Also used to determine how often to poll the
-        # scheduler-ring for addresses if the scheduler-ring is configured.
-        # CLI flag: -frontend.scheduler-dns-lookup-period
-        [scheduler_dns_lookup_period: <duration> | default = 10s]
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances. Also used to determine how often to poll the
+# scheduler-ring for addresses if the scheduler-ring is configured.
+# CLI flag: -frontend.scheduler-dns-lookup-period
+[scheduler_dns_lookup_period: <duration> | default = 10s]
 
-        # Number of concurrent workers forwarding queries to single query-scheduler.
-        # CLI flag: -frontend.scheduler-worker-concurrency
-        [scheduler_worker_concurrency: <int> | default = 5]
+# Number of concurrent workers forwarding queries to single query-scheduler.
+# CLI flag: -frontend.scheduler-worker-concurrency
+[scheduler_worker_concurrency: <int> | default = 5]
 
-        # The grpc_client block configures the gRPC client used to communicate between
-        # two Loki components.
-        # The CLI flags prefix for this block configuration is:
-        # frontend.grpc-client-config
-        [grpc_client_config: <grpc_client>]
+# The grpc_client block configures the gRPC client used to communicate between
+# two Loki components.
+# The CLI flags prefix for this block configuration is:
+# frontend.grpc-client-config
+[grpc_client_config: <grpc_client>]
 
-        # Time to wait for inflight requests to finish before forcefully shutting down.
-        # This needs to be aligned with the query timeout and the graceful termination
-        # period of the process orchestrator.
-        # CLI flag: -frontend.graceful-shutdown-timeout
-        [graceful_shutdown_timeout: <duration> | default = 5m]
+# Time to wait for inflight requests to finish before forcefully shutting down.
+# This needs to be aligned with the query timeout and the graceful termination
+# period of the process orchestrator.
+# CLI flag: -frontend.graceful-shutdown-timeout
+[graceful_shutdown_timeout: <duration> | default = 5m]
 
-        # Name of network interface to read address from. This address is sent to
-        # query-scheduler and querier, which uses it to send the query response back to
-        # query-frontend.
-        # CLI flag: -frontend.instance-interface-names
-        [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+# Name of network interface to read address from. This address is sent to
+# query-scheduler and querier, which uses it to send the query response back to
+# query-frontend.
+# CLI flag: -frontend.instance-interface-names
+[instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
-        # Compress HTTP responses.
-        # CLI flag: -querier.compress-http-responses
-        [compress_responses: <boolean> | default = false]
+# Compress HTTP responses.
+# CLI flag: -querier.compress-http-responses
+[compress_responses: <boolean> | default = false]
 
-        # URL of downstream Loki.
-        # CLI flag: -frontend.downstream-url
-        [downstream_url: <string> | default = ""]
+# URL of downstream Loki.
+# CLI flag: -frontend.downstream-url
+[downstream_url: <string> | default = ""]
 
-        # URL of querier for tail proxy.
-        # CLI flag: -frontend.tail-proxy-url
-        [tail_proxy_url: <string> | default = ""]
+# URL of querier for tail proxy.
+# CLI flag: -frontend.tail-proxy-url
+[tail_proxy_url: <string> | default = ""]
 
-        # The TLS configuration.
-        [tail_tls_config: <tls_config>]
+# The TLS configuration.
+[tail_tls_config: <tls_config>]
 ```
 
 ### query_range
@@ -706,39 +706,39 @@ The `query_range` block configures the query splitting and caching in the Loki q
 ```yaml
 # Deprecated: Use -querier.split-queries-by-interval instead. CLI flag:
 # -querier.split-queries-by-day. Split queries by day and execute in parallel.
-        [split_queries_by_interval: <duration>]
+[split_queries_by_interval: <duration>]
 
-        # Mutate incoming queries to align their start and end with their step.
-        # CLI flag: -querier.align-querier-with-step
-        [align_queries_with_step: <boolean> | default = false]
+# Mutate incoming queries to align their start and end with their step.
+# CLI flag: -querier.align-querier-with-step
+[align_queries_with_step: <boolean> | default = false]
 
 results_cache:
-        # The cache block configures the cache backend.
-                # The CLI flags prefix for this block configuration is: frontend
-                [cache: <cache_config>]
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is: frontend
+  [cache: <cache_config>]
 
-                # Use compression in results cache. Supported values are: 'snappy' and ''
-                # (disable compression).
-                # CLI flag: -frontend.compression
-                [compression: <string> | default = ""]
+  # Use compression in results cache. Supported values are: 'snappy' and ''
+  # (disable compression).
+  # CLI flag: -frontend.compression
+  [compression: <string> | default = ""]
 
-        # Cache query results.
-        # CLI flag: -querier.cache-results
-        [cache_results: <boolean> | default = false]
+# Cache query results.
+# CLI flag: -querier.cache-results
+[cache_results: <boolean> | default = false]
 
-        # Maximum number of retries for a single request; beyond this, the downstream
-        # error is returned.
-        # CLI flag: -querier.max-retries-per-request
-        [max_retries: <int> | default = 5]
+# Maximum number of retries for a single request; beyond this, the downstream
+# error is returned.
+# CLI flag: -querier.max-retries-per-request
+[max_retries: <int> | default = 5]
 
-        # Perform query parallelisations based on storage sharding configuration and
-        # query ASTs. This feature is supported only by the chunks storage engine.
-        # CLI flag: -querier.parallelise-shardable-queries
-        [parallelise_shardable_queries: <boolean> | default = true]
+# Perform query parallelisations based on storage sharding configuration and
+# query ASTs. This feature is supported only by the chunks storage engine.
+# CLI flag: -querier.parallelise-shardable-queries
+[parallelise_shardable_queries: <boolean> | default = true]
 
-        # List of headers forwarded by the query Frontend to downstream querier.
-        # CLI flag: -frontend.forward-headers-list
-        [forward_headers_list: <list of strings> | default = []]
+# List of headers forwarded by the query Frontend to downstream querier.
+# CLI flag: -frontend.forward-headers-list
+[forward_headers_list: <list of strings> | default = []]
 ```
 
 ### ruler
@@ -748,340 +748,340 @@ The `ruler` block configures the Loki ruler.
 ```yaml
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
-        [external_url: <url>]
+[external_url: <url>]
 
-        # Labels to add to all alerts.
-        [external_labels: <list of Labels>]
+# Labels to add to all alerts.
+[external_labels: <list of Labels>]
 
-        # The grpc_client block configures the gRPC client used to communicate between
-        # two Loki components.
-        # The CLI flags prefix for this block configuration is: ruler.client
-        [ruler_client: <grpc_client>]
+# The grpc_client block configures the gRPC client used to communicate between
+# two Loki components.
+# The CLI flags prefix for this block configuration is: ruler.client
+[ruler_client: <grpc_client>]
 
-        # How frequently to evaluate rules.
-        # CLI flag: -ruler.evaluation-interval
-        [evaluation_interval: <duration> | default = 1m]
+# How frequently to evaluate rules.
+# CLI flag: -ruler.evaluation-interval
+[evaluation_interval: <duration> | default = 1m]
 
-        # How frequently to poll for rule changes.
-        # CLI flag: -ruler.poll-interval
-        [poll_interval: <duration> | default = 1m]
+# How frequently to poll for rule changes.
+# CLI flag: -ruler.poll-interval
+[poll_interval: <duration> | default = 1m]
 
-        # Deprecated: Use -ruler-storage. CLI flags and their respective YAML config
-        # options instead.
+# Deprecated: Use -ruler-storage. CLI flags and their respective YAML config
+# options instead.
 storage:
-        # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
-                # local, bos)
-                # CLI flag: -ruler.storage.type
-                [type: <string> | default = ""]
+  # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
+  # local, bos)
+  # CLI flag: -ruler.storage.type
+  [type: <string> | default = ""]
 
-                # Configures backend rule storage for Azure.
-                # The CLI flags prefix for this block configuration is: ruler.storage
-                [azure: <azure_storage_config>]
+  # Configures backend rule storage for Azure.
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [azure: <azure_storage_config>]
 
-                # Configures backend rule storage for GCS.
-                # The CLI flags prefix for this block configuration is: ruler.storage
-                [gcs: <gcs_storage_config>]
+  # Configures backend rule storage for GCS.
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [gcs: <gcs_storage_config>]
 
-                # Configures backend rule storage for S3.
-                # The CLI flags prefix for this block configuration is: ruler
-                [s3: <s3_storage_config>]
+  # Configures backend rule storage for S3.
+  # The CLI flags prefix for this block configuration is: ruler
+  [s3: <s3_storage_config>]
 
-                # Configures backend rule storage for Baidu Object Storage (BOS).
-                # The CLI flags prefix for this block configuration is: ruler.storage
-                [bos: <bos_storage_config>]
+  # Configures backend rule storage for Baidu Object Storage (BOS).
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [bos: <bos_storage_config>]
 
-                # Configures backend rule storage for Swift.
-                # The CLI flags prefix for this block configuration is: ruler.storage
-                [swift: <swift_storage_config>]
+  # Configures backend rule storage for Swift.
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [swift: <swift_storage_config>]
 
-                # Configures backend rule storage for a local file system directory.
-          local:
-                  # Directory to scan for rules
-                  # CLI flag: -ruler.storage.local.directory
-                  [directory: <string> | default = ""]
+  # Configures backend rule storage for a local file system directory.
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler.storage.local.directory
+    [directory: <string> | default = ""]
 
-        # File path to store temporary rule files.
-        # CLI flag: -ruler.rule-path
-        [rule_path: <string> | default = "/rules"]
+# File path to store temporary rule files.
+# CLI flag: -ruler.rule-path
+[rule_path: <string> | default = "/rules"]
 
-        # Comma-separated list of Alertmanager URLs to send notifications to. Each
-        # Alertmanager URL is treated as a separate group in the configuration. Multiple
-        # Alertmanagers in HA per group can be supported by using DNS resolution via
-        # '-ruler.alertmanager-discovery'.
-        # CLI flag: -ruler.alertmanager-url
-        [alertmanager_url: <string> | default = ""]
+# Comma-separated list of Alertmanager URLs to send notifications to. Each
+# Alertmanager URL is treated as a separate group in the configuration. Multiple
+# Alertmanagers in HA per group can be supported by using DNS resolution via
+# '-ruler.alertmanager-discovery'.
+# CLI flag: -ruler.alertmanager-url
+[alertmanager_url: <string> | default = ""]
 
-        # Use DNS SRV records to discover Alertmanager hosts.
-        # CLI flag: -ruler.alertmanager-discovery
-        [enable_alertmanager_discovery: <boolean> | default = false]
+# Use DNS SRV records to discover Alertmanager hosts.
+# CLI flag: -ruler.alertmanager-discovery
+[enable_alertmanager_discovery: <boolean> | default = false]
 
-        # How long to wait between refreshing DNS resolutions of Alertmanager hosts.
-        # CLI flag: -ruler.alertmanager-refresh-interval
-        [alertmanager_refresh_interval: <duration> | default = 1m]
+# How long to wait between refreshing DNS resolutions of Alertmanager hosts.
+# CLI flag: -ruler.alertmanager-refresh-interval
+[alertmanager_refresh_interval: <duration> | default = 1m]
 
-        # If enabled requests to Alertmanager will utilize the V2 API.
-        # CLI flag: -ruler.alertmanager-use-v2
-        [enable_alertmanager_v2: <boolean> | default = false]
+# If enabled requests to Alertmanager will utilize the V2 API.
+# CLI flag: -ruler.alertmanager-use-v2
+[enable_alertmanager_v2: <boolean> | default = false]
 
-        # List of alert relabel configs.
-        [alert_relabel_configs: <relabel_config...>]
+# List of alert relabel configs.
+[alert_relabel_configs: <relabel_config...>]
 
-        # Capacity of the queue for notifications to be sent to the Alertmanager.
-        # CLI flag: -ruler.notification-queue-capacity
-        [notification_queue_capacity: <int> | default = 10000]
+# Capacity of the queue for notifications to be sent to the Alertmanager.
+# CLI flag: -ruler.notification-queue-capacity
+[notification_queue_capacity: <int> | default = 10000]
 
-        # HTTP timeout duration when sending notifications to the Alertmanager.
-        # CLI flag: -ruler.notification-timeout
-        [notification_timeout: <duration> | default = 10s]
+# HTTP timeout duration when sending notifications to the Alertmanager.
+# CLI flag: -ruler.notification-timeout
+[notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-        # Path to the client certificate file, which will be used for authenticating
-                # with the server. Also requires the key path to be configured.
-                # CLI flag: -ruler.alertmanager-client.tls-cert-path
-                [tls_cert_path: <string> | default = ""]
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -ruler.alertmanager-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
 
-                # Path to the key file for the client certificate. Also requires the client
-                # certificate to be configured.
-                # CLI flag: -ruler.alertmanager-client.tls-key-path
-                [tls_key_path: <string> | default = ""]
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -ruler.alertmanager-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
 
-                # Path to the CA certificates file to validate server certificate against. If
-                # not set, the host's root CA certificates are used.
-                # CLI flag: -ruler.alertmanager-client.tls-ca-path
-                [tls_ca_path: <string> | default = ""]
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -ruler.alertmanager-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 
-                # Override the expected name on the server certificate.
-                # CLI flag: -ruler.alertmanager-client.tls-server-name
-                [tls_server_name: <string> | default = ""]
+  # Override the expected name on the server certificate.
+  # CLI flag: -ruler.alertmanager-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
-                # Skip validating server certificate.
-                # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
-                [tls_insecure_skip_verify: <boolean> | default = false]
+  # Skip validating server certificate.
+  # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
-                # Override the default cipher suite list (separated by commas). Allowed
-                # values:
-                # 
-                # Secure Ciphers:
-                # - TLS_RSA_WITH_AES_128_CBC_SHA
-                # - TLS_RSA_WITH_AES_256_CBC_SHA
-                # - TLS_RSA_WITH_AES_128_GCM_SHA256
-                # - TLS_RSA_WITH_AES_256_GCM_SHA384
-                # - TLS_AES_128_GCM_SHA256
-                # - TLS_AES_256_GCM_SHA384
-                # - TLS_CHACHA20_POLY1305_SHA256
-                # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-                # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-                # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-                # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-                # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-                # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-                # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-                # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-                # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-                # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-                # 
-                # Insecure Ciphers:
-                # - TLS_RSA_WITH_RC4_128_SHA
-                # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-                # - TLS_RSA_WITH_AES_128_CBC_SHA256
-                # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-                # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-                # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-                # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-                # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-                # CLI flag: -ruler.alertmanager-client.tls-cipher-suites
-                [tls_cipher_suites: <string> | default = ""]
+  # Override the default cipher suite list (separated by commas). Allowed
+  # values:
+  # 
+  # Secure Ciphers:
+  # - TLS_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_AES_128_GCM_SHA256
+  # - TLS_AES_256_GCM_SHA384
+  # - TLS_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+  # 
+  # Insecure Ciphers:
+  # - TLS_RSA_WITH_RC4_128_SHA
+  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_RSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+  # CLI flag: -ruler.alertmanager-client.tls-cipher-suites
+  [tls_cipher_suites: <string> | default = ""]
 
-                # Override the default minimum TLS version. Allowed values: VersionTLS10,
-                # VersionTLS11, VersionTLS12, VersionTLS13
-                # CLI flag: -ruler.alertmanager-client.tls-min-version
-                [tls_min_version: <string> | default = ""]
+  # Override the default minimum TLS version. Allowed values: VersionTLS10,
+  # VersionTLS11, VersionTLS12, VersionTLS13
+  # CLI flag: -ruler.alertmanager-client.tls-min-version
+  [tls_min_version: <string> | default = ""]
 
-                # HTTP Basic authentication username. It overrides the username set in the URL
-                # (if any).
-                # CLI flag: -ruler.alertmanager-client.basic-auth-username
-                [basic_auth_username: <string> | default = ""]
+  # HTTP Basic authentication username. It overrides the username set in the URL
+  # (if any).
+  # CLI flag: -ruler.alertmanager-client.basic-auth-username
+  [basic_auth_username: <string> | default = ""]
 
-                # HTTP Basic authentication password. It overrides the password set in the URL
-                # (if any).
-                # CLI flag: -ruler.alertmanager-client.basic-auth-password
-                [basic_auth_password: <string> | default = ""]
+  # HTTP Basic authentication password. It overrides the password set in the URL
+  # (if any).
+  # CLI flag: -ruler.alertmanager-client.basic-auth-password
+  [basic_auth_password: <string> | default = ""]
 
-                # HTTP Header authorization type (default: Bearer).
-                # CLI flag: -ruler.alertmanager-client.type
-                [type: <string> | default = "Bearer"]
+  # HTTP Header authorization type (default: Bearer).
+  # CLI flag: -ruler.alertmanager-client.type
+  [type: <string> | default = "Bearer"]
 
-                # HTTP Header authorization credentials.
-                # CLI flag: -ruler.alertmanager-client.credentials
-                [credentials: <string> | default = ""]
+  # HTTP Header authorization credentials.
+  # CLI flag: -ruler.alertmanager-client.credentials
+  [credentials: <string> | default = ""]
 
-                # HTTP Header authorization credentials file.
-                # CLI flag: -ruler.alertmanager-client.credentials-file
-                [credentials_file: <string> | default = ""]
+  # HTTP Header authorization credentials file.
+  # CLI flag: -ruler.alertmanager-client.credentials-file
+  [credentials_file: <string> | default = ""]
 
-        # Max time to tolerate outage for restoring "for" state of alert.
-        # CLI flag: -ruler.for-outage-tolerance
-        [for_outage_tolerance: <duration> | default = 1h]
+# Max time to tolerate outage for restoring "for" state of alert.
+# CLI flag: -ruler.for-outage-tolerance
+[for_outage_tolerance: <duration> | default = 1h]
 
-        # Minimum duration between alert and restored "for" state. This is maintained
-        # only for alerts with configured "for" time greater than the grace period.
-        # CLI flag: -ruler.for-grace-period
-        [for_grace_period: <duration> | default = 10m]
+# Minimum duration between alert and restored "for" state. This is maintained
+# only for alerts with configured "for" time greater than the grace period.
+# CLI flag: -ruler.for-grace-period
+[for_grace_period: <duration> | default = 10m]
 
-        # Minimum amount of time to wait before resending an alert to Alertmanager.
-        # CLI flag: -ruler.resend-delay
-        [resend_delay: <duration> | default = 1m]
+# Minimum amount of time to wait before resending an alert to Alertmanager.
+# CLI flag: -ruler.resend-delay
+[resend_delay: <duration> | default = 1m]
 
-        # Distribute rule evaluation using ring backend.
-        # CLI flag: -ruler.enable-sharding
-        [enable_sharding: <boolean> | default = false]
+# Distribute rule evaluation using ring backend.
+# CLI flag: -ruler.enable-sharding
+[enable_sharding: <boolean> | default = false]
 
-        # The sharding strategy to use. Supported values are: default, shuffle-sharding.
-        # CLI flag: -ruler.sharding-strategy
-        [sharding_strategy: <string> | default = "default"]
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -ruler.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
 
-        # The sharding algorithm to use for deciding how rules & groups are sharded.
-        # Supported values are: by-group, by-rule.
-        # CLI flag: -ruler.sharding-algo
-        [sharding_algo: <string> | default = "by-group"]
+# The sharding algorithm to use for deciding how rules & groups are sharded.
+# Supported values are: by-group, by-rule.
+# CLI flag: -ruler.sharding-algo
+[sharding_algo: <string> | default = "by-group"]
 
-        # Time to spend searching for a pending ruler when shutting down.
-        # CLI flag: -ruler.search-pending-for
-        [search_pending_for: <duration> | default = 5m]
+# Time to spend searching for a pending ruler when shutting down.
+# CLI flag: -ruler.search-pending-for
+[search_pending_for: <duration> | default = 5m]
 
-        # Ring used by Loki ruler. The CLI flags prefix for this block configuration is
-        # 'ruler.ring'.
+# Ring used by Loki ruler. The CLI flags prefix for this block configuration is
+# 'ruler.ring'.
 ring:
   kvstore:
-          # Backend storage to use for the ring. Supported values are: consul, etcd,
-                  # inmemory, memberlist, multi.
-                  # CLI flag: -ruler.ring.store
-                  [store: <string> | default = "consul"]
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -ruler.ring.store
+    [store: <string> | default = "consul"]
 
-                  # The prefix for the keys in the store. Should end with a /.
-                  # CLI flag: -ruler.ring.prefix
-                  [prefix: <string> | default = "rulers/"]
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -ruler.ring.prefix
+    [prefix: <string> | default = "rulers/"]
 
-                  # Configuration for a Consul client. Only applies if store is consul.
-                  # The CLI flags prefix for this block configuration is: ruler.ring
-                  [consul: <consul>]
+    # Configuration for a Consul client. Only applies if store is consul.
+    # The CLI flags prefix for this block configuration is: ruler.ring
+    [consul: <consul>]
 
-                  # Configuration for an ETCD v3 client. Only applies if store is etcd.
-                  # The CLI flags prefix for this block configuration is: ruler.ring
-                  [etcd: <etcd>]
+    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # The CLI flags prefix for this block configuration is: ruler.ring
+    [etcd: <etcd>]
 
-            multi:
-                    # Primary backend storage used by multi-client.
-                            # CLI flag: -ruler.ring.multi.primary
-                            [primary: <string> | default = ""]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -ruler.ring.multi.primary
+      [primary: <string> | default = ""]
 
-                            # Secondary backend storage used by multi-client.
-                            # CLI flag: -ruler.ring.multi.secondary
-                            [secondary: <string> | default = ""]
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -ruler.ring.multi.secondary
+      [secondary: <string> | default = ""]
 
-                            # Mirror writes to secondary store.
-                            # CLI flag: -ruler.ring.multi.mirror-enabled
-                            [mirror_enabled: <boolean> | default = false]
+      # Mirror writes to secondary store.
+      # CLI flag: -ruler.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
 
-                            # Timeout for storing value to secondary store.
-                            # CLI flag: -ruler.ring.multi.mirror-timeout
-                            [mirror_timeout: <duration> | default = 2s]
+      # Timeout for storing value to secondary store.
+      # CLI flag: -ruler.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
   # Interval between heartbeats sent to the ring. 0 = disabled.
   # CLI flag: -ruler.ring.heartbeat-period
-        [heartbeat_period: <duration> | default = 5s]
+  [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which ruler ring members are considered
   # unhealthy within the ring. 0 = never (timeout disabled).
   # CLI flag: -ruler.ring.heartbeat-timeout
-        [heartbeat_timeout: <duration> | default = 1m]
+  [heartbeat_timeout: <duration> | default = 1m]
 
   # Name of network interface to read addresses from.
   # CLI flag: -ruler.ring.instance-interface-names
-        [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
   # The number of tokens the lifecycler will generate and put into the ring if
   # it joined without transferring tokens from another lifecycler.
   # CLI flag: -ruler.ring.num-tokens
-        [num_tokens: <int> | default = 128]
+  [num_tokens: <int> | default = 128]
 
-        # Period with which to attempt to flush rule groups.
-        # CLI flag: -ruler.flush-period
-        [flush_period: <duration> | default = 1m]
+# Period with which to attempt to flush rule groups.
+# CLI flag: -ruler.flush-period
+[flush_period: <duration> | default = 1m]
 
-        # Enable the ruler API.
-        # CLI flag: -ruler.enable-api
-        [enable_api: <boolean> | default = true]
+# Enable the ruler API.
+# CLI flag: -ruler.enable-api
+[enable_api: <boolean> | default = true]
 
-        # Comma separated list of tenants whose rules this ruler can evaluate. If
-        # specified, only these tenants will be handled by ruler, otherwise this ruler
-        # can process rules from all tenants. Subject to sharding.
-        # CLI flag: -ruler.enabled-tenants
-        [enabled_tenants: <string> | default = ""]
+# Comma separated list of tenants whose rules this ruler can evaluate. If
+# specified, only these tenants will be handled by ruler, otherwise this ruler
+# can process rules from all tenants. Subject to sharding.
+# CLI flag: -ruler.enabled-tenants
+[enabled_tenants: <string> | default = ""]
 
-        # Comma separated list of tenants whose rules this ruler cannot evaluate. If
-        # specified, a ruler that would normally pick the specified tenant(s) for
-        # processing will ignore them instead. Subject to sharding.
-        # CLI flag: -ruler.disabled-tenants
-        [disabled_tenants: <string> | default = ""]
+# Comma separated list of tenants whose rules this ruler cannot evaluate. If
+# specified, a ruler that would normally pick the specified tenant(s) for
+# processing will ignore them instead. Subject to sharding.
+# CLI flag: -ruler.disabled-tenants
+[disabled_tenants: <string> | default = ""]
 
-        # Report the wall time for ruler queries to complete as a per user metric and as
-        # an info level log message.
-        # CLI flag: -ruler.query-stats-enabled
-        [query_stats_enabled: <boolean> | default = false]
+# Report the wall time for ruler queries to complete as a per user metric and as
+# an info level log message.
+# CLI flag: -ruler.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
 
-        # Disable the rule_group label on exported metrics.
-        # CLI flag: -ruler.disable-rule-group-label
-        [disable_rule_group_label: <boolean> | default = false]
+# Disable the rule_group label on exported metrics.
+# CLI flag: -ruler.disable-rule-group-label
+[disable_rule_group_label: <boolean> | default = false]
 
 wal:
-        # The directory in which to write tenant WAL files. Each tenant will have its
-                # own directory one level below this directory.
-                # CLI flag: -ruler.wal.dir
-                [dir: <string> | default = "ruler-wal"]
+  # The directory in which to write tenant WAL files. Each tenant will have its
+  # own directory one level below this directory.
+  # CLI flag: -ruler.wal.dir
+  [dir: <string> | default = "ruler-wal"]
 
-                # Frequency with which to run the WAL truncation process.
-                # CLI flag: -ruler.wal.truncate-frequency
-                [truncate_frequency: <duration> | default = 1h]
+  # Frequency with which to run the WAL truncation process.
+  # CLI flag: -ruler.wal.truncate-frequency
+  [truncate_frequency: <duration> | default = 1h]
 
-                # Minimum age that samples must exist in the WAL before being truncated.
-                # CLI flag: -ruler.wal.min-age
-                [min_age: <duration> | default = 5m]
+  # Minimum age that samples must exist in the WAL before being truncated.
+  # CLI flag: -ruler.wal.min-age
+  [min_age: <duration> | default = 5m]
 
-                # Maximum age that samples must exist in the WAL before being truncated.
-                # CLI flag: -ruler.wal.max-age
-                [max_age: <duration> | default = 4h]
+  # Maximum age that samples must exist in the WAL before being truncated.
+  # CLI flag: -ruler.wal.max-age
+  [max_age: <duration> | default = 4h]
 
 wal_cleaner:
-        # The minimum age of a WAL to consider for cleaning.
-                # CLI flag: -ruler.wal-cleaner.min-age
-                [min_age: <duration> | default = 12h]
+  # The minimum age of a WAL to consider for cleaning.
+  # CLI flag: -ruler.wal-cleaner.min-age
+  [min_age: <duration> | default = 12h]
 
-                # Deprecated: CLI flag -ruler.wal-cleaer.period.
-                # Use -ruler.wal-cleaner.period instead.
-                # 
-                # How often to run the WAL cleaner. 0 = disabled.
-                # CLI flag: -ruler.wal-cleaner.period
-                [period: <duration> | default = 0s]
+  # Deprecated: CLI flag -ruler.wal-cleaer.period.
+  # Use -ruler.wal-cleaner.period instead.
+  # 
+  # How often to run the WAL cleaner. 0 = disabled.
+  # CLI flag: -ruler.wal-cleaner.period
+  [period: <duration> | default = 0s]
 
-        # Remote-write configuration to send rule samples to a Prometheus remote-write
-        # endpoint.
+# Remote-write configuration to send rule samples to a Prometheus remote-write
+# endpoint.
 remote_write:
-        # Deprecated: Use 'clients' instead. Configure remote write client.
-                [client: <RemoteWriteConfig>]
+  # Deprecated: Use 'clients' instead. Configure remote write client.
+  [client: <RemoteWriteConfig>]
 
-                # Configure remote write clients. A map with remote client id as key.
-                [clients: <map of string to RemoteWriteConfig>]
+  # Configure remote write clients. A map with remote client id as key.
+  [clients: <map of string to RemoteWriteConfig>]
 
-                # Enable remote-write functionality.
-                # CLI flag: -ruler.remote-write.enabled
-                [enabled: <boolean> | default = false]
+  # Enable remote-write functionality.
+  # CLI flag: -ruler.remote-write.enabled
+  [enabled: <boolean> | default = false]
 
-                # Minimum period to wait between refreshing remote-write reconfigurations.
-                # This should be greater than or equivalent to
-                # -limits.per-user-override-period.
-                # CLI flag: -ruler.remote-write.config-refresh-period
-                [config_refresh_period: <duration> | default = 10s]
+  # Minimum period to wait between refreshing remote-write reconfigurations.
+  # This should be greater than or equivalent to
+  # -limits.per-user-override-period.
+  # CLI flag: -ruler.remote-write.config-refresh-period
+  [config_refresh_period: <duration> | default = 10s]
 ```
 
 ### ingester_client
