@@ -7,7 +7,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
@@ -370,7 +369,7 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 		return false
 	})
 
-	fmt.Printf("totalSeries=%d totalChunks=%d totalBytes=%s maxChunksPerSeries=%d avgChunksPerSeries=%f medianChunksPerSeries=%d p50numChunks=%f count1=%d\n", series, totalChunks, humanize.Bytes(totalBytes), maxChunks, float64(totalChunks)/float64(series), medianStats(stats), quantileStats(0.50, stats), count1Chunk)
+	//fmt.Printf("totalSeries=%d totalChunks=%d totalBytes=%s maxChunksPerSeries=%d avgChunksPerSeries=%f medianChunksPerSeries=%d p50numChunks=%f count1=%d\n", series, totalChunks, humanize.Bytes(totalBytes), maxChunks, float64(totalChunks)/float64(series), medianStats(stats), quantileStats(0.50, stats), count1Chunk)
 
 	//labelSizes := make([]labelSize, 0, len(dataByLabel))
 	//for l, s := range dataByLabel {
@@ -404,7 +403,7 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 	})
 
 	// add average and median bytes want an even distribution
-
+	fmt.Println("label name,total bytes,total chunks,max chunk size,min chunk size,avg chunk size,median chunk size,number values,max bytes per value,min bytes per value,avg bytes per value,median bytes per value")
 	for _, s := range labelStats {
 
 		// get all the stats for each value
@@ -415,18 +414,20 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 		slices.SortFunc[uint64](chunksForVal, func(a uint64, b uint64) bool {
 			return a < b
 		})
-		max := uint64(0)
-		min := uint64(math.MaxUint64)
+		maxByValue := uint64(0)
+		minByValue := uint64(math.MaxUint64)
 		sumBytesForAllVal := uint64(0)
 		for _, b := range chunksForVal {
-			if b > max {
-				max = b
+			if b > maxByValue {
+				maxByValue = b
 			}
-			if b < min {
-				min = b
+			if b < minByValue {
+				minByValue = b
 			}
 			sumBytesForAllVal += b
 		}
+		avgByVal := sumBytesForAllVal / uint64(len(chunksForVal))
+		medByVal := medianBytes(chunksForVal)
 
 		// get stats for all chunks
 		avgAllChunks := s.bytesPerLabel / uint64(len(s.chunksPerLabelBytes))
@@ -445,13 +446,12 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 		})
 		medAllChunks := medianBytes(s.chunksPerLabelBytes)
 
-		avg := sumBytesForAllVal / uint64(len(chunksForVal))
-		//avgPerChunk := avg / uint64(s.chunks)
-		med := medianBytes(chunksForVal)
-		//medianPerChunk := med / uint64(s.chunks)
 		//fmt.Printf("label=%s bytes=%s chunks=%d numLabelVals=%d max=%s min=%s avg=%s avg/chunk=%s median=%s median/chunk=%s\n", s.label, humanize.Bytes(s.bytes), s.chunks, len(s.bytesPerValue), humanize.Bytes(max), humanize.Bytes(min), humanize.Bytes(avg), humanize.Bytes(avgPerChunk), humanize.Bytes(med), humanize.Bytes(medianPerChunk))
-		fmt.Println("label name", "total bytes", "total chunks", "number values", "max bytes per value", "min bytes per value", "avg bytes per value", "median bytes per value", "max chunks size", "min chunk size", "avg chunks size", "median chunks size")
-		fmt.Printf("label=%s bytes=%s chunks=%d numLabelVals=%d max/val=%s min/val=%s avg/val=%s median/val=%s max/label=%s min/label=%s avg/label=%s med/label=%s\n", s.label, humanize.Bytes(s.bytesPerLabel), s.chunksPerLabel, len(s.bytesPerValue), humanize.Bytes(max), humanize.Bytes(min), humanize.Bytes(avg), humanize.Bytes(med), humanize.Bytes(maxAllChunks), humanize.Bytes(minAllChunks), humanize.Bytes(avgAllChunks), humanize.Bytes(medAllChunks))
+
+		fmt.Printf("%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+			s.label, s.bytesPerLabel, s.chunksPerLabel, maxAllChunks, minAllChunks, avgAllChunks, medAllChunks, len(s.bytesPerValue), maxByValue, minByValue, avgByVal, medByVal)
+		//fmt.Printf("label=%s bytes=%s chunks=%d max/label=%s min/label=%s avg/label=%s med/label=%s numLabelVals=%d max/val=%s min/val=%s avg/val=%s median/val=%s\n",
+		//	s.label, humanize.Bytes(s.bytesPerLabel), s.chunksPerLabel, humanize.Bytes(maxAllChunks), humanize.Bytes(minAllChunks), humanize.Bytes(avgAllChunks), humanize.Bytes(medAllChunks), len(s.bytesPerValue), humanize.Bytes(maxByValue), humanize.Bytes(minByValue), humanize.Bytes(avgByVal), humanize.Bytes(medByVal))
 	}
 
 	return err

@@ -10,7 +10,7 @@ import (
 
 func main() {
 
-	t, _, err := tsdb.NewTSDBIndexFromFile("tools/tsdb/chunk-stats/29.tsdb")
+	t, _, err := tsdb.NewTSDBIndexFromFile("./29.tsdb")
 	if err != nil {
 		panic(err)
 	}
