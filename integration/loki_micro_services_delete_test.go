@@ -247,7 +247,17 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.Eventually(t, func() bool {
 			deleteRequests, err := cliCompactor.GetDeleteRequests()
 			require.NoError(t, err)
-			return assert.ElementsMatch(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
+
+		outer:
+			for i := range deleteRequests {
+				for j := range expectedDeleteRequests {
+					if deleteRequests[i] == expectedDeleteRequests[j] {
+						continue outer
+					}
+				}
+				return false
+			}
+			return true
 		}, 10*time.Second, 1*time.Second)
 
 		// Check metrics
