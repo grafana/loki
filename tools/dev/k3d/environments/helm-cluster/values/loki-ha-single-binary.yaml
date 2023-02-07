@@ -1,4 +1,6 @@
 ---
+singleBinary:
+  replicas: 3
 monitoring:
   dashboards:
     namespace: k3d-helm-cluster
