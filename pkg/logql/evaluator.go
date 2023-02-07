@@ -232,7 +232,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixNano()/int64(time.Millisecond), q.End().UnixNano()/int64(time.Millisecond)), nil
+		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
