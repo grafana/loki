@@ -1,5 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable .Values.gateway.enabled }}
+{{- if and .Values.gateway.enabled }}
 {{- if gt (int .Values.gateway.replicas) 1 }}
 apiVersion: {{ include "loki.podDisruptionBudget.apiVersion" . }}
 kind: PodDisruptionBudget
