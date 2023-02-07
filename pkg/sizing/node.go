@@ -79,4 +79,27 @@ var NodeTypesByProvider = map[string]map[string]NodeType{
 			writePod: StandardWrite,
 		},
 	},
+	"OVHcloud": {
+		"b2-30": {
+			name:     "b2-30",
+			cores:    8,
+			memoryGB: 30,
+			readPod:  StandardRead,
+			writePod: StandardWrite,
+		},
+		"b2-60": {
+			name:     "b2-60",
+			cores:    16,
+			memoryGB: 60,
+			readPod:  StandardRead,
+			writePod: StandardWrite,
+		},
+		"b2-120": {
+			name:     "b2-120",
+			cores:    32,
+			memoryGB: 120,
+			readPod:  StandardRead,
+			writePod: StandardWrite,
+		},
+	},
 }
