@@ -63,7 +63,7 @@ func init() {
 
 // S3Config specifies config for storing chunks on AWS S3.
 type S3Config struct {
-	S3               flagext.URLValue
+	S3               flagext.URLEscaped
 	S3ForcePathStyle bool
 
 	BucketNames      string
