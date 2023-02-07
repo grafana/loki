@@ -12,6 +12,10 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 )
 
+type Stoppable interface {
+	Stop()
+}
+
 // Manager manages remote write client instantiation, and connects the related components to orchestrate the flow of api.Entry
 // from the scrape targets, to the remote write clients themselves.
 //
@@ -19,7 +23,8 @@ import (
 // work, tracked in https://github.com/grafana/loki/issues/8197, this Manager will be responsible for instantiating all client
 // types: Logger, Multi and WAL.
 type Manager struct {
-	clients []Client
+	clients     []Client
+	walWatchers []Stoppable
 
 	entries chan api.Entry
 	once    sync.Once
@@ -32,11 +37,14 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 	// TODO: refactor this to instantiate all clients types
 	var fake struct{}
 
+	watcherMetrics := wal.NewWatcherMetrics(reg)
+
 	if len(clientCfgs) == 0 {
 		return nil, fmt.Errorf("at least one client config should be provided")
 	}
 	clientsCheck := make(map[string]struct{})
 	clients := make([]Client, 0, len(clientCfgs))
+	watchers := make([]Stoppable, 0, len(clientCfgs))
 	for _, cfg := range clientCfgs {
 		client, err := New(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
 		if err != nil {
@@ -50,6 +58,11 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 
 		clientsCheck[client.Name()] = fake
 		clients = append(clients, client)
+
+		// Create and launch wal watcher for this client
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger)
+		watcher.Start()
+		watchers = append(watchers, watcher)
 	}
 
 	manager := &Manager{
@@ -65,11 +78,11 @@ func (m *Manager) start() {
 	go func() {
 		defer m.wg.Done()
 		// keep reading received entries
-		for e := range m.entries {
+		for range m.entries {
 			// then fanout to every remote write client
-			for _, c := range m.clients {
-				c.Chan() <- e
-			}
+			//for _, c := range m.clients {
+			//	c.Chan() <- e
+			//}
 		}
 	}()
 }
@@ -101,6 +114,10 @@ func (m *Manager) Stop() {
 	// first stop the receiving channel
 	m.once.Do(func() { close(m.entries) })
 	m.wg.Wait()
+	// close wal watchers
+	for _, walWatcher := range m.walWatchers {
+		walWatcher.Stop()
+	}
 	// close clients
 	for _, c := range m.clients {
 		c.Stop()
