@@ -16,11 +16,6 @@ import (
 	"time"
 )
 
-//to test
-//- TestWatcher_ReadEntries
-//- TestWatcher_ContinueReadingEntriesInNextSegmentAfterPreviousSegmentClose
-//- TestWatcher_ReadFromLastSegmentOnStart
-
 type testWriteTo struct {
 	ReadEntries []api.Entry
 	series      map[uint64]model.LabelSet
@@ -47,191 +42,197 @@ func (t *testWriteTo) AppendEntries(entries wal.RefEntries) error {
 	return nil
 }
 
-func Test_ReadEntries(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
-	dir := t.TempDir()
-	metrics := NewWatcherMetrics(reg)
-	writeTo := &testWriteTo{
-		series: map[uint64]model.LabelSet{},
-		logger: logger,
-	}
-
-	watcher := NewWatcher(dir, "test", metrics, writeTo, logger)
-	watcher.Start()
-	defer watcher.Stop()
-
-	wl, err := New(Config{
-		Enabled: true,
-		Dir:     dir,
-	}, logger, reg)
-	require.NoError(t, err)
-	ew := newEntryWriter()
-
-	lines := []string{
-		"holis",
-		"holus",
-		"chau",
-	}
-	testLabels := model.LabelSet{
-		"test": "watcher_read",
-	}
-
-	for _, line := range lines {
-		ew.WriteEntry(api.Entry{
-			Labels: testLabels,
-			Entry: logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      line,
-			},
-		}, wl, logger)
-	}
-	require.NoError(t, wl.Sync())
-
-	require.Eventually(t, func() bool {
-		return len(writeTo.ReadEntries) == 3
-	}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
-	for _, readEntry := range writeTo.ReadEntries {
-		require.Contains(t, lines, readEntry.Line, "not expected log line")
-	}
+// watcherTestResources contains all resources necessary to test an individual Watcher functionality
+type watcherTestResources struct {
+	writeEntry     func(entry api.Entry)
+	startWatcher   func()
+	syncWAL        func() error
+	nextWALSegment func() error
+	writeTo        *testWriteTo
 }
 
-func TestWatcher_ContinueReadingEntriesInNextSegmentAfterPreviousSegmentClose(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
-	dir := t.TempDir()
-	metrics := NewWatcherMetrics(reg)
-	writeTo := &testWriteTo{
-		series: map[uint64]model.LabelSet{},
-		logger: logger,
-	}
+type watcherTest func(t *testing.T, res *watcherTestResources)
 
-	watcher := NewWatcher(dir, "test", metrics, writeTo, logger)
-	watcher.Start()
-	defer watcher.Stop()
+// cases defines the watcher test cases
+var cases = map[string]watcherTest{
+	"read entries from WAL": func(t *testing.T, res *watcherTestResources) {
+		res.startWatcher()
 
-	wl, err := New(Config{
-		Enabled: true,
-		Dir:     dir,
-	}, logger, reg)
-	require.NoError(t, err)
-	ew := newEntryWriter()
+		lines := []string{
+			"holis",
+			"holus",
+			"chau",
+		}
+		testLabels := model.LabelSet{
+			"test": "watcher_read",
+		}
 
-	lines := []string{
-		"holis",
-		"holus",
-		"chau",
-	}
-	linesAfter := []string{
-		"holis2",
-		"holus2",
-		"chau2",
-	}
-	testLabels := model.LabelSet{
-		"test": "watcher_read",
-	}
+		for _, line := range lines {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
 
-	for _, line := range lines {
-		ew.WriteEntry(api.Entry{
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 3
+		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		for _, readEntry := range res.writeTo.ReadEntries {
+			require.Contains(t, lines, readEntry.Line, "not expected log line")
+		}
+	},
+
+	"continue reading entries in next segment after initial segment is closed": func(t *testing.T, res *watcherTestResources) {
+		res.startWatcher()
+		lines := []string{
+			"holis",
+			"holus",
+			"chau",
+		}
+		linesAfter := []string{
+			"holis2",
+			"holus2",
+			"chau2",
+		}
+		testLabels := model.LabelSet{
+			"test": "watcher_read",
+		}
+
+		for _, line := range lines {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
+
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 3
+		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		for _, readEntry := range res.writeTo.ReadEntries {
+			require.Contains(t, lines, readEntry.Line, "not expected log line")
+		}
+
+		err := res.nextWALSegment()
+		require.NoError(t, err, "expected no error when moving to next wal segment")
+
+		for _, line := range linesAfter {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
+
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 6
+		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
+		// assert over second half of entries
+		for _, readEntry := range res.writeTo.ReadEntries[3:] {
+			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
+		}
+	},
+
+	"start reading from last segment": func(t *testing.T, res *watcherTestResources) {
+		linesAfter := []string{
+			"holis2",
+			"holus2",
+			"chau2",
+		}
+		testLabels := model.LabelSet{
+			"test": "watcher_read",
+		}
+
+		// write something to first segment
+		res.writeEntry(api.Entry{
 			Labels: testLabels,
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),
-				Line:      line,
+				Line:      "this shouldn't be read",
 			},
-		}, wl, logger)
-	}
-	require.NoError(t, wl.Sync())
+		})
 
-	require.Eventually(t, func() bool {
-		return len(writeTo.ReadEntries) == 3
-	}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
-	for _, readEntry := range writeTo.ReadEntries {
-		require.Contains(t, lines, readEntry.Line, "not expected log line")
-	}
+		require.NoError(t, res.syncWAL())
 
-	_, err = wl.NextSegment()
-	require.NoError(t, err, "expected no error when moving to next wal segment")
+		err := res.nextWALSegment()
+		require.NoError(t, err, "expected no error when moving to next wal segment")
 
-	for _, line := range linesAfter {
-		ew.WriteEntry(api.Entry{
-			Labels: testLabels,
-			Entry: logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      line,
-			},
-		}, wl, logger)
-	}
-	require.NoError(t, wl.Sync())
+		res.startWatcher()
 
-	require.Eventually(t, func() bool {
-		return len(writeTo.ReadEntries) == 6
-	}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
-	// assert over second half of entries
-	for _, readEntry := range writeTo.ReadEntries[3:] {
-		require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
-	}
+		for _, line := range linesAfter {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
+
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 3
+		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
+		// assert over second half of entries
+		for _, readEntry := range res.writeTo.ReadEntries[3:] {
+			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
+		}
+	},
 }
-func TestWatcher_ReadFromLastSegmentOnStart(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
-	dir := t.TempDir()
-	metrics := NewWatcherMetrics(reg)
-	writeTo := &testWriteTo{
-		series: map[uint64]model.LabelSet{},
-		logger: logger,
-	}
 
-	watcher := NewWatcher(dir, "test", metrics, writeTo, logger)
-
-	wl, err := New(Config{
-		Enabled: true,
-		Dir:     dir,
-	}, logger, reg)
-	require.NoError(t, err)
-	ew := newEntryWriter()
-
-	linesAfter := []string{
-		"holis2",
-		"holus2",
-		"chau2",
-	}
-	testLabels := model.LabelSet{
-		"test": "watcher_read",
-	}
-
-	// write something to first segment
-	ew.WriteEntry(api.Entry{
-		Labels: testLabels,
-		Entry: logproto.Entry{
-			Timestamp: time.Now(),
-			Line:      "this shouldn't be read",
-		},
-	}, wl, logger)
-
-	require.NoError(t, wl.Sync())
-
-	_, err = wl.NextSegment()
-	require.NoError(t, err, "expected no error when moving to next wal segment")
-
-	watcher.Start()
-	defer watcher.Stop()
-
-	for _, line := range linesAfter {
-		ew.WriteEntry(api.Entry{
-			Labels: testLabels,
-			Entry: logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      line,
-			},
-		}, wl, logger)
-	}
-	require.NoError(t, wl.Sync())
-
-	require.Eventually(t, func() bool {
-		return len(writeTo.ReadEntries) == 3
-	}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
-	// assert over second half of entries
-	for _, readEntry := range writeTo.ReadEntries[3:] {
-		require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
+// TestWatcher is the main test function, that works as framework to test different scenarios of the Watcher. It bootstraps
+// necessary test components.
+func TestWatcher(t *testing.T) {
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			// start test global resources
+			reg := prometheus.NewRegistry()
+			logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
+			dir := t.TempDir()
+			metrics := NewWatcherMetrics(reg)
+			writeTo := &testWriteTo{
+				series: map[uint64]model.LabelSet{},
+				logger: logger,
+			}
+			// create new watcher, and defer stop
+			watcher := NewWatcher(dir, "test", metrics, writeTo, logger)
+			defer watcher.Stop()
+			wl, err := New(Config{
+				Enabled: true,
+				Dir:     dir,
+			}, logger, reg)
+			require.NoError(t, err)
+			ew := newEntryWriter()
+			// run test case injecting resources
+			testCase(
+				t,
+				&watcherTestResources{
+					writeEntry: func(entry api.Entry) {
+						ew.WriteEntry(entry, wl, logger)
+					},
+					startWatcher: func() {
+						watcher.Start()
+					},
+					syncWAL: func() error {
+						return wl.Sync()
+					},
+					nextWALSegment: func() error {
+						_, err := wl.NextSegment()
+						return err
+					},
+					writeTo: writeTo,
+				},
+			)
+		})
 	}
 }
