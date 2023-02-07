@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 4.5.1
 
 - [BUGFIX] Fix rendering of namespace in provisioner job.
+- [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
 
 ## 4.5
 

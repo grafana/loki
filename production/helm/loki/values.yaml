@@ -1042,6 +1042,11 @@ ingress:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
 
+# Configuration for the memberlist service
+memberlist:
+  service:
+    publishNotReadyAddresses: false
+
 # Configuration for the gateway
 gateway:
   # -- Specifies whether the gateway should be enabled
