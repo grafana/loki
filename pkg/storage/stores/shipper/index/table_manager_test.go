@@ -222,7 +222,7 @@ func TestMigrateTables(t *testing.T) {
 		assert.NoError(t, os.MkdirAll(path.Join(parentDir, name), 0755))
 	}
 
-	// files should be ignored during migration
+	// migrate legacy index files
 	_, err := os.Create(path.Join(parentDir, "index_13"))
 	assert.NoError(t, err)
 
@@ -242,12 +242,8 @@ func TestMigrateTables(t *testing.T) {
 
 	var got []string
 	for _, f := range files {
-		if !f.IsDir() {
-			t.Error("migrateDir should not migrate files")
-		}
-
 		got = append(got, f.Name())
 	}
 
-	assert.ElementsMatch(t, got, []string{"index_12", "index_16"})
+	assert.ElementsMatch(t, got, []string{"index_12", "index_13", "index_16"})
 }

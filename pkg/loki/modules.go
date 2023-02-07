@@ -1039,11 +1039,7 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	var (
-		found        bool
-		indexClients []indexgateway.IndexClientWithRange
-	)
-
+	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
 		if period.IndexType != config.BoltDBShipperType {
 			continue
@@ -1064,11 +1060,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 			IndexClient: indexClient,
 			TableRange:  tableRange,
 		})
-		found = true
-	}
-
-	if !found {
-		return nil, errors.New("boltdb-shipper index is not in use")
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClients)

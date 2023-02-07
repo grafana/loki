@@ -134,6 +134,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 	for name, template := range map[string]*template.Template{
 		"boltdb-index": cluster.ConfigWithBoltDB(true),
 		"tsdb-index":   cluster.ConfigWithTSDB(true),
+		"both-indexes": cluster.ConfigWithBothIndexes(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			storage.ResetBoltDBIndexClientsWithShipper()

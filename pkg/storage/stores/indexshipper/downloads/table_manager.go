@@ -297,7 +297,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			continue
 		}
 
-		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, tableName) {
+		if !tm.tableRangeToHandle.TableInRange(tableNumber, tableName) {
 			continue
 		}
 
@@ -398,7 +398,7 @@ func (tm *tableManager) loadLocalTables() error {
 		if err != nil {
 			return err
 		}
-		if tableNumber == -1 || !tm.tableRangeToHandle.TableInRange(tableNumber, entry.Name()) {
+		if !tm.tableRangeToHandle.TableInRange(tableNumber, entry.Name()) {
 			continue
 		}
 

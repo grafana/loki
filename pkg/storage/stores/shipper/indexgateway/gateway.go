@@ -91,13 +91,8 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 
 	queries := make([]index.Query, 0, len(request.Queries))
 	for _, query := range request.Queries {
-		tableNumber, err := config.ExtractTableNumberFromName(query.TableName)
-		if err != nil {
+		if _, err := config.ExtractTableNumberFromName(query.TableName); err != nil {
 			level.Info(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
-			continue
-		}
-		if tableNumber == -1 {
-			level.Info(log).Log("msg", "skip querying table", "table", query.TableName, "err", "invalid table number")
 			continue
 		}
 
@@ -122,6 +117,7 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 
 	sendBatchMtx := sync.Mutex{}
 	for _, indexClient := range g.indexClients {
+		// find queries that can be handled by this index client.
 		start := sort.Search(len(queries), func(i int) bool {
 			tableNumber, _ := config.ExtractTableNumberFromName(queries[i].TableName)
 			return tableNumber >= indexClient.TableRange.Start

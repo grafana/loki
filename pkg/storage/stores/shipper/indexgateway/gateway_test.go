@@ -159,7 +159,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 func TestGateway_QueryIndex_multistore(t *testing.T) {
 	var (
 		responseSize    = 99
-		expectedQueries = []int{3, 4, 0, 1}
+		expectedQueries []*logproto.IndexQuery
 		queries         []*logproto.IndexQuery
 	)
 
@@ -167,11 +167,11 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 		callback: func(resp *logproto.QueryIndexResponse) {
 			require.True(t, len(expectedQueries) > 0)
 			require.Equal(t, util.QueryKey(index.Query{
-				TableName:        queries[expectedQueries[0]].TableName,
-				HashValue:        queries[expectedQueries[0]].HashValue,
-				RangeValuePrefix: queries[expectedQueries[0]].RangeValuePrefix,
-				RangeValueStart:  queries[expectedQueries[0]].RangeValueStart,
-				ValueEqual:       queries[expectedQueries[0]].ValueEqual,
+				TableName:        expectedQueries[0].TableName,
+				HashValue:        expectedQueries[0].HashValue,
+				RangeValuePrefix: expectedQueries[0].RangeValuePrefix,
+				RangeValueStart:  expectedQueries[0].RangeValueStart,
+				ValueEqual:       expectedQueries[0].ValueEqual,
 			}), resp.QueryKey)
 			require.Len(t, resp.Rows, responseSize)
 
@@ -221,6 +221,11 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			},
 		},
 	}}
+
+	expectedQueries = append(expectedQueries,
+		queries[3], queries[4], // queries matching table range 15->MaxInt64
+		queries[0], queries[1], // queries matching table range 5->10
+	)
 
 	err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: queries}, server)
 	require.NoError(t, err)

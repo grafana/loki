@@ -179,10 +179,6 @@ func (s *store) init() error {
 		s.composite.AddStore(p.From.Time, f, idx, w, stop)
 	}
 
-	if len(s.composite.Stores()) == 0 {
-		return errors.New("found no stores to initialise")
-	}
-
 	if s.cfg.EnableAsyncStore {
 		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
 	}

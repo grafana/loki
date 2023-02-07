@@ -29,7 +29,7 @@ import (
 var (
 	wrapRegistryOnce sync.Once
 
-	defaultConfigTemplate = `
+	baseConfigTemplate = `
 auth_enabled: true
 
 server:
@@ -177,7 +177,7 @@ func ConfigWithBoltDB(additionalPeriod bool) *template.Template {
 	}
 	schemaConfig += boltDBShipperSchemaConfigTemplate
 
-	return template.Must(template.New("").Parse(defaultConfigTemplate + schemaConfig))
+	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfig))
 }
 
 func ConfigWithTSDB(additionalPeriod bool) *template.Template {
@@ -186,7 +186,11 @@ func ConfigWithTSDB(additionalPeriod bool) *template.Template {
 		schemaConfig += additionalTSDBShipperSchemaConfigTemplate
 	}
 	schemaConfig += tsdbShipperSchemaConfigTemplate
-	return template.Must(template.New("").Parse(defaultConfigTemplate + schemaConfig))
+	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfig))
+}
+
+func ConfigWithBothIndexes() *template.Template {
+	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfigHeader + additionalBoltDBShipperSchemaConfigTemplate + tsdbShipperSchemaConfigTemplate))
 }
 
 func wrapRegistry() {
