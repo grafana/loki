@@ -3,8 +3,8 @@ package wal
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
-	"sort"
 	"strconv"
 	"time"
 
@@ -183,14 +183,6 @@ func (w *Watcher) watch(segmentNum int) error {
 	}
 }
 
-func (w *Watcher) logIgnoredErrorWhileReplaying(err error, readerOffset, size int64, segmentNum int) {
-	if err != nil && errors.Cause(err) != io.EOF {
-		level.Warn(w.logger).Log("msg", "Ignoring error reading to end of segment, may have dropped data", "segment", segmentNum, "err", err)
-	} else if readerOffset != size {
-		level.Warn(w.logger).Log("msg", "Expected to have read whole segment, may have dropped data", "segment", segmentNum, "read", readerOffset, "size", size)
-	}
-}
-
 // Read entries from a segment, decode them and dispatch them.
 func (w *Watcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
 	for r.Next() && !isClosed(w.quit) {
@@ -240,23 +232,9 @@ func (w *Watcher) Stop() {
 
 // firstAndList finds the first and last segment number for a WAL directory.
 func (w *Watcher) firstAndLast() (int, int, error) {
-	refs, err := w.segments(w.walDir)
+	files, err := os.ReadDir(w.walDir)
 	if err != nil {
 		return -1, -1, err
-	}
-
-	if len(refs) == 0 {
-		return -1, -1, nil
-	}
-	return refs[0], refs[len(refs)-1], nil
-}
-
-// Copied from tsdb/wlog/wlog.go so we do not have to open a WAL.
-// Plan is to move WAL watcher to TSDB and dedupe these implementations.
-func (w *Watcher) segments(dir string) ([]int, error) {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
 	}
 
 	var refs []int
@@ -267,13 +245,23 @@ func (w *Watcher) segments(dir string) ([]int, error) {
 		}
 		refs = append(refs, k)
 	}
-	sort.Ints(refs)
-	for i := 0; i < len(refs)-1; i++ {
-		if refs[i]+1 != refs[i+1] {
-			return nil, fmt.Errorf("segments are not sequential")
+
+	if len(refs) == 0 {
+		return -1, -1, nil
+	}
+
+	// Start with sentinel values and walk back to the first and last (min and max)
+	var first = math.MaxInt32
+	var last = -1
+	for _, segmentReg := range refs {
+		if segmentReg < first {
+			first = segmentReg
+		}
+		if segmentReg > last {
+			last = segmentReg
 		}
 	}
-	return refs, nil
+	return first, last, nil
 }
 
 // isClosed checks in a non-blocking manner if a channel is closed or not.
