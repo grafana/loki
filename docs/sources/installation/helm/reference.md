@@ -1902,6 +1902,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memberlist.service.publishNotReadyAddresses</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>migrate</td>
 			<td>object</td>
 			<td>Options that may be necessary when performing a migration from another helm chart</td>
