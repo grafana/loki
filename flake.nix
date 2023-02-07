@@ -14,8 +14,6 @@
     in
     {
       overlays = {
-        golangci-lint = import ./nix/overlays/golangci-lint.nix;
-        helm-docs = import ./nix/overlays/helm-docs.nix;
         default = nix.overlay;
       };
     } //
@@ -25,8 +23,6 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            (import ./nix/overlays/golangci-lint.nix)
-            (import ./nix/overlays/helm-docs.nix)
             nix.overlay
           ];
           config = { allowUnfree = true; };
@@ -80,20 +76,19 @@
 
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            chart-releaser
+            chart-testing
+            faillint
             gcc
             go
-            systemd
-            yamllint
-            nixpkgs-fmt
-            statix
-            nettools
-
             golangci-lint
             gotools
             helm-docs
-            faillint
-            chart-testing
-            chart-releaser
+            nettools
+            nixpkgs-fmt
+            statix
+            systemd
+            yamllint
           ];
         };
       });
