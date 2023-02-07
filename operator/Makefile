@@ -26,11 +26,11 @@ CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
 
-# REGISTRY_ORG
-# defines the container registry organization for the bundle and operator container images.
-REGISTRY_ORG_COMMUNITY = grafana
-REGISTRY_ORG_OPENSHIFT = openshift-logging
-REGISTRY_ORG ?= $(REGISTRY_ORG_COMMUNITY)
+# REGISTRY_BASE
+# defines the container registry and organization for the bundle and operator container images.
+REGISTRY_BASE_COMMUNITY = docker.io/grafana
+REGISTRY_BASE_OPENSHIFT = quay.io/openshift-logging
+REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 
 # TODO(@periklis): Replace this image tag with VERSION once we have GH tags
 MAIN_IMAGE_TAG = main-39f2856
@@ -38,16 +38,14 @@ MAIN_IMAGE_TAG = main-39f2856
 # Customize for variants: community or openshift
 USE_OPENSHIFT_BUILD ?= false
 VARIANT = community
-REGISTRY_BASE = docker.io/$(REGISTRY_ORG)
 ifeq ($(USE_OPENSHIFT_BUILD), true)
-ifeq ($(REGISTRY_ORG), $(REGISTRY_ORG_COMMUNITY))
-    REGISTRY_ORG = $(REGISTRY_ORG_OPENSHIFT)
+ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
+    REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
 endif
     VARIANT = openshift
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
-    REGISTRY_BASE = quay.io/$(REGISTRY_ORG)
     MAIN_IMAGE_TAG = $(VERSION)
 endif
 
@@ -261,7 +259,7 @@ olm-deploy-operator: oci-build oci-push
 .PHONY: olm-deploy
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
-	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_BASE to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
@@ -270,7 +268,7 @@ endif
 .PHONY: olm-upgrade
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 olm-upgrade:  ## Upgrade the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
-	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_BASE to use a custom container registry org account for local development)
 else
 olm-upgrade: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
 	$(OPERATOR_SDK) run bundle-upgrade -n $(LOKI_OPERATOR_NS) $(BUNDLE_IMG)
@@ -283,7 +281,7 @@ olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and 
 .PHONY: deploy-size-calculator
 ifeq ($(findstring openshift-logging,$(CALCULATOR_IMG)),openshift-logging)
 deploy-size-calculator: ## Deploy storage size calculator (OpenShift only!)
-	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+	$(error Set variable REGISTRY_BASE to use a custom container registry org account for local development)
 else
 deploy-size-calculator:  $(KUSTOMIZE) ## Deploy storage size calculator (OpenShift only!)
 	kubectl apply -f config/overlays/openshift/size-calculator/cluster_monitoring_config.yaml
