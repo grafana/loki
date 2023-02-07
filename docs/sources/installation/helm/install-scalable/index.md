@@ -60,7 +60,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 
       Consult the [Reference]({{<relref "../reference">}}) for configuring other storage providers.
 
-    - In case you're just trying things, you can use the following configuration instead, that sets MinIO as storage:
+    - If you're just trying things, you can use the following configuration instead, that sets MinIO as storage:
       ```yaml
       minio:
         enabled: true
