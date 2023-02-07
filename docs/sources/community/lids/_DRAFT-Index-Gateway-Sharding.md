@@ -90,8 +90,6 @@ The client can execute a request on any index gateway. This handler instance the
 
 Due to it's architectural advantages, option B is proposed.
 
-While this proposal suggests the biggest change to the index gateway's sharding mechanism in terms of effort and complexity, it also offers the biggest win in terms of scalability.
-
 ## Other Notes
 
 ### Architectural diagram of proposal 3
