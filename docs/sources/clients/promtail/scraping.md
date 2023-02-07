@@ -194,6 +194,9 @@ resuming the target without skipping logs.
 
 Read the [configuration]({{< relref "configuration#windows_events" >}}) section for more information.
 
+See the [eventlogmessage]({{<relref "stages/eventlogmessage/">}}) stage for extracting
+data from the `message`.
+
 ## GCP Log scraping
 
 Promtail supports scraping cloud resource logs such as GCS bucket logs, load balancer logs, and Kubernetes cluster logs from GCP.
