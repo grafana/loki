@@ -45,7 +45,7 @@ func (c *clientWriteTo) AppendEntries(entries wal.RefEntries) error {
 			c.toClient <- entry
 		}
 	} else {
-		level.Debug(c.logger).Log("series for entry not found")
+		level.Debug(c.logger).Log("msg", "series for entry not found")
 	}
 	return nil
 }
