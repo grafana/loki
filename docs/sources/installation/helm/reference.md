@@ -1658,7 +1658,7 @@ true
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
-"2.7.3"
+null
 </pre>
 </td>
 		</tr>
