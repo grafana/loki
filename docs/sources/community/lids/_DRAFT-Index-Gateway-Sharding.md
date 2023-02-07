@@ -58,7 +58,7 @@ This approach would solve the problem of horizontal scaling. However, it does no
 
 ### Proposal 2: Fixed per-tenant replication factor
 
-Adding a random shard ID (e.g. `shard-0`, `shard-1`, ... `shard-n`) to the tenant ID allows to utilize a certain amount of `n` instances. The amount of shards can be implemented as a per-tenant override. However, this approach results in non-deterministic hash keys.
+Adding a random shard ID (e.g. `shard-0`, `shard-1`, ... `shard-n`) to the tenant ID allows to utilize a certain amount of `n` instances. The amount of shards can be implemented as a per-tenant override setting. This would allow to use different amount of instances for each tenant. However, this approach results in non-deterministic hash keys.
 
 ### Proposal 3: Shard by index files
 
