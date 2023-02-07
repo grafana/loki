@@ -26,6 +26,34 @@ CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
 
+# REGISTRY_ORG
+# defines the container registry organization for the bundle and operator container images.
+REGISTRY_ORG_COMMUNITY = grafana
+REGISTRY_ORG_OPENSHIFT = openshift-logging
+REGISTRY_ORG ?= $(REGISTRY_ORG_COMMUNITY)
+
+# TODO(@periklis): Replace this image tag with VERSION once we have GH tags
+MAIN_IMAGE_TAG = main-39f2856
+
+# Customize for variants: community or openshift
+USE_OPENSHIFT_BUILD ?= false
+VARIANT = community
+REGISTRY_BASE = docker.io/$(REGISTRY_ORG)
+ifeq ($(USE_OPENSHIFT_BUILD), true)
+ifeq ($(REGISTRY_ORG), $(REGISTRY_ORG_COMMUNITY))
+    REGISTRY_ORG = $(REGISTRY_ORG_OPENSHIFT)
+endif
+    VARIANT = openshift
+    CHANNELS = stable
+    DEFAULT_CHANNEL = stable
+    LOKI_OPERATOR_NS = openshift-operators-redhat
+    REGISTRY_BASE = quay.io/$(REGISTRY_ORG)
+    MAIN_IMAGE_TAG = $(VERSION)
+endif
+
+# Image URL to use all building/pushing image targets
+IMG ?= $(REGISTRY_BASE)/loki-operator:$(MAIN_IMAGE_TAG)
+
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
@@ -45,21 +73,15 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
-# REGISTRY_ORG
-# defines the container registry organization for the bundle and operator container images.
-REGISTRY_ORG_COMMUNITY = grafana
-REGISTRY_ORG_OPENSHIFT = openshift-logging
-REGISTRY_ORG ?= $(REGISTRY_ORG_COMMUNITY)
-
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= docker.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
+BUNDLE_IMG ?= $(REGISTRY_BASE)/loki-operator-bundle:$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
 
-MANIFESTS_DIR = config/manifests/community
-BUNDLE_DIR = ./bundle/community
+MANIFESTS_DIR = config/manifests/$(VARIANT)
+BUNDLE_DIR = ./bundle/$(VARIANT)
 BUNDLE_BUILD_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_DIR)
 
 # USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
@@ -70,36 +92,15 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
     BUNDLE_GEN_FLAGS += --use-image-digests
 endif
 
-CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG)/storage-size-calculator:latest
+CALCULATOR_IMG ?= $(REGISTRY_BASE)/storage-size-calculator:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
-
-# TODO(@periklis): Replace this image tag with VERSION once we have GH tags
-COMMUNITY_IMAGE_TAG = main-39f2856
-# Image URL to use all building/pushing image targets
-IMG ?= docker.io/$(REGISTRY_ORG)/loki-operator:$(COMMUNITY_IMAGE_TAG)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
-endif
-
-USE_OPENSHIFT_BUILD ?= false
-ifeq ($(USE_OPENSHIFT_BUILD), true)
-ifeq ($(REGISTRY_ORG), $(REGISTRY_ORG_COMMUNITY))
-	REGISTRY_ORG = $(REGISTRY_ORG_OPENSHIFT)
-endif
-	BUNDLE_CHANNELS = --channels=stable
-	BUNDLE_DEFAULT_CHANNEL = --default-channel=stable
-    BUNDLE_METADATA_OPTS = $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
-    LOKI_OPERATOR_NS = openshift-operators-redhat
-	IMG = quay.io/$(REGISTRY_ORG)/loki-operator:$(VERSION)
-    BUNDLE_IMG = quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
-    MANIFESTS_DIR = config/manifests/openshift
-    BUNDLE_DIR = ./bundle/openshift
-    BUNDLE_BUILD_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_DIR)
 endif
 
 .PHONY: all
