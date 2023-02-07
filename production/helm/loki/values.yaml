@@ -870,6 +870,8 @@ backend:
   priorityClassName: null
   # -- Annotations for backend pods
   podAnnotations: {}
+  # -- Additional labels for each `backend` pod
+  podLabels: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
   # -- Labels for ingester service
