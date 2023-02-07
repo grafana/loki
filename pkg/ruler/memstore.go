@@ -56,6 +56,11 @@ func newMemstoreMetrics(r prometheus.Registerer) *memstoreMetrics {
 	}
 }
 
+// Do not call AlertingRules within memstoreQuerier.Select, it can result in a
+// deadlocked manager.
+// This is because the Memstore is contained in the same rules.Manager that is
+// passed as the RuleIter. The manager is used for rules storage so the dependency
+// is not trival to break.
 type RuleIter interface {
 	AlertingRules() []*rules.AlertingRule
 }
@@ -67,7 +72,8 @@ type MemStore struct {
 	metrics   *memstoreMetrics
 	mgr       RuleIter
 	logger    log.Logger
-	rules     map[string]*RuleCache
+	ruleCache map[string]*RuleCache
+	rules     map[string]*rules.AlertingRule
 
 	initiated       chan struct{}
 	done            chan struct{}
@@ -81,7 +87,8 @@ func NewMemStore(userID string, queryFunc rules.QueryFunc, metrics *memstoreMetr
 		queryFunc:       queryFunc,
 		logger:          log.With(logger, "subcomponent", "MemStore", "user", userID),
 		cleanupInterval: cleanupInterval,
-		rules:           make(map[string]*RuleCache),
+		ruleCache:       make(map[string]*RuleCache),
+		rules:           make(map[string]*rules.AlertingRule),
 
 		initiated: make(chan struct{}), // blocks execution until Start() is called
 		done:      make(chan struct{}),
@@ -114,16 +121,16 @@ func (m *MemStore) Stop() {
 	case <-m.done:
 		return
 	default:
-		for ruleKey, cache := range m.rules {
+		for ruleKey, cache := range m.ruleCache {
 			// Force cleanup of all samples older than time.Now (all of them).
 			_ = cache.CleanupOldSamples(time.Now())
-			delete(m.rules, ruleKey)
+			delete(m.ruleCache, ruleKey)
 		}
 		close(m.done)
 	}
 }
 
-// run periodically cleans up old series/samples to ensure memory consumption doesn't grow unbounded.
+// run refreshes the rules from the manager and cleans up old series/samples to ensure memory consumption doesn't grow unbounded.
 func (m *MemStore) run() {
 	<-m.initiated
 	t := time.NewTicker(m.cleanupInterval)
@@ -134,29 +141,37 @@ func (m *MemStore) run() {
 			return
 		case <-t.C:
 			m.mtx.Lock()
-			holdDurs := make(map[string]time.Duration)
-			for _, rule := range m.mgr.AlertingRules() {
-				holdDurs[rule.Name()] = rule.HoldDuration()
-			}
-
-			for ruleKey, cache := range m.rules {
-				dur, ok := holdDurs[ruleKey]
-
-				// rule is no longer being tracked, remove it
-				if !ok {
-					_ = cache.CleanupOldSamples(time.Now())
-					delete(m.rules, ruleKey)
-					continue
-				}
-
-				// trim older samples out of tracking bounds, doubled to buffer.
-				if empty := cache.CleanupOldSamples(time.Now().Add(-2 * dur)); empty {
-					delete(m.rules, ruleKey)
-				}
-
-			}
-
+			m.refresh()
+			m.cleanup()
 			m.mtx.Unlock()
+		}
+	}
+}
+
+func (m *MemStore) refresh() {
+	m.rules = make(map[string]*rules.AlertingRule)
+	for _, r := range m.mgr.AlertingRules() {
+		m.rules[r.Name()] = r
+	}
+}
+
+func (m *MemStore) cleanup() {
+	holdDurs := make(map[string]time.Duration)
+	for _, rule := range m.rules {
+		holdDurs[rule.Name()] = rule.HoldDuration()
+	}
+
+	for ruleKey, cache := range m.ruleCache {
+		dur, ok := holdDurs[ruleKey]
+		if !ok { // rule is no longer being tracked, remove it
+			_ = cache.CleanupOldSamples(time.Now())
+			delete(m.ruleCache, ruleKey)
+			continue
+		}
+
+		// trim older samples out of tracking bounds, doubled to buffer.
+		if empty := cache.CleanupOldSamples(time.Now().Add(-2 * dur)); empty {
+			delete(m.ruleCache, ruleKey)
 		}
 	}
 }
@@ -200,32 +215,20 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		return storage.NoopSeriesSet()
 	}
 
-	var rule *rules.AlertingRule
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 
-	// go fetch the rule via the alertname
-	for _, x := range m.mgr.AlertingRules() {
-		if x.Name() == ruleKey {
-			rule = x
-			break
-		}
-	}
-
-	// should not happen
-	if rule == nil {
+	rule, ok := m.rules[ruleKey]
+	if !ok {
 		level.Error(m.logger).Log("msg", "failure trying to restore for state for untracked alerting rule", "name", ruleKey)
 		return storage.NoopSeriesSet()
 	}
-
 	level.Debug(m.logger).Log("msg", "restoring for state via evaluation", "rule", ruleKey)
 
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	cache, ok := m.rules[ruleKey]
-
-	// no timestamp results are cached for this rule at all; Create it.
-	if !ok {
+	cache, ok := m.ruleCache[ruleKey]
+	if !ok { // no timestamp results are cached for this rule at all; Create it.
 		cache = NewRuleCache(m.metrics)
-		m.rules[ruleKey] = cache
+		m.ruleCache[ruleKey] = cache
 	}
 
 	smpl, cached := cache.Get(m.ts, ls)
