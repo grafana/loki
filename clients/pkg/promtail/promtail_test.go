@@ -3,6 +3,7 @@ package promtail
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
 	"io"
 	"math"
 	"net"
@@ -45,13 +46,41 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
+var clientMetrics = newClientMetrics()
+
+func newClientMetrics() *client.Metrics {
+	return client.NewMetrics(prometheus.DefaultRegisterer)
+}
 
 func TestPromtail(t *testing.T) {
+	var testCases = map[string]wal.Config{
+		"wal disabled": {
+			Enabled: false,
+		},
+		"wal enabled": {
+			Enabled:       true,
+			Dir:           t.TempDir(),
+			MaxSegmentAge: time.Minute,
+		},
+	}
+
+	for name, walConfig := range testCases {
+		t.Run(name, func(t *testing.T) {
+			testPromtailForWalConfig(t, walConfig)
+			// Reset prometheus default registry just in case
+			prometheus.DefaultRegisterer = prometheus.NewRegistry()
+			// Re-generate clientMetrics over new default registerer
+			clientMetrics = newClientMetrics()
+		})
+	}
+}
+
+func testPromtailForWalConfig(t *testing.T, walCfg wal.Config) {
 	// Setup.
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	logger = level.NewFilter(logger, level.AllowInfo())
+	// fixme: enabling debug for now
+	logger = level.NewFilter(logger, level.AllowDebug())
 	util_log.Logger = logger
 
 	testutils.InitRandom()
@@ -79,11 +108,10 @@ func TestPromtail(t *testing.T) {
 		recMtx:         sync.Mutex{},
 		t:              t,
 	}
-	http.Handle("/loki/api/v1/push", handler)
 	var (
 		wg        sync.WaitGroup
 		listenErr error
-		server    = &http.Server{Addr: "localhost:3100", Handler: nil}
+		server    = &http.Server{Addr: "localhost:3100", Handler: handler}
 	)
 	defer func() {
 		if t.Failed() {
@@ -107,7 +135,9 @@ func TestPromtail(t *testing.T) {
 		_ = server.Shutdown(context.Background())
 	}()
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir), nil, clientMetrics, false, nil)
+	cfg := buildTestConfig(t, positionsFileName, testDir)
+	cfg.WAL = walCfg
+	p, err := New(cfg, nil, clientMetrics, false, nil)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -559,7 +589,7 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 
 	cfg := config.Config{}
 	// Init everything with default values.
-	flagext.RegisterFlags(&cfg)
+	flagext.DefaultValues(&cfg)
 
 	const hostname = "localhost"
 	cfg.ServerConfig.HTTPListenAddress = hostname

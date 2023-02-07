@@ -182,7 +182,12 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 	}
 
+	// refactor this!
 	entryHandlers = append(entryHandlers, p.client)
+	if cfg.WAL.Enabled {
+		entryHandlers = []api.EntryHandler{p.walWriter}
+	}
+
 	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
 
 	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)

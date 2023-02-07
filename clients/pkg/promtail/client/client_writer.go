@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -32,12 +33,14 @@ func newClientWriteTo(toClient chan<- api.Entry, logger log.Logger) *clientWrite
 
 func (c *clientWriteTo) StoreSeries(series []record.RefSeries, _ int) {
 	for _, seriesRec := range series {
+		level.Debug(c.logger).Log("msg", "storing series", "ref", fmt.Sprint(seriesRec.Ref))
 		c.series[uint64(seriesRec.Ref)] = util.MapToModelLabelSet(seriesRec.Labels.Map())
 	}
 }
 
 func (c *clientWriteTo) AppendEntries(entries wal.RefEntries) error {
 	var entry api.Entry
+	level.Debug(c.logger).Log("msg", "sending entries", "count", len(entries.Entries))
 	if l, ok := c.series[uint64(entries.Ref)]; ok {
 		entry.Labels = l
 		for _, e := range entries.Entries {
