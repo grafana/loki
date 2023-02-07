@@ -1658,7 +1658,7 @@ true
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
-"main-5e53303"
+"2.7.3"
 </pre>
 </td>
 		</tr>
@@ -2763,7 +2763,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 		</tr>
