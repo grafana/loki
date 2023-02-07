@@ -27,13 +27,13 @@ This document tries to come up with a proposal on how to do a better sharding of
 
 The index gateway service can be run in "simple mode", where an index gateway instance is responsible for handling, storing and returning requests for all indices for all tenants, or in "ring mode", where an instance is responsible for a subset of tenants instead of all tenants.
 
-On top of that, in order to achieve redundancy as well as spreading load, the index gateway ring uses a replication factor of 3.
+On top of that, in order to achieve redundancy as well as spreading load, the index gateway ring uses by default a replication factor of 3.
 
 This means, before an index gateway client makes a request to the index gateway server, it first hashes the tenant ID and then requests a replication set for that hash from the index gateway ring. Due to the fixed replication factor (RF), the replication set contains three server addresses. On every request, a random server from that list is picked to then execute the request on.
 
 ## Problem Statement
 
-The current strategy of sharding by tenant ID and having a replication factor of 3 fails in the long run, because even when running lots of index gateways, only a maximum of three could be utilized by a single tenant. 
+The current strategy of sharding by tenant ID and having a replication factor fails in the long run, because even when running lots of index gateways, only a maximum of `n` instances could be utilized by a single tenant, where `n` is the value of the configured RF.
 
 Another problem is that the RF is fixed and the same for all tenants, independent of their actual size in terms of log volume or query rate.
 
