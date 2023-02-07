@@ -176,6 +176,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for backend pods</td>
@@ -1902,6 +1911,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memberlist.service.publishNotReadyAddresses</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>migrate</td>
 			<td>object</td>
 			<td>Options that may be necessary when performing a migration from another helm chart</td>
@@ -3167,7 +3185,7 @@ null
 			<td>int</td>
 			<td>Number of replicas for the single binary</td>
 			<td><pre lang="json">
-1
+0
 </pre>
 </td>
 		</tr>

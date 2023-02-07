@@ -870,6 +870,8 @@ backend:
   priorityClassName: null
   # -- Annotations for backend pods
   podAnnotations: {}
+  # -- Additional labels for each `backend` pod
+  podLabels: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
   # -- Labels for ingester service
@@ -924,7 +926,7 @@ backend:
 # Configuration for the single binary node(s)
 singleBinary:
   # -- Number of replicas for the single binary
-  replicas: 1
+  replicas: 0
   autoscaling:
     # -- Enable autoscaling, this is only used if `queryIndex.enabled: true`
     enabled: false
@@ -1039,6 +1041,11 @@ ingress:
 #    - hosts:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
+
+# Configuration for the memberlist service
+memberlist:
+  service:
+    publishNotReadyAddresses: false
 
 # Configuration for the gateway
 gateway:

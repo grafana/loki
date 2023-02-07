@@ -66,7 +66,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 
   <blockquote v-if="help">
     <span v-if="help === 'ingest'">
-    Defines the log volume in terrabytes expected to be ingested each day.
+    Defines the log volume in gigabytes, ie 1e+9 bytes, expected to be ingested each day.
     </span>
     <span v-else-if="help === 'node'">
     Defines the node type of the Kubernetes cluster.
@@ -75,7 +75,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     Defines how long the ingested logs should be kept.
     </span>
     <span v-else-if="help === 'queryperf'">
-    Defines the expected query performance. Basic enables 3mbps. Super should be chosen if more query throughput is required.
+    Defines the expected query performance. Basic is sized for a max query throughput of around 3GB/s. Super aims for 25% more throughput.
     </span>
   </blockquote>
 </div>

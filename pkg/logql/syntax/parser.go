@@ -162,14 +162,28 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 func validateSampleExpr(expr SampleExpr) error {
 	switch e := expr.(type) {
 	case *BinOpExpr:
+		if e.err != nil {
+			return e.err
+		}
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
-
 		return validateSampleExpr(e.RHS)
-	case *LiteralExpr, *VectorExpr:
+
+	case *LiteralExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return nil
+	case *VectorExpr:
+		if e.err != nil {
+			return e.err
+		}
 		return nil
 	case *VectorAggregationExpr:
+		if e.err != nil {
+			return e.err
+		}
 		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
 			if err := validateSortGrouping(e.Grouping); err != nil {
 				return err
@@ -177,7 +191,11 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 		return validateSampleExpr(e.Left)
 	default:
-		return validateMatchers(expr.Selector().Matchers())
+		selector, err := e.Selector()
+		if err != nil {
+			return err
+		}
+		return validateMatchers(selector.Matchers())
 	}
 }
 
