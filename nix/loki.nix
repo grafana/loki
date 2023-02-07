@@ -9,14 +9,13 @@ pkgs.stdenv.mkDerivation {
   buildInputs = with pkgs; [
     bash
     gcc
-    go
     git
-    bash
+    go
+    golangci-lint
+    nettools
     systemd
     yamllint
-    nettools
 
-    golangci-lint
     (import ./faillint.nix {
       inherit (pkgs) lib buildGoModule fetchFromGitHub;
     })
