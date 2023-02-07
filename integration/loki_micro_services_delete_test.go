@@ -258,7 +258,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 				return false
 			}
 			return true
-		}, 20*time.Second, 1*time.Second)
+		}, 10*time.Second, 1*time.Second)
 
 		// Check metrics
 		metrics, err := cliCompactor.Metrics()
