@@ -204,6 +204,7 @@ Parsing stages:
   - [cri]({{<relref "stages/cri/">}}): Extract data by parsing the log line using the standard CRI format.
   - [regex]({{<relref "stages/regex/">}}): Extract data using a regular expression.
   - [json]({{<relref "stages/json/">}}): Extract data by parsing the log line as JSON.
+  - [eventlogmessage]({{<relref "stages/eventlogmessage/">}}): Extract data by parsing the Message field from the Windows Event Log.
 
 Transform stages:
 
