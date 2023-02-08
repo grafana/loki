@@ -141,10 +141,10 @@ The Loki documentation is written using the CommonMark flavor of markdown, inclu
 
 Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the [Grafana website](https://grafana.com/docs/loki/latest). The CI is triggered on every merge to main in the `docs` subfolder.
 
-You can preview the documentation locally after installing both [Docker](https://www.docker.com/) and Hugo.  
+You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).  
 
 To get a local preview of the documentation:
-1. Run Docker.
+1. Run Docker (or Podman).
 2. Navigate to the directory with the makefile, `/loki/docs`.
 3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
 4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
