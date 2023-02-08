@@ -1,19 +1,21 @@
 package wal
 
 import (
+	"os"
+	"testing"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
-	"time"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/ingester/wal"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type testWriteTo struct {

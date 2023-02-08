@@ -2,10 +2,24 @@ package promtail
 
 import (
 	"fmt"
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
@@ -14,18 +28,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 	"github.com/grafana/loki/pkg/push"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"github.com/stretchr/testify/require"
-	"net/http"
-	"os"
-	"path"
-	"path/filepath"
-	"sync"
-	"testing"
-	"time"
 )
 
 const (

@@ -1,19 +1,21 @@
 package client
 
 import (
+	"os"
+	"testing"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
-	"time"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/ingester/wal"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing.T) {
