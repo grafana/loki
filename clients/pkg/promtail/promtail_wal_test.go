@@ -10,18 +10,16 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/stretchr/testify/require"
-	"math"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,69 +28,52 @@ import (
 	"time"
 )
 
-type receivedReq struct {
-	tenantID string
-	pushReq  logproto.PushRequest
-}
+const (
+	expectedJobName = "testlogs"
+)
 
-// newTestMoreWriteServer creates and starts a new httpserver.Server that can handle remote write request. When a request is handled,
-// the received entries are written to receivedChan, and status is responded.
-func newTestRemoteWriteServer(receivedChan chan receivedReq, status int) *httptest.Server {
-	server := httptest.NewServer(createServerHandler(receivedChan, status))
-	return server
-}
-
-func createServerHandler(receivedReqsChan chan receivedReq, receivedOKStatus int) http.HandlerFunc {
-	return func(rw http.ResponseWriter, req *http.Request) {
-		// Parse the request
-		var pushReq logproto.PushRequest
-		if err := util.ParseProtoReader(req.Context(), req.Body, int(req.ContentLength), math.MaxInt32, &pushReq, util.RawSnappy); err != nil {
-			rw.WriteHeader(500)
-			return
-		}
-
-		receivedReqsChan <- receivedReq{
-			tenantID: req.Header.Get("X-Scope-OrgID"),
-			pushReq:  pushReq,
-		}
-
-		rw.WriteHeader(receivedOKStatus)
-	}
-}
-
+// createTestLogger creates a debug enabled logger to STDERR
 func createTestLogger() log.Logger {
 	return level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), level.AllowDebug())
 }
 
-func TestPromtailWithWAL(t *testing.T) {
+func TestPromtailWithWAL_SingleTenant(t *testing.T) {
+	// recycle default registerer
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
 	var wg sync.WaitGroup
 	dir := t.TempDir()
 	walDir := t.TempDir()
 	const scrapedFileName = "logs.txt"
-	const expectedLabelSet = `{job="testlogs"}`
+	expectedLabelSet := fmt.Sprintf(`{job="%s"}`, expectedJobName)
 
 	// create logger for whole promtail with debug enabled
 	util_log.Logger = createTestLogger()
 
 	// create receive channel and start a collect routine
-	receivedCh := make(chan receivedReq)
+	receivedCh := make(chan utils.RemoteWriteRequest)
 	received := map[string][]push.Entry{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for req := range receivedCh {
-			for _, stream := range req.pushReq.Streams {
+			for _, stream := range req.Request.Streams {
 				received[stream.Labels] = append(received[stream.Labels], stream.Entries...)
 			}
 		}
 	}()
 
-	testServer := newTestRemoteWriteServer(receivedCh, http.StatusOK)
+	testServer := utils.NewRemoteWriteServer(receivedCh, http.StatusOK)
 	t.Logf("started test server at URL %s", testServer.URL)
 	testServerURL := flagext.URLValue{}
 	testServerURL.Set(testServer.URL)
 
-	cfg := createPromtailConfig(dir, testServerURL, scrapedFileName)
+	cfg := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{stages.PipelineStage{
+		stages.StageTypeLabelDrop: []string{
+			"filename",
+			"localhost",
+		},
+	}})
 	cfg.WAL = wal.Config{
 		Enabled:       true,
 		Dir:           walDir,
@@ -115,12 +96,22 @@ func TestPromtailWithWAL(t *testing.T) {
 	const entriesToWrite = 100
 	logsFile, err := os.Create(filepath.Join(dir, scrapedFileName))
 	require.NoError(t, err)
-	for i := 0; i < entriesToWrite; i++ {
-		_, err = logsFile.WriteString(fmt.Sprintf("log line # %d\n", i))
-		require.NoError(t, err, "error writing log line")
-		// not overkill log file
-		time.Sleep(1 * time.Millisecond)
-	}
+
+	// launch routine that will write to the scraped file
+	var writerWG sync.WaitGroup
+	defer writerWG.Wait()
+	writerWG.Add(1)
+	go func() {
+		defer writerWG.Done()
+		for i := 0; i < entriesToWrite; i++ {
+			_, err = logsFile.WriteString(fmt.Sprintf("log line # %d\n", i))
+			if err != nil {
+				t.Logf("error writing to log file. Err: %s", err.Error())
+			}
+			// not overkill log file
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
 
 	require.Eventually(t, func() bool {
 		if seen, ok := received[expectedLabelSet]; ok {
@@ -136,7 +127,133 @@ func TestPromtailWithWAL(t *testing.T) {
 	wg.Wait()
 }
 
-func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFileName string) config.Config {
+func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
+	// recycle default registerer
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
+	var wg sync.WaitGroup
+	dir := t.TempDir()
+	walDir := t.TempDir()
+	const scrapedFileName = "logs.txt"
+	expectedLabelSet := fmt.Sprintf(`{job="%s"}`, expectedJobName)
+
+	// create logger for whole promtail with debug enabled
+	util_log.Logger = createTestLogger()
+
+	// create receive channel and start a collect routine
+	receivedCh := make(chan utils.RemoteWriteRequest)
+	// received is a mapping from tenant, string-formatted label set to received entries
+	received := map[string]map[string][]push.Entry{}
+	var totalReceived = 0
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for req := range receivedCh {
+			// start received label entries map if first time tenant is seen
+			if _, ok := received[req.TenantID]; !ok {
+				received[req.TenantID] = map[string][]push.Entry{}
+			}
+			entriesPerLabel := received[req.TenantID]
+			for _, stream := range req.Request.Streams {
+				entriesPerLabel[stream.Labels] = append(entriesPerLabel[stream.Labels], stream.Entries...)
+				// increment total count
+				totalReceived += len(stream.Entries)
+			}
+		}
+	}()
+
+	testServer := utils.NewRemoteWriteServer(receivedCh, http.StatusOK)
+	t.Logf("started test server at URL %s", testServer.URL)
+	testServerURL := flagext.URLValue{}
+	testServerURL.Set(testServer.URL)
+
+	cfg := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{
+		// extract tenant ID from log line
+		stages.PipelineStage{stages.StageTypeRegex: stages.RegexConfig{
+			Expression: `^msg="(?P<msg>.+)" tenantID="(?P<tenantID>.+)"$`,
+		}},
+		// drop unnecessary labels
+		stages.PipelineStage{stages.StageTypeLabelDrop: []string{
+			"filename",
+			"localhost",
+		}},
+		// set output to the msg extracted field
+		stages.PipelineStage{stages.StageTypeOutput: stages.OutputConfig{
+			Source: "msg",
+		}},
+		// set tenant to the tenantID extracted field
+		stages.PipelineStage{stages.StageTypeTenant: stages.TenantConfig{
+			Source: "tenantID",
+		}},
+	})
+	cfg.WAL = wal.Config{
+		Enabled:       true,
+		Dir:           walDir,
+		MaxSegmentAge: time.Second * 30,
+	}
+
+	clientMetrics := client.NewMetrics(nil)
+	pr, err := New(cfg, nil, clientMetrics, false)
+	require.NoError(t, err)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := pr.Run()
+		require.NoError(t, err, "expected promtail run to succeed")
+	}()
+	defer pr.Shutdown()
+	defer testServer.Close()
+
+	const entriesToWrite = 100
+	const expectedTenantCounts = 4
+	logsFile, err := os.Create(filepath.Join(dir, scrapedFileName))
+	require.NoError(t, err)
+
+	// this creates an inline func to write log entries that will be read by Promtail
+	logFunc := func(msg, tenantID string) {
+		logLine := fmt.Sprintf("msg=\"%s\" tenantID=\"%s\"\n", msg, tenantID)
+		_, err = logsFile.WriteString(logLine)
+		if err != nil {
+			t.Logf("failed to write log line. Err: %s", err.Error())
+		}
+		// not overkill log file
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	// launch routine that will write to the scraped file
+	var writerWG sync.WaitGroup
+	defer writerWG.Wait()
+	writerWG.Add(1)
+	go func() {
+		defer writerWG.Done()
+		for i := 0; i < entriesToWrite; i++ {
+			logFunc(fmt.Sprintf("logging something %d", i), fmt.Sprint(i%expectedTenantCounts))
+		}
+	}()
+
+	// wait for all entries to be remote written
+	require.Eventually(t, func() bool {
+		return totalReceived == entriesToWrite
+	}, time.Second*20, time.Second, "timed out waiting for entries to be remote written")
+
+	// assert over received entries
+	require.Len(t, received, expectedTenantCounts, "not expected tenant count")
+	for tenantID := 0; tenantID < expectedTenantCounts; tenantID++ {
+		// we should've received at least entriesToWrite / expectedTenantCounts
+		require.GreaterOrEqual(t, len(received[fmt.Sprint(tenantID)][expectedLabelSet]), entriesToWrite/expectedTenantCounts)
+	}
+
+	pr.Shutdown()
+	close(receivedCh)
+
+	t.Log("waiting on test waitgroup")
+	wg.Wait()
+}
+
+// createPromtailConfig creates a config.Config targeting the provided remote write server, and processing read log lines
+// with the provided pipeline.
+func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFileName string, pipeline stages.PipelineStages) config.Config {
 	// configure basic server settings
 	cfg := config.Config{}
 	// apply default values
@@ -165,14 +282,7 @@ func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFil
 	fixedFileScrapeConfig := scrapeconfig.Config{
 		JobName:        "test",
 		RelabelConfigs: nil,
-		PipelineStages: stages.PipelineStages{
-			stages.PipelineStage{
-				stages.StageTypeLabelDrop: []string{
-					"filename",
-					"localhost",
-				},
-			},
-		},
+		PipelineStages: pipeline,
 		ServiceDiscoveryConfig: scrapeconfig.ServiceDiscoveryConfig{
 			StaticConfigs: discovery.StaticConfig{
 				&targetgroup.Group{
