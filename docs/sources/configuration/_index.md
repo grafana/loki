@@ -3984,6 +3984,10 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
 
+# Set this to true to use the internal OpenStack Swift endpoint URL
+# CLI flag: -<prefix>.swift.internal
+[internal: <boolean> | default = false]
+
 # OpenStack Swift username.
 # CLI flag: -<prefix>.swift.username
 [username: <string> | default = ""]
