@@ -281,7 +281,7 @@ storage_config:
 schema_config:
   configs:
   - from: 2020-05-15
-    object_store: oss
+    object_store: alibabacloud
     schema: v11
     index:
       prefix: loki_index_
