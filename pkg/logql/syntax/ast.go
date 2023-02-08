@@ -1755,7 +1755,7 @@ func (e *VectorExpr) Value() (float64, error) {
 
 func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Shardable() bool                         { return false }
 func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }

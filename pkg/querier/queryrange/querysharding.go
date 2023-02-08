@@ -129,9 +129,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
-	if err != nil {
-		return nil, err
-	}
 
 	noop, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
