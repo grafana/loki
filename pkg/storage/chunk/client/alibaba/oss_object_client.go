@@ -21,7 +21,7 @@ var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogra
 	Namespace: "loki",
 	Name:      "oss_request_duration_seconds",
 	Help:      "Time spent doing OSS requests.",
-	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
+	Buckets:   prometheus.ExponentialBuckets(0.005, 4, 7),
 }, []string{"operation", "status_code"}))
 
 type OssObjectClient struct {
