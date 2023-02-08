@@ -4,17 +4,18 @@ import (
 	"context"
 	"flag"
 	"io"
+	"net/http"
 	"strconv"
 
-	"cloud.google.com/go/storage"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
-	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
+
+const NoSuchKeyErr = "NoSuchKey"
 
 var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "loki",
@@ -22,8 +23,6 @@ var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogra
 	Help:      "Time spent doing OSS requests.",
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
 }, []string{"operation", "status_code"}))
-
-type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
 
 type OssObjectClient struct {
 	defaultBucket *oss.Bucket
@@ -154,5 +153,13 @@ func (s *OssObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (s *OssObjectClient) IsObjectNotFoundErr(err error) bool {
-	return errors.Is(err, storage.ErrObjectNotExist)
+	switch caseErr := err.(type) {
+	case oss.ServiceError:
+		if caseErr.Code == NoSuchKeyErr && caseErr.StatusCode == http.StatusNotFound {
+			return true
+		}
+		return false
+	default:
+		return false
+	}
 }
