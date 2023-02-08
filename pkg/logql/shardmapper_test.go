@@ -268,6 +268,10 @@ func TestMappingStrings(t *testing.T) {
 			in:  `vector(0)`,
 			out: `vector(0.000000)`,
 		},
+		{
+			in:  `sum(count_over_time({a=~".+"}[1s]) or vector(1))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>orvector(1.000000)))`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
