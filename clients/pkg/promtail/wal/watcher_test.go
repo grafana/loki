@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"os"
 	"testing"
 	"time"
@@ -19,15 +20,20 @@ import (
 )
 
 type testWriteTo struct {
-	ReadEntries []api.Entry
-	series      map[uint64]model.LabelSet
-	logger      log.Logger
+	ReadEntries         []api.Entry
+	series              map[uint64]model.LabelSet
+	logger              log.Logger
+	ReceivedSeriesReset []int
 }
 
 func (t *testWriteTo) StoreSeries(series []record.RefSeries, i int) {
 	for _, seriesRec := range series {
 		t.series[uint64(seriesRec.Ref)] = util.MapToModelLabelSet(seriesRec.Labels.Map())
 	}
+}
+
+func (t *testWriteTo) SeriesReset(segmentNum int) {
+	t.ReceivedSeriesReset = append(t.ReceivedSeriesReset, segmentNum)
 }
 
 func (t *testWriteTo) AppendEntries(entries wal.RefEntries) error {
@@ -51,6 +57,7 @@ type watcherTestResources struct {
 	syncWAL        func() error
 	nextWALSegment func() error
 	writeTo        *testWriteTo
+	deleteSegment  func(segmentNum int) error
 }
 
 type watcherTest func(t *testing.T, res *watcherTestResources)
@@ -190,6 +197,71 @@ var cases = map[string]watcherTest{
 			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
 		}
 	},
+
+	"series are reclaimed after new segment is started and old one reclaimed": func(t *testing.T, res *watcherTestResources) {
+		res.startWatcher()
+		lines := []string{
+			"holis",
+			"holus",
+			"chau",
+		}
+		linesAfter := []string{
+			"holis2",
+			"holus2",
+			"chau2",
+		}
+		testLabels := model.LabelSet{
+			"test": "watcher_read",
+		}
+
+		// writing segment 0
+		for _, line := range lines {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
+
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 3
+		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		for _, readEntry := range res.writeTo.ReadEntries {
+			require.Contains(t, lines, readEntry.Line, "not expected log line")
+		}
+
+		// moving on to segment 1
+		err := res.nextWALSegment()
+		require.NoError(t, err, "expected no error when moving to next wal segment")
+
+		for _, line := range linesAfter {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
+
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 6
+		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
+		// assert over second half of entries
+		for _, readEntry := range res.writeTo.ReadEntries[3:] {
+			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
+		}
+
+		// collecting segment 0
+		require.NoError(t, res.deleteSegment(0), "error deleting old segment")
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReceivedSeriesReset) == 1 && res.writeTo.ReceivedSeriesReset[0] == 0
+		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
+	},
 }
 
 // TestWatcher is the main test function, that works as framework to test different scenarios of the Watcher. It bootstraps
@@ -233,6 +305,10 @@ func TestWatcher(t *testing.T) {
 						return err
 					},
 					writeTo: writeTo,
+					deleteSegment: func(segmentNum int) error {
+						segmentName := wlog.SegmentName(wl.Dir(), segmentNum)
+						return os.Remove(segmentName)
+					},
 				},
 			)
 		})

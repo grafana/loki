@@ -35,13 +35,13 @@ type Reader interface {
 }
 
 // WriteTo is responsible for doing the necessary work to process both series and entries while the Watcher
-// is reading / tailing segments. The implementor of this interface is not expected to implement thread safety if used
-// on a single watcher, since each callback is called synchronously.
+// is reading / tailing segments. Note that StoreSeries and SeriesReset might be called concurrently.
 //
 // Based on https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go#L46
 type WriteTo interface {
 	StoreSeries([]record.RefSeries, int)
 	AppendEntries(entries wal.RefEntries) error
+	SeriesReset(int)
 }
 
 type Watcher struct {
@@ -49,12 +49,13 @@ type Watcher struct {
 	// the metric/log line corresponds.
 	id string
 
-	writeTo    WriteTo
-	done       chan struct{}
-	quit       chan struct{}
-	walDir     string
-	logger     log.Logger
-	MaxSegment int
+	writeTo      WriteTo
+	done         chan struct{}
+	quit         chan struct{}
+	walDir       string
+	logger       log.Logger
+	MaxSegment   int
+	seenSegments diffset
 
 	metrics *WatcherMetrics
 }
@@ -62,14 +63,15 @@ type Watcher struct {
 // NewWatcher creates a new Watcher.
 func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger) *Watcher {
 	return &Watcher{
-		walDir:     walDir,
-		id:         id,
-		writeTo:    writeTo,
-		quit:       make(chan struct{}),
-		done:       make(chan struct{}),
-		MaxSegment: -1,
-		logger:     logger,
-		metrics:    metrics,
+		walDir:       walDir,
+		id:           id,
+		writeTo:      writeTo,
+		quit:         make(chan struct{}),
+		done:         make(chan struct{}),
+		MaxSegment:   -1,
+		seenSegments: diffset{},
+		logger:       logger,
+		metrics:      metrics,
 	}
 }
 
@@ -77,6 +79,7 @@ func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, log
 func (w *Watcher) Start() {
 	w.metrics.watchersRunning.WithLabelValues().Inc()
 	go w.mainLoop()
+	go w.runSeriesResetWatcher()
 }
 
 // mainLoop retries when there's an error reading a specific segment or advancing one, but leaving a bigger time in-between
@@ -94,6 +97,42 @@ func (w *Watcher) mainLoop() {
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+func (w *Watcher) runSeriesResetWatcher() {
+	// todo: extract as parameter
+	ticker := time.NewTicker(time.Second * 2)
+	for {
+		select {
+		case <-ticker.C:
+			// run series reset
+			if err := w.readSegmentsAndEmitSeriesResets(); err != nil {
+				level.Error(w.logger).Log("msg", "error emitting series resets", "err", err)
+			}
+		case <-w.quit:
+			// closing
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+func (w *Watcher) readSegmentsAndEmitSeriesResets() error {
+	segments, err := readSegmentNumbers(w.walDir)
+	if err != nil {
+		return err
+	}
+	newSeenSegments := newDiffset(segments)
+	diff := w.seenSegments.Difference(newSeenSegments)
+	w.seenSegments = newSeenSegments
+	if len(diff) == 0 {
+		level.Debug(w.logger).Log("msg", "No segment was gc-ed. No series being resetted")
+		return nil
+	}
+	for s := range diff {
+		w.writeTo.SeriesReset(s)
+	}
+	return nil
 }
 
 // Run the watcher, which will tail the WAL until the quit channel is closed
@@ -232,18 +271,10 @@ func (w *Watcher) Stop() {
 
 // firstAndList finds the first and last segment number for a WAL directory.
 func (w *Watcher) firstAndLast() (int, int, error) {
-	files, err := os.ReadDir(w.walDir)
+	refs, err := readSegmentNumbers(w.walDir)
 	if err != nil {
-		return -1, -1, err
-	}
 
-	var refs []int
-	for _, f := range files {
-		k, err := strconv.Atoi(f.Name())
-		if err != nil {
-			continue
-		}
-		refs = append(refs, k)
+		return -1, -1, err
 	}
 
 	if len(refs) == 0 {
@@ -272,4 +303,23 @@ func isClosed(c chan struct{}) bool {
 	default:
 		return false
 	}
+}
+
+// readSegmentNumbers reads the given directory and returns all segment identifiers, that is, the index of each segment
+// file.
+func readSegmentNumbers(dir string) ([]int, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var refs []int
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
+		if err != nil {
+			continue
+		}
+		refs = append(refs, k)
+	}
+	return refs, nil
 }

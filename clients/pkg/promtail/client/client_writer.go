@@ -36,6 +36,11 @@ func (c *clientWriteTo) StoreSeries(series []record.RefSeries, _ int) {
 	}
 }
 
+func (c *clientWriteTo) SeriesReset(segmentNum int) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (c *clientWriteTo) AppendEntries(entries wal.RefEntries) error {
 	var entry api.Entry
 	if l, ok := c.series[uint64(entries.Ref)]; ok {
