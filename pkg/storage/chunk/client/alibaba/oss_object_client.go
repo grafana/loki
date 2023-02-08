@@ -3,7 +3,6 @@ package alibaba
 import (
 	"context"
 	"flag"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"io"
 	"net/http"
 	"strconv"
@@ -18,14 +17,16 @@ import (
 
 const NoSuchKeyErr = "NoSuchKey"
 
-var ossRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "loki",
 	Name:      "oss_request_duration_seconds",
 	Help:      "Time spent doing OSS requests.",
+	Buckets:   prometheus.ExponentialBuckets(0.005, 4, 7),
+}, []string{"operation", "status_code"}))
 
-	// 6 buckets from 5ms to 20s.
-	Buckets: prometheus.ExponentialBuckets(0.005, 4, 7),
-}, []string{"operation", "status_code"})
+func init() {
+	ossRequestDuration.Register()
+}
 
 type OssObjectClient struct {
 	defaultBucket *oss.Bucket
@@ -79,7 +80,7 @@ func (s *OssObjectClient) Stop() {
 func (s *OssObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *oss.GetObjectResult
 	var options []oss.Option
-	err := instrument.CollectedRequest(ctx, "OSS.DeleteObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "OSS.GetObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var requestErr error
 		resp, requestErr = s.defaultBucket.DoGetObject(&oss.GetObjectRequest{ObjectKey: objectKey}, options)
 		if requestErr != nil {

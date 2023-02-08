@@ -4096,7 +4096,7 @@ Named store from this example can be used by setting object_store to store-1 in 
 
 [gcs: <map of string to gcs_storage_config>]
 
-[oss: <map of string to StorageConfig>]
+[alibaba: <map of string to StorageConfig>]
 
 [swift: <map of string to swift_storage_config>]
 ```

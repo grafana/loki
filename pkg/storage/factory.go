@@ -65,7 +65,7 @@ type NamedStores struct {
 	BOS        map[string]baidubce.BOSStorageConfig `yaml:"bos"`
 	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
 	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
-	OSS        map[string]alibaba.StorageConfig     `yaml:"oss"`
+	OSS        map[string]alibaba.StorageConfig     `yaml:"alibaba"`
 	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
 
 	// contains mapping from named store reference name to store type
@@ -337,7 +337,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case config.StorageTypeAlibaba, config.StorageTypeOss:
+	case config.StorageTypeAlibabaCloud:
 		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig.OssConfig)
 		if err != nil {
 			return nil, err
@@ -476,7 +476,7 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
-	case config.StorageTypeAlibaba, config.StorageTypeOss:
+	case config.StorageTypeAlibabaCloud:
 		ossCfg := cfg.AlibabaStorageConfig
 		if namedStore != "" {
 			var ok bool

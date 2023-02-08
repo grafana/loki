@@ -22,7 +22,7 @@ import (
 const (
 	// Supported storage clients
 
-	StorageTypeAlibaba        = "alibaba"
+	StorageTypeAlibabaCloud   = "alibabacloud"
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
@@ -37,7 +37,6 @@ const (
 	StorageTypeGCPColumnKey   = "gcp-columnkey"
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
-	StorageTypeOss            = "oss"
 	StorageTypeLocal          = "local"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"

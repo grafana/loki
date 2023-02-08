@@ -288,7 +288,7 @@ schema_config:
       period: 168h
 
 storage_config:
-  alibaba:
+  alibabacloud:
     bucket: <bucket>
     endpoint: <endpoint>
     access_key_id: <access_key_id>
