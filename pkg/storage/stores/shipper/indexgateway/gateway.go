@@ -72,6 +72,11 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		indexClients: indexClients,
 	}
 
+	// query newer periods first
+	sort.Slice(g.indexClients, func(i, j int) bool {
+		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
+	})
+
 	g.Service = services.NewIdleService(nil, func(failureCase error) error {
 		g.indexQuerier.Stop()
 		for _, indexClient := range g.indexClients {
@@ -92,7 +97,7 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 	queries := make([]index.Query, 0, len(request.Queries))
 	for _, query := range request.Queries {
 		if _, err := config.ExtractTableNumberFromName(query.TableName); err != nil {
-			level.Info(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
+			level.Error(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
 			continue
 		}
 
@@ -109,10 +114,6 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 		ta, _ := config.ExtractTableNumberFromName(queries[i].TableName)
 		tb, _ := config.ExtractTableNumberFromName(queries[j].TableName)
 		return ta < tb
-	})
-	// query newer periods first
-	sort.Slice(g.indexClients, func(i, j int) bool {
-		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
 	})
 
 	sendBatchMtx := sync.Mutex{}

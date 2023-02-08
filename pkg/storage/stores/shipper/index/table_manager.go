@@ -191,7 +191,6 @@ func (tm *TableManager) handoverIndexesToShipper(force bool) {
 }
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
-
 	// as we are running multiple instances of TableManger - one for each period
 	// existing tables should be migrated to period specific directory
 	if err := migrateTables(tm.cfg.IndexDir, tm.tableRange); err != nil {

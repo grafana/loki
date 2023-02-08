@@ -189,7 +189,7 @@ func ConfigWithTSDB(additionalPeriod bool) *template.Template {
 	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfig))
 }
 
-func ConfigWithBothIndexes() *template.Template {
+func ConfigWithBoltDBAndTSDB() *template.Template {
 	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfigHeader + additionalBoltDBShipperSchemaConfigTemplate + tsdbShipperSchemaConfigTemplate))
 }
 

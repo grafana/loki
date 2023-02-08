@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -292,9 +293,13 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	}
 
 	for _, tableName := range tables {
+		if tableName == deletion.DeleteRequestsTableName {
+			continue
+		}
+
 		tableNumber, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
-			continue
+			return fmt.Errorf("cannot extract table number: %w", err)
 		}
 
 		if !tm.tableRangeToHandle.TableInRange(tableNumber, tableName) {

@@ -132,9 +132,9 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 
 func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 	for name, template := range map[string]*template.Template{
-		"boltdb-index": cluster.ConfigWithBoltDB(true),
-		"tsdb-index":   cluster.ConfigWithTSDB(true),
-		"both-indexes": cluster.ConfigWithBothIndexes(),
+		"boltdb-index":    cluster.ConfigWithBoltDB(true),
+		"tsdb-index":      cluster.ConfigWithTSDB(true),
+		"boltdb-and-tsdb": cluster.ConfigWithBoltDBAndTSDB(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			storage.ResetBoltDBIndexClientsWithShipper()

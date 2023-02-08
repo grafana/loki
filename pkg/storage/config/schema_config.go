@@ -61,7 +61,7 @@ var (
 	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 
-	// regexp for finding the trailing index bucket number at the end of table name
+	// regexp for finding the trailing index table number at the end of the table name
 	extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 )
 
