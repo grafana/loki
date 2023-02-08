@@ -23,8 +23,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var tmMetrics *metrics
-
 type Config struct {
 	Uploader             string
 	IndexDir             string
@@ -57,15 +55,11 @@ func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRa
 		return nil, err
 	}
 
-	if tmMetrics == nil {
-		tmMetrics = newMetrics(registerer)
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := TableManager{
 		cfg:          cfg,
 		indexShipper: indexShipper,
-		metrics:      tmMetrics,
+		metrics:      newMetrics(registerer),
 		tableRange:   tableRange,
 		ctx:          ctx,
 		cancel:       cancel,

@@ -26,8 +26,6 @@ const (
 	daySeconds           = int64(24 * time.Hour / time.Second)
 )
 
-var downloadMetrics *metrics
-
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
@@ -75,10 +73,6 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		return nil, err
 	}
 
-	if downloadMetrics == nil {
-		downloadMetrics = newMetrics(reg)
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &tableManager{
 		cfg:                cfg,
@@ -87,7 +81,7 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		tableRangeToHandle: tableRangeToHandle,
 		ownsTenant:         ownsTenantFn,
 		tables:             make(map[string]Table),
-		metrics:            downloadMetrics,
+		metrics:            newMetrics(reg),
 		ctx:                ctx,
 		cancel:             cancel,
 	}
