@@ -1,14 +1,18 @@
 package ruler
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -23,14 +27,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
-	"gopkg.in/yaml.v3"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -170,49 +166,6 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 
 		return mgr
 	}
-}
-
-type GroupLoader struct{}
-
-func (GroupLoader) Parse(query string) (parser.Expr, error) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return nil, err
-	}
-
-	return exprAdapter{expr}, nil
-}
-
-func (g GroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
-	b, err := os.ReadFile(identifier)
-	if err != nil {
-		return nil, []error{errors.Wrap(err, identifier)}
-	}
-	rgs, errs := g.parseRules(b)
-	for i := range errs {
-		errs[i] = errors.Wrap(errs[i], identifier)
-	}
-	return rgs, errs
-}
-
-func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
-	var (
-		groups rulefmt.RuleGroups
-		errs   []error
-	)
-
-	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	decoder.KnownFields(true)
-
-	if err := decoder.Decode(&groups); err != nil {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		return nil, errs
-	}
-
-	return &groups, ValidateGroups(groups.Groups...)
 }
 
 func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
