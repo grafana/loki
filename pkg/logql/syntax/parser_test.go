@@ -3013,6 +3013,33 @@ func TestParse(t *testing.T) {
 				Operation: "count_over_time",
 			},
 		},
+		{
+			// binop always includes vector matching. Default is `without ()`,
+			// the zero value.
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) or vector(1)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeOr,
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&Grouping{},
+					nil,
+				),
+				NewVectorExpr("1"),
+			),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
