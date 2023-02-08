@@ -1474,7 +1474,7 @@ ring:
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
 
 ```yaml
-alibaba:
+alibabacloud:
   [bucket: <string> | default = ""]
 
   [endpoint: <string> | default = ""]
@@ -4096,7 +4096,7 @@ Named store from this example can be used by setting object_store to store-1 in 
 
 [gcs: <map of string to gcs_storage_config>]
 
-[alibaba: <map of string to StorageConfig>]
+[alibabacloud: <map of string to StorageConfig>]
 
 [swift: <map of string to swift_storage_config>]
 ```
