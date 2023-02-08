@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
@@ -179,8 +180,6 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 		},
 	}
 
-	gateway := Gateway{}
-
 	// builds queries for the listed tables
 	for _, i := range []int{6, 10, 12, 16, 99} {
 		queries = append(queries, &logproto.IndexQuery{
@@ -192,7 +191,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 		})
 	}
 
-	gateway.indexClients = []IndexClientWithRange{{
+	indexClients := []IndexClientWithRange{{
 		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
 		// no matching queries for this range
 		TableRange: config.TableRange{
@@ -221,13 +220,15 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			},
 		},
 	}}
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients)
+	require.NoError(t, err)
 
 	expectedQueries = append(expectedQueries,
 		queries[3], queries[4], // queries matching table range 15->MaxInt64
 		queries[0], queries[1], // queries matching table range 5->10
 	)
 
-	err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: queries}, server)
+	err = gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: queries}, server)
 	require.NoError(t, err)
 
 	// since indexClients are sorted, 0 index would contain the latest period
