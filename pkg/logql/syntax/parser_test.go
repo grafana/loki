@@ -2859,6 +2859,23 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8),
 		},
 		{
+			in:  `vector(1)`,
+			exp: &VectorExpr{Val: 1, err: nil},
+		},
+		{
+			in:  `label_replace(vector(0), "foo", "bar", "", "")`,
+			exp: mustNewLabelReplaceExpr(&VectorExpr{Val: 0, err: nil}, "foo", "bar", "", ""),
+		},
+		{
+			in: `sum(vector(0))`,
+			exp: &VectorAggregationExpr{
+				Left:      &VectorExpr{Val: 0, err: nil},
+				Grouping:  &Grouping{},
+				Params:    0,
+				Operation: "sum",
+			},
+		},
+		{
 			in: `{app="foo"}
 					# |= "bar"
 					| json`,
