@@ -3,6 +3,7 @@ package alibaba
 import (
 	"context"
 	"flag"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"io"
 	"net/http"
 	"strconv"
@@ -17,12 +18,14 @@ import (
 
 const NoSuchKeyErr = "NoSuchKey"
 
-var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+var ossRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "loki",
 	Name:      "oss_request_duration_seconds",
 	Help:      "Time spent doing OSS requests.",
-	Buckets:   prometheus.ExponentialBuckets(0.005, 4, 7),
-}, []string{"operation", "status_code"}))
+
+	// 6 buckets from 5ms to 20s.
+	Buckets: prometheus.ExponentialBuckets(0.005, 4, 7),
+}, []string{"operation", "status_code"})
 
 type OssObjectClient struct {
 	defaultBucket *oss.Bucket
