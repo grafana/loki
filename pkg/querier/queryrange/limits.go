@@ -49,11 +49,16 @@ type Limits interface {
 
 type limits struct {
 	Limits
-	splitDuration time.Duration
+	splitDuration           time.Duration
+	tsdbMaxQueryParallelism int
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
 	return l.splitDuration
+}
+
+func (l limits) TSDBMaxQueryParallelism(string) int {
+	return l.tsdbMaxQueryParallelism
 }
 
 // WithSplitByLimits will construct a Limits with a static split by duration.
@@ -61,6 +66,14 @@ func WithSplitByLimits(l Limits, splitBy time.Duration) Limits {
 	return limits{
 		Limits:        l,
 		splitDuration: splitBy,
+	}
+}
+
+func WithSplitbyAndMaxParallelism(l Limits, splitby time.Duration, tsdbMaxQueryParallelism int) Limits {
+	return limits{
+		Limits:                  l,
+		splitDuration:           splitby,
+		tsdbMaxQueryParallelism: tsdbMaxQueryParallelism,
 	}
 }
 
