@@ -23,7 +23,7 @@ The following are examples showing the use of the `sampling` stage.
 
 Simple `sampling` stage configurations.
 
-#### Match a line and throttle
+#### Match a line and sampling
 
 Given the pipeline:
 
