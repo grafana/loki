@@ -10,14 +10,11 @@ The `sampling` stage is a stage that sampling logs.
 
 The `sampling` stage is used to sampling the logs. Currently, only one rate param. rate: 0.1 means that 10% of the logs can be pushed to the loki server.
 
-
 ```yaml
 sampling:
   # The rate sampling in lines per second that Promtail will push to Loki.The value is between 0 and 1.
-  
   [rate: <int>]  
 ```
-
 
 ## Examples
 
