@@ -70,8 +70,9 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 	}
 
 	manager := &Manager{
-		clients: clients,
-		entries: make(chan api.Entry),
+		clients:     clients,
+		walWatchers: watchers,
+		entries:     make(chan api.Entry),
 	}
 	manager.start()
 	return manager, nil
