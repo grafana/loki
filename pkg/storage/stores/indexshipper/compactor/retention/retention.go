@@ -429,8 +429,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 	return wroteChunks, linesDeleted, nil
 }
 
-// with multi-store support, markers need to be stored in store specific dir
-// MoveMarkersToSharedStoreDir checks for markers in retention dir and moves them as needed
+// since compactor supports multiple stores, markers need to be written to store specific dir.
+// MoveMarkersToSharedStoreDir checks for markers in retention dir and migrates them.
 func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) error {
 	markersDir := filepath.Join(workingDir, markersFolder)
 	info, err := os.Stat(markersDir)
@@ -447,14 +447,14 @@ func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) erro
 		return nil
 	}
 
-	targetDir := filepath.Join(workingDir, sharedStoreType, markersFolder)
 	if sharedStoreType != "" {
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s", targetDir))
+		targetDir := filepath.Join(workingDir, sharedStoreType, markersFolder)
 		if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, sharedStoreType)); err != nil {
 			return err
 		}
 
-		err := os.Rename(markersDir, filepath.Join(workingDir, sharedStoreType, markersFolder))
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s", targetDir))
+		err := os.Rename(markersDir, targetDir)
 		if err != nil {
 			return err
 		}

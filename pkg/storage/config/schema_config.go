@@ -243,13 +243,13 @@ func usingForPeriodConfigs(configs []PeriodConfig, fn func(PeriodConfig) bool) b
 	return false
 }
 
-// UsingObjectStoreIndex returns true if the period config uses object store index.
+// UsingObjectStoreIndex returns true if the period config uses either boltdb-shipper or tsdb index.
 func UsingObjectStoreIndex(cfg PeriodConfig) bool {
 	return cfg.IndexType == BoltDBShipperType || cfg.IndexType == TSDBType
 }
 
-// ContainsObjectStorageIndex returns true if the current or upcoming period
-// uses object store index.
+// ContainsObjectStorageIndex returns true if the current or any of the upcoming periods
+// use an object store index.
 func ContainsObjectStorageIndex(configs []PeriodConfig) bool {
 	return usingForPeriodConfigs(configs, UsingObjectStoreIndex)
 }

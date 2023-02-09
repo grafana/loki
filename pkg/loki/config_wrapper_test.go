@@ -744,22 +744,6 @@ schema_config:
 			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
 		})
 
-		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeGCS, cfg.CompactorConfig.SharedStoreType)
-		})
-
 		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:
