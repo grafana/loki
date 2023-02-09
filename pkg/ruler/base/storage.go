@@ -35,7 +35,7 @@ type RuleStoreConfig struct {
 
 	// Object Storage Configs
 	Azure        azure.BlobStorageConfig   `yaml:"azure" doc:"description=Configures backend rule storage for Azure."`
-	AlibabaCloud alibaba.OssConfig         `yaml:"bos" doc:"description=Configures backend rule storage for AlibabaCloud Object Storage (OSS)."`
+	AlibabaCloud alibaba.OssConfig         `yaml:"alibabacloud" doc:"description=Configures backend rule storage for AlibabaCloud Object Storage (OSS)."`
 	GCS          gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures backend rule storage for GCS."`
 	S3           aws.S3Config              `yaml:"s3" doc:"description=Configures backend rule storage for S3."`
 	BOS          baidubce.BOSStorageConfig `yaml:"bos" doc:"description=Configures backend rule storage for Baidu Object Storage (BOS)."`

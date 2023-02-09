@@ -780,7 +780,7 @@ storage:
 
   # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
   # The CLI flags prefix for this block configuration is: ruler
-  [bos: <alibabacloud_storage_config>]
+  [alibabacloud: <alibabacloud_storage_config>]
 
   # Configures backend rule storage for GCS.
   # The CLI flags prefix for this block configuration is: ruler.storage
