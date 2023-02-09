@@ -12,13 +12,10 @@ The `sampling` stage is used to sampling the logs. Currently, only one rate para
 
 
 ```yaml
-
 sampling:
-
   # The rate sampling in lines per second that Promtail will push to Loki.The value is between 0 and 1.
   
-  [rate: <int>]
-  
+  [rate: <int>]  
 ```
 
 
