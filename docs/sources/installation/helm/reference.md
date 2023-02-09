@@ -1016,6 +1016,33 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.customLokiBackendUrl</td>
+			<td>string</td>
+			<td>Override Backend URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customLokiReadUrl</td>
+			<td>string</td>
+			<td>Override Read URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customLokiWriteUrl</td>
+			<td>string</td>
+			<td>Override Write URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
