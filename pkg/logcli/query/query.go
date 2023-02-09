@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -36,7 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-const SchemaConfigFilename = "schemaconfig.yaml"
+const schemaConfigFilename = "schemaconfig"
 
 type streamEntryPair struct {
 	entry  loghttp.Entry
@@ -197,7 +198,11 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			return err
 		}
 
-		loadedSchema, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+		objects := []string{
+			fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename), // schemaconfig-tenant.yaml
+			fmt.Sprintf("%s.yaml", schemaConfigFilename),           // schemaconfig.yaml for backwards compatibility
+		}
+		loadedSchema, err := LoadSchemaUsingObjectClient(client, objects...)
 		if err != nil {
 			return err
 		}
@@ -284,24 +289,37 @@ type schemaConfigSection struct {
 	config.SchemaConfig `yaml:"schema_config"`
 }
 
-func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.SchemaConfig, error) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
-	defer cancel()
-	rdr, _, err := oc.GetObject(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	defer rdr.Close()
+// LoadSchemaUsingObjectClient returns the loaded schema from the first found object
+func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*config.SchemaConfig, error) {
+	errors := multierror.New()
+	for _, name := range names {
+		schema, err := func(name string) (*config.SchemaConfig, error) {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+			defer cancel()
+			rdr, _, err := oc.GetObject(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			defer rdr.Close()
 
-	decoder := yaml.NewDecoder(rdr)
-	decoder.SetStrict(true)
-	section := schemaConfigSection{}
-	err = decoder.Decode(&section)
-	if err != nil {
-		return nil, err
-	}
+			decoder := yaml.NewDecoder(rdr)
+			decoder.SetStrict(true)
+			section := schemaConfigSection{}
+			err = decoder.Decode(&section)
+			if err != nil {
+				return nil, err
+			}
 
-	return &section.SchemaConfig, nil
+			return &section.SchemaConfig, nil
+		}(name)
+
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+		return schema, nil
+	}
+	return nil, errors.Err()
 }
 
 // SetInstant makes the Query an instant type

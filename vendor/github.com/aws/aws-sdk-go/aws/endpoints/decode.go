@@ -31,12 +31,12 @@ func (d *DecodeModelOptions) Set(optFns ...func(*DecodeModelOptions)) {
 // allow you to get a list of the partitions in the order the endpoints
 // will be resolved in.
 //
-//    resolver, err := endpoints.DecodeModel(reader)
+//	resolver, err := endpoints.DecodeModel(reader)
 //
-//    partitions := resolver.(endpoints.EnumPartitions).Partitions()
-//    for _, p := range partitions {
-//        // ... inspect partitions
-//    }
+//	partitions := resolver.(endpoints.EnumPartitions).Partitions()
+//	for _, p := range partitions {
+//	    // ... inspect partitions
+//	}
 func DecodeModel(r io.Reader, optFns ...func(*DecodeModelOptions)) (Resolver, error) {
 	var opts DecodeModelOptions
 	opts.Set(optFns...)

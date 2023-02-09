@@ -1192,6 +1192,8 @@ github.com/operator-framework/operator-sdk v1.22.0 h1:kM8KxaDW+aGfWXdFucJQUmW315
 github.com/operator-framework/operator-sdk v1.22.0/go.mod h1:YJwc2MvoBgUaRo2AeLSPfhBnJSZ7HhLw22sTv/89P1g=
 github.com/operator-framework/operator-sdk v1.24.0 h1:TolUfgiamUrznCfP5m+88Wj8Bq/TgVq1qtQyN47q+7Y=
 github.com/operator-framework/operator-sdk v1.24.0/go.mod h1:ABeI+hU/bPfO1u09f7Vranx5GHcwdFnAa21IZjTTKxo=
+github.com/operator-framework/operator-sdk v1.24.1 h1:exm5snGUOPSysHF0z1p/APrTn/Fl0kfzIl4/NPfP12s=
+github.com/operator-framework/operator-sdk v1.24.1/go.mod h1:ABeI+hU/bPfO1u09f7Vranx5GHcwdFnAa21IZjTTKxo=
 github.com/otiai10/copy v1.2.0 h1:HvG945u96iNadPoG2/Ja2+AUJeW5YuFQMixq9yirC+k=
 github.com/otiai10/copy v1.2.0/go.mod h1:rrF5dJ5F0t/EWSYODDu4j9/vEeYHMkc8jt0zJChqQWw=
 github.com/otiai10/curr v0.0.0-20150429015615-9b4961190c95/go.mod h1:9qAhocn7zKJG+0mI8eUu6xqkFDYS2kb2saOteoSB3cE=

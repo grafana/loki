@@ -20,6 +20,7 @@ spec:
       port: 9095
       targetPort: grpc
       protocol: TCP
+      appProtocol: tcp
   selector:
     {{- include "loki.readSelectorLabels" . | nindent 4 }}
 {{- end }}

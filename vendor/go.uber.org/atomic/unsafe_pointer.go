@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Uber Technologies, Inc.
+// Copyright (c) 2021-2022 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -53,6 +53,13 @@ func (p *UnsafePointer) Swap(val unsafe.Pointer) (old unsafe.Pointer) {
 }
 
 // CAS is an atomic compare-and-swap.
+//
+// Deprecated: Use CompareAndSwap
 func (p *UnsafePointer) CAS(old, new unsafe.Pointer) (swapped bool) {
+	return p.CompareAndSwap(old, new)
+}
+
+// CompareAndSwap is an atomic compare-and-swap.
+func (p *UnsafePointer) CompareAndSwap(old, new unsafe.Pointer) (swapped bool) {
 	return atomic.CompareAndSwapPointer(&p.v, old, new)
 }

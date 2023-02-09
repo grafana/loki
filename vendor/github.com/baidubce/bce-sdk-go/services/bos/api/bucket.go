@@ -95,6 +95,7 @@ func ListObjects(cli bce.Client, bucket string,
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
+	defer func() { resp.Body().Close() }()
 	return result, nil
 }
 
@@ -189,6 +190,7 @@ func GetBucketLocation(cli bce.Client, bucket string) (string, error) {
 	if err := resp.ParseJsonBody(result); err != nil {
 		return "", err
 	}
+	defer func() { resp.Body().Close() }()
 	return result.LocationConstraint, nil
 }
 
@@ -255,6 +257,7 @@ func GetBucketAcl(cli bce.Client, bucket string) (*GetBucketAclResult, error) {
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
+	defer func() { resp.Body().Close() }()
 	return result, nil
 }
 

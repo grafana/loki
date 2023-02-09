@@ -15,6 +15,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Namespace: "loki",
 			Name:      "index_request_duration_seconds",
 			Help:      "Time (in seconds) spent in serving index query requests",
+			Buckets:   prometheus.ExponentialBucketsRange(0.005, 100, 12),
 		}, []string{"operation", "status_code"}),
 	}
 }

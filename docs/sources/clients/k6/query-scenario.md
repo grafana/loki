@@ -1,5 +1,6 @@
 ---
 title: Query testing
+description: Query testing with K6
 weight: 30
 ---
 # Query testing

@@ -45,7 +45,6 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	cfg.Addr = h
 	cfg.Port = grpcPort
 
-	// logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
 	f, err := NewFrontend(cfg, nil, logger, nil)
 	require.NoError(t, err)
@@ -250,6 +249,94 @@ func TestFrontendFailedCancellation(t *testing.T) {
 	ms.checkWithLock(func() {
 		require.Equal(t, 1, len(ms.msgs))
 	})
+}
+
+func TestFrontendStoppingWaitsForEmptyInflightRequests(t *testing.T) {
+	delayResponse := 10 * time.Millisecond
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
+		// It first needs to be told that enqueuing has succeeded.
+		go sendResponseWithDelay(f, 2*delayResponse, "test", msg.QueryID, &httpgrpc.HTTPResponse{
+			Code: 200,
+			Body: []byte("ok"),
+		})
+
+		// give enough time to fill up inflight requests
+		time.Sleep(delayResponse)
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
+	})
+
+	inflightRequests := 10
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for i := 0; i < inflightRequests; i++ {
+		go func() {
+			_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+			require.NoError(t, err)
+		}()
+	}
+
+	require.Eventually(t, func() bool {
+		return f.requests.count() == inflightRequests
+	},
+		3*delayResponse, // wait at least 3*delayResponse to wait for queries to be finished and removed from inlight requests map
+		5*time.Millisecond,
+	)
+
+	// blocks until all inflight requests are done
+	_ = f.stopping(nil)
+	require.Equal(t, 0, f.requests.count())
+}
+
+func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
+	delayResponse := 100 * time.Millisecond
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
+		// It first needs to be told that enqueuing has succeeded.
+		go sendResponseWithDelay(f, delayResponse, "test", msg.QueryID, &httpgrpc.HTTPResponse{
+			Code: 200,
+			Body: []byte("ok"),
+		})
+
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	require.Equal(t, services.Running, f.State())
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+		require.NoError(t, err)
+	}()
+
+	// Wait less than delayResponse to make sure we have an inflight request that
+	// already was sent to the scheduler and the service stays in Stopping state
+	// for some time.
+	time.Sleep(delayResponse / 10)
+
+	f.StopAsync()
+
+	// wait for Stopping state
+	require.Eventually(t, func() bool {
+		t.Log(f.State())
+		return f.State() == services.Stopping
+	}, delayResponse/2, 2*time.Millisecond)
+
+	// send (sub-)request
+	// This request still needs to be able to pass the RoundTripGRCP function,
+	// because it may be a sub-request of a query request that was split earlier
+	// into multiple sub-requests.
+	_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+	require.NoError(t, err)
+
+	wg.Wait()
 }
 
 type mockScheduler struct {

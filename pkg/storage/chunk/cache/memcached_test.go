@@ -4,15 +4,58 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/log"
+	"github.com/grafana/gomemcache/memcache"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
+
+func TestMemcached_fetchKeysBatched(t *testing.T) {
+	// This test checks for two things
+	// 1. `c.inputCh` is closed when `c.Stop()` is triggered
+	// 2. Once `c.inputCh` is closed, no one should be writing to `c.inputCh` (thus shouldn't panic with "send to closed channel")
+
+	client := newMockMemcache()
+	m := cache.NewMemcached(cache.MemcachedConfig{
+		BatchSize:   10,
+		Parallelism: 5,
+	}, client, "test", nil, log.NewNopLogger(), "test")
+
+	var (
+		wg      sync.WaitGroup
+		stopped = make(chan struct{}) // chan to make goroutine wait till `m.Stop()` is called.
+		ctx     = context.Background()
+	)
+
+	wg.Add(1)
+
+	// This goroutine is going to do some real "work" (writing to `c.inputCh`). We then do `m.Stop()` closing `c.inputCh`. We assert there shouldn't be any panics.
+	go func() {
+		defer wg.Done()
+		<-stopped
+		assert.NotPanics(t, func() {
+			keys := []string{"1", "2"}
+			bufs := [][]byte{[]byte("1"), []byte("2")}
+			err := m.Store(ctx, keys, bufs)
+			require.NoError(t, err)
+
+			_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
+			require.NoError(t, err)
+
+		})
+	}()
+
+	m.Stop()
+	close(stopped)
+
+	wg.Wait()
+}
 
 func TestMemcached(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
@@ -82,7 +125,7 @@ func newMockMemcacheFailing() *mockMemcacheFailing {
 	}
 }
 
-func (c *mockMemcacheFailing) GetMulti(keys []string) (map[string]*memcache.Item, error) {
+func (c *mockMemcacheFailing) GetMulti(keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	calls := c.calls.Inc()
 	if calls%3 == 0 {
 		return nil, errors.New("fail")

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"text/template"
@@ -16,9 +17,11 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -30,6 +33,9 @@ auth_enabled: true
 server:
   http_listen_port: 0
   grpc_listen_port: 0
+  grpc_server_max_recv_msg_size: 110485813
+  grpc_server_max_send_msg_size: 110485813
+
 
 common:
   path_prefix: {{.dataPath}}
@@ -42,6 +48,12 @@ common:
     instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+
+limits_config:
+  per_stream_rate_limit: 50MB
+  per_stream_rate_limit_burst: 50MB
+  ingestion_rate_mb: 50
+  ingestion_burst_size_mb: 50
 
 storage_config:
   boltdb_shipper:
@@ -70,6 +82,9 @@ analytics:
 ingester:
   lifecycler:
     min_ready_duration: 0s
+
+querier:
+  multi_tenant_queries_enabled: true
 
 {{if .remoteWriteUrls}}
 ruler:
@@ -140,9 +155,10 @@ func (w *wrappedRegisterer) MustRegister(collectors ...prometheus.Collector) {
 }
 
 type Cluster struct {
-	sharedPath string
-	components []*Component
-	waitGroup  sync.WaitGroup
+	sharedPath    string
+	overridesFile string
+	components    []*Component
+	waitGroup     sync.WaitGroup
 }
 
 func New() *Cluster {
@@ -152,8 +168,16 @@ func New() *Cluster {
 		panic(err.Error())
 	}
 
+	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
+
+	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
+	if err != nil {
+		panic(fmt.Errorf("error creating overrides file: %w", err))
+	}
+
 	return &Cluster{
-		sharedPath: sharedPath,
+		sharedPath:    sharedPath,
+		overridesFile: overridesFile,
 	}
 }
 
@@ -169,7 +193,20 @@ func (c *Cluster) Run() error {
 	}
 	return nil
 }
+
+func (c *Cluster) Restart() error {
+	if err := c.stop(false); err != nil {
+		return err
+	}
+
+	return c.Run()
+}
+
 func (c *Cluster) Cleanup() error {
+	return c.stop(true)
+}
+
+func (c *Cluster) stop(cleanupFiles bool) error {
 	_, cancelFunc := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancelFunc()
 
@@ -195,12 +232,14 @@ func (c *Cluster) Cleanup() error {
 	// wait for all process to close
 	c.waitGroup.Wait()
 
-	// cleanup dirs/files
-	for _, d := range dirs {
-		errs.Add(os.RemoveAll(d))
-	}
-	for _, f := range files {
-		errs.Add(os.Remove(f))
+	if cleanupFiles {
+		// cleanup dirs/files
+		for _, d := range dirs {
+			errs.Add(os.RemoveAll(d))
+		}
+		for _, f := range files {
+			errs.Add(os.Remove(f))
+		}
 	}
 
 	return errs.Err()
@@ -208,10 +247,11 @@ func (c *Cluster) Cleanup() error {
 
 func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 	component := &Component{
-		name:    name,
-		cluster: c,
-		flags:   flags,
-		running: false,
+		name:          name,
+		cluster:       c,
+		flags:         flags,
+		running:       false,
+		overridesFile: c.overridesFile,
 	}
 
 	c.components = append(c.components, component)
@@ -224,13 +264,15 @@ type Component struct {
 	cluster *Cluster
 	flags   []string
 
-	configFile   string
-	dataPath     string
-	rulerWALPath string
-	rulesPath    string
-	RulesTenant  string
+	configFile    string
+	overridesFile string
+	dataPath      string
+	rulerWALPath  string
+	rulesPath     string
+	RulesTenant   string
 
 	running bool
+	wg      sync.WaitGroup
 
 	RemoteWriteUrls []string
 }
@@ -324,6 +366,8 @@ func (c *Component) run() error {
 		c.flags,
 		"-config.file",
 		c.configFile,
+		"-limits.per-user-override-config",
+		c.overridesFile,
 	), flagset); err != nil {
 		return err
 	}
@@ -362,8 +406,11 @@ func (c *Component) run() error {
 	}()
 
 	c.cluster.waitGroup.Add(1)
+	c.wg.Add(1)
+
 	go func() {
 		defer c.cluster.waitGroup.Done()
+		defer c.wg.Done()
 		err := c.loki.Run(loki.RunOpts{})
 		if err != nil {
 			newErr := fmt.Errorf("error starting component %v: %w", c.name, err)
@@ -385,6 +432,7 @@ func (c *Component) run() error {
 func (c *Component) cleanup() (files []string, dirs []string) {
 	if c.loki != nil && c.loki.SignalHandler != nil {
 		c.loki.SignalHandler.Stop()
+		c.running = false
 	}
 	if c.configFile != "" {
 		files = append(files, c.configFile)
@@ -400,6 +448,41 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	}
 
 	return files, dirs
+}
+
+func (c *Component) Restart() error {
+	c.cleanup()
+	c.wg.Wait()
+	return c.run()
+}
+
+type runtimeConfigValues struct {
+	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
+}
+
+func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) error {
+	rcv := runtimeConfigValues{}
+	rcv.TenantLimits = c.loki.TenantLimits.AllByUserID()
+	if rcv.TenantLimits == nil {
+		rcv.TenantLimits = map[string]*validation.Limits{}
+	}
+	rcv.TenantLimits[tenant] = &limits
+
+	config, err := yaml.Marshal(rcv)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(c.overridesFile, config, 0777)
+}
+
+func (c *Component) GetTenantLimits(tenant string) validation.Limits {
+	limits := c.loki.TenantLimits.TenantLimits(tenant)
+	if limits == nil {
+		return c.loki.Cfg.LimitsConfig
+	}
+
+	return *limits
 }
 
 func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {

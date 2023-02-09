@@ -10,21 +10,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/dns"
+	"github.com/grafana/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
-	"github.com/thanos-io/thanos/pkg/discovery/dns"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
 type MemcachedClient interface {
-	GetMulti(keys []string) (map[string]*memcache.Item, error)
+	GetMulti(keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error)
 	Set(item *memcache.Item) error
 }
 

@@ -41,7 +41,9 @@ func (s *sessions) update(sess *session) {
 			// Cancel the one in the cache and add this one.
 			i.mux.Lock()
 			defer i.mux.Unlock()
-			i.cancel <- true
+			if i.cancel != nil {
+				i.cancel <- true
+			}
 			s.Entries[sess.realm] = sess
 			return
 		}

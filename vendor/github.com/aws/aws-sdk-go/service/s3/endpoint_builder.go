@@ -37,7 +37,6 @@ type accessPointEndpointBuilder arn.AccessPointARN
 // - example : myaccesspoint-012345678901.s3-accesspoint.us-west-2.amazonaws.com
 //
 // Access Point Endpoint requests are signed using "s3" as signing name.
-//
 func (a accessPointEndpointBuilder) build(req *request.Request) error {
 	resolveService := arn.AccessPointARN(a).Service
 	resolveRegion := arn.AccessPointARN(a).Region
@@ -92,7 +91,6 @@ type s3ObjectLambdaAccessPointEndpointBuilder arn.S3ObjectLambdaAccessPointARN
 // - example : myaccesspoint-012345678901.s3-object-lambda.us-west-2.amazonaws.com
 //
 // Access Point Endpoint requests are signed using "s3-object-lambda" as signing name.
-//
 func (a s3ObjectLambdaAccessPointEndpointBuilder) build(req *request.Request) error {
 	resolveRegion := arn.S3ObjectLambdaAccessPointARN(a).Region
 
@@ -147,7 +145,6 @@ type outpostAccessPointEndpointBuilder arn.OutpostAccessPointARN
 // - example : myaccesspoint-012345678901.op-01234567890123456.s3-outposts.us-west-2.amazonaws.com
 //
 // Outpost AccessPoint Endpoint request are signed using "s3-outposts" as signing name.
-//
 func (o outpostAccessPointEndpointBuilder) build(req *request.Request) error {
 	resolveRegion := o.Region
 	resolveService := o.Service

@@ -174,7 +174,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		// Embed the tenant label into TSDB
 		lb := labels.NewBuilder(ls)
 		lb.Set(TenantLabel, user)
-		withTenant := lb.Labels()
+		withTenant := lb.Labels(nil)
 
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {

@@ -166,10 +166,10 @@ const (
 // end of the request.
 //
 // Valid events are:
-//     * ReadEvents: Record the number of bytes read after every http.Request.Body.Read
-//       using the ReadBytesKey
-//     * WriteEvents: Record the number of bytes written after every http.ResponeWriter.Write
-//       using the WriteBytesKey
+//   - ReadEvents: Record the number of bytes read after every http.Request.Body.Read
+//     using the ReadBytesKey
+//   - WriteEvents: Record the number of bytes written after every http.ResponeWriter.Write
+//     using the WriteBytesKey
 func WithMessageEvents(events ...event) Option {
 	return optionFunc(func(c *config) {
 		for _, e := range events {

@@ -1,5 +1,40 @@
 # Changes
 
+## [0.107.0](https://github.com/googleapis/google-cloud-go/compare/v0.106.0...v0.107.0) (2022-11-15)
+
+
+### Features
+
+* **routing:** Start generating apiv2 ([#7011](https://github.com/googleapis/google-cloud-go/issues/7011)) ([66e8e27](https://github.com/googleapis/google-cloud-go/commit/66e8e2717b2593f4e5640ecb97344bb1d5e5fc0b))
+
+## [0.106.0](https://github.com/googleapis/google-cloud-go/compare/v0.105.0...v0.106.0) (2022-11-09)
+
+
+### Features
+
+* **debugger:** rewrite signatures in terms of new location ([3c4b2b3](https://github.com/googleapis/google-cloud-go/commit/3c4b2b34565795537aac1661e6af2442437e34ad))
+
+## [0.104.0](https://github.com/googleapis/google-cloud-go/compare/v0.103.0...v0.104.0) (2022-08-24)
+
+
+### Features
+
+* **godocfx:** add friendlyAPIName ([#6447](https://github.com/googleapis/google-cloud-go/issues/6447)) ([c6d3ba4](https://github.com/googleapis/google-cloud-go/commit/c6d3ba401b7b3ae9b710a8850c6ec5d49c4c1490))
+
+## [0.103.0](https://github.com/googleapis/google-cloud-go/compare/v0.102.1...v0.103.0) (2022-06-29)
+
+
+### Features
+
+* **privateca:** temporarily remove REGAPIC support ([199b725](https://github.com/googleapis/google-cloud-go/commit/199b7250f474b1a6f53dcf0aac0c2966f4987b68))
+
+## [0.102.1](https://github.com/googleapis/google-cloud-go/compare/v0.102.0...v0.102.1) (2022-06-17)
+
+
+### Bug Fixes
+
+* **longrunning:** regapic remove path params duped as query params ([#6183](https://github.com/googleapis/google-cloud-go/issues/6183)) ([c963be3](https://github.com/googleapis/google-cloud-go/commit/c963be301f074779e6bb8c897d8064fa076e9e35))
+
 ## [0.102.0](https://github.com/googleapis/google-cloud-go/compare/v0.101.1...v0.102.0) (2022-05-24)
 
 

@@ -16,6 +16,8 @@ package storage
 
 import (
 	"context"
+	"io"
+	"time"
 
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
@@ -42,7 +44,7 @@ type storageClient interface {
 	// Top-level methods.
 
 	GetServiceAccount(ctx context.Context, project string, opts ...storageOption) (string, error)
-	CreateBucket(ctx context.Context, project string, attrs *BucketAttrs, opts ...storageOption) (*BucketAttrs, error)
+	CreateBucket(ctx context.Context, project, bucket string, attrs *BucketAttrs, opts ...storageOption) (*BucketAttrs, error)
 	ListBuckets(ctx context.Context, project string, opts ...storageOption) *BucketIterator
 	Close() error
 
@@ -56,35 +58,35 @@ type storageClient interface {
 
 	// Object metadata methods.
 
-	DeleteObject(ctx context.Context, bucket, object string, conds *Conditions, opts ...storageOption) error
-	GetObject(ctx context.Context, bucket, object string, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error)
-	UpdateObject(ctx context.Context, bucket, object string, uattrs *ObjectAttrsToUpdate, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error)
+	DeleteObject(ctx context.Context, bucket, object string, gen int64, conds *Conditions, opts ...storageOption) error
+	GetObject(ctx context.Context, bucket, object string, gen int64, encryptionKey []byte, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error)
+	UpdateObject(ctx context.Context, bucket, object string, uattrs *ObjectAttrsToUpdate, gen int64, encryptionKey []byte, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error)
 
 	// Default Object ACL methods.
 
 	DeleteDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, opts ...storageOption) error
 	ListDefaultObjectACLs(ctx context.Context, bucket string, opts ...storageOption) ([]ACLRule, error)
-	UpdateDefaultObjectACL(ctx context.Context, opts ...storageOption) (*ACLRule, error)
+	UpdateDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) error
 
 	// Bucket ACL methods.
 
 	DeleteBucketACL(ctx context.Context, bucket string, entity ACLEntity, opts ...storageOption) error
 	ListBucketACLs(ctx context.Context, bucket string, opts ...storageOption) ([]ACLRule, error)
-	UpdateBucketACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error)
+	UpdateBucketACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) error
 
 	// Object ACL methods.
 
 	DeleteObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, opts ...storageOption) error
 	ListObjectACLs(ctx context.Context, bucket, object string, opts ...storageOption) ([]ACLRule, error)
-	UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error)
+	UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) error
 
 	// Media operations.
 
 	ComposeObject(ctx context.Context, req *composeObjectRequest, opts ...storageOption) (*ObjectAttrs, error)
 	RewriteObject(ctx context.Context, req *rewriteObjectRequest, opts ...storageOption) (*rewriteObjectResponse, error)
 
-	OpenReader(ctx context.Context, r *Reader, opts ...storageOption) error
-	OpenWriter(ctx context.Context, w *Writer, opts ...storageOption) error
+	NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (*Reader, error)
+	OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error)
 
 	// IAM methods.
 
@@ -94,11 +96,16 @@ type storageClient interface {
 
 	// HMAC Key methods.
 
-	GetHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) (*HMACKey, error)
-	ListHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) *HMACKeysIterator
-	UpdateHMACKey(ctx context.Context, desc *hmacKeyDesc, attrs *HMACKeyAttrsToUpdate, opts ...storageOption) (*HMACKey, error)
-	CreateHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) (*HMACKey, error)
-	DeleteHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) error
+	GetHMACKey(ctx context.Context, project, accessID string, opts ...storageOption) (*HMACKey, error)
+	ListHMACKeys(ctx context.Context, project, serviceAccountEmail string, showDeletedKeys bool, opts ...storageOption) *HMACKeysIterator
+	UpdateHMACKey(ctx context.Context, project, serviceAccountEmail, accessID string, attrs *HMACKeyAttrsToUpdate, opts ...storageOption) (*HMACKey, error)
+	CreateHMACKey(ctx context.Context, project, serviceAccountEmail string, opts ...storageOption) (*HMACKey, error)
+	DeleteHMACKey(ctx context.Context, project, accessID string, opts ...storageOption) error
+
+	// Notification methods.
+	ListNotifications(ctx context.Context, bucket string, opts ...storageOption) (map[string]*Notification, error)
+	CreateNotification(ctx context.Context, bucket string, n *Notification, opts ...storageOption) (*Notification, error)
+	DeleteNotification(ctx context.Context, bucket string, id string, opts ...storageOption) error
 }
 
 // settings contains transport-agnostic configuration for API calls made via
@@ -153,6 +160,20 @@ func callSettings(defaults *settings, opts ...storageOption) *settings {
 	cs := *defaults
 	resolveOptions(&cs, opts...)
 	return &cs
+}
+
+// makeStorageOpts is a helper for generating a set of storageOption based on
+// idempotency, retryConfig, and userProject. All top-level client operations
+// will generally have to pass these options through the interface.
+func makeStorageOpts(isIdempotent bool, retry *retryConfig, userProject string) []storageOption {
+	opts := []storageOption{idempotent(isIdempotent)}
+	if retry != nil {
+		opts = append(opts, withRetryConfig(retry))
+	}
+	if userProject != "" {
+		opts = append(opts, withUserProject(userProject))
+	}
+	return opts
 }
 
 // storageOption is the transport-agnostic call option for the storageClient
@@ -211,31 +232,102 @@ type userProjectOption struct {
 
 func (o *userProjectOption) Apply(s *settings) { s.userProject = o.project }
 
+type openWriterParams struct {
+	// Writer configuration
+
+	// ctx is the context used by the writer routine to make all network calls
+	// and to manage the writer routine - see `Writer.ctx`.
+	// Required.
+	ctx context.Context
+	// chunkSize - see `Writer.ChunkSize`.
+	// Optional.
+	chunkSize int
+	// chunkRetryDeadline - see `Writer.ChunkRetryDeadline`.
+	// Optional.
+	chunkRetryDeadline time.Duration
+
+	// Object/request properties
+
+	// bucket - see `Writer.o.bucket`.
+	// Required.
+	bucket string
+	// attrs - see `Writer.ObjectAttrs`.
+	// Required.
+	attrs *ObjectAttrs
+	// conds - see `Writer.o.conds`.
+	// Optional.
+	conds *Conditions
+	// encryptionKey - see `Writer.o.encryptionKey`
+	// Optional.
+	encryptionKey []byte
+	// sendCRC32C - see `Writer.SendCRC32C`.
+	// Optional.
+	sendCRC32C bool
+
+	// Writer callbacks
+
+	// donec - see `Writer.donec`.
+	// Required.
+	donec chan struct{}
+	// setError callback for reporting errors - see `Writer.error`.
+	// Required.
+	setError func(error)
+	// progress callback for reporting upload progress - see `Writer.progress`.
+	// Required.
+	progress func(int64)
+	// setObj callback for reporting the resulting object - see `Writer.obj`.
+	// Required.
+	setObj func(*ObjectAttrs)
+}
+
+type newRangeReaderParams struct {
+	bucket         string
+	conds          *Conditions
+	encryptionKey  []byte
+	gen            int64
+	length         int64
+	object         string
+	offset         int64
+	readCompressed bool // Use accept-encoding: gzip. Only works for HTTP currently.
+}
+
 type composeObjectRequest struct {
 	dstBucket     string
-	dstObject     string
-	srcs          []string
+	dstObject     destinationObject
+	srcs          []sourceObject
+	predefinedACL string
+	sendCRC32C    bool
+}
+
+type sourceObject struct {
+	name          string
+	bucket        string
 	gen           int64
 	conds         *Conditions
-	predefinedACL string
+	encryptionKey []byte
+}
+
+type destinationObject struct {
+	name          string
+	bucket        string
+	conds         *Conditions
+	attrs         *ObjectAttrs // attrs to set on the destination object.
+	encryptionKey []byte
+	keyName       string
 }
 
 type rewriteObjectRequest struct {
-	srcBucket     string
-	srcObject     string
-	dstBucket     string
-	dstObject     string
-	dstKeyName    string
-	attrs         *ObjectAttrs
-	gen           int64
-	conds         *Conditions
-	predefinedACL string
-	token         string
+	srcObject                sourceObject
+	dstObject                destinationObject
+	predefinedACL            string
+	token                    string
+	maxBytesRewrittenPerCall int64
 }
 
 type rewriteObjectResponse struct {
 	resource *ObjectAttrs
 	done     bool
 	written  int64
+	size     int64
 	token    string
 }

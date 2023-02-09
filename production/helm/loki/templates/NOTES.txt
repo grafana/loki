@@ -5,6 +5,9 @@
 ***********************************************************************
 
 Installed components:
+{{- if .Values.monitoring.selfMonitoring.enabled }}
+* grafana-agent-operator
+{{- end }}
 {{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
 * loki 
 {{- else -}}
@@ -16,4 +19,7 @@ Installed components:
 {{- end }}
 * read
 * write
+{{- if not .Values.read.legacyReadTarget }}
+* backend
+{{- end }}
 {{- end }}

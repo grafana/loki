@@ -118,6 +118,109 @@ type AlertManagerSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Alert Relabel Configuration"
 	RelabelConfigs []RelabelConfig `json:"relabelConfigs,omitempty"`
+
+	// Client configuration for reaching the alertmanager endpoint.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Config"
+	Client *AlertManagerClientConfig `json:"client,omitempty"`
+}
+
+// AlertManagerClientConfig defines the client configuration for reaching alertmanager endpoints.
+type AlertManagerClientConfig struct {
+	// TLS configuration for reaching the alertmanager endpoints.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="TLS"
+	TLS *AlertManagerClientTLSConfig `json:"tls,omitempty"`
+
+	// Header authentication configuration for reaching the alertmanager endpoints.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Header Authentication"
+	HeaderAuth *AlertManagerClientHeaderAuth `json:"headerAuth,omitempty"`
+
+	// Basic authentication configuration for reaching the alertmanager endpoints.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Basic Authentication"
+	BasicAuth *AlertManagerClientBasicAuth `json:"basicAuth,omitempty"`
+}
+
+// AlertManagerClientBasicAuth defines the basic authentication configuration for reaching alertmanager endpoints.
+type AlertManagerClientBasicAuth struct {
+	// The subject's username for the basic authentication configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Username"
+	Username *string `json:"username,omitempty"`
+
+	// The subject's password for the basic authentication configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Password"
+	Password *string `json:"password,omitempty"`
+}
+
+// AlertManagerClientHeaderAuth defines the header configuration reaching alertmanager endpoints.
+type AlertManagerClientHeaderAuth struct {
+	// The authentication type for the header authentication configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Type"
+	Type *string `json:"type,omitempty"`
+
+	// The credentials for the header authentication configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Credentials"
+	Credentials *string `json:"credentials,omitempty"`
+
+	// The credentials file for the Header authentication configuration. It is mutually exclusive with `credentials`.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Credentials File"
+	CredentialsFile *string `json:"credentialsFile,omitempty"`
+}
+
+// AlertManagerClientTLSConfig defines the TLS configuration for reaching alertmanager endpoints.
+type AlertManagerClientTLSConfig struct {
+	// The CA certificate file path for the TLS configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA Path"
+	CAPath *string `json:"caPath,omitempty"`
+
+	// The server name to validate in the alertmanager server certificates.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Server Name"
+	ServerName *string `json:"serverName,omitempty"`
+
+	// The client-side certificate file path for the TLS configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cert Path"
+	CertPath *string `json:"certPath,omitempty"`
+
+	// The client-side key file path for the TLS configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Path"
+	KeyPath *string `json:"keyPath,omitempty"`
 }
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.
@@ -389,6 +492,22 @@ type RulerConfigSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Remote Write Configuration"
 	RemoteWriteSpec *RemoteWriteSpec `json:"remoteWrite,omitempty"`
+
+	// Overrides defines the config overrides to be applied per-tenant.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rate Limiting"
+	Overrides map[string]RulerOverrides `json:"overrides,omitempty"`
+}
+
+// RulerOverrides defines the overrides applied per-tenant.
+type RulerOverrides struct {
+	// AlertManagerOverrides defines the overrides to apply to the alertmanager config.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	AlertManagerOverrides *AlertManagerSpec `json:"alertmanager,omitempty"`
 }
 
 // RulerConfigStatus defines the observed state of RulerConfig
@@ -403,6 +522,7 @@ type RulerConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-rulerconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=rulerconfigs,verbs=create;update,versions=v1beta1,name=vrulerconfig.loki.grafana.com,admissionReviewVersions=v1
 
 // RulerConfig is the Schema for the rulerconfigs API
 //

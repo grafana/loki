@@ -39,7 +39,7 @@ var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
 // Config for query_range middleware chain.
 type Config struct {
 	// Deprecated: SplitQueriesByInterval will be removed in the next major release
-	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
+	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval" doc:"deprecated|description=Use -querier.split-queries-by-interval instead. CLI flag: -querier.split-queries-by-day. Split queries by day and execute in parallel."`
 
 	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
 	ResultsCacheConfig   `yaml:"results_cache"`

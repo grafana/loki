@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"sync"
+
 	// embed time zone data
 	_ "time/tzdata"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/tracing"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail"
@@ -133,7 +135,26 @@ func main() {
 		}
 	}
 
-	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
+	if config.Tracing.Enabled {
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+		trace, err := tracing.NewFromEnv("promtail")
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+		}
+
+		defer func() {
+			if trace != nil {
+				if err := trace.Close(); err != nil {
+					level.Error(util_log.Logger).Log("msg", "error closing tracing", "err", err)
+				}
+			}
+		}()
+	}
+
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
+	if config.Options.StreamLagLabels.String() != "" {
+		level.Warn(util_log.Logger).Log("msg", "the stream_lag_labels setting is deprecated and the associated metric has been removed", "stream_lag_labels", config.Options.StreamLagLabels.String())
+	}
 	newConfigFunc := func() (*promtail_config.Config, error) {
 		mtx.Lock()
 		defer mtx.Unlock()

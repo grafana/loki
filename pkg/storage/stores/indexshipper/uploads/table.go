@@ -20,7 +20,7 @@ const (
 type Table interface {
 	Name() string
 	AddIndex(userID string, idx index.Index) error
-	ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
+	ForEach(userID string, callback index.ForEachIndexCallback) error
 	Upload(ctx context.Context) error
 	Cleanup(indexRetainPeriod time.Duration) error
 	Stop()
@@ -78,13 +78,9 @@ func (lt *table) AddIndex(userID string, idx index.Index) error {
 }
 
 // ForEach iterates over all the indexes belonging to the user.
-func (lt *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
+func (lt *table) ForEach(userID string, callback index.ForEachIndexCallback) error {
 	lt.indexSetMtx.RLock()
-
-	go func() {
-		<-doneChan
-		lt.indexSetMtx.RUnlock()
-	}()
+	defer lt.indexSetMtx.RUnlock()
 
 	// TODO(owen-d): refactor? Uploads mgr never has user indices,
 	// only common (multitenant) ones.
@@ -95,7 +91,7 @@ func (lt *table) ForEach(ctx context.Context, userID string, doneChan <-chan str
 			continue
 		}
 
-		if err := idxSet.ForEach(ctx, doneChan, callback); err != nil {
+		if err := idxSet.ForEach(callback); err != nil {
 			return err
 		}
 	}

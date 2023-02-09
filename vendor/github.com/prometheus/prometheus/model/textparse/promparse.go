@@ -17,6 +17,7 @@
 package textparse
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -26,9 +27,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/pkg/errors"
-
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 )
@@ -168,6 +168,12 @@ func (p *PromParser) Series() ([]byte, *int64, float64) {
 	return p.series, nil, p.val
 }
 
+// Histogram always returns (nil, nil, nil, nil) because the Prometheus text format
+// does not support sparse histograms.
+func (p *PromParser) Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram) {
+	return nil, nil, nil, nil
+}
+
 // Help returns the metric name and help text in the current entry.
 // Must only be called after Next returned a help entry.
 // The returned byte slices become invalid after the next call to Next.
@@ -252,7 +258,7 @@ func (p *PromParser) nextToken() token {
 }
 
 func parseError(exp string, got token) error {
-	return errors.Errorf("%s, got %q", exp, got)
+	return fmt.Errorf("%s, got %q", exp, got)
 }
 
 // Next advances the parser to the next sample. It returns false if no
@@ -301,11 +307,11 @@ func (p *PromParser) Next() (Entry, error) {
 			case "untyped":
 				p.mtype = MetricTypeUnknown
 			default:
-				return EntryInvalid, errors.Errorf("invalid metric type %q", s)
+				return EntryInvalid, fmt.Errorf("invalid metric type %q", s)
 			}
 		case tHelp:
 			if !utf8.Valid(p.text) {
-				return EntryInvalid, errors.Errorf("help text is not a valid utf8 string")
+				return EntryInvalid, fmt.Errorf("help text is not a valid utf8 string")
 			}
 		}
 		if t := p.nextToken(); t != tLinebreak {
@@ -364,7 +370,7 @@ func (p *PromParser) Next() (Entry, error) {
 		return EntrySeries, nil
 
 	default:
-		err = errors.Errorf("%q is not a valid start token", t)
+		err = fmt.Errorf("%q is not a valid start token", t)
 	}
 	return EntryInvalid, err
 }
@@ -388,7 +394,7 @@ func (p *PromParser) parseLVals() error {
 			return parseError("expected label value", t)
 		}
 		if !utf8.Valid(p.l.buf()) {
-			return errors.Errorf("invalid UTF-8 label value")
+			return fmt.Errorf("invalid UTF-8 label value")
 		}
 
 		// The promlexer ensures the value string is quoted. Strip first

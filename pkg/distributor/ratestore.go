@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/dskit/services"
@@ -34,7 +36,7 @@ type RateStoreConfig struct {
 func (cfg *RateStoreConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MaxParallelism, prefix+".max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
 	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
-	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", time.Second, "Timeout for communication between distributors and ingesters when updating rates")
+	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", 500*time.Millisecond, "Timeout for communication between distributors and any given ingester when updating rates")
 }
 
 type ingesterClient struct {
@@ -42,34 +44,42 @@ type ingesterClient struct {
 	client logproto.StreamDataClient
 }
 
+type expiringRate struct {
+	createdAt time.Time
+	rate      int64
+	shards    int64
+}
+
 type rateStore struct {
 	services.Service
 
-	ring                   ring.ReadRing
-	clientPool             poolClientFactory
-	rates                  map[uint64]int64
-	rateLock               sync.RWMutex
-	rateCollectionInterval time.Duration
-	ingesterTimeout        time.Duration
-	maxParallelism         int
-	limits                 Limits
+	ring            ring.ReadRing
+	clientPool      poolClientFactory
+	rates           map[string]map[uint64]expiringRate // tenant id -> fingerprint -> rate
+	rateLock        sync.RWMutex
+	rateKeepAlive   time.Duration
+	ingesterTimeout time.Duration
+	maxParallelism  int
+	limits          Limits
 
 	metrics *ratestoreMetrics
 }
 
 func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
-		ring:                   r,
-		clientPool:             cf,
-		rateCollectionInterval: cfg.StreamRateUpdateInterval,
-		maxParallelism:         cfg.MaxParallelism,
-		ingesterTimeout:        cfg.IngesterReqTimeout,
-		limits:                 l,
-		metrics:                newRateStoreMetrics(registerer),
+		ring:            r,
+		clientPool:      cf,
+		maxParallelism:  cfg.MaxParallelism,
+		ingesterTimeout: cfg.IngesterReqTimeout,
+		rateKeepAlive:   10 * time.Minute,
+		limits:          l,
+		metrics:         newRateStoreMetrics(registerer),
+		rates:           make(map[string]map[uint64]expiringRate),
 	}
 
+	rateCollectionInterval := util.DurationWithJitter(cfg.StreamRateUpdateInterval, 0.2)
 	s.Service = services.
-		NewTimerService(s.rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
+		NewTimerService(rateCollectionInterval, s.instrumentedUpdateAllRates, s.instrumentedUpdateAllRates, nil).
 		WithName("rate store")
 
 	return s
@@ -92,15 +102,65 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 	}
 
 	streamRates := s.getRates(ctx, clients)
-	rates := s.aggregateByShard(streamRates)
+	updated := s.aggregateByShard(streamRates)
+	updateStats := s.updateRates(updated)
 
-	s.metrics.streamCount.Set(float64(len(rates)))
-
-	s.rateLock.Lock()
-	defer s.rateLock.Unlock()
-	s.rates = rates
+	s.metrics.maxStreamRate.Set(float64(updateStats.maxRate))
+	s.metrics.maxStreamShardCount.Set(float64(updateStats.maxShards))
+	s.metrics.streamCount.Set(float64(updateStats.totalStreams))
+	s.metrics.expiredCount.Add(float64(updateStats.expiredCount))
 
 	return nil
+}
+
+type rateStats struct {
+	maxShards    int64
+	maxRate      int64
+	totalStreams int64
+	expiredCount int64
+}
+
+func (s *rateStore) updateRates(updated map[string]map[uint64]expiringRate) rateStats {
+	s.rateLock.Lock()
+	defer s.rateLock.Unlock()
+
+	for tenantID, tenant := range updated {
+		if _, ok := s.rates[tenantID]; !ok {
+			s.rates[tenantID] = map[uint64]expiringRate{}
+		}
+
+		for stream, rate := range tenant {
+			s.rates[tenantID][stream] = rate
+		}
+	}
+
+	return s.cleanupExpired()
+}
+
+func (s *rateStore) cleanupExpired() rateStats {
+	var rs rateStats
+
+	for tID, tenant := range s.rates {
+		rs.totalStreams += int64(len(tenant))
+		for stream, rate := range tenant {
+			if time.Since(rate.createdAt) > s.rateKeepAlive {
+				rs.expiredCount++
+				delete(s.rates[tID], stream)
+				if len(s.rates[tID]) == 0 {
+					delete(s.rates, tID)
+				}
+				continue
+			}
+
+			rs.maxRate = max(rs.maxRate, rate.rate)
+			rs.maxShards = max(rs.maxShards, rate.shards)
+
+			s.metrics.streamShardCount.Observe(float64(rate.shards))
+			s.metrics.streamRate.Observe(float64(rate.rate))
+		}
+	}
+
+	return rs
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
@@ -119,31 +179,24 @@ func (s *rateStore) anyShardingEnabled() bool {
 	return false
 }
 
-func (s *rateStore) aggregateByShard(streamRates map[uint64]*logproto.StreamRate) map[uint64]int64 {
-	var maxRate int64
-	shardCount := make(map[uint64]int)
-	rates := make(map[uint64]int64)
-	for _, sr := range streamRates {
-		shardCount[sr.StreamHashNoShard]++
+func (s *rateStore) aggregateByShard(streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
+	rates := map[string]map[uint64]expiringRate{}
 
-		if _, ok := rates[sr.StreamHashNoShard]; ok {
-			rates[sr.StreamHashNoShard] += sr.Rate
-			maxRate = max(rates[sr.StreamHashNoShard], maxRate)
+	for tID, tenant := range streamRates {
+		for _, streamRate := range tenant {
+			if _, ok := rates[tID]; !ok {
+				rates[tID] = map[uint64]expiringRate{}
+			}
 
-			continue
+			rate := rates[tID][streamRate.StreamHashNoShard]
+			rate.rate += streamRate.Rate
+			rate.shards++
+			rate.createdAt = time.Now()
+
+			rates[tID][streamRate.StreamHashNoShard] = rate
 		}
-
-		rates[sr.StreamHashNoShard] = sr.Rate
-		maxRate = max(rates[sr.StreamHashNoShard], maxRate)
 	}
 
-	var maxShards int64
-	for _, v := range shardCount {
-		maxShards = max(maxShards, int64(v))
-	}
-
-	s.metrics.maxStreamRate.Set(float64(maxRate))
-	s.metrics.maxStreamShardCount.Set(float64(maxShards))
 	return rates
 }
 
@@ -154,7 +207,7 @@ func max(a, b int64) int64 {
 	return b
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[uint64]*logproto.StreamRate {
+func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
 	parallelClients := make(chan ingesterClient, len(clients))
 	responses := make(chan *logproto.StreamRatesResponse, len(clients))
 
@@ -185,27 +238,30 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[uint64]*logproto.StreamRate {
+func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]map[uint64]*logproto.StreamRate {
 	var maxRate int64
-	streamRates := make(map[uint64]*logproto.StreamRate)
+	streamRates := map[string]map[uint64]*logproto.StreamRate{}
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
 		if resp == nil {
 			continue
 		}
 
-		for j := 0; j < len(resp.StreamRates); j++ {
-			rate := resp.StreamRates[j]
+		for _, rate := range resp.StreamRates {
 			maxRate = max(maxRate, rate.Rate)
 
-			if r, ok := streamRates[rate.StreamHash]; ok {
+			if _, ok := streamRates[rate.Tenant]; !ok {
+				streamRates[rate.Tenant] = map[uint64]*logproto.StreamRate{}
+			}
+
+			if r, ok := streamRates[rate.Tenant][rate.StreamHash]; ok {
 				if r.Rate < rate.Rate {
-					streamRates[rate.StreamHash] = rate
+					streamRates[rate.Tenant][rate.StreamHash] = rate
 				}
 				continue
 			}
 
-			streamRates[rate.StreamHash] = rate
+			streamRates[rate.Tenant][rate.StreamHash] = rate
 		}
 	}
 
@@ -232,9 +288,12 @@ func (s *rateStore) getClients() ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(streamHash uint64) int64 {
+func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
-	return s.rates[streamHash]
+	if t, ok := s.rates[tenant]; ok {
+		return t[streamHash].rate
+	}
+	return 0
 }

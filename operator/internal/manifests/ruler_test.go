@@ -1,10 +1,12 @@
 package manifests_test
 
 import (
+	"math/rand"
 	"testing"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -28,6 +30,55 @@ func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, expected)
 	require.Equal(t, annotations[expected], "deadbeef")
+}
+
+func TestNewRulerStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
+	ss := manifests.NewRulerStatefulSet(manifests.Options{
+		Name:                   "abcd",
+		Namespace:              "efgh",
+		CertRotationRequiredAt: "deadbeef",
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+	expected := "loki.grafana.com/certRotationRequiredAt"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
+}
+
+func TestBuildRuler_HasExtraObjectsForTenantMode(t *testing.T) {
+	objs, err := manifests.BuildRuler(manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		OpenShiftOptions: openshift.Options{
+			BuildOpts: openshift.BuildOptions{
+				LokiStackName:      "abc",
+				LokiStackNamespace: "efgh",
+			},
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Rules: &lokiv1.RulesSpec{
+				Enabled: true,
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, objs, 7)
 }
 
 func TestNewRulerStatefulSet_SelectorMatchesLabels(t *testing.T) {
