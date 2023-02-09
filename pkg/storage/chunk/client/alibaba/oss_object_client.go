@@ -32,11 +32,6 @@ type OssObjectClient struct {
 	defaultBucket *oss.Bucket
 }
 
-// StorageConfig specifies config for storing data on AWS.
-type StorageConfig struct {
-	OssConfig `yaml:",inline"`
-}
-
 // OssConfig is config for the OSS Chunk Client.
 type OssConfig struct {
 	Bucket          string `yaml:"bucket"`
@@ -54,8 +49,8 @@ func (cfg *OssConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Bucket, prefix+"oss.bucketname", "", "Name of OSS bucket.")
 	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
-	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibaba Access Key ID")
-	f.StringVar(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "", "alibaba Secret Access Key")
+	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
+	f.StringVar(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "", "alibabacloud Secret Access Key")
 }
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.

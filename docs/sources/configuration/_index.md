@@ -2816,6 +2816,10 @@ storage:
   # The CLI flags prefix for this block configuration is: common.storage
   [azure: <azure_storage_config>]
 
+  # The alibabacloud_storage_config block configures the connection to Alibaba
+  # Cloud Storage object storage backend.
+  [alibabacloud: <alibabacloud_storage_config>]
+
   # The bos_storage_config block configures the connection to Baidu Object
   # Storage (BOS) object storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
@@ -3803,6 +3807,28 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+```
+
+### alibabacloud_storage_config
+
+The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend.
+
+```yaml
+# Name of OSS bucket.
+# CLI flag: -common.storage.oss.bucketname
+[bucket: <string> | default = ""]
+
+# oss Endpoint to connect to.
+# CLI flag: -common.storage.oss.endpoint
+[endpoint: <string> | default = ""]
+
+# alibabacloud Access Key ID
+# CLI flag: -common.storage.oss.access-key-id
+[access_key_id: <string> | default = ""]
+
+# alibabacloud Secret Access Key
+# CLI flag: -common.storage.oss.secret-access-key
+[secret_access_key: <string> | default = ""]
 ```
 
 ### gcs_storage_config

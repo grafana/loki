@@ -65,7 +65,7 @@ type NamedStores struct {
 	BOS        map[string]baidubce.BOSStorageConfig `yaml:"bos"`
 	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
 	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
-	OSS        map[string]alibaba.StorageConfig     `yaml:"alibabacloud"`
+	OSS        map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
 	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
 
 	// contains mapping from named store reference name to store type
@@ -104,7 +104,12 @@ func (ns *NamedStores) populateStoreType() error {
 		}
 		ns.storeType[name] = config.StorageTypeAzure
 	}
-
+	for name := range ns.AlibabaCloud {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeAlibabaCloud
+	}
 	for name := range ns.BOS {
 		if err := checkForDuplicates(name); err != nil {
 			return err
@@ -160,7 +165,7 @@ func (ns *NamedStores) validate() error {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AlibabaStorageConfig   alibaba.StorageConfig     `yaml:"alibabacloud"`
+	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`
 	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
