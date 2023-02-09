@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [8483](https://github.com/grafana/loki/pull/8483) **MichelHollands**: Support the or operator between pattern parsers.
 * [7951](https://github.com/grafana/loki/pull/7951) **MichelHollands**: Add a count template function to line_format and label_format.
 * [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap.
 * [7731](https://github.com/grafana/loki/pull/7731) **bitkill**: Add healthchecks to the docker-compose example.
