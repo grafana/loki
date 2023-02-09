@@ -2,6 +2,13 @@
 title: Monitoring
 description: monitoring
 weight: 200
+aliases:
+  - /docs/installation/helm/monitor-and-alert
+keywords:
+  - helm 
+  - scalable
+  - simple-scalable
+  - monitor
 ---
 
 # Monitoring
