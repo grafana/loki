@@ -39,8 +39,14 @@ type Reader interface {
 //
 // Based on https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go#L46
 type WriteTo interface {
+	// StoreSeries is called when series are found in WAL entries by the watcher, alongside with the segmentNum they were
+	// found in.
 	StoreSeries(series []record.RefSeries, segmentNum int)
+
 	AppendEntries(entries wal.RefEntries) error
+
+	// SeriesReset is called when the Watcher notices that segments have been deleted. The argument of the call
+	// signifies that all segments with a number lower or equal than segmentNum are safe to be reclaimed.
 	SeriesReset(segmentNum int)
 }
 
