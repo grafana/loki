@@ -2,11 +2,10 @@ package client
 
 import (
 	"fmt"
-	"strings"
-	"sync"
-
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"strings"
+	"sync"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
@@ -59,8 +58,10 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 		clientsCheck[client.Name()] = fake
 		clients = append(clients, client)
 
+		// look for deletes segments every 1/2 the max segment age, that way we are not generating too much noise on the write
+		// to, and we allow a maximum series cache drift of max segment age / 2.
 		// Create and launch wal watcher for this client
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger)
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger, walCfg.MaxSegmentAge/2)
 		watcher.Start()
 		watchers = append(watchers, watcher)
 	}
