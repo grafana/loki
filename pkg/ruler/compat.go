@@ -146,6 +146,10 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
 		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
+		// GroupLoader builds a cache of the rules as they're loaded by the
+		// manager.This is used to back the memstore
+		groupLoader := NewCachingGroupLoader(GroupLoader{})
+
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:      registry,
 			Queryable:       memStore,
