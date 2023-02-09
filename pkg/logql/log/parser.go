@@ -371,7 +371,7 @@ func (o *OrPatternParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]
 	return localLine, true
 }
 
-func (l *OrPatternParser) RequiredLabelNames() []string { return []string{} }
+func (o *OrPatternParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
