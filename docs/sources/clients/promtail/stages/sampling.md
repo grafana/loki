@@ -23,17 +23,8 @@ sampling:
 ```
 ```yaml
 drop:
-  # Single name or names list of extracted data. If empty, uses the log message.
-  [source: [<string>] | <string>]
-
-  # Separator placed between concatenated extracted data names. The default separator is a semicolon.
-  [separator: <string> | default = ";"]
-
-  # RE2 regular expression. If `source` is provided and it's a list, the regex will attempt to match
-  # the concatenated sources. If no source is provided, then the regex attempts
-  # to match the log line.
-  # If the provided regex matches the log line or the source, the line will be dropped.
-  [expression: <string>]
+  # The rate sampling in lines per second that Promtail will push to Loki.The value is between 0 and 1.
+  [rate: <int>]
 
   # value can only be specified when source is specified. If `source` is provided and it's a list,
   # the value will attempt to match the concatenated sources. It is an error to specify value and expression.
