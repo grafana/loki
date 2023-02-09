@@ -39,9 +39,9 @@ type Reader interface {
 //
 // Based on https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go#L46
 type WriteTo interface {
-	StoreSeries([]record.RefSeries, int)
+	StoreSeries(series []record.RefSeries, segmentNum int)
 	AppendEntries(entries wal.RefEntries) error
-	SeriesReset(int)
+	SeriesReset(segmentNum int)
 }
 
 type Watcher struct {
@@ -49,29 +49,31 @@ type Watcher struct {
 	// the metric/log line corresponds.
 	id string
 
-	writeTo      WriteTo
-	done         chan struct{}
-	quit         chan struct{}
-	walDir       string
-	logger       log.Logger
-	MaxSegment   int
-	seenSegments diffset
+	writeTo                         WriteTo
+	done                            chan struct{}
+	quit                            chan struct{}
+	walDir                          string
+	logger                          log.Logger
+	MaxSegment                      int
+	seenSegments                    diffset
+	deletedSegmentsWatcherFrequency time.Duration
 
 	metrics *WatcherMetrics
 }
 
 // NewWatcher creates a new Watcher.
-func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger) *Watcher {
+func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger, deletedSegmentsWatcherFrequency time.Duration) *Watcher {
 	return &Watcher{
-		walDir:       walDir,
-		id:           id,
-		writeTo:      writeTo,
-		quit:         make(chan struct{}),
-		done:         make(chan struct{}),
-		MaxSegment:   -1,
-		seenSegments: diffset{},
-		logger:       logger,
-		metrics:      metrics,
+		walDir:                          walDir,
+		id:                              id,
+		writeTo:                         writeTo,
+		quit:                            make(chan struct{}),
+		done:                            make(chan struct{}),
+		MaxSegment:                      -1,
+		deletedSegmentsWatcherFrequency: deletedSegmentsWatcherFrequency,
+		seenSegments:                    diffset{},
+		logger:                          logger,
+		metrics:                         metrics,
 	}
 }
 
@@ -100,8 +102,7 @@ func (w *Watcher) mainLoop() {
 }
 
 func (w *Watcher) runSeriesResetWatcher() {
-	// todo: extract as parameter
-	ticker := time.NewTicker(time.Second * 2)
+	ticker := time.NewTicker(w.deletedSegmentsWatcherFrequency)
 	for {
 		select {
 		case <-ticker.C:
@@ -129,9 +130,21 @@ func (w *Watcher) readSegmentsAndEmitSeriesResets() error {
 		level.Debug(w.logger).Log("msg", "No segment was gc-ed. No series being resetted")
 		return nil
 	}
+	// Since segments are created with a segment number that is increasing, we can order them by it's number like
+	// segment i, segment i+1, ..., segment n. Also, we can assume that if segment i was last written at time T, all
+	// segments before were last written at a time T', with T' < T.
+	// Promtail only has a single WAL writer, therefore at each time, the WAL has a single writer head. Also, this writer
+	// creates a routine that deletes segments older than a configured threshold. Considering the above, we can assure that
+	// if at some point a segment i was deleted, all segments numbered j with j <= i are deleted or safe to delete as well.
+	// Therefore, if SeriesReset is called with the highest numbered deleted segment in the diffset, then all previous
+	// were as well.
+	maxDeleted := -1
 	for s := range diff {
-		w.writeTo.SeriesReset(s)
+		if s > maxDeleted {
+			maxDeleted = s
+		}
 	}
+	w.writeTo.SeriesReset(maxDeleted)
 	return nil
 }
 

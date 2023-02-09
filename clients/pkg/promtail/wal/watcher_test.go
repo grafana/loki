@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"fmt"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"os"
 	"testing"
@@ -33,6 +34,7 @@ func (t *testWriteTo) StoreSeries(series []record.RefSeries, i int) {
 }
 
 func (t *testWriteTo) SeriesReset(segmentNum int) {
+	level.Debug(t.logger).Log("msg", fmt.Sprintf("received series reset with %d", segmentNum))
 	t.ReceivedSeriesReset = append(t.ReceivedSeriesReset, segmentNum)
 }
 
@@ -233,16 +235,21 @@ var cases = map[string]watcherTest{
 			return len(res.writeTo.ReceivedSeriesReset) == 1 && res.writeTo.ReceivedSeriesReset[0] == 0
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
 
-		// moving to segment 2
+		// moving and writing to segment 2
 		require.NoError(t, res.nextWALSegment(), "expected no error when moving to next wal segment")
-
-		// writing segment 2
 		writeAndWaitForWatcherToCatchUp("segment 2", 3)
+		time.Sleep(time.Millisecond)
+		// moving and writing to segment 3
+		require.NoError(t, res.nextWALSegment(), "expected no error when moving to next wal segment")
+		writeAndWaitForWatcherToCatchUp("segment 3", 4)
 
-		// collecting segment 1
+		// collecting segment 1 and 2
 		require.NoError(t, res.deleteSegment(1), "error deleting old segment")
+		require.NoError(t, res.deleteSegment(2), "error deleting old segment")
+		// Expect second SeriesReset call to have the highest numbered deleted segment, 2
 		require.Eventually(t, func() bool {
-			return len(res.writeTo.ReceivedSeriesReset) == 2 && res.writeTo.ReceivedSeriesReset[1] == 1
+			t.Logf("received series reset: %v", res.writeTo.ReceivedSeriesReset)
+			return len(res.writeTo.ReceivedSeriesReset) == 2 && res.writeTo.ReceivedSeriesReset[1] == 2
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
 	},
 }
@@ -262,7 +269,7 @@ func TestWatcher(t *testing.T) {
 				logger: logger,
 			}
 			// create new watcher, and defer stop
-			watcher := NewWatcher(dir, "test", metrics, writeTo, logger)
+			watcher := NewWatcher(dir, "test", metrics, writeTo, logger, time.Second)
 			defer watcher.Stop()
 			wl, err := New(Config{
 				Enabled: true,
