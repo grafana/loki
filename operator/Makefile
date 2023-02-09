@@ -36,13 +36,11 @@ REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 MAIN_IMAGE_TAG = main-39f2856
 
 # Customize for variants: community or openshift
-USE_OPENSHIFT_BUILD ?= false
-VARIANT = community
-ifeq ($(USE_OPENSHIFT_BUILD), true)
+VARIANT ?= community
+ifeq ($(VARIANT), openshift)
 ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
     REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
 endif
-    VARIANT = openshift
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
@@ -193,15 +191,14 @@ oci-push: ## Push the image
 .PHONY: bundle-all
 bundle-all: ## Generate both bundles.
 	$(MAKE) bundle
-	$(MAKE) bundle USE_OPENSHIFT_BUILD=true
+	$(MAKE) bundle VARIANT=openshift
 
 .PHONY: bundle
-bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate openshift bundle manifests and metadata, then validate generated files.
+bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate variant bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_DIR) --output-dir $(MANIFESTS_DIR)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd $(BUNDLE_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_BUILD_GEN_FLAGS) && rm PROJECT
 	$(OPERATOR_SDK) bundle validate $(BUNDLE_DIR)
-
 
 .PHONY: bundle-build
 bundle-build: ## Build the community bundle image
