@@ -158,14 +158,51 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 			OutageTolerance: cfg.OutageTolerance,
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
-			GroupLoader:     GroupLoader{},
+			GroupLoader:     groupLoader,
 		})
 
-		// initialize memStore, bound to the manager's alerting rules
-		memStore.Start(mgr)
+		cachingManager := &CachingRulesManager{
+			manager:     mgr,
+			groupLoader: groupLoader,
+		}
 
-		return mgr
+		memStore.Start(groupLoader)
+
+		return cachingManager
 	}
+}
+
+// CachingRulesManager holds a CachingGroupLoader to make sure the GroupLoader
+// has consistent state after update operations. Manager needs to hold the same
+// caching grouploader
+type CachingRulesManager struct {
+	manager     ruler.RulesManager
+	groupLoader *CachingGroupLoader
+}
+
+// Update reconciles the state of the CachingGroupLoader after a manager.Update.
+// The GroupLoader is mutated as part of a call to Update but it might still
+// contain removed files. Update tells the loader which files to keep
+func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error {
+	err := m.manager.Update(interval, files, externalLabels, externalURL, ruleGroupPostProcessFunc)
+	if err != nil {
+		return err
+	}
+
+	m.groupLoader.Prune(files)
+	return nil
+}
+
+func (m *CachingRulesManager) Run() {
+	m.manager.Run()
+}
+
+func (m *CachingRulesManager) Stop() {
+	m.manager.Stop()
+}
+
+func (m *CachingRulesManager) RuleGroups() []*rules.Group {
+	return m.manager.RuleGroups()
 }
 
 func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
