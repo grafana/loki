@@ -357,8 +357,8 @@ func NewLimitedTripperware(
 		// Limited queries only need to fetch up to the requested line limit worth of logs,
 		// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
 		// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
-		// Therefore we limit to only query one hour of data at a time and
-		SplitByIntervalMiddleware(schema.Configs, WithSplitbyAndMaxParallelism(limits, 1*time.Hour, 1), codec, splitByTime, metrics.SplitByMetrics),
+		// Therefore we force max parallelism to one so that these queries are executed sequentially.
+		SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), codec, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.CacheResults {
