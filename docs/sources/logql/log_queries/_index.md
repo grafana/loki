@@ -473,7 +473,7 @@ To match `msg="`, use the expression:
 ```
 
 Multiple pattern parsers can be chained using the `or` operator. Only the captured fields of the
-first matching pattern are applied.
+first matching pattern are added as labels.
 
 Consider the log lines
 
