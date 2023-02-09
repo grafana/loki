@@ -894,7 +894,6 @@ func TestOrPatternParser(t *testing.T) {
 		{Name: "method", Value: "bar"},
 	}
 	lblBuilder := NewBaseLabelsBuilder().ForLabels(lbls, lbls.Hash())
-	lblBuilder.Reset()
 
 	p, err := NewOrPatternParser(p1, "PASS <method>")
 	require.NoError(t, err)
@@ -906,12 +905,13 @@ func TestOrPatternParser(t *testing.T) {
 	}
 	require.Equal(t, expected, lblBuilder.LabelsResult().Labels())
 
+	lblBuilder.Reset()
+	// Only the second pattern parser "PASS <method>" should be applied here
 	p.Process(0, []byte("PASS xyz"), lblBuilder)
 
 	expected = labels.Labels{
 		{Name: "method", Value: "bar"},
 		{Name: "method_extracted", Value: "xyz"},
-		{Name: "testname", Value: "abc"},
 	}
 	require.Equal(t, expected, lblBuilder.LabelsResult().Labels())
 }
