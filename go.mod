@@ -15,6 +15,7 @@ require (
 	github.com/Shopify/sarama v1.38.1
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/alicebob/miniredis/v2 v2.30.0
+	github.com/aliyun/aliyun-oss-go-sdk v2.2.2+incompatible
 	github.com/aws/aws-sdk-go v1.44.187
 	github.com/baidubce/bce-sdk-go v0.9.141
 	github.com/bmatcuk/doublestar v1.3.4
