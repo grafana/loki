@@ -47,7 +47,7 @@ loki:
     # -- Overrides the image tag whose default is the chart's appVersion
     # TODO: needed for 3rd target backend functionality
     # revert to null or latest once this behavior is relased
-    tag: "main-5e53303"
+    tag: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   # -- Common annotations for all pods
@@ -223,6 +223,7 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
+    compactor_address: '{{ include "loki.compactorAddress" . }}'
 
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
@@ -811,7 +812,7 @@ read:
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
   # 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will
   # run two targets, false will run 3 targets.
-  legacyReadTarget: false
+  legacyReadTarget: true
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -870,6 +871,8 @@ backend:
   priorityClassName: null
   # -- Annotations for backend pods
   podAnnotations: {}
+  # -- Additional labels for each `backend` pod
+  podLabels: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
   # -- Labels for ingester service
@@ -1039,6 +1042,11 @@ ingress:
 #    - hosts:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
+
+# Configuration for the memberlist service
+memberlist:
+  service:
+    publishNotReadyAddresses: false
 
 # Configuration for the gateway
 gateway:

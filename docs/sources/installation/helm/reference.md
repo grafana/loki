@@ -176,6 +176,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for backend pods</td>
@@ -1557,6 +1566,7 @@ true
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
+  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -1648,7 +1658,7 @@ true
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
-"main-5e53303"
+null
 </pre>
 </td>
 		</tr>
@@ -1898,6 +1908,15 @@ true
 			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memberlist.service.publishNotReadyAddresses</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -2744,7 +2763,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 		</tr>

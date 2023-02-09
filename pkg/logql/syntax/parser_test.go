@@ -2868,6 +2868,23 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8),
 		},
 		{
+			in:  `vector(1)`,
+			exp: &VectorExpr{Val: 1, err: nil},
+		},
+		{
+			in:  `label_replace(vector(0), "foo", "bar", "", "")`,
+			exp: mustNewLabelReplaceExpr(&VectorExpr{Val: 0, err: nil}, "foo", "bar", "", ""),
+		},
+		{
+			in: `sum(vector(0))`,
+			exp: &VectorAggregationExpr{
+				Left:      &VectorExpr{Val: 0, err: nil},
+				Grouping:  &Grouping{},
+				Params:    0,
+				Operation: "sum",
+			},
+		},
+		{
 			in: `{app="foo"}
 					# |= "bar"
 					| json`,
@@ -2995,6 +3012,33 @@ func TestParse(t *testing.T) {
 				},
 				Operation: "count_over_time",
 			},
+		},
+		{
+			// binop always includes vector matching. Default is `without ()`,
+			// the zero value.
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) or vector(1)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeOr,
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&Grouping{},
+					nil,
+				),
+				NewVectorExpr("1"),
+			),
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

@@ -13,6 +13,15 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. Add your changelog bellow this line. This locator is used by CI pipeline to find the place where to put changelog entry.)
 
+## 4.5.1
+
+- [BUGFIX] Fix rendering of namespace in provisioner job.
+- [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
+- [BUGFIX] Correctly set `compactor_address` for 3 target scalable configuration.
+## 4.6
+
+- [Change] Bump Loki verstion to 2.7.3. Revert to 2 target simple scalable mode as default until third target ships in minor release.
+
 ## 4.5
 
 - [ENHANCEMENT] Single binary mode is now possible for more than 1 replica, with a gateway and object storage backend.

@@ -443,6 +443,10 @@ func TestPostQueries(t *testing.T) {
 			return nil, nil
 		}),
 		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected default roundtripper called")
+			return nil, nil
+		}),
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, nil
 		}),
 		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {

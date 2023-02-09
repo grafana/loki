@@ -103,19 +103,12 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
-		err := validateSampleExpr(e)
-		if err != nil {
-			return err
-		}
+		return validateSampleExpr(e)
 	case LogSelectorExpr:
-		err := validateMatchers(e.Matchers())
-		if err != nil {
-			return err
-		}
+		return validateLogSelectorExpression(e)
 	default:
 		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
-	return nil
 }
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
@@ -169,7 +162,6 @@ func validateSampleExpr(expr SampleExpr) error {
 			return err
 		}
 		return validateSampleExpr(e.RHS)
-
 	case *LiteralExpr:
 		if e.err != nil {
 			return e.err
@@ -195,7 +187,16 @@ func validateSampleExpr(expr SampleExpr) error {
 		if err != nil {
 			return err
 		}
-		return validateMatchers(selector.Matchers())
+		return validateLogSelectorExpression(selector)
+	}
+}
+
+func validateLogSelectorExpression(expr LogSelectorExpr) error {
+	switch e := expr.(type) {
+	case *VectorExpr:
+		return nil
+	default:
+		return validateMatchers(e.Matchers())
 	}
 }
 

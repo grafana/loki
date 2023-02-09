@@ -40,7 +40,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 
 1. Configure the object storage:
 
-    - Create the configuration file `values.yaml`:
+    - Create the configuration file `values.yaml`. The example below illustrates a s3 configuration:
 
       ```yaml
       storage:
@@ -60,10 +60,16 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 
       Consult the [Reference]({{<relref "../reference">}}) for configuring other storage providers.
 
-    - Define the AWS S3 credentials in the file.
+    - If you're just trying things, you can use the following configuration instead, that sets MinIO as storage:
+      ```yaml
+      minio:
+        enabled: true
+      ```
 
-1. Upgrade the Loki deployment with this command.
+1. Install or upgrade the Loki deployment with this command.
 
    ```bash
+   helm install --values values.yaml loki grafana/loki
+   # or upgrade for existing installations
    helm upgrade --values values.yaml loki grafana/loki
    ```
