@@ -269,7 +269,7 @@ func TestWatcher(t *testing.T) {
 				logger: logger,
 			}
 			// create new watcher, and defer stop
-			watcher := NewWatcher(dir, "test", metrics, writeTo, logger, time.Second)
+			watcher := NewWatcher(dir, "test", metrics, writeTo, logger, 2*time.Second)
 			defer watcher.Stop()
 			wl, err := New(Config{
 				Enabled: true,
