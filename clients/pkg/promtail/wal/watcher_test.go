@@ -2,7 +2,6 @@ package wal
 
 import (
 	"fmt"
-	"github.com/prometheus/prometheus/tsdb/wlog"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"

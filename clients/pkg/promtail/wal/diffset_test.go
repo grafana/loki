@@ -1,8 +1,9 @@
 package wal
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDiffset(t *testing.T) {

@@ -129,6 +129,11 @@ func (w *Watcher) readSegmentsAndEmitSeriesResets() error {
 	if err != nil {
 		return err
 	}
+	// Set differences are used to calculate the segments that we deleted between one run and the other. The initial
+	// seenSegments set is an empty set. Therefore, the first run will reclaim all segments in diff = empty - new, which
+	// is empty.
+	// In following runs, seenSegments is the list of segments seen in the last run, therefore diff = seen - new are the
+	// segments s such that s is part of seen, but not part of new, hence deleted.
 	newSeenSegments := newDiffset(segments)
 	diff := w.seenSegments.Difference(newSeenSegments)
 	w.seenSegments = newSeenSegments

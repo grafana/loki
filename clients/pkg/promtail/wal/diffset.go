@@ -7,6 +7,7 @@ const (
 // diffset is a simple implementation of a set that allows difference operations
 type diffset map[int]byte
 
+// newDiffset creates a new diffset with the elements in the list
 func newDiffset(elements []int) diffset {
 	d := diffset{}
 	for _, elem := range elements {

@@ -2,10 +2,11 @@ package client
 
 import (
 	"fmt"
-	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"strings"
 	"sync"
+
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
@@ -80,12 +81,8 @@ func (m *Manager) start() {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		// keep reading received entries
+		// discard read entries
 		for range m.entries {
-			// then fanout to every remote write client
-			//for _, c := range m.clients {
-			//	c.Chan() <- e
-			//}
 		}
 	}()
 }
