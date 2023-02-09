@@ -62,30 +62,27 @@ func (w *wrapper) Delete() error {
 	return err
 }
 
+// Log writes a new wal.Record to the WAL. It's safe to assume that a record always contains at least one entry
+// and one series.
 func (w *wrapper) Log(record *wal.Record) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil
 	}
+	// After here we know that there's a record, and it contains either entries or series, but knowing the caller,
+	// we can assume it always does one of both for batching both entries and series records.
 
-	buf := recordPool.GetBytes()[:0]
+	seriesBuf := recordPool.GetBytes()[:0]
+	entriesBuf := recordPool.GetBytes()[:0]
 	defer func() {
-		recordPool.PutBytes(buf)
+		recordPool.PutBytes(seriesBuf)
+		recordPool.PutBytes(entriesBuf)
 	}()
 
-	// Always write series then entries.
-	if len(record.Series) > 0 {
-		buf = record.EncodeSeries(buf)
-		if err := w.wal.Log(buf); err != nil {
-			return err
-		}
-		buf = buf[:0]
-	}
-	if len(record.RefEntries) > 0 {
-		buf = record.EncodeEntries(wal.CurrentEntriesRec, buf)
-		if err := w.wal.Log(buf); err != nil {
-			return err
-		}
-
+	seriesBuf = record.EncodeSeries(seriesBuf)
+	entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, entriesBuf)
+	// Batch both wal records written to just produce one page flush after. Always write series then entries.
+	if err := w.wal.Log(seriesBuf, entriesBuf); err != nil {
+		return err
 	}
 	return nil
 }
