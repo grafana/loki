@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,17 @@ func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
 	return res
 }
 
+func defaultLimitsTestConfig() validation.Limits {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	return limits
+}
+
+func overridesTestConfig() validation.Overrides {
+
+	validation.NewOverrides(defaultLimitsTestConfig(), nil)
+}
+
 func Test_expirationChecker_Expired(t *testing.T) {
 	e := NewExpirationChecker(&fakeLimits{
 		perTenant: map[string]retentionLimit{
@@ -78,6 +90,67 @@ func Test_expirationChecker_Expired(t *testing.T) {
 		{"not expired tenant by far", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-72*time.Hour), model.Now().Add(-3*time.Hour)), false},
 		{"expired stream override", newChunkEntry("2", `{foo="bar"}`, model.Now().Add(-12*time.Hour), model.Now().Add(-10*time.Hour)), true},
 		{"non expired stream override", newChunkEntry("1", `{foo="bar"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-90*time.Minute)), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
+			require.Equal(t, tt.want, actual)
+			require.Nil(t, nonDeletedIntervalFilters)
+		})
+	}
+}
+
+func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
+	d, _ := time.ParseDuration("0s")
+	e := NewExpirationChecker(&fakeLimits{
+		defaultLimit: retentionLimit{
+			retentionPeriod: d,
+		},
+		perTenant: map[string]retentionLimit{
+			"2": {
+				retentionPeriod: 24 * time.Hour,
+			},
+		},
+	})
+	tests := []struct {
+		name string
+		ref  ChunkEntry
+		want bool
+	}{
+		{"tenant with no override should not delete", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-2*time.Hour)), false},
+		{"tenant with no override, REALLY old chunk should not delete", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-10000*time.Hour+(1*time.Hour)), model.Now().Add(-10000*time.Hour)), false},
+		{"tenant with override should delete", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
+			require.Equal(t, tt.want, actual)
+			require.Nil(t, nonDeletedIntervalFilters)
+		})
+	}
+}
+func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
+
+	// Set a default retention
+	d, _ := time.ParseDuration("24h")
+	e := NewExpirationChecker(&fakeLimits{
+		defaultLimit: retentionLimit{
+			retentionPeriod: d,
+		},
+		perTenant: map[string]retentionLimit{
+			"2": {
+				retentionPeriod: 0,
+			},
+		},
+	})
+	tests := []struct {
+		name string
+		ref  ChunkEntry
+		want bool
+	}{
+		{"tenant with no override should delete", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), true},
+		{"tenant with override should note delete", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), false},
+		{"tenant with override, REALLY old chunk should not delete", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-10000*time.Hour+(1*time.Hour)), model.Now().Add(-10000*time.Hour)), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
