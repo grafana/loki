@@ -3658,6 +3658,10 @@ dynamodb:
 # CLI flag: -s3.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# AWS Session Token
+# CLI flag: -s3.session-token
+[session_token: <string> | default = ""]
+
 # Disable https on s3 connection.
 # CLI flag: -s3.insecure
 [insecure: <boolean> | default = false]
@@ -3927,6 +3931,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # AWS Secret Access Key
 # CLI flag: -<prefix>.storage.s3.secret-access-key
 [secret_access_key: <string> | default = ""]
+
+# AWS Session Token
+# CLI flag: -<prefix>.storage.s3.session-token
+[session_token: <string> | default = ""]
 
 # Disable https on s3 connection.
 # CLI flag: -<prefix>.storage.s3.insecure

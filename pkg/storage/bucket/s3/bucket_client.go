@@ -44,6 +44,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		Region:          cfg.Region,
 		AccessKey:       cfg.AccessKeyID,
 		SecretKey:       cfg.SecretAccessKey.String(),
+		SessionToken:    cfg.SessionToken.String(),
 		Insecure:        cfg.Insecure,
 		SSEConfig:       sseCfg,
 		PutUserMetadata: map[string]string{awsStorageClassHeader: cfg.StorageClass},
