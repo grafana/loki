@@ -60,13 +60,13 @@ type StoreLimits interface {
 
 // NamedStores helps configure additional object stores from a given storage provider
 type NamedStores struct {
-	AWS        map[string]aws.StorageConfig         `yaml:"aws"`
-	Azure      map[string]azure.BlobStorageConfig   `yaml:"azure"`
-	BOS        map[string]baidubce.BOSStorageConfig `yaml:"bos"`
-	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
-	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
-	OSS        map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
-	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
+	AWS          map[string]aws.StorageConfig         `yaml:"aws"`
+	Azure        map[string]azure.BlobStorageConfig   `yaml:"azure"`
+	BOS          map[string]baidubce.BOSStorageConfig `yaml:"bos"`
+	Filesystem   map[string]local.FSConfig            `yaml:"filesystem"`
+	GCS          map[string]gcp.GCSConfig             `yaml:"gcs"`
+	AlibabaCloud map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
+	Swift        map[string]openstack.SwiftConfig     `yaml:"swift"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -343,7 +343,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeAlibabaCloud:
-		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig.OssConfig)
+		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -485,12 +485,12 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		ossCfg := cfg.AlibabaStorageConfig
 		if namedStore != "" {
 			var ok bool
-			ossCfg, ok = cfg.NamedStores.OSS[namedStore]
+			ossCfg, ok = cfg.NamedStores.AlibabaCloud[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named bos storage config %s", name)
 			}
 		}
-		return alibaba.NewOssObjectClient(context.Background(), ossCfg.OssConfig)
+		return alibaba.NewOssObjectClient(context.Background(), ossCfg)
 	case config.StorageTypeGCS:
 		gcsCfg := cfg.GCSConfig
 		if namedStore != "" {

@@ -778,6 +778,10 @@ storage:
   # The CLI flags prefix for this block configuration is: ruler.storage
   [azure: <azure_storage_config>]
 
+  # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
+  # The CLI flags prefix for this block configuration is: ruler
+  [bos: <alibabacloud_storage_config>]
+
   # Configures backend rule storage for GCS.
   # The CLI flags prefix for this block configuration is: ruler.storage
   [gcs: <gcs_storage_config>]
@@ -1474,14 +1478,10 @@ ring:
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
 
 ```yaml
-alibabacloud:
-  [bucket: <string> | default = ""]
-
-  [endpoint: <string> | default = ""]
-
-  [access_key_id: <string> | default = ""]
-
-  [secret_access_key: <string> | default = ""]
+# The alibabacloud_storage_config block configures the connection to Alibaba
+# Cloud Storage object storage backend.
+# The CLI flags prefix for this block configuration is: common
+[alibabacloud: <alibabacloud_storage_config>]
 
 # The aws_storage_config block configures the connection to dynamoDB and S3
 # object storage. Either one of them or both can be configured.
@@ -3811,7 +3811,12 @@ The `azure_storage_config` block configures the connection to Azure object stora
 
 ### alibabacloud_storage_config
 
-The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend.
+The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common`
+- `ruler`
+
+&nbsp;
 
 ```yaml
 # Name of OSS bucket.
@@ -4122,7 +4127,7 @@ Named store from this example can be used by setting object_store to store-1 in 
 
 [gcs: <map of string to gcs_storage_config>]
 
-[alibabacloud: <map of string to StorageConfig>]
+[alibabacloud: <map of string to alibabacloud_storage_config>]
 
 [swift: <map of string to swift_storage_config>]
 ```
