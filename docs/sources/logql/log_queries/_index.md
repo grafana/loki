@@ -472,6 +472,22 @@ To match `msg="`, use the expression:
 <_> msg="<method> <path> (<status>) <latency>"
 ```
 
+Multiple pattern parsers can be chained using the `or` operator. Only the captured fields of the
+first matching pattern are applied.
+
+Consider the log lines
+
+```log
+=== FAIL test1
+PASS test2
+```
+
+The pattern expression below will set the `testname` label for both lines.
+
+```
+pattern `=== FAIL <testname>` or pattern `PASS <testname>`
+```
+
 A pattern expression is invalid if
 
 - It does not contain any named capture.
