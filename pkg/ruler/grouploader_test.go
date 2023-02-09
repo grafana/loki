@@ -2,7 +2,11 @@ package ruler
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	"os"
 	"strings"
 	"testing"
@@ -262,3 +266,111 @@ groups:
 		})
 	}
 }
+
+func TestCachingGroupLoader(t *testing.T) {
+	t.Run("it caches rules as they are loaded from the underlying loader", func(t *testing.T) {
+		l := newFakeGroupLoader()
+		l.ruleGroups = map[string]*rulefmt.RuleGroups{
+			"filename1": ruleGroup1,
+			"filename2": ruleGroup2,
+		}
+
+		cl := NewCachingGroupLoader(l)
+
+		groups, errs := cl.Load("filename1")
+		require.Nil(t, errs)
+		require.Equal(t, groups, ruleGroup1)
+
+		rules := cl.AlertingRules()
+		require.Equal(t, rulefmt.Rule{Alert: "alert-1-name"}, rules[0])
+
+		groups, errs = cl.Load("filename2")
+		require.Nil(t, errs)
+		require.Equal(t, groups, ruleGroup2)
+
+		rules = cl.AlertingRules()
+		require.ElementsMatch(t, []rulefmt.Rule{{Alert: "alert-1-name"}, {Alert: "alert-2-name"}}, rules)
+	})
+
+	t.Run("it doesn't cache rules when the loader has an error", func(t *testing.T) {
+		l := newFakeGroupLoader()
+		l.loadErrs = []error{errors.New("something bad")}
+		l.ruleGroups = map[string]*rulefmt.RuleGroups{
+			"filename1": ruleGroup1,
+			"filename2": ruleGroup2,
+		}
+
+		cl := NewCachingGroupLoader(l)
+
+		groups, errs := cl.Load("filename1")
+		require.Equal(t, l.loadErrs, errs)
+		require.Nil(t, groups)
+
+		rules := cl.AlertingRules()
+		require.Len(t, rules, 0)
+	})
+
+	t.Run("it removes files that are not in the list", func(t *testing.T) {
+		l := newFakeGroupLoader()
+		l.ruleGroups = map[string]*rulefmt.RuleGroups{
+			"filename1": ruleGroup1,
+			"filename2": ruleGroup2,
+		}
+
+		cl := NewCachingGroupLoader(l)
+
+		_, errs := cl.Load("filename1")
+		require.Nil(t, errs)
+
+		_, errs = cl.Load("filename2")
+		require.Nil(t, errs)
+
+		cl.Prune([]string{"filename2"})
+
+		rules := cl.AlertingRules()
+		require.Len(t, rules, 1)
+		require.Equal(t, rulefmt.Rule{Alert: "alert-2-name"}, rules[0])
+	})
+}
+
+func newFakeGroupLoader() *fakeGroupLoader {
+	return &fakeGroupLoader{
+		ruleGroups: make(map[string]*rulefmt.RuleGroups),
+	}
+}
+
+type fakeGroupLoader struct {
+	ruleGroups map[string]*rulefmt.RuleGroups
+	loadErrs   []error
+	expr       parser.Expr
+	parseErr   error
+}
+
+func (gl *fakeGroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
+	return gl.ruleGroups[identifier], gl.loadErrs
+}
+
+func (gl *fakeGroupLoader) Parse(query string) (parser.Expr, error) {
+	return gl.expr, gl.parseErr
+}
+
+var (
+	ruleGroup1 = &rulefmt.RuleGroups{
+		Groups: []rulefmt.RuleGroup{
+			{
+				Rules: []rulefmt.RuleNode{
+					{Alert: yaml.Node{Value: "alert-1-name"}},
+				},
+			},
+		},
+	}
+	ruleGroup2 = &rulefmt.RuleGroups{
+		Groups: []rulefmt.RuleGroup{
+			{
+				Rules: []rulefmt.RuleNode{
+					{Alert: yaml.Node{Value: "alert-2-name"}},
+				},
+			},
+		},
+	}
+)
