@@ -37,7 +37,6 @@ pipeline_stages:
     burst: 1
     drop: true
 `
-var plName = "testPipeline"
 
 var testLimitByLabelYaml = `
 pipeline_stages:
