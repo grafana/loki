@@ -359,6 +359,7 @@ func NewLimitedTripperware(
 		// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
 		// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
 		// Therefore we force max parallelism to one so that these queries are executed sequentially.
+		// Below we also fix the number of shards to a static number.
 		SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), codec, splitByTime, metrics.SplitByMetrics),
 	}
 
@@ -388,7 +389,9 @@ func NewLimitedTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
-				logql.ConstantShards(16),
+				// Too many shards on limited queries results in slowing down this type of query
+				// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
+				logql.ConstantShards(32),
 			),
 		)
 	}
