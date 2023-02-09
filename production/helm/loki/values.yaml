@@ -1197,6 +1197,12 @@ gateway:
     serverSnippet: ""
     # -- Allows appending custom configuration to the http block
     httpSnippet: ""
+    # -- Override Read URL
+    customLokiReadUrl: null
+    # -- Override Write URL
+    customLokiWriteUrl: null
+    # -- Override Backend URL
+    customLokiBackendUrl: null
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
