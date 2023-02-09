@@ -85,6 +85,7 @@ func TestLex(t *testing.T) {
 					# |~ "\\w+"
 					| json`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON}},
 		{`{foo="bar"} | json code="response.code", param="request.params[0]"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON, IDENTIFIER, EQ, STRING, COMMA, IDENTIFIER, EQ, STRING}},
+		{`decolorize`, []int{DECOLORIZE}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}

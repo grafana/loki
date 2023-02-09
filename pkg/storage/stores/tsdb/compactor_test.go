@@ -121,7 +121,7 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 		for _, stream := range streams {
 			lb := labels.NewBuilder(stream.labels)
 			lb.Set(TenantLabel, userID)
-			withTenant := lb.Labels()
+			withTenant := lb.Labels(nil)
 
 			b.AddSeries(
 				withTenant,
@@ -183,7 +183,7 @@ func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time
 
 func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) stream {
 	if userLabel != "" {
-		lbls = labels.NewBuilder(lbls.Copy()).Set("user_id", userLabel).Labels()
+		lbls = labels.NewBuilder(lbls.Copy()).Set("user_id", userLabel).Labels(nil)
 	}
 	return stream{
 		labels: lbls,
@@ -199,6 +199,7 @@ func buildChunkMetas(from, to int64) index.ChunkMetas {
 			MinTime:  i,
 			MaxTime:  i,
 			Checksum: uint32(i),
+			Entries:  1,
 		})
 	}
 
@@ -230,8 +231,7 @@ func TestCompactor_Compact(t *testing.T) {
 		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
 		Schema:      "v12",
 	}
-	indexBkts, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
-	require.NoError(t, err)
+	indexBkts := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
 	tableName := indexBkts[0]
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
@@ -744,7 +744,7 @@ func TestCompactedIndex(t *testing.T) {
 		"adding chunk to non-existing stream should error": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set("new", "label").Labels(),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set("new", "label").Labels(nil),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
@@ -839,8 +839,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{periodConfig},
 	}
-	indexBuckets, err := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
-	require.NoError(t, err)
+	indexBuckets := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 	tableName := indexBuckets[0]
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	// shiftTableStart shift tableInterval.Start by the given amount of milliseconds.
@@ -879,5 +878,5 @@ type dummyChunkData struct {
 }
 
 func (d dummyChunkData) Entries() int {
-	return 0
+	return 1
 }

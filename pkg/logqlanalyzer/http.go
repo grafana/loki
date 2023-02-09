@@ -3,7 +3,7 @@ package logqlanalyzer
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/go-kit/log/level"
@@ -31,7 +31,7 @@ type LogQLAnalyzeHandler struct {
 }
 
 func (s *LogQLAnalyzeHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	payload, err := ioutil.ReadAll(req.Body)
+	payload, err := io.ReadAll(req.Body)
 	if err != nil {
 		writeError(req.Context(), w, err, http.StatusBadRequest, "unable to read request body")
 		return

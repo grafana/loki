@@ -452,6 +452,9 @@ type mockTable struct {
 func (m *mockTable) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	return nil
 }
+func (m *mockTable) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+	return nil
+}
 
 func (m *mockTable) Close() {}
 

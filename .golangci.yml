@@ -4,7 +4,7 @@
 # options for analysis running
 run:
   # define go version
-  go: "1.18"
+  go: "1.19"
 
   # default concurrency is a available CPU number
   concurrency: 16
@@ -59,28 +59,28 @@ linters-settings:
 
 linters:
   enable:
-    - deadcode
     - errcheck
     - goconst
-    - gofmt
-    - goimports
     - revive
-    - gosimple
     - ineffassign
-    - staticcheck
     - misspell
-    - structcheck
     - unconvert
-    - unparam
-    - varcheck
     - govet
-    - unused
     - typecheck
     - depguard
     - exportloopref
+    - gofmt
+    - goimports
+    - gosimple
+    - staticcheck
+  disable:
+    - unused
+    - unparam
 
 issues:
   exclude:
     - Error return value of .*log\.Logger\)\.Log\x60 is not checked
     - Error return value of .*.Log.* is not checked
     - Error return value of `` is not checked
+
+  fix: true

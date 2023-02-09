@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -185,7 +186,17 @@ func send(ctx context.Context, buf []byte) (int, error) {
 		req.SetBasicAuth(username, password)
 	}
 
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
+	promtailClient := &http.Client{}
+
+	if skipTlsVerify == true {
+		promtailClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	}
+
+	resp, err := promtailClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err
 	}

@@ -1,0 +1,127 @@
+{{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "enterprise-logs.provisionerFullname" . }}
+  labels:
+    {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
+    {{- with .Values.enterprise.provisioner.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.enterprise.provisioner.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "15"
+spec:
+  backoffLimit: 6
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        {{- include "enterprise-logs.provisionerSelectorLabels" . | nindent 8 }}
+        {{- with .Values.enterprise.provisioner.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.enterprise.provisioner.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.enterprise.provisioner.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.enterprise.provisioner.securityContext | nindent 8 }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.imagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      initContainers:
+        - name: provisioner
+          image: {{ template "enterprise-logs.provisionerImage" . }}
+          imagePullPolicy: {{ .Values.enterprise.provisioner.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -exuc
+            - |
+              {{- range .Values.enterprise.provisioner.additionalTenants }}
+              /usr/bin/enterprise-logs-provisioner \
+                -bootstrap-path=/bootstrap \
+                -cluster-name={{ include "loki.clusterName" $ }} \
+                -gel-url={{ include "loki.address" $ }} \
+                -instance={{ .name }} \
+                -access-policy=write-{{ .name }}:{{ .name }}:logs:write \
+                -access-policy=read-{{ .name }}:{{ .name }}:logs:read \
+                -token=write-{{ .name }} \
+                -token=read-{{ .name }}
+              {{- end -}}
+
+              {{- with .Values.monitoring.selfMonitoring.tenant }}
+              /usr/bin/enterprise-logs-provisioner \
+                -bootstrap-path=/bootstrap \
+                -cluster-name={{ include "loki.clusterName" $ }} \
+                -gel-url={{ include "loki.address" $ }} \
+                -instance={{ .name }} \
+                -access-policy=self-monitoring:{{ .name }}:logs:write,logs:read \
+                -token=self-monitoring
+              {{- end }}
+          volumeMounts:
+            {{- with .Values.enterprise.provisioner.extraVolumeMounts }}
+              {{ toYaml . | nindent 12 }}
+            {{- end }}
+            - name: bootstrap
+              mountPath: /bootstrap
+            - name: admin-token
+              mountPath: /bootstrap/token
+              subPath: token
+          {{- with .Values.enterprise.provisioner.env }}
+          env:
+            {{ toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        - name: create-secret
+          image: {{ include "loki.kubectlImage" . }}
+          imagePullPolicy: {{ .Values.kubectlImage.pullPolicy }}
+          command:
+            - /bin/bash
+            - -exuc
+            - |
+              {{- range .Values.enterprise.provisioner.additionalTenants }}
+              kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.provisionedSecretPrefix" $ }}-{{ .name }}" \
+                --from-literal=token-write="$(cat /bootstrap/token-write-{{ .name }})" \
+                --from-literal=token-read="$(cat /bootstrap/token-read-{{ .name }})"
+              {{- end }}
+              {{- $namespace := $.Release.Namespace }}
+              {{- with .Values.monitoring.selfMonitoring.tenant }}
+              {{- $secretNamespace := tpl .secretNamespace $ }}
+              kubectl --namespace "{{ $namespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
+                --from-literal=username="{{ .name }}" \
+                --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
+              {{- if not (eq $secretNamespace $namespace) }}
+              kubectl --namespace "{{ $secretNamespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
+                --from-literal=username="{{ .name }}" \
+                --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
+              {{- end }}
+              {{- end }}
+          volumeMounts:
+            {{- with .Values.enterprise.provisioner.extraVolumeMounts }}
+              {{ toYaml . | nindent 12 }}
+            {{- end }}
+            - name: bootstrap
+              mountPath: /bootstrap
+      restartPolicy: OnFailure
+      serviceAccount: {{ include "enterprise-logs.provisionerFullname" . }}
+      serviceAccountName: {{ include "enterprise-logs.provisionerFullname" . }}
+      volumes:
+        - name: admin-token
+          secret:
+            secretName: "{{ include "enterprise-logs.adminTokenSecret" . }}"
+        - name: bootstrap
+          emptyDir: {}
+{{- end }}

@@ -20,9 +20,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                ],
 
                                jobMatchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
+                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                                  distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
                                  querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
                                },
 
@@ -142,7 +142,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
                                  else if ds == '$datasource' then '$datasource'
-                                 else '$logs',
+                                 else '$loki_datasource',
 
                                local isRowHidden(row) =
                                  std.member(dashboards['loki-operational.json'].hiddenRows, row),
@@ -190,7 +190,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                ],
                              } +
                              $.dashboard('Loki / Operational', uid='operational')
-                             // The queries in this dashboard don't make use of the cluster tempalte label selector
+                             // The queries in this dashboard don't make use of the cluster template label selector
                              // but we keep it here to allow selecting a namespace specific to a certain cluster, the
                              // namespace template variable selectors query uses the cluster value.
                              .addLog()

@@ -62,5 +62,6 @@ type SwiftStorageConfig struct {
 // TLSConfig for object storage endpoints. Currently supported only by:
 // - S3
 type TLSConfig struct {
-	CA string
+	CA  string
+	Key string
 }

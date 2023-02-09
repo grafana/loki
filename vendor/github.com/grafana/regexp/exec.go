@@ -430,6 +430,7 @@ func (re *Regexp) doOnePass(ir io.RuneReader, ib []byte, is string, pos, ncap in
 	} else {
 		m.matchcap = m.matchcap[:ncap]
 	}
+
 	for i := range m.matchcap {
 		m.matchcap[i] = -1
 	}
@@ -440,6 +441,7 @@ func (re *Regexp) doOnePass(ir io.RuneReader, ib []byte, is string, pos, ncap in
 	} else {
 		flag = i.context(pos)
 	}
+	// If there is a simple literal prefix, skip over it.
 	if r != endOfText {
 		r1, width1 = i.step(pos + width)
 	}

@@ -3,7 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -104,7 +104,7 @@ func TestLoadTable(t *testing.T) {
 
 	// change a boltdb file to text file which would fail to open.
 	invalidFilePath := filepath.Join(tablePath, "invalid")
-	require.NoError(t, ioutil.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0o666))
+	require.NoError(t, os.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0o666))
 
 	// verify that changed boltdb file can't be opened.
 	_, err = local.OpenBoltdbFile(invalidFilePath)
@@ -120,9 +120,9 @@ func TestLoadTable(t *testing.T) {
 	}()
 
 	// verify that we still have 3 files(2 valid, 1 invalid)
-	filesInfo, err := ioutil.ReadDir(tablePath)
+	dirEntries, err := os.ReadDir(tablePath)
 	require.NoError(t, err)
-	require.Len(t, filesInfo, 3)
+	require.Len(t, dirEntries, 3)
 
 	// query the loaded table to see if it has right data.
 	require.NoError(t, table.Snapshot())
@@ -301,9 +301,9 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 		require.NoError(t, boltdb.Close())
 	}
 
-	filesInfo, err := ioutil.ReadDir(tablePath)
+	dirEntries, err := os.ReadDir(tablePath)
 	require.NoError(t, err)
-	require.Len(t, filesInfo, 2)
+	require.Len(t, dirEntries, 2)
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {

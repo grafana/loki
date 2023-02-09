@@ -1,8 +1,9 @@
 ---
 title: Write path testing
+description: Write path testing with K6
 weight: 20
 ---
-# Write path load testing
+# Write path testing
 
 There are multiple considerations when
 load testing a Loki cluster's write path.

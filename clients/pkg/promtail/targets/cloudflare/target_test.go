@@ -101,6 +101,37 @@ func Test_CloudflareTarget(t *testing.T) {
 	require.Greater(t, newPos, end.UnixNano())
 }
 
+func Test_RetryErrorLogpullReceived(t *testing.T) {
+	var (
+		w        = log.NewSyncWriter(os.Stderr)
+		logger   = log.NewLogfmtLogger(w)
+		end      = time.Unix(0, time.Hour.Nanoseconds())
+		start    = time.Unix(0, end.Add(-30*time.Minute).UnixNano())
+		client   = fake.New(func() {})
+		cfClient = newFakeCloudflareClient()
+	)
+	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
+		err: ErrorLogpullReceived,
+	}, nil).Times(2) // just retry once
+	// replace the client
+	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+		return cfClient, nil
+	}
+	defaultBackoff.MinBackoff = 0
+	defaultBackoff.MaxBackoff = 5
+	ta := &Target{
+		logger:  logger,
+		handler: client,
+		client:  cfClient,
+		config: &scrapeconfig.CloudflareConfig{
+			Labels: make(model.LabelSet),
+		},
+		metrics: NewMetrics(nil),
+	}
+
+	require.NoError(t, ta.pull(context.Background(), start, end))
+}
+
 func Test_RetryErrorIterating(t *testing.T) {
 	var (
 		w        = log.NewSyncWriter(os.Stderr)
@@ -123,6 +154,9 @@ func Test_RetryErrorIterating(t *testing.T) {
 			`{"EdgeStartTimestamp":2, "EdgeRequestHost":"foo.com"}`,
 			`{"EdgeStartTimestamp":3, "EdgeRequestHost":"foo.com"}`,
 		},
+	}, nil).Once()
+	cfClient.On("LogpullReceived", mock.Anything, start, end).Return(&fakeLogIterator{
+		err: ErrorLogpullReceived,
 	}, nil).Once()
 	// replace the client.
 	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {

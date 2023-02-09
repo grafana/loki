@@ -69,7 +69,7 @@ func TestIsManaged(t *testing.T) {
 	}
 	for _, tst := range table {
 		t.Run(tst.name, func(t *testing.T) {
-			k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object) error {
+			k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 				k.SetClientObject(object, &tst.stack)
 				return nil
 			}

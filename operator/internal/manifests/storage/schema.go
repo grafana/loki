@@ -14,7 +14,6 @@ import (
 //
 // 1. All EffectiveDate fields are able to be parsed
 // 2. All EffectiveDate fields are unique in their respective list
-//
 func BuildSchemaConfig(
 	utcTime time.Time,
 	spec lokiv1.ObjectStorageSpec,

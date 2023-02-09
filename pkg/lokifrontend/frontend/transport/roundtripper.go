@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -47,7 +46,7 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 
 	httpResp := &http.Response{
 		StatusCode:    int(resp.Code),
-		Body:          &buffer{buff: resp.Body, ReadCloser: ioutil.NopCloser(bytes.NewReader(resp.Body))},
+		Body:          &buffer{buff: resp.Body, ReadCloser: io.NopCloser(bytes.NewReader(resp.Body))},
 		Header:        http.Header{},
 		ContentLength: int64(len(resp.Body)),
 	}

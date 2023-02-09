@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
@@ -15,6 +16,13 @@ import (
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := ConfigOptions(opt)
+
+	if opt.Stack.Tenants != nil {
+		if err := ConfigureOptionsForMode(&cfg, opt); err != nil {
+			return nil, "", err
+		}
+	}
+
 	c, rc, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
@@ -46,16 +54,17 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 // ConfigOptions converts Options to config.Options
 func ConfigOptions(opt Options) config.Options {
 	rulerEnabled := opt.Stack.Rules != nil && opt.Stack.Rules.Enabled
+	stackLimitsEnabled := opt.Stack.Limits != nil && len(opt.Stack.Limits.Tenants) > 0
+	rulerLimitsEnabled := rulerEnabled && opt.Ruler.Spec != nil && len(opt.Ruler.Spec.Overrides) > 0
 
 	var (
 		evalInterval, pollInterval string
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
+		overrides                  map[string]config.LokiOverrides
 	)
 
 	if rulerEnabled {
-		rulerEnabled = true
-
 		// Map alertmanager config from CRD to config options
 		if opt.Ruler.Spec != nil {
 			evalInterval = string(opt.Ruler.Spec.EvalutionInterval)
@@ -69,15 +78,68 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
+	if stackLimitsEnabled || rulerLimitsEnabled {
+		overrides = map[string]config.LokiOverrides{}
+	}
+
+	if stackLimitsEnabled {
+		for tenant, limits := range opt.Stack.Limits.Tenants {
+			so := overrides[tenant]
+			so.Limits = limits
+			overrides[tenant] = so
+		}
+	}
+	if rulerLimitsEnabled {
+		for tenant, override := range opt.Ruler.Spec.Overrides {
+			so := overrides[tenant]
+			so.Ruler = config.RulerOverrides{
+				AlertManager: alertManagerConfig(override.AlertManagerOverrides),
+			}
+			overrides[tenant] = so
+		}
+	}
+
 	protocol := "http"
 	if opt.Gates.HTTPEncryption {
 		protocol = "https"
 	}
 
 	return config.Options{
-		Stack:     opt.Stack,
+		Stack: opt.Stack,
+		Gates: opt.Gates,
+		TLS: config.TLSOptions{
+			Ciphers:       opt.TLSProfile.Ciphers,
+			MinTLSVersion: opt.TLSProfile.MinTLSVersion,
+			Paths: config.TLSFilePaths{
+				CA: signingCAPath(),
+				GRPC: config.TLSCertPath{
+					Certificate: lokiServerGRPCTLSCert(),
+					Key:         lokiServerGRPCTLSKey(),
+				},
+				HTTP: config.TLSCertPath{
+					Certificate: lokiServerHTTPTLSCert(),
+					Key:         lokiServerHTTPTLSKey(),
+				},
+			},
+			ServerNames: config.TLSServerNames{
+				GRPC: config.GRPCServerNames{
+					Compactor:     fqdn(serviceNameCompactorGRPC(opt.Name), opt.Namespace),
+					IndexGateway:  fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),
+					Ingester:      fqdn(serviceNameIngesterGRPC(opt.Name), opt.Namespace),
+					QueryFrontend: fqdn(serviceNameQueryFrontendGRPC(opt.Name), opt.Namespace),
+					Ruler:         fqdn(serviceNameRulerGRPC(opt.Name), opt.Namespace),
+				},
+				HTTP: config.HTTPServerNames{
+					Querier: fqdn(serviceNameQuerierHTTP(opt.Name), opt.Namespace),
+				},
+			},
+		},
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
+		Compactor: config.Address{
+			FQDN: fqdn(NewCompactorGRPCService(opt).GetName(), opt.Namespace),
+			Port: grpcPort,
+		},
 		FrontendWorker: config.Address{
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
@@ -113,35 +175,76 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
+		Retention: retentionConfig(&opt.Stack),
+		Overrides: overrides,
 	}
 }
 
-func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
-	if s == nil {
+func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
+	if spec == nil {
 		return nil
 	}
 
-	c := &config.AlertManagerConfig{
-		ExternalURL:    s.ExternalURL,
-		ExternalLabels: s.ExternalLabels,
-		Hosts:          strings.Join(s.Endpoints, ","),
-		EnableV2:       s.EnableV2,
+	conf := &config.AlertManagerConfig{
+		ExternalURL:    spec.ExternalURL,
+		ExternalLabels: spec.ExternalLabels,
+		Hosts:          strings.Join(spec.Endpoints, ","),
+		EnableV2:       spec.EnableV2,
 	}
 
-	if d := s.DiscoverySpec; d != nil {
-		c.EnableDiscovery = d.EnableSRV
-		c.RefreshInterval = string(d.RefreshInterval)
+	if d := spec.DiscoverySpec; d != nil {
+		conf.EnableDiscovery = d.EnableSRV
+		conf.RefreshInterval = string(d.RefreshInterval)
 	}
 
-	if n := s.NotificationQueueSpec; n != nil {
-		c.QueueCapacity = n.Capacity
-		c.Timeout = string(n.Timeout)
-		c.ForOutageTolerance = string(n.ForOutageTolerance)
-		c.ForGracePeriod = string(n.ForGracePeriod)
-		c.ResendDelay = string(n.ResendDelay)
+	if n := spec.NotificationQueueSpec; n != nil {
+		conf.QueueCapacity = n.Capacity
+		conf.Timeout = string(n.Timeout)
+		conf.ForOutageTolerance = string(n.ForOutageTolerance)
+		conf.ForGracePeriod = string(n.ForGracePeriod)
+		conf.ResendDelay = string(n.ResendDelay)
 	}
 
-	return c
+	for _, cfg := range spec.RelabelConfigs {
+		conf.RelabelConfigs = append(conf.RelabelConfigs, config.RelabelConfig{
+			SourceLabels: cfg.SourceLabels,
+			Separator:    cfg.Separator,
+			TargetLabel:  cfg.TargetLabel,
+			Regex:        cfg.Regex,
+			Modulus:      cfg.Modulus,
+			Replacement:  cfg.Replacement,
+			Action:       string(cfg.Action),
+		})
+	}
+
+	if clt := spec.Client; clt != nil {
+		conf.Notifier = &config.NotifierConfig{}
+		if tls := clt.TLS; tls != nil {
+			conf.Notifier.TLS = config.TLSConfig{
+				CAPath:     tls.CAPath,
+				ServerName: tls.ServerName,
+				CertPath:   tls.CertPath,
+				KeyPath:    tls.KeyPath,
+			}
+		}
+
+		if ha := clt.HeaderAuth; ha != nil {
+			conf.Notifier.HeaderAuth = config.HeaderAuth{
+				Type:            ha.Type,
+				Credentials:     ha.Credentials,
+				CredentialsFile: ha.CredentialsFile,
+			}
+		}
+
+		if ba := clt.BasicAuth; ba != nil {
+			conf.Notifier.BasicAuth = config.BasicAuth{
+				Username: ba.Username,
+				Password: ba.Password,
+			}
+		}
+	}
+
+	return conf
 }
 
 func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
@@ -173,7 +276,7 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		for _, cfg := range cls.RelabelConfigs {
-			c.RelabelConfigs = append(c.RelabelConfigs, config.RemoteWriteRelabelConfig{
+			c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
 				SourceLabels: cfg.SourceLabels,
 				Separator:    cfg.Separator,
 				TargetLabel:  cfg.TargetLabel,
@@ -198,4 +301,34 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 	}
 
 	return c
+}
+
+var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXExtraSmall: 10,
+	lokiv1.SizeOneXSmall:      150,
+	lokiv1.SizeOneXMedium:     150,
+}
+
+func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
+	if ls.Limits == nil {
+		return config.RetentionOptions{}
+	}
+
+	globalRetention := ls.Limits.Global != nil && ls.Limits.Global.Retention != nil
+	tenantRetention := false
+	for _, t := range ls.Limits.Tenants {
+		if t.Retention != nil {
+			tenantRetention = true
+			break
+		}
+	}
+
+	if !globalRetention && !tenantRetention {
+		return config.RetentionOptions{}
+	}
+
+	return config.RetentionOptions{
+		Enabled:           true,
+		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
+	}
 }

@@ -43,7 +43,7 @@ func (e *fastEncoder) Encode(blk *blockEnc, src []byte) {
 	)
 
 	// Protect against e.cur wraparound.
-	for e.cur >= bufferReset {
+	for e.cur >= e.bufferReset-int32(len(e.hist)) {
 		if len(e.hist) == 0 {
 			for i := range e.table[:] {
 				e.table[i] = tableEntry{}
@@ -85,7 +85,7 @@ func (e *fastEncoder) Encode(blk *blockEnc, src []byte) {
 	// TEMPLATE
 	const hashLog = tableBits
 	// seems global, but would be nice to tweak.
-	const kSearchStrength = 7
+	const kSearchStrength = 6
 
 	// nextEmit is where in src the next emitLiteral should start from.
 	nextEmit := s
@@ -304,13 +304,13 @@ func (e *fastEncoder) EncodeNoHist(blk *blockEnc, src []byte) {
 		minNonLiteralBlockSize = 1 + 1 + inputMargin
 	)
 	if debugEncoder {
-		if len(src) > maxBlockSize {
+		if len(src) > maxCompressedBlockSize {
 			panic("src too big")
 		}
 	}
 
 	// Protect against e.cur wraparound.
-	if e.cur >= bufferReset {
+	if e.cur >= e.bufferReset {
 		for i := range e.table[:] {
 			e.table[i] = tableEntry{}
 		}
@@ -334,7 +334,7 @@ func (e *fastEncoder) EncodeNoHist(blk *blockEnc, src []byte) {
 	// TEMPLATE
 	const hashLog = tableBits
 	// seems global, but would be nice to tweak.
-	const kSearchStrength = 8
+	const kSearchStrength = 6
 
 	// nextEmit is where in src the next emitLiteral should start from.
 	nextEmit := s
@@ -538,7 +538,7 @@ encodeLoop:
 		println("returning, recent offsets:", blk.recentOffsets, "extra literals:", blk.extraLits)
 	}
 	// We do not store history, so we must offset e.cur to avoid false matches for next user.
-	if e.cur < bufferReset {
+	if e.cur < e.bufferReset {
 		e.cur += int32(len(src))
 	}
 }
@@ -555,11 +555,9 @@ func (e *fastEncoderDict) Encode(blk *blockEnc, src []byte) {
 		return
 	}
 	// Protect against e.cur wraparound.
-	for e.cur >= bufferReset {
+	for e.cur >= e.bufferReset-int32(len(e.hist)) {
 		if len(e.hist) == 0 {
-			for i := range e.table[:] {
-				e.table[i] = tableEntry{}
-			}
+			e.table = [tableSize]tableEntry{}
 			e.cur = e.maxMatchOff
 			break
 		}
@@ -871,7 +869,8 @@ func (e *fastEncoderDict) Reset(d *dict, singleBlock bool) {
 	const shardCnt = tableShardCnt
 	const shardSize = tableShardSize
 	if e.allDirty || dirtyShardCnt > shardCnt*4/6 {
-		copy(e.table[:], e.dictTable)
+		//copy(e.table[:], e.dictTable)
+		e.table = *(*[tableSize]tableEntry)(e.dictTable)
 		for i := range e.tableShardDirty {
 			e.tableShardDirty[i] = false
 		}
@@ -883,7 +882,8 @@ func (e *fastEncoderDict) Reset(d *dict, singleBlock bool) {
 			continue
 		}
 
-		copy(e.table[i*shardSize:(i+1)*shardSize], e.dictTable[i*shardSize:(i+1)*shardSize])
+		//copy(e.table[i*shardSize:(i+1)*shardSize], e.dictTable[i*shardSize:(i+1)*shardSize])
+		*(*[shardSize]tableEntry)(e.table[i*shardSize:]) = *(*[shardSize]tableEntry)(e.dictTable[i*shardSize:])
 		e.tableShardDirty[i] = false
 	}
 	e.allDirty = false

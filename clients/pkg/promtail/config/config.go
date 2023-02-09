@@ -7,8 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	dskit_flagext "github.com/grafana/dskit/flagext"
-
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/limit"
@@ -16,13 +15,14 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 // Options contains cross-cutting promtail configurations
 type Options struct {
-	StreamLagLabels dskit_flagext.StringSliceCSV `yaml:"stream_lag_labels,omitempty"`
+	StreamLagLabels dskit_flagext.StringSliceCSV `mapstructure:"stream_lag_labels,omitempty" yaml:"stream_lag_labels,omitempty" doc:"deprecated"`
 }
 
 // Config for promtail, describing what files to watch.
@@ -36,6 +36,8 @@ type Config struct {
 	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
 	LimitsConfig    limit.Config          `yaml:"limits_config,omitempty"`
 	Options         Options               `yaml:"options,omitempty"`
+	Tracing         tracing.Config        `yaml:"tracing"`
+	WAL             wal.Config            `yaml:"wal"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -46,6 +48,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.TargetConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.LimitsConfig.RegisterFlagsWithPrefix(prefix, f)
+	c.Tracing.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlags registers flags.

@@ -66,7 +66,6 @@ func TestCompositeStore(t *testing.T) {
 		}
 	}
 	cs := compositeStore{
-		metrics: newMetrics(nil),
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(0), mockStore(1)},
 			{model.TimeFromUnix(100), mockStore(2)},
@@ -80,12 +79,11 @@ func TestCompositeStore(t *testing.T) {
 		want          []result
 	}{
 		// Test we have sensible results when there are no schema's defined
-		{compositeStore{metrics: newMetrics(nil)}, 0, 1, []result{}},
+		{compositeStore{}, 0, 1, []result{}},
 
 		// Test we have sensible results when there is a single schema
 		{
 			compositeStore{
-				metrics: newMetrics(nil),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -99,7 +97,6 @@ func TestCompositeStore(t *testing.T) {
 		// Test we have sensible results for negative (ie pre 1970) times
 		{
 			compositeStore{
-				metrics: newMetrics(nil),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -109,7 +106,6 @@ func TestCompositeStore(t *testing.T) {
 		},
 		{
 			compositeStore{
-				metrics: newMetrics(nil),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 				},
@@ -123,7 +119,6 @@ func TestCompositeStore(t *testing.T) {
 		// Test we have sensible results when there is two schemas
 		{
 			compositeStore{
-				metrics: newMetrics(nil),
 				stores: []compositeStoreEntry{
 					{model.TimeFromUnix(0), mockStore(1)},
 					{model.TimeFromUnix(100), mockStore(2)},
@@ -204,7 +199,6 @@ func TestCompositeStoreLabels(t *testing.T) {
 	t.Parallel()
 
 	cs := compositeStore{
-		metrics: newMetrics(nil),
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(0), mockStore(1)},
 			{model.TimeFromUnix(20), mockStoreLabel{mockStore(1), []string{"b", "c", "e"}}},
@@ -255,7 +249,6 @@ func (m mockStoreGetChunkFetcher) GetChunkFetcher(tm model.Time) *fetcher.Fetche
 
 func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 	cs := compositeStore{
-		metrics: newMetrics(nil),
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(10), mockStoreGetChunkFetcher{mockStore(0), &fetcher.Fetcher{}}},
 			{model.TimeFromUnix(20), mockStoreGetChunkFetcher{mockStore(1), &fetcher.Fetcher{}}},

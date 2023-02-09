@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -505,6 +506,7 @@ func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {
 type testQueryClient struct {
 	engine          *logql.Engine
 	queryRangeCalls int
+	orgID           string
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
@@ -521,10 +523,11 @@ func (t *testQueryClient) Query(queryStr string, limit int, time time.Time, dire
 }
 
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
 
-	v, err := t.engine.Query(params).Exec(context.Background())
+	v, err := t.engine.Query(params).Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -611,19 +614,28 @@ func TestLoadFromURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
-	// Missing schema.config file should error
-	schemaConfig, err := LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+	filename := "schemaconfig.yaml"
+
+	// Missing schemaconfig.yaml file should error
+	schemaConfig, err := LoadSchemaUsingObjectClient(client, filename)
 	require.Error(t, err)
 	require.Nil(t, schemaConfig)
 
 	err = os.WriteFile(
-		filepath.Join(tmpDir, SchemaConfigFilename),
+		filepath.Join(tmpDir, filename),
 		[]byte(schemaConfigContents),
 		0666,
 	)
 	require.NoError(t, err)
 
-	schemaConfig, err = LoadSchemaUsingObjectClient(client, SchemaConfigFilename)
+	// Load single schemaconfig.yaml
+	schemaConfig, err = LoadSchemaUsingObjectClient(client, filename)
+
+	require.NoError(t, err)
+	require.NotNil(t, schemaConfig)
+
+	// Load multiple schemaconfig files
+	schemaConfig, err = LoadSchemaUsingObjectClient(client, "foo.yaml", filename, "bar.yaml")
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)

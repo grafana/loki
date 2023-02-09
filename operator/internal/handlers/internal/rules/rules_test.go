@@ -30,7 +30,7 @@ func TestList_AlertingRulesMatchSelector_WithDefaultStackNamespaceRules(t *testi
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == stackNs {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -107,7 +107,7 @@ func TestList_AlertingRulesMatchSelector_FilteredByNamespaceSelector(t *testing.
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "some-ns" {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -204,7 +204,7 @@ func TestList_RecordingRulesMatchSelector_WithDefaultStackNamespaceRules(t *test
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == stackNs {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -281,7 +281,7 @@ func TestList_RecordingRulesMatchSelector_FilteredByNamespaceSelector(t *testing
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "some-ns" {
 			k.SetClientObject(object, &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{

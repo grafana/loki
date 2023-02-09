@@ -24,7 +24,7 @@ func isPacketConn(c net.Conn) bool {
 	}
 
 	if ua, ok := c.LocalAddr().(*net.UnixAddr); ok {
-		return ua.Net == "unixgram"
+		return ua.Net == "unixgram" || ua.Net == "unixpacket"
 	}
 
 	return true
@@ -280,7 +280,7 @@ func (co *Conn) ReadMsg() (*Msg, error) {
 	}
 	if t := m.IsTsig(); t != nil {
 		// Need to work on the original message p, as that was used to calculate the tsig.
-		err = tsigVerifyProvider(p, co.tsigProvider(), co.tsigRequestMAC, false)
+		err = TsigVerifyWithProvider(p, co.tsigProvider(), co.tsigRequestMAC, false)
 	}
 	return m, err
 }
@@ -358,7 +358,7 @@ func (co *Conn) WriteMsg(m *Msg) (err error) {
 	var out []byte
 	if t := m.IsTsig(); t != nil {
 		// Set tsigRequestMAC for the next read, although only used in zone transfers.
-		out, co.tsigRequestMAC, err = tsigGenerateProvider(m, co.tsigProvider(), co.tsigRequestMAC, false)
+		out, co.tsigRequestMAC, err = TsigGenerateWithProvider(m, co.tsigProvider(), co.tsigRequestMAC, false)
 	} else {
 		out, err = m.Pack()
 	}

@@ -35,7 +35,7 @@ To test locally, we recommend using the `docker-compose.yaml` file in this direc
    docker-compose up
    ```
 
-1. Grafana should now be available at http://localhost:3000/. Log in with `admin` / `admin` and follow the [steps for configuring the datasource in Grafana](../docs/sources/getting-started/grafana.md), using `http://loki:3100` for the URL field.
+1. Grafana should now be available at http://localhost:3000/.
 
 **Note:** When running locally, Promtail starts before Loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
 Until this is fixed we recommend [building and running from source](#build-and-run-from-source).
@@ -54,7 +54,27 @@ orchestrator from HashiCorp.
 
 Here are the Helm charts used to deploy Loki and Promtail to Kubernetes:
 - [Loki](./helm/loki/README.md#loki) 
-- [Promtail](https://github.com/grafana/helm-charts/blob/main/charts/promtail/README.md#promtail) 
+- [Promtail](https://github.com/grafana/helm-charts/blob/main/charts/promtail/README.md#promtail)
+
+| Helm Chart version | Loki version | GEL version |
+| ------------------ | ------------ | ----------- |
+|      4.4.3         |    2.7.3     |    1.6.1    |
+|      4.4.2         |    2.7.2     |    1.6.1    |
+|      4.4.1         |    2.7.0     |    1.6.0    |
+|      4.4.0         |    2.7.0     |    1.6.0    |
+|      4.3.0         |    2.7.0     |    1.6.0    |
+|      4.2.0         |    2.7.0     |    1.6.0    |
+|      4.1.0         |    2.7.0     |    1.6.0    |
+|      4.0.0         |    2.7.0     |    1.6.0    |
+|      3.10.0        |    2.7.0     |    1.6.0    |
+|      3.9.0         |    2.7.0     |    1.6.0    |
+|      3.8.2         |    2.7.0     |    1.6.0    |
+|      3.8.1         |    2.7.0     |    1.6.0    |
+|      3.8.0         |    2.7.0     |    1.6.0    |
+|      3.7.0         |    2.7.0     |    1.6.0    |
+|      3.6.1         |    2.7.0     |    1.6.0    |
+|      3.6.0         |    2.7.0     |    1.6.0    |
+|      3.5.0         |    2.6.1     |    1.6.0    |
 
 ## Build and run from source
 

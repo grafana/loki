@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/flate"
@@ -44,7 +43,7 @@ var (
 	enclz4_1M   = Encoding{code: 6, name: "lz4-1M", readerFn: func(reader io.Reader) (io.Reader, error) { return lz4.NewReader(reader), nil }}
 	enclz4_4M   = Encoding{code: 7, name: "lz4-4M", readerFn: func(reader io.Reader) (io.Reader, error) { return lz4.NewReader(reader), nil }}
 	encFlate    = Encoding{code: 8, name: "flate", readerFn: func(reader io.Reader) (io.Reader, error) { return flate.NewReader(reader), nil }}
-	encZstd     = Encoding{code: 9, name: "lz4-256k", readerFn: func(reader io.Reader) (io.Reader, error) {
+	encZstd     = Encoding{code: 9, name: "zstd", readerFn: func(reader io.Reader) (io.Reader, error) {
 		r, err := zstd.NewReader(reader)
 		if err != nil {
 			panic(err)
@@ -187,7 +186,7 @@ func parseLokiBlock(compression Encoding, data []byte) ([]byte, []LokiEntry, err
 		return nil, nil, err
 	}
 
-	decompressed, err := ioutil.ReadAll(r)
+	decompressed, err := io.ReadAll(r)
 	origDecompressed := decompressed
 	if err != nil {
 		return nil, nil, err

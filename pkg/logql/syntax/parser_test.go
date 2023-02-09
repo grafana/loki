@@ -44,6 +44,15 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{ foo = "bar" } | decolorize`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newDecolorizeExpr(),
+				},
+			),
+		},
+		{
 			// test [12h] before filter expr
 			in: `count_over_time({foo="bar"}[12h] |= "error")`,
 			exp: &RangeAggregationExpr{
@@ -2859,6 +2868,23 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8),
 		},
 		{
+			in:  `vector(1)`,
+			exp: &VectorExpr{Val: 1, err: nil},
+		},
+		{
+			in:  `label_replace(vector(0), "foo", "bar", "", "")`,
+			exp: mustNewLabelReplaceExpr(&VectorExpr{Val: 0, err: nil}, "foo", "bar", "", ""),
+		},
+		{
+			in: `sum(vector(0))`,
+			exp: &VectorAggregationExpr{
+				Left:      &VectorExpr{Val: 0, err: nil},
+				Grouping:  &Grouping{},
+				Params:    0,
+				Operation: "sum",
+			},
+		},
+		{
 			in: `{app="foo"}
 					# |= "bar"
 					| json`,
@@ -2986,6 +3012,33 @@ func TestParse(t *testing.T) {
 				},
 				Operation: "count_over_time",
 			},
+		},
+		{
+			// binop always includes vector matching. Default is `without ()`,
+			// the zero value.
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) or vector(1)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeOr,
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&Grouping{},
+					nil,
+				),
+				NewVectorExpr("1"),
+			),
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -3271,6 +3324,30 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			_, err := ParseLogSelector(tc.in, true)
 			require.Equal(t, tc.err, err)
+		})
+	}
+}
+
+func TestParseLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc   string
+		input  string
+		output labels.Labels
+	}{
+		{
+			desc:   "basic",
+			input:  `{job="foo"}`,
+			output: []labels.Label{{Name: "job", Value: "foo"}},
+		},
+		{
+			desc:   "strip empty label value",
+			input:  `{job="foo", bar=""}`,
+			output: []labels.Label{{Name: "job", Value: "foo"}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, _ := ParseLabels(tc.input)
+			require.Equal(t, tc.output, got)
 		})
 	}
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"strconv"
@@ -385,7 +384,7 @@ func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, erro
 
 // loadConfig read YAML-formatted config from filename into cfg.
 func loadConfig(filename string, cfg interface{}) error {
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := os.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}

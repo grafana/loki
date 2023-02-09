@@ -18,6 +18,7 @@ package textparse
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -25,9 +26,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/pkg/errors"
-
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 )
@@ -111,6 +111,12 @@ func (p *OpenMetricsParser) Series() ([]byte, *int64, float64) {
 		return p.series, &ts, p.val
 	}
 	return p.series, nil, p.val
+}
+
+// Histogram always returns (nil, nil, nil, nil) because OpenMetrics does not support
+// sparse histograms.
+func (p *OpenMetricsParser) Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram) {
+	return nil, nil, nil, nil
 }
 
 // Help returns the metric name and help text in the current entry.
@@ -276,7 +282,7 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 			case "unknown":
 				p.mtype = MetricTypeUnknown
 			default:
-				return EntryInvalid, errors.Errorf("invalid metric type %q", s)
+				return EntryInvalid, fmt.Errorf("invalid metric type %q", s)
 			}
 		case tHelp:
 			if !utf8.Valid(p.text) {
@@ -293,7 +299,7 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 			u := yoloString(p.text)
 			if len(u) > 0 {
 				if !strings.HasSuffix(m, u) || len(m) < len(u)+1 || p.l.b[p.offsets[1]-len(u)-1] != '_' {
-					return EntryInvalid, errors.Errorf("unit not a suffix of metric %q", m)
+					return EntryInvalid, fmt.Errorf("unit not a suffix of metric %q", m)
 				}
 			}
 			return EntryUnit, nil
@@ -353,7 +359,7 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 		return EntrySeries, nil
 
 	default:
-		err = errors.Errorf("%q %q is not a valid start token", t, string(p.l.cur()))
+		err = fmt.Errorf("%q %q is not a valid start token", t, string(p.l.cur()))
 	}
 	return EntryInvalid, err
 }

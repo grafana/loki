@@ -505,7 +505,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 				mockQuerierConfig(),
 				mockIngesterClientConfig(),
 				newIngesterClientMockFactory(ingesterClient),
-				newReadRingMock(testData.ringIngesters),
+				newReadRingMock(testData.ringIngesters, 0),
 				&mockDeleteGettter{},
 				store, limits)
 			require.NoError(t, err)

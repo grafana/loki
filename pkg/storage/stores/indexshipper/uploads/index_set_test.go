@@ -2,7 +2,8 @@ package uploads
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -72,7 +73,7 @@ func TestIndexSet_Upload(t *testing.T) {
 				// compare the contents of created test index and uploaded index in storage
 				_, err = testIndex.Seek(0, 0)
 				require.NoError(t, err)
-				expectedIndexContent, err := ioutil.ReadAll(testIndex.File)
+				expectedIndexContent, err := io.ReadAll(testIndex.File)
 				require.NoError(t, err)
 				require.Equal(t, expectedIndexContent, readCompressedFile(t, indexPathInStorage))
 			}
@@ -156,7 +157,7 @@ func readCompressedFile(t *testing.T, path string) []byte {
 	decompressedFilePath := filepath.Join(tempDir, "decompressed")
 	testutil.DecompressFile(t, path, decompressedFilePath)
 
-	fileContent, err := ioutil.ReadFile(decompressedFilePath)
+	fileContent, err := os.ReadFile(decompressedFilePath)
 	require.NoError(t, err)
 
 	return fileContent

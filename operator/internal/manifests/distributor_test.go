@@ -28,7 +28,7 @@ func TestNewDistributorDeployment_SelectorMatchesLabels(t *testing.T) {
 	}
 }
 
-func TestNewDistributorDeployme_HasTemplateConfigHashAnnotation(t *testing.T) {
+func TestNewDistributorDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 	ss := manifests.NewDistributorDeployment(manifests.Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
@@ -43,6 +43,26 @@ func TestNewDistributorDeployme_HasTemplateConfigHashAnnotation(t *testing.T) {
 	})
 
 	expected := "loki.grafana.com/config-hash"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
+}
+
+func TestNewDistributorDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
+	ss := manifests.NewDistributorDeployment(manifests.Options{
+		Name:                   "abcd",
+		Namespace:              "efgh",
+		CertRotationRequiredAt: "deadbeef",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	expected := "loki.grafana.com/certRotationRequiredAt"
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, expected)
 	require.Equal(t, annotations[expected], "deadbeef")

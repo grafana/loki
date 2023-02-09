@@ -1,0 +1,17 @@
+---
+monitoring:
+  dashboards:
+    namespace: k3d-helm-cluster
+  selfMonitoring:
+    tenant:
+      name: loki
+      secretNamespace: k3d-helm-cluster
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+  rules:
+    namespace: k3d-helm-cluster
+    labels:
+      release: "prometheus"
+minio:
+  enabled: true

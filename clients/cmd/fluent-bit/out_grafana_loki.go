@@ -46,9 +46,10 @@ func FLBPluginRegister(ctx unsafe.Pointer) int {
 	return output.FLBPluginRegister(ctx, "grafana-loki", "Ship fluent-bit logs to Grafana Loki")
 }
 
-//export FLBPluginInit
 // (fluentbit will call this)
 // ctx (context) pointer to fluentbit context (state/ c code)
+//
+//export FLBPluginInit
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	conf, err := parseConfig(&pluginConfig{ctx: ctx})
 	if err != nil {
@@ -88,7 +89,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(paramLogger).Log("key_file", conf.clientConfig.Client.TLSConfig.KeyFile)
 	level.Info(paramLogger).Log("insecure_skip_verify", conf.clientConfig.Client.TLSConfig.InsecureSkipVerify)
 
-	m := client.NewMetrics(prometheus.DefaultRegisterer, nil)
+	m := client.NewMetrics(prometheus.DefaultRegisterer)
 	plugin, err := newPlugin(conf, logger, m)
 	if err != nil {
 		level.Error(logger).Log("newPlugin", err)

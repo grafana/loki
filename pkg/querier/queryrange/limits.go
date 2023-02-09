@@ -4,21 +4,24 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -39,6 +42,9 @@ type Limits interface {
 	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
 	MinShardingLookback(string) time.Duration
+	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
+	// frontend will process in parallel for TSDB queries.
+	TSDBMaxQueryParallelism(string) int
 }
 
 type limits struct {
@@ -58,17 +64,24 @@ func WithSplitByLimits(l Limits, splitBy time.Duration) Limits {
 	}
 }
 
+type UserIDTransformer func(context.Context, string) string
+
 // cacheKeyLimits intersects Limits and CacheSplitter
 type cacheKeyLimits struct {
 	Limits
+	transformer UserIDTransformer
 }
 
-func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrangebase.Request) string {
+func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
 	split := l.QuerySplitDuration(userID)
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
 		currentInterval = r.GetStart() / denominator
+	}
+
+	if l.transformer != nil {
+		userID = l.transformer(ctx, userID)
 	}
 
 	// include both the currentInterval and the split duration in key to ensure
@@ -203,16 +216,18 @@ func (sl *seriesLimiter) isLimitReached() bool {
 }
 
 type limitedRoundTripper struct {
-	next   http.RoundTripper
-	limits Limits
+	configs []config.PeriodConfig
+	next    http.RoundTripper
+	limits  Limits
 
 	codec      queryrangebase.Codec
 	middleware queryrangebase.Middleware
 }
 
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, middlewares ...queryrangebase.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
 	transport := limitedRoundTripper{
+		configs:    configs,
 		next:       next,
 		codec:      codec,
 		limits:     limits,
@@ -265,7 +280,15 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	parallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, rt.limits.MaxQueryParallelism)
+	parallelism := MinWeightedParallelism(
+		ctx,
+		tenantIDs,
+		rt.configs,
+		rt.limits,
+		model.Time(request.GetStart()),
+		model.Time(request.GetEnd()),
+	)
+
 	if parallelism < 1 {
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
@@ -324,4 +347,137 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 	defer func() { _ = response.Body.Close() }()
 
 	return rt.codec.DecodeResponse(ctx, response, r)
+}
+
+// WeightedParallelism will calculate the request parallelism to use
+// based on the two fields:
+// 1) `max_query_parallelism`:
+// 2) `tsdb_max_query_parallelism`:
+// For instance, if the max_query_parallelism=10,
+// tsdb_max_query_parallelism=100, and the request is equally split
+// between tsdb and non-tsdb period configs,
+// the resulting parallelism will be
+// 0.5 * 10 + 0.5 * 100 = 60
+func WeightedParallelism(
+	ctx context.Context,
+	configs []config.PeriodConfig,
+	user string,
+	l Limits,
+	start, end model.Time,
+) int {
+	logger := util_log.WithContext(ctx, util_log.Logger)
+
+	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
+	regMaxQueryParallelism := l.MaxQueryParallelism(user)
+	if tsdbMaxQueryParallelism+regMaxQueryParallelism == 0 {
+		level.Info(logger).Log("msg", "querying disabled for tenant")
+		return 0
+	}
+
+	// query end before start would anyways error out so just short circuit and return 1
+	if end < start {
+		level.Warn(logger).Log("msg", "query end time before start, letting downstream code handle it gracefully", "start", start, "end", end)
+		return 1
+	}
+
+	// Return first index of desired period configs
+	i := sort.Search(len(configs), func(i int) bool {
+		// return true when there is no overlap with query & current
+		// config because query is in future
+		// or
+		// there is overlap with current config
+		finalOrFuture := i == len(configs)-1 || configs[i].From.After(end)
+		if finalOrFuture {
+			return true
+		}
+		// qEnd not before start && qStart not after end
+		overlapCurrent := !end.Before(configs[i].From.Time) && !start.After(configs[i+1].From.Time)
+		return overlapCurrent
+	})
+
+	// There was no overlapping index. This can only happen when a time
+	// was requested before the first period config start. In that case, just
+	// use the first period config. It should error elsewhere.
+	if i == len(configs) {
+		i = 0
+	}
+
+	// If start == end, this is an instant query;
+	// use the appropriate parallelism type for
+	// the active configuration
+	if start.Equal(end) {
+		switch configs[i].IndexType {
+		case config.TSDBType:
+			return l.TSDBMaxQueryParallelism(user)
+		}
+		return l.MaxQueryParallelism(user)
+
+	}
+
+	var tsdbDur, otherDur time.Duration
+
+	for ; i < len(configs) && configs[i].From.Before(end); i++ {
+		_, from := minMaxModelTime(start, configs[i].From.Time)
+		through := end
+		if i+1 < len(configs) {
+			through, _ = minMaxModelTime(end, configs[i+1].From.Time)
+		}
+
+		dur := through.Sub(from)
+
+		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
+			dur = configs[i+1].From.Time.Sub(from)
+		}
+		if ty := configs[i].IndexType; ty == config.TSDBType {
+			tsdbDur += dur
+		} else {
+			otherDur += dur
+		}
+	}
+
+	totalDur := int(tsdbDur + otherDur)
+	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
+	// let the downstream code handle it.
+	if totalDur == 0 {
+		level.Warn(logger).Log("msg", "could not determine query overlaps on tsdb vs non-tsdb schemas, likely due to query not overlapping any of the schema configs,"+
+			"letting downstream code handle it gracefully", "start", start, "end", end)
+		return 1
+	}
+
+	tsdbPart := int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
+	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
+
+	if combined := regPart + tsdbPart; combined > 0 {
+		return combined
+	}
+
+	// As long as the actual config is not zero,
+	// ensure at least 1 parallelism to account for integer division
+	// in unlikely edge cases such as two configs with parallelism of 1
+	// being rounded down to zero
+	if (tsdbMaxQueryParallelism > 0 && tsdbDur > 0) || (regMaxQueryParallelism > 0 && otherDur > 0) {
+		return 1
+	}
+
+	return 0
+}
+
+func minMaxModelTime(a, b model.Time) (min, max model.Time) {
+	if a.Before(b) {
+		return a, b
+	}
+	return b, a
+}
+
+func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []config.PeriodConfig, l Limits, start, end model.Time) int {
+	return validation.SmallestPositiveIntPerTenant(tenantIDs, func(user string) int {
+		return WeightedParallelism(
+			ctx,
+			configs,
+			user,
+			l,
+			start,
+			end,
+		)
+	})
 }

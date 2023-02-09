@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -82,7 +81,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 	idx := 0
 	for filename, content := range commonIndexes {
 		filePath := filepath.Join(path, strings.TrimSuffix(filename, ".gz"))
-		require.NoError(t, ioutil.WriteFile(filePath, []byte(content), 0777))
+		require.NoError(t, os.WriteFile(filePath, []byte(content), 0777))
 		if strings.HasSuffix(filename, ".gz") {
 			compressFile(t, filePath)
 		}
@@ -93,7 +92,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 		require.NoError(t, util.EnsureDirectory(filepath.Join(path, userID)))
 		for filename, content := range files {
 			filePath := filepath.Join(path, userID, strings.TrimSuffix(filename, ".gz"))
-			require.NoError(t, ioutil.WriteFile(filePath, []byte(content), 0777))
+			require.NoError(t, os.WriteFile(filePath, []byte(content), 0777))
 			if strings.HasSuffix(filename, ".gz") {
 				compressFile(t, filePath)
 			}
@@ -349,15 +348,15 @@ func (i testIndexCompactor) OpenCompactedIndexFile(_ context.Context, path, _, _
 
 func verifyCompactedIndexTable(t *testing.T, commonDBsConfig IndexesConfig, perUserDBsConfig PerUserIndexesConfig, tablePathInStorage string) {
 	commonIndexes, perUserIndexes := buildFilesContent(commonDBsConfig, perUserDBsConfig)
-	filesInfo, err := ioutil.ReadDir(tablePathInStorage)
+	dirEntries, err := os.ReadDir(tablePathInStorage)
 	require.NoError(t, err)
 
 	files, folders := []string{}, []string{}
-	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
-			folders = append(folders, fileInfo.Name())
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			folders = append(folders, entry.Name())
 		} else {
-			files = append(files, fileInfo.Name())
+			files = append(files, entry.Name())
 		}
 	}
 
@@ -401,12 +400,12 @@ func verifyCompactedIndexTable(t *testing.T, commonDBsConfig IndexesConfig, perU
 
 	require.Len(t, folders, len(expectedUserIndexContent), fmt.Sprintf("%v", commonIndexes))
 	for _, userID := range folders {
-		filesInfo, err := ioutil.ReadDir(filepath.Join(tablePathInStorage, userID))
+		entries, err := os.ReadDir(filepath.Join(tablePathInStorage, userID))
 		require.NoError(t, err)
-		require.Len(t, filesInfo, 1)
-		require.False(t, filesInfo[0].IsDir())
+		require.Len(t, entries, 1)
+		require.False(t, entries[0].IsDir())
 		sort.Strings(expectedUserIndexContent[userID])
-		require.Equal(t, strings.Join(expectedUserIndexContent[userID], ""), string(readFile(t, filepath.Join(tablePathInStorage, userID, filesInfo[0].Name()))))
+		require.Equal(t, strings.Join(expectedUserIndexContent[userID], ""), string(readFile(t, filepath.Join(tablePathInStorage, userID, entries[0].Name()))))
 	}
 }
 
@@ -418,7 +417,7 @@ func readFile(t *testing.T, path string) []byte {
 		path = decompressedFilePath
 	}
 
-	fileContent, err := ioutil.ReadFile(path)
+	fileContent, err := os.ReadFile(path)
 	require.NoError(t, err)
 
 	return fileContent

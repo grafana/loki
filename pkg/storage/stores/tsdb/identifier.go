@@ -59,23 +59,6 @@ func (p prefixedIdentifier) Name() string {
 	return path.Join(p.parentName, p.Identifier.Name())
 }
 
-func newSuffixedIdentifier(id Identifier, pathSuffix string) suffixedIdentifier {
-	return suffixedIdentifier{
-		pathSuffix: pathSuffix,
-		Identifier: id,
-	}
-}
-
-// Generally useful for gzip extensions
-type suffixedIdentifier struct {
-	pathSuffix string
-	Identifier
-}
-
-func (s suffixedIdentifier) Path() string {
-	return s.Identifier.Path() + s.pathSuffix
-}
-
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {

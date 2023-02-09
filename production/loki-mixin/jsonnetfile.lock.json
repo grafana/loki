@@ -34,6 +34,16 @@
     {
       "source": {
         "git": {
+          "remote": "https://github.com/grafana/mimir.git",
+          "subdir": "operations/mimir-mixin"
+        }
+      },
+      "version": "91986521f324c84a9cf869529bd901f077ddf8bc",
+      "sum": "eBp1Oo3j0YiI5hv9YrZb0lJQxEOC17rP3pZiKM/R3Zo="
+    },
+    {
+      "source": {
+        "git": {
           "remote": "https://github.com/prometheus-operator/kube-prometheus.git",
           "subdir": "jsonnet/kube-prometheus/lib"
         }

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -81,6 +80,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
 		AuthUrl:        cfg.AuthURL,
+		Internal:       cfg.Internal,
 		ApiKey:         cfg.Password,
 		UserName:       cfg.Username,
 		UserId:         cfg.UserID,
@@ -132,7 +132,7 @@ func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io
 		return nil, 0, err
 	}
 
-	return ioutil.NopCloser(&buf), int64(buf.Len()), nil
+	return io.NopCloser(&buf), int64(buf.Len()), nil
 }
 
 // PutObject puts the specified bytes into the configured Swift container at the provided key

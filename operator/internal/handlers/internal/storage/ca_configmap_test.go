@@ -42,7 +42,7 @@ func TestIsValidConfigMap(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			ok := storage.IsValidCAConfigMap(tst.cm)
+			ok := storage.IsValidCAConfigMap(tst.cm, "service-ca.crt")
 			require.Equal(t, tst.valid, ok)
 		})
 	}

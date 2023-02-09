@@ -1,13 +1,18 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/go-kit/log"
 	json "github.com/json-iterator/go"
@@ -511,6 +516,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
 			},
 		},
+
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -577,6 +583,43 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+			},
+		},
+		//sort and sort_desc
+		{
+			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
+					newSeries(testSize, factor(5, identity), `{app="fuzz"}`), newSeries(testSize, identity, `{app="buzz"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "buzz"}}},
+			},
+		},
+		{
+			`sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
+					newSeries(testSize, factor(5, identity), `{app="fuzz"}`), newSeries(testSize, identity, `{app="buzz"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "buzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
 		{
@@ -2193,6 +2236,43 @@ func TestEngine_Stats(t *testing.T) {
 	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
 }
 
+type metaQuerier struct{}
+
+func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{
+			Name:   "Header",
+			Values: []string{"value"},
+		},
+	})
+	return iter.NoopIterator, nil
+}
+
+func (metaQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	})
+	return iter.NoopIterator, nil
+}
+
+func TestEngine_Metadata(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
+
+	q := eng.Query(LiteralParams{
+		qs:        `{foo="bar"}`,
+		start:     time.Now(),
+		end:       time.Now(),
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+
+	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.NoError(t, err)
+	require.Equal(t, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	}, r.Headers)
+}
+
 func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
@@ -2399,6 +2479,73 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 				b.Fatal("unexpected nil result")
 			}
 		}
+	}
+}
+
+// TestHashingStability tests logging stability between engine and RecordRangeAndInstantQueryMetrics methods.
+func TestHashingStability(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	params := LiteralParams{
+		start:     time.Unix(0, 0),
+		end:       time.Unix(5, 0),
+		step:      60 * time.Second,
+		direction: logproto.FORWARD,
+		limit:     1000,
+	}
+
+	queryWithEngine := func() string {
+		buf := bytes.NewBufferString("")
+		logger := log.NewLogfmtLogger(buf)
+		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
+		query := eng.Query(params)
+		_, err := query.Exec(ctx)
+		require.NoError(t, err)
+		return buf.String()
+	}
+
+	queryDirectly := func() string {
+		statsResult := stats.Result{
+			Summary: stats.Summary{
+				BytesProcessedPerSecond: 100000,
+				QueueTime:               0.000000002,
+				ExecTime:                25.25,
+				TotalBytesProcessed:     100000,
+				TotalEntriesReturned:    10,
+			},
+		}
+		buf := bytes.NewBufferString("")
+		logger := log.NewLogfmtLogger(buf)
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		return buf.String()
+	}
+
+	for _, test := range []struct {
+		qs string
+	}{
+		{`sum by(query_hash) (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s]))`},
+		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
+	} {
+		params.qs = test.qs
+		expectedQueryHash := HashedQuery(test.qs)
+
+		// check that both places will end up having the same query hash, even though they're emitting different log lines.
+		require.Regexp(t,
+			regexp.MustCompile(
+				fmt.Sprintf(
+					`level=info org_id=fake msg="executing query" type=range query=.* length=5s step=1m0s query_hash=%d.*`, expectedQueryHash,
+				),
+			),
+			queryWithEngine(),
+		)
+
+		require.Regexp(t,
+			regexp.MustCompile(
+				fmt.Sprintf(
+					`level=info org_id=fake latency=slow query=".*" query_hash=%d query_type=metric range_type=range.*\n`, expectedQueryHash,
+				),
+			),
+			queryDirectly(),
+		)
 	}
 }
 

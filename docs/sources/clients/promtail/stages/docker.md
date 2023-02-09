@@ -1,7 +1,8 @@
 ---
 title: docker
+description: docker stage
 ---
-# `docker` stage
+# docker
 
 The `docker` stage is a parsing stage that reads log lines in the standard
 format of Docker log files.

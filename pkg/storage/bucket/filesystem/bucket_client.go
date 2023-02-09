@@ -1,8 +1,8 @@
 package filesystem
 
 import (
-	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/filesystem"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/providers/filesystem"
 )
 
 // NewBucketClient creates a new filesystem bucket client

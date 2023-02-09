@@ -1,17 +1,21 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -38,8 +42,10 @@ type stream struct {
 	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	chunkMtx sync.RWMutex
 
-	labels       labels.Labels
-	labelsString string
+	labels           labels.Labels
+	labelsString     string
+	labelHash        uint64
+	labelHashNoShard uint64
 
 	// most recently pushed line. This is used to prevent duplicate pushes.
 	// It also determines chunk synchronization when unordered writes are disabled.
@@ -62,7 +68,8 @@ type stream struct {
 	// introduced to facilitate removing the ordering constraint.
 	entryCt int64
 
-	unorderedWrites bool
+	unorderedWrites      bool
+	streamRateCalculator *StreamRateCalculator
 }
 
 type chunkDesc struct {
@@ -80,16 +87,21 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics) *stream {
+	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
-		limiter:         NewStreamRateLimiter(limits, tenant, 10*time.Second),
-		cfg:             cfg,
-		fp:              fp,
-		labels:          labels,
-		labelsString:    labels.String(),
-		tailers:         map[uint32]*tailer{},
-		metrics:         metrics,
-		tenant:          tenant,
+		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
+		cfg:                  cfg,
+		fp:                   fp,
+		labels:               labels,
+		labelsString:         labels.String(),
+		labelHash:            labels.Hash(),
+		labelHashNoShard:     hashNoShard,
+		tailers:              map[uint32]*tailer{},
+		metrics:              metrics,
+		tenant:               tenant,
+		streamRateCalculator: streamRateCalculator,
+
 		unorderedWrites: unorderedWrites,
 	}
 }
@@ -136,7 +148,7 @@ func (s *stream) Push(
 	entries []logproto.Entry,
 	// WAL record to add push contents to.
 	// May be nil to disable this functionality.
-	record *WALRecord,
+	record *wal.Record,
 	// Counter used in WAL replay to avoid duplicates.
 	// If this is non-zero, the stream will reject entries
 	// with a counter value less than or equal to it's own.
@@ -145,7 +157,9 @@ func (s *stream) Push(
 	// Lock chunkMtx while pushing.
 	// If this is false, chunkMtx must be held outside Push.
 	lockChunk bool,
-) (int, []entryWithError) {
+	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
+	rateLimitWholeStream bool,
+) (int, error) {
 	if lockChunk {
 		s.chunkMtx.Lock()
 		defer s.chunkMtx.Unlock()
@@ -160,12 +174,12 @@ func (s *stream) Push(
 
 		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
 		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
-		return 0, []entryWithError{{entry: &logproto.Entry{}, e: ErrEntriesExist}}
+		return 0, ErrEntriesExist
 	}
 
-	toStore, invalid := s.validateEntries(entries, isReplay)
-	if s.cfg.RateLimitWholeStream && hasRateLimitErr(invalid) {
-		return 0, invalid
+	toStore, invalid := s.validateEntries(entries, isReplay, rateLimitWholeStream)
+	if rateLimitWholeStream && hasRateLimitErr(invalid) {
+		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
 	prevNumChunks := len(s.chunks)
@@ -184,7 +198,45 @@ func (s *stream) Push(
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
-	return bytesAdded, append(invalid, entriesWithErr...)
+	return bytesAdded, errorForFailedEntries(s, append(invalid, entriesWithErr...), len(entries))
+}
+
+func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
+	if len(failedEntriesWithError) == 0 {
+		return nil
+	}
+
+	lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
+	_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+	outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
+	if !outOfOrder && !ok {
+		return lastEntryWithErr.e
+	}
+	var statusCode int
+	if outOfOrder {
+		statusCode = http.StatusBadRequest
+	}
+	if ok {
+		statusCode = http.StatusTooManyRequests
+	}
+	// Return a http status 4xx request response with all failed entries.
+	buf := bytes.Buffer{}
+	streamName := s.labelsString
+
+	limitedFailedEntries := failedEntriesWithError
+	if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+		limitedFailedEntries = limitedFailedEntries[:maxIgnore]
+	}
+
+	for _, entryWithError := range limitedFailedEntries {
+		fmt.Fprintf(&buf,
+			"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+	}
+
+	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d", s.tenant, len(failedEntriesWithError), totalEntries)
+
+	return httpgrpc.Errorf(statusCode, buf.String())
 }
 
 func hasRateLimitErr(errs []entryWithError) bool {
@@ -197,7 +249,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) recordAndSendToTailers(record *WALRecord, entries []logproto.Entry) {
+func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.Entry) {
 	if len(entries) == 0 {
 		return
 	}
@@ -277,11 +329,11 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 	return bytesAdded, storedEntries, invalid
 }
 
-func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWholeStream bool) ([]logproto.Entry, []entryWithError) {
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
-		totalBytes                           int
+		validBytes, totalBytes               int
 		failedEntriesWithError               []entryWithError
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
@@ -302,11 +354,14 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 			continue
 		}
 
+		lineBytes := len(entries[i].Line)
+		totalBytes += lineBytes
+
 		now := time.Now()
-		if !s.cfg.RateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
 			rateLimitedSamples++
-			rateLimitedBytes += len(entries[i].Line)
+			rateLimitedBytes += lineBytes
 			continue
 		}
 
@@ -315,11 +370,11 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			outOfOrderSamples++
-			outOfOrderBytes += len(entries[i].Line)
+			outOfOrderBytes += lineBytes
 			continue
 		}
 
-		totalBytes += len(entries[i].Line)
+		validBytes += lineBytes
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
@@ -334,7 +389,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
 	now := time.Now()
-	if s.cfg.RateLimitWholeStream && !s.limiter.AllowN(now, totalBytes) {
+	if rateLimitWholeStream && !s.limiter.AllowN(now, totalBytes) {
 		// Report that the whole stream was rate limited
 		rateLimitedSamples = len(entries)
 		failedEntriesWithError = make([]entryWithError, 0, len(entries))
@@ -344,6 +399,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay bool) ([]log
 		}
 	}
 
+	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes)
 	return toStore, failedEntriesWithError
 }

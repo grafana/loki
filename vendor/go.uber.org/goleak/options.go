@@ -41,6 +41,16 @@ type opts struct {
 	filters    []func(stack.Stack) bool
 	maxRetries int
 	maxSleep   time.Duration
+	cleanup    func(int)
+}
+
+// implement apply so that opts struct itself can be used as
+// an Option.
+func (o *opts) apply(opts *opts) {
+	opts.filters = o.filters
+	opts.maxRetries = o.maxRetries
+	opts.maxSleep = o.maxSleep
+	opts.cleanup = o.cleanup
 }
 
 // optionFunc lets us easily write options without a custom type.
@@ -54,6 +64,18 @@ func (f optionFunc) apply(opts *opts) { f(opts) }
 func IgnoreTopFunction(f string) Option {
 	return addFilter(func(s stack.Stack) bool {
 		return s.FirstFunction() == f
+	})
+}
+
+// Cleanup sets up a cleanup function that will be executed at the
+// end of the leak check.
+// When passed to [VerifyTestMain], the exit code passed to cleanupFunc
+// will be set to the exit code of TestMain.
+// When passed to [VerifyNone], the exit code will be set to 0.
+// This cannot be passed to [Find].
+func Cleanup(cleanupFunc func(exitCode int)) Option {
+	return optionFunc(func(opts *opts) {
+		opts.cleanup = cleanupFunc
 	})
 }
 
@@ -98,8 +120,8 @@ func buildOpts(options ...Option) *opts {
 	return opts
 }
 
-func (vo *opts) filter(s stack.Stack) bool {
-	for _, filter := range vo.filters {
+func (o *opts) filter(s stack.Stack) bool {
+	for _, filter := range o.filters {
 		if filter(s) {
 			return true
 		}
@@ -107,14 +129,14 @@ func (vo *opts) filter(s stack.Stack) bool {
 	return false
 }
 
-func (vo *opts) retry(i int) bool {
-	if i >= vo.maxRetries {
+func (o *opts) retry(i int) bool {
+	if i >= o.maxRetries {
 		return false
 	}
 
 	d := time.Duration(int(time.Microsecond) << uint(i))
-	if d > vo.maxSleep {
-		d = vo.maxSleep
+	if d > o.maxSleep {
+		d = o.maxSleep
 	}
 	time.Sleep(d)
 	return true

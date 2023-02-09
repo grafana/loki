@@ -102,6 +102,9 @@ func (c *Client) removeBucketReplication(ctx context.Context, bucketName string)
 	if err != nil {
 		return err
 	}
+	if resp.StatusCode != http.StatusOK {
+		return httpRespToErrorResponse(resp, bucketName, "")
+	}
 	return nil
 }
 

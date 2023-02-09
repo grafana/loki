@@ -17,9 +17,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               [],
 
                           matchers:: {
-                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
+                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                             distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
                             ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                            ingester_zone: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
                           },
 
                           local selector(matcherId) =
@@ -31,6 +32,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           cortexGwSelector:: selector('cortexgateway'),
                           distributorSelector:: selector('distributor'),
                           ingesterSelector:: selector('ingester'),
+                          ingesterZoneSelector:: selector('ingester_zone'),
                         } +
                         $.dashboard('Loki / Writes', uid='writes')
                         .addCluster()
@@ -47,8 +49,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.cortexgateway + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.cortexgateway + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
                             )
                           )
                         )
@@ -62,8 +63,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.distributor,
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.distributor,
+                            )
+                          )
+                        )
+                        .addRowIf(
+                          !$._config.ssd.enabled,
+                          $.row('Ingester - Zone Aware')
+                          .addPanel(
+                            $.panel('QPS') +
+                            $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterZoneSelector)
+                          )
+                          .addPanel(
+                            $.panel('Latency') +
+                            utils.latencyRecordingRulePanel(
+                              'loki_request_duration_seconds',
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester_zone + [utils.selector.eq('route', '/logproto.Pusher/Push')],
                             )
                           )
                         )
@@ -72,15 +87,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Ingester')
                           .addPanel(
                             $.panel('QPS') +
+                            $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector) +
                             $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('route', '/logproto.Pusher/Push')],
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('route', '/logproto.Pusher/Push')],
                             )
+                          )
+                        )
+                        .addRowIf(
+                          !$._config.ssd.enabled,
+                          $.row('Index')
+                          .addPanel(
+                            $.panel('QPS') +
+                            $.qpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                          .addPanel(
+                            $.panel('Latency') +
+                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                         )
                         .addRowIf(
@@ -94,7 +121,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_bigtable_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
                             )
                           )
                         )

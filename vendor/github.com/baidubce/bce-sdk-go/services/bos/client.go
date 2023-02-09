@@ -29,19 +29,20 @@ import (
 	"github.com/baidubce/bce-sdk-go/auth"
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
+	"github.com/baidubce/bce-sdk-go/services/sts"
 	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
 const (
 	DEFAULT_SERVICE_DOMAIN = bce.DEFAULT_REGION + ".bcebos.com"
 	DEFAULT_MAX_PARALLEL   = 10
-	MULTIPART_ALIGN        = 1 << 20        // 1MB
-	MIN_MULTIPART_SIZE     = 1 << 20        // 1MB
-	DEFAULT_MULTIPART_SIZE = 12 * (1 << 20) // 12MB
+	MULTIPART_ALIGN        = 1 << 20         // 1MB
+	MIN_MULTIPART_SIZE     = 100 * (1 << 10) // 100 KB
+	DEFAULT_MULTIPART_SIZE = 12 * (1 << 20)  // 12MB
 
 	MAX_PART_NUMBER        = 10000
-	MAX_SINGLE_PART_SIZE   = 5 * (1 << 30) // 5GB
-	MAX_SINGLE_OBJECT_SIZE = 5 * (1 << 40) // 5TB
+	MAX_SINGLE_PART_SIZE   = 5 * (1 << 30)    // 5GB
+	MAX_SINGLE_OBJECT_SIZE = 48.8 * (1 << 40) // 48.8TB
 )
 
 // Client of BOS service is a kind of BceClient, so derived from BceClient
@@ -71,6 +72,37 @@ func NewClient(ak, sk, endpoint string) (*Client, error) {
 		RedirectDisabled: false,
 	})
 }
+
+// NewStsClient make the BOS service client with STS configuration, it will first apply stsAK,stsSK, sessionToken, then return bosClient using temporary sts Credential
+func NewStsClient(ak, sk, endpoint string, expiration int) (*Client, error) {
+	stsClient, err := sts.NewClient(ak, sk)
+	if err != nil {
+		fmt.Println("create sts client object :", err)
+		return nil, err
+	}
+	sts, err := stsClient.GetSessionToken(expiration, "")
+	if err != nil {
+		fmt.Println("get session token failed:", err)
+		return nil, err
+	}
+
+	bosClient, err := NewClient(sts.AccessKeyId, sts.SecretAccessKey, endpoint)
+	if err != nil {
+		fmt.Println("create bos client failed:", err)
+		return nil, err
+	}
+	stsCredential, err := auth.NewSessionBceCredentials(
+		sts.AccessKeyId,
+		sts.SecretAccessKey,
+		sts.SessionToken)
+	if err != nil {
+		fmt.Println("create sts credential object failed:", err)
+		return nil, err
+	}
+	bosClient.Config.Credentials = stsCredential
+	return bosClient, nil
+}
+
 func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 	var credentials *auth.BceCredentials
 	var err error
@@ -90,12 +122,12 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		HeadersToSign: auth.DEFAULT_HEADERS_TO_SIGN,
 		ExpireSeconds: auth.DEFAULT_EXPIRE_SECONDS}
 	defaultConf := &bce.BceClientConfiguration{
-		Endpoint:    endpoint,
-		Region:      bce.DEFAULT_REGION,
-		UserAgent:   bce.DEFAULT_USER_AGENT,
-		Credentials: credentials,
-		SignOption:  defaultSignOptions,
-		Retry:       bce.DEFAULT_RETRY_POLICY,
+		Endpoint:                  endpoint,
+		Region:                    bce.DEFAULT_REGION,
+		UserAgent:                 bce.DEFAULT_USER_AGENT,
+		Credentials:               credentials,
+		SignOption:                defaultSignOptions,
+		Retry:                     bce.DEFAULT_RETRY_POLICY,
 		ConnectionTimeoutInMillis: bce.DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS,
 		RedirectDisabled:          config.RedirectDisabled}
 	v1Signer := &auth.BceV1Signer{}
@@ -1631,6 +1663,12 @@ func (c *Client) GeneratePresignedUrl(bucket, object string, expireInSeconds int
 		expireInSeconds, method, headers, params)
 }
 
+func (c *Client) GeneratePresignedUrlPathStyle(bucket, object string, expireInSeconds int, method string,
+	headers, params map[string]string) string {
+	return api.GeneratePresignedUrlPathStyle(c.Config, c.Signer, bucket, object,
+		expireInSeconds, method, headers, params)
+}
+
 // BasicGeneratePresignedUrl - basic interface to generate an authorization url with expire time
 //
 // PARAMS:
@@ -1902,6 +1940,7 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 	// 分块大小按MULTIPART_ALIGN=1MB对齐
 	partSize := (c.MultipartSize +
 		MULTIPART_ALIGN - 1) / MULTIPART_ALIGN * MULTIPART_ALIGN

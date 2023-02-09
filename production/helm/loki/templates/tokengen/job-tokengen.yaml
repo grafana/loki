@@ -1,5 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{ if and $isSimpleScalable .Values.enterprise.tokengen.enabled .Values.enterprise.enabled }}
+{{ if and .Values.enterprise.tokengen.enabled .Values.enterprise.enabled }}
 ---
 apiVersion: batch/v1
 kind: Job
@@ -15,6 +14,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
     "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "10"
 spec:
   backoffLimit: 6
   completions: 1
@@ -31,16 +31,14 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if .Values.enterprise.tokengen.priorityClassName }}
-      priorityClassName: {{ .Values.enterprise.tokengen.priorityClassName }}
+      {{- with .Values.enterprise.tokengen.priorityClassName }}
+      priorityClassName: {{ . }}
       {{- end }}
       securityContext:
         {{- toYaml .Values.enterprise.tokengen.securityContext | nindent 8 }}
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
       initContainers:
         - name: loki
@@ -48,7 +46,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=tokengen
+            - -target={{ .Values.enterprise.tokengen.targetModule }}
             - -tokengen.token-file=/shared/admin-token
             {{- with .Values.enterprise.tokengen.extraArgs }}
             {{- toYaml . | nindent 12 }}
@@ -61,20 +59,32 @@ spec:
               mountPath: /shared
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
             - name: license
               mountPath: /etc/loki/license
           env:
             {{- if .Values.enterprise.tokengen.env }}
               {{ toYaml .Values.enterprise.tokengen.env | nindent 12 }}
             {{- end }}
+          {{- with .Values.enterprise.tokengen.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       containers:
         - name: create-secret
-          image: {{ .Values.enterprise.tokengen.image }}
-          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          image: {{ include "loki.kubectlImage" . }}
+          imagePullPolicy: {{ .Values.kubectlImage.pullPolicy }}
           command:
             - /bin/bash
             - -euc
-            - kubectl create secret generic {{ .Values.enterprise.tokengen.adminTokenSecret }} --from-file=token=/shared/admin-token --from-literal=grafana-token="$(base64 <(echo :$(cat /shared/admin-token)))"
+            - |
+              kubectl create secret generic "{{ include "enterprise-logs.adminTokenSecret" . }}" --from-file=token=/shared/admin-token
+              {{- with .Values.enterprise.adminToken.additionalNamespaces }}
+              {{- range . }}
+              kubectl --namespace "{{ . }}" create secret generic "{{ include "enterprise-logs.adminTokenSecret" $ }}" --from-file=token=/shared/admin-token
+              {{- end }}
+              {{- end }}
           volumeMounts:
             {{- if .Values.enterprise.tokengen.extraVolumeMounts }}
               {{ toYaml .Values.enterprise.tokengen.extraVolumeMounts | nindent 12 }}
@@ -88,6 +98,10 @@ spec:
       restartPolicy: OnFailure
       serviceAccount: {{ template "enterprise-logs.tokengenFullname" . }}
       serviceAccountName: {{ template "enterprise-logs.tokengenFullname" . }}
+      {{- with .Values.enterprise.tokengen.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: config
           {{- if .Values.enterprise.useExternalConfig }}
@@ -97,6 +111,9 @@ spec:
           configMap:
             name: {{ include "loki.name" . }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         - name: license
           secret:
           {{- if .Values.enterprise.useExternalLicense }}

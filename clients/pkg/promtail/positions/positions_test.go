@@ -1,7 +1,6 @@
 package positions
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -16,7 +15,7 @@ import (
 func tempFilename(t *testing.T) string {
 	t.Helper()
 
-	temp, err := ioutil.TempFile("", "positions")
+	temp, err := os.CreateTemp("", "positions")
 	if err != nil {
 		t.Fatal("tempFilename:", err)
 	}
@@ -41,9 +40,9 @@ func TestReadPositionsOK(t *testing.T) {
 	}()
 
 	yaml := []byte(`positions:
-  /tmp/random.log: "17623"
+  /log/path/random.log: "17623"
 `)
-	err := ioutil.WriteFile(temp, yaml, 0644)
+	err := os.WriteFile(temp, yaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +52,7 @@ func TestReadPositionsOK(t *testing.T) {
 	}, log.NewNopLogger())
 
 	require.NoError(t, err)
-	require.Equal(t, "17623", pos["/tmp/random.log"])
+	require.Equal(t, "17623", pos["/log/path/random.log"])
 }
 
 func TestReadPositionsEmptyFile(t *testing.T) {
@@ -63,7 +62,7 @@ func TestReadPositionsEmptyFile(t *testing.T) {
 	}()
 
 	yaml := []byte(``)
-	err := ioutil.WriteFile(temp, yaml, 0644)
+	err := os.WriteFile(temp, yaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +103,7 @@ func TestReadPositionsFromBadYaml(t *testing.T) {
 	badYaml := []byte(`positions:
   /tmp/random.log: "176
 `)
-	err := ioutil.WriteFile(temp, badYaml, 0644)
+	err := os.WriteFile(temp, badYaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +125,7 @@ func TestReadPositionsFromBadYamlIgnoreCorruption(t *testing.T) {
 	badYaml := []byte(`positions:
   /tmp/random.log: "176
 `)
-	err := ioutil.WriteFile(temp, badYaml, 0644)
+	err := os.WriteFile(temp, badYaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,9 +145,9 @@ func Test_ReadOnly(t *testing.T) {
 		_ = os.Remove(temp)
 	}()
 	yaml := []byte(`positions:
-  /tmp/random.log: "17623"
+  /log/path/random.log: "17623"
 `)
-	err := ioutil.WriteFile(temp, yaml, 0644)
+	err := os.WriteFile(temp, yaml, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +162,7 @@ func Test_ReadOnly(t *testing.T) {
 	defer p.Stop()
 	p.Put("/foo/bar/f", 12132132)
 	p.PutString("/foo/f", "100")
-	pos, err := p.Get("/tmp/random.log")
+	pos, err := p.Get("/log/path/random.log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +176,7 @@ func Test_ReadOnly(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{
-		"/tmp/random.log": "17623",
+		"/log/path/random.log": "17623",
 	}, out)
 
 }

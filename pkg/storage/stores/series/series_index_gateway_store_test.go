@@ -34,7 +34,7 @@ func (fakeClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest, 
 func Test_IndexGatewayClient(t *testing.T) {
 	idx := IndexGatewayClientStore{
 		client: fakeClient{},
-		fallbackStore: &indexStore{
+		fallbackStore: &indexReaderWriter{
 			chunkBatchSize: 1,
 		},
 	}
@@ -95,7 +95,7 @@ func Test_IndexGatewayClient_Fallback(t *testing.T) {
 	require.NoError(t, tm.SyncTables(context.Background()))
 	idx := NewIndexGatewayClientStore(
 		logproto.NewIndexGatewayClient(conn),
-		&indexStore{
+		&indexReaderWriter{
 			chunkBatchSize: 1,
 			schema:         schema,
 			schemaCfg:      schemaCfg,

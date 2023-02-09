@@ -66,7 +66,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 			Entries:  30,
 		},
 	}
-	_ = h.Append("fake", ls, chks)
+	_ = h.Append("fake", ls, ls.Hash(), chks)
 
 	found, err := h.GetChunkRefs(
 		context.Background(),
@@ -117,7 +117,7 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 
 	// add data for both tenants
 	for _, tenant := range tenants {
-		_ = h.Append(tenant.user, tenant.ls, chks)
+		_ = h.Append(tenant.user, tenant.ls, tenant.ls.Hash(), chks)
 
 	}
 
@@ -142,13 +142,15 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	now := time.Now()
 	dir := t.TempDir()
 	cases := []struct {
-		Labels labels.Labels
-		Chunks []index.ChunkMeta
-		User   string
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
 	}{
 		{
-			User:   "tenant1",
-			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			User:        "tenant1",
+			Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -158,8 +160,9 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 			},
 		},
 		{
-			User:   "tenant2",
-			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			User:        "tenant2",
+			Labels:      mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			Fingerprint: 1, // Different fingerprint should be preserved
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -186,7 +189,8 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 	for i, c := range cases {
 		require.Nil(t, w.Log(&WALRecord{
-			UserID: c.User,
+			UserID:      c.User,
+			Fingerprint: c.Fingerprint,
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
 				Labels: c.Labels,
@@ -215,7 +219,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
 }
@@ -260,7 +264,8 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	// Write old WALs
 	for i, c := range cases {
 		require.Nil(t, w.Log(&WALRecord{
-			UserID: c.User,
+			UserID:      c.User,
+			Fingerprint: c.Labels.Hash(),
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
 				Labels: c.Labels,
@@ -278,8 +283,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	require.Nil(t, mgr.Start())
 
 	// Ensure old WAL data is queryable
-	multiIndex, err := NewMultiIndex(mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads)
-	require.Nil(t, err)
+	multiIndex := NewMultiIndex(IndexSlice{mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads})
 
 	for _, c := range cases {
 		refs, err := multiIndex.GetChunkRefs(
@@ -313,7 +317,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, newCase.Chunks))
+	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, newCase.Labels.Hash(), newCase.Chunks))
 
 	// Ensure old + new data is queryable
 	for _, c := range append(cases, newCase) {
@@ -353,7 +357,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 			for i := 0; i < 1000; i++ {
 				tenant := i % nTenants
 				ls := mustParseLabels(fmt.Sprintf(`{foo="bar", i="%d"}`, i))
-				heads.Append(fmt.Sprint(tenant), ls, index.ChunkMetas{
+				heads.Append(fmt.Sprint(tenant), ls, ls.Hash(), index.ChunkMetas{
 					{},
 				})
 			}

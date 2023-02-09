@@ -28,7 +28,7 @@ import (
 var ErrNoServer = errors.New("zk: could not connect to a server")
 
 // ErrInvalidPath indicates that an operation was being attempted on
-// an invalid path. (e.g. empty path)
+// an invalid path. (e.g. empty path).
 var ErrInvalidPath = errors.New("zk: invalid path")
 
 // DefaultLogger uses the stdlib log package for logging.
@@ -44,7 +44,7 @@ const (
 type watchType int
 
 const (
-	watchTypeData = iota
+	watchTypeData watchType = iota
 	watchTypeExist
 	watchTypeChild
 )
@@ -54,6 +54,7 @@ type watchPathType struct {
 	wType watchType
 }
 
+// Dialer is a function to be used to establish a connection to a single host.
 type Dialer func(network, address string, timeout time.Duration) (net.Conn, error)
 
 // Logger is an interface that can be implemented to provide custom log output.
@@ -66,6 +67,7 @@ type authCreds struct {
 	auth   []byte
 }
 
+// Conn is the client connection and tracks all details for communication with the server.
 type Conn struct {
 	lastZxid         int64
 	sessionID        int64
@@ -138,6 +140,8 @@ type response struct {
 	err  error
 }
 
+// Event is an Znode event sent by the server.
+// Refer to EventType for more details.
 type Event struct {
 	Type   EventType
 	State  State
@@ -239,7 +243,7 @@ func WithHostProvider(hostProvider HostProvider) connOption {
 	}
 }
 
-// WithLogger returns a connection option specifying a non-default Logger
+// WithLogger returns a connection option specifying a non-default Logger.
 func WithLogger(logger Logger) connOption {
 	return func(c *Conn) {
 		c.logger = logger
@@ -247,7 +251,7 @@ func WithLogger(logger Logger) connOption {
 }
 
 // WithLogInfo returns a connection option specifying whether or not information messages
-// shoud be logged.
+// should be logged.
 func WithLogInfo(logInfo bool) connOption {
 	return func(c *Conn) {
 		c.logInfo = logInfo
@@ -297,7 +301,7 @@ func WithMaxBufferSize(maxBufferSize int) connOption {
 }
 
 // WithMaxConnBufferSize sets maximum buffer size used to send and encode
-// packets to Zookeeper server. The standard Zookeepeer client for java defaults
+// packets to Zookeeper server. The standard Zookeeper client for java defaults
 // to a limit of 1mb. This option should be used for non-standard server setup
 // where znode is bigger than default 1mb.
 func WithMaxConnBufferSize(maxBufferSize int) connOption {
@@ -526,6 +530,33 @@ func (c *Conn) flushRequests(err error) {
 	c.requestsLock.Unlock()
 }
 
+// Send event to all interested watchers
+func (c *Conn) notifyWatches(ev Event) {
+	var wTypes []watchType
+	switch ev.Type {
+	case EventNodeCreated:
+		wTypes = []watchType{watchTypeExist}
+	case EventNodeDataChanged:
+		wTypes = []watchType{watchTypeExist, watchTypeData}
+	case EventNodeChildrenChanged:
+		wTypes = []watchType{watchTypeChild}
+	case EventNodeDeleted:
+		wTypes = []watchType{watchTypeExist, watchTypeData, watchTypeChild}
+	}
+	c.watchersLock.Lock()
+	defer c.watchersLock.Unlock()
+	for _, t := range wTypes {
+		wpt := watchPathType{ev.Path, t}
+		if watchers := c.watchers[wpt]; len(watchers) > 0 {
+			for _, ch := range watchers {
+				ch <- ev
+				close(ch)
+			}
+			delete(c.watchers, wpt)
+		}
+	}
+}
+
 // Send error to all watchers and clear watchers map
 func (c *Conn) invalidateWatches(err error) {
 	c.watchersLock.Lock()
@@ -534,6 +565,7 @@ func (c *Conn) invalidateWatches(err error) {
 	if len(c.watchers) >= 0 {
 		for pathType, watchers := range c.watchers {
 			ev := Event{Type: EventNotWatching, State: StateDisconnected, Path: pathType.path, Err: err}
+			c.sendEvent(ev) // also publish globally
 			for _, ch := range watchers {
 				ch <- ev
 				close(ch)
@@ -796,7 +828,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 
 		if res.Xid == -1 {
 			res := &watcherEvent{}
-			_, err := decodePacket(buf[16:blen], res)
+			_, err = decodePacket(buf[16:blen], res)
 			if err != nil {
 				return err
 			}
@@ -807,27 +839,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				Err:   nil,
 			}
 			c.sendEvent(ev)
-			wTypes := make([]watchType, 0, 2)
-			switch res.Type {
-			case EventNodeCreated:
-				wTypes = append(wTypes, watchTypeExist)
-			case EventNodeDeleted, EventNodeDataChanged:
-				wTypes = append(wTypes, watchTypeExist, watchTypeData, watchTypeChild)
-			case EventNodeChildrenChanged:
-				wTypes = append(wTypes, watchTypeChild)
-			}
-			c.watchersLock.Lock()
-			for _, t := range wTypes {
-				wpt := watchPathType{res.Path, t}
-				if watchers := c.watchers[wpt]; watchers != nil && len(watchers) > 0 {
-					for _, ch := range watchers {
-						ch <- ev
-						close(ch)
-					}
-					delete(c.watchers, wpt)
-				}
-			}
-			c.watchersLock.Unlock()
+			c.notifyWatches(ev)
 		} else if res.Xid == -2 {
 			// Ping response. Ignore.
 		} else if res.Xid < 0 {
@@ -917,8 +929,10 @@ func (c *Conn) queueRequest(opcode int32, req interface{}, res interface{}, recv
 }
 
 func (c *Conn) request(opcode int32, req interface{}, res interface{}, recvFunc func(*request, *responseHeader, error)) (int64, error) {
-	r := <-c.queueRequest(opcode, req, res, recvFunc)
+	recv := c.queueRequest(opcode, req, res, recvFunc)
 	select {
+	case r := <-recv:
+		return r.zxid, r.err
 	case <-c.shouldQuit:
 		// queueRequest() can be racy, double-check for the race here and avoid
 		// a potential data-race. otherwise the client of this func may try to
@@ -926,11 +940,10 @@ func (c *Conn) request(opcode int32, req interface{}, res interface{}, recvFunc 
 		// NOTE: callers of this func should check for (at least) ErrConnectionClosed
 		// and avoid accessing fields of the response object if such error is present.
 		return -1, ErrConnectionClosed
-	default:
-		return r.zxid, r.err
 	}
 }
 
+// AddAuth adds an authentication config to the connection.
 func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
 
@@ -941,7 +954,7 @@ func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	// Remember authdata so that it can be re-submitted on reconnect
 	//
 	// FIXME(prozlach): For now we treat "userfoo:passbar" and "userfoo:passbar2"
-	// as two different entries, which will be re-submitted on reconnet. Some
+	// as two different entries, which will be re-submitted on reconnect. Some
 	// research is needed on how ZK treats these cases and
 	// then maybe switch to something like "map[username] = password" to allow
 	// only single password for given user with users being unique.
@@ -957,6 +970,7 @@ func (c *Conn) AddAuth(scheme string, auth []byte) error {
 	return nil
 }
 
+// Children returns the children of a znode.
 func (c *Conn) Children(path string) ([]string, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, err
@@ -970,6 +984,7 @@ func (c *Conn) Children(path string) ([]string, *Stat, error) {
 	return res.Children, &res.Stat, err
 }
 
+// ChildrenW returns the children of a znode and sets a watch.
 func (c *Conn) ChildrenW(path string) ([]string, *Stat, <-chan Event, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, nil, err
@@ -988,6 +1003,7 @@ func (c *Conn) ChildrenW(path string) ([]string, *Stat, <-chan Event, error) {
 	return res.Children, &res.Stat, ech, err
 }
 
+// Get gets the contents of a znode.
 func (c *Conn) Get(path string) ([]byte, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, err
@@ -1020,6 +1036,7 @@ func (c *Conn) GetW(path string) ([]byte, *Stat, <-chan Event, error) {
 	return res.Data, &res.Stat, ech, err
 }
 
+// Set updates the contents of a znode.
 func (c *Conn) Set(path string, data []byte, version int32) (*Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, err
@@ -1033,6 +1050,10 @@ func (c *Conn) Set(path string, data []byte, version int32) (*Stat, error) {
 	return &res.Stat, err
 }
 
+// Create creates a znode.
+// The returned path is the new path assigned by the server, it may not be the
+// same as the input, for example when creating a sequence znode the returned path
+// will be the input path with a sequence number appended.
 func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
@@ -1046,6 +1067,7 @@ func (c *Conn) Create(path string, data []byte, flags int32, acl []ACL) (string,
 	return res.Path, err
 }
 
+// CreateContainer creates a container znode and returns the path.
 func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
@@ -1059,6 +1081,7 @@ func (c *Conn) CreateContainer(path string, data []byte, flags int32, acl []ACL)
 	return res.Path, err
 }
 
+// CreateTTL creates a TTL znode, which will be automatically deleted by server after the TTL.
 func (c *Conn) CreateTTL(path string, data []byte, flags int32, acl []ACL, ttl time.Duration) (string, error) {
 	if err := validatePath(path, flags&FlagSequence == FlagSequence); err != nil {
 		return "", err
@@ -1121,6 +1144,7 @@ func (c *Conn) CreateProtectedEphemeralSequential(path string, data []byte, acl 
 	return "", err
 }
 
+// Delete deletes a znode.
 func (c *Conn) Delete(path string, version int32) error {
 	if err := validatePath(path, false); err != nil {
 		return err
@@ -1130,6 +1154,7 @@ func (c *Conn) Delete(path string, version int32) error {
 	return err
 }
 
+// Exists tells the existence of a znode.
 func (c *Conn) Exists(path string) (bool, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return false, nil, err
@@ -1148,6 +1173,7 @@ func (c *Conn) Exists(path string) (bool, *Stat, error) {
 	return exists, &res.Stat, err
 }
 
+// ExistsW tells the existence of a znode and sets a watch.
 func (c *Conn) ExistsW(path string) (bool, *Stat, <-chan Event, error) {
 	if err := validatePath(path, false); err != nil {
 		return false, nil, nil, err
@@ -1173,6 +1199,7 @@ func (c *Conn) ExistsW(path string) (bool, *Stat, <-chan Event, error) {
 	return exists, &res.Stat, ech, err
 }
 
+// GetACL gets the ACLs of a znode.
 func (c *Conn) GetACL(path string) ([]ACL, *Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, nil, err
@@ -1185,6 +1212,8 @@ func (c *Conn) GetACL(path string) ([]ACL, *Stat, error) {
 	}
 	return res.Acl, &res.Stat, err
 }
+
+// SetACL updates the ACLs of a znode.
 func (c *Conn) SetACL(path string, acl []ACL, version int32) (*Stat, error) {
 	if err := validatePath(path, false); err != nil {
 		return nil, err
@@ -1198,6 +1227,9 @@ func (c *Conn) SetACL(path string, acl []ACL, version int32) (*Stat, error) {
 	return &res.Stat, err
 }
 
+// Sync flushes the channel between process and the leader of a given znode,
+// you may need it if you want identical views of ZooKeeper data for 2 client instances.
+// Please refer to the "Consistency Guarantees" section of ZK document for more details.
 func (c *Conn) Sync(path string) (string, error) {
 	if err := validatePath(path, false); err != nil {
 		return "", err
@@ -1211,6 +1243,7 @@ func (c *Conn) Sync(path string) (string, error) {
 	return res.Path, err
 }
 
+// MultiResponse is the result of a Multi call.
 type MultiResponse struct {
 	Stat   *Stat
 	String string
@@ -1350,7 +1383,7 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 			return ctx.Err()
 		}
 		if res.err != nil {
-			return fmt.Errorf("failed conneciton setAuth request: %v", res.err)
+			return fmt.Errorf("failed connection setAuth request: %v", res.err)
 		}
 	}
 
