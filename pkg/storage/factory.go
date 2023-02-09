@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -59,12 +60,13 @@ type StoreLimits interface {
 
 // NamedStores helps configure additional object stores from a given storage provider
 type NamedStores struct {
-	AWS        map[string]aws.StorageConfig         `yaml:"aws"`
-	Azure      map[string]azure.BlobStorageConfig   `yaml:"azure"`
-	BOS        map[string]baidubce.BOSStorageConfig `yaml:"bos"`
-	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
-	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
-	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
+	AWS          map[string]aws.StorageConfig         `yaml:"aws"`
+	Azure        map[string]azure.BlobStorageConfig   `yaml:"azure"`
+	BOS          map[string]baidubce.BOSStorageConfig `yaml:"bos"`
+	Filesystem   map[string]local.FSConfig            `yaml:"filesystem"`
+	GCS          map[string]gcp.GCSConfig             `yaml:"gcs"`
+	AlibabaCloud map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
+	Swift        map[string]openstack.SwiftConfig     `yaml:"swift"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -102,7 +104,12 @@ func (ns *NamedStores) populateStoreType() error {
 		}
 		ns.storeType[name] = config.StorageTypeAzure
 	}
-
+	for name := range ns.AlibabaCloud {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeAlibabaCloud
+	}
 	for name := range ns.BOS {
 		if err := checkForDuplicates(name); err != nil {
 			return err
@@ -158,6 +165,7 @@ func (ns *NamedStores) validate() error {
 
 // Config chooses which storage client to use.
 type Config struct {
+	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`
 	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
@@ -334,6 +342,12 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+	case config.StorageTypeAlibabaCloud:
+		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig)
+		if err != nil {
+			return nil, err
+		}
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeBOS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
@@ -467,6 +481,16 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
+	case config.StorageTypeAlibabaCloud:
+		ossCfg := cfg.AlibabaStorageConfig
+		if namedStore != "" {
+			var ok bool
+			ossCfg, ok = cfg.NamedStores.AlibabaCloud[namedStore]
+			if !ok {
+				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", name)
+			}
+		}
+		return alibaba.NewOssObjectClient(context.Background(), ossCfg)
 	case config.StorageTypeGCS:
 		gcsCfg := cfg.GCSConfig
 		if namedStore != "" {

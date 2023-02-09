@@ -8,12 +8,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -92,7 +92,11 @@ type astMapperware struct {
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	logger := util_log.WithContext(ctx, ast.logger)
+	logger := spanlogger.FromContextWithFallback(
+		ctx,
+		util_log.WithContext(ctx, ast.logger),
+	)
+
 	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
@@ -125,9 +129,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
-	if err != nil {
-		return nil, err
-	}
 
 	noop, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
