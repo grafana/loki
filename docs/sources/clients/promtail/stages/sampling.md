@@ -8,7 +8,7 @@ The `sampling` stage is a stage that sampling logs.
 
 ## Sampling stage schema
 
-The `sampling` stage is used to sampling the logs. Currently, only one rate param. rate: 0.1 means that 10% of the logs can be pushed to the loki server.
+The `sampling` stage is used to sampling the logs.rate: 0.1 means that 10% of the logs can be pushed to the loki server.
 
 ```yaml
 sampling:
