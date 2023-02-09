@@ -121,10 +121,13 @@ func TestCompactor_RunCompaction(t *testing.T) {
 
 	periodConfigs := []config.PeriodConfig{
 		{
-			From:        config.DayTime{Time: model.Time(0)},
-			IndexType:   "dummy",
-			ObjectType:  "fs_01",
-			IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+			From:       config.DayTime{Time: model.Time(0)},
+			IndexType:  "dummy",
+			ObjectType: "fs_01",
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
 		},
 	}
 
@@ -173,7 +176,7 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 			ObjectType: "fs_01",
 			IndexTables: config.PeriodicTableConfig{
 				Prefix: indexTablePrefix,
-				Period: 24 * time.Hour,
+				Period: config.ObjectStorageIndexRequiredPeriod,
 			},
 		},
 		{
@@ -182,7 +185,7 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 			ObjectType: "fs_02",
 			IndexTables: config.PeriodicTableConfig{
 				Prefix: indexTablePrefix,
-				Period: 24 * time.Hour,
+				Period: config.ObjectStorageIndexRequiredPeriod,
 			},
 		},
 	}

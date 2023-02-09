@@ -606,7 +606,6 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 		}
 
 		tables = append(tables, tbls...)
-
 	}
 
 	// process most recent tables first
