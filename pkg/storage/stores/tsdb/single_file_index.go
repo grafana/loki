@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 	"time"
 
+	"github.com/bsipos/thist"
+	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
@@ -267,6 +270,13 @@ type labelSize struct {
 	bytes uint64
 }
 
+type labelValueStat struct {
+	labelValue  string
+	totalBytes  uint64
+	totalChunks int
+	totalLines  uint64
+}
+
 type labelStat struct {
 	label               string
 	chunksPerLabel      int
@@ -282,7 +292,7 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 	totalBytes := uint64(0)
 	stats := []seriesStats{}
 	count1Chunk := 0
-	//dataByLabel := map[string]uint64{}
+	dataByLabel := map[string]*labelValueStat{}
 	statsByLabel := map[string]*labelStat{}
 	err := i.forSeries(ctx, nil,
 		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
@@ -295,20 +305,30 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 				maxChunks = len(chks)
 			}
 			bytes := uint32(0)
+			lines := uint64(0)
 			chunkBytes := make([]uint64, 0, len(chks))
 			for _, c := range chks {
 				b := c.KB << 10
 				bytes += b
+				lines += uint64(c.Entries)
 				chunkBytes = append(chunkBytes, uint64(b))
 			}
 			totalBytes += uint64(bytes)
 
 			for _, l := range ls {
-				//if cur, ok := dataByLabel[l.Name+"|"+l.Value]; ok {
-				//	dataByLabel[l.Name+"|"+l.Value] = cur + uint64(bytes)
-				//} else {
-				//	dataByLabel[l.Name+"|"+l.Value] = uint64(bytes)
-				//}
+				key := l.Name + "=" + l.Value
+				if cur, ok := dataByLabel[key]; ok {
+					dataByLabel[key].totalBytes = cur.totalBytes + uint64(bytes)
+					dataByLabel[key].totalLines = cur.totalLines + lines
+					dataByLabel[key].totalChunks = cur.totalChunks + len(chks)
+				} else {
+					dataByLabel[key] = &labelValueStat{
+						labelValue:  key,
+						totalBytes:  uint64(bytes),
+						totalChunks: len(chks),
+						totalLines:  lines,
+					}
+				}
 				if cur, ok := statsByLabel[l.Name]; ok {
 					statsByLabel[l.Name].bytesPerLabel = cur.bytesPerLabel + uint64(bytes)
 					statsByLabel[l.Name].chunksPerLabel = cur.chunksPerLabel + len(chks)
@@ -371,21 +391,22 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 
 	//fmt.Printf("totalSeries=%d totalChunks=%d totalBytes=%s maxChunksPerSeries=%d avgChunksPerSeries=%f medianChunksPerSeries=%d p50numChunks=%f count1=%d\n", series, totalChunks, humanize.Bytes(totalBytes), maxChunks, float64(totalChunks)/float64(series), medianStats(stats), quantileStats(0.50, stats), count1Chunk)
 
-	//labelSizes := make([]labelSize, 0, len(dataByLabel))
-	//for l, s := range dataByLabel {
-	//	labelSizes = append(labelSizes, labelSize{
-	//		label: l,
-	//		bytes: s,
-	//	})
-	//}
-	//
-	//slices.SortFunc[labelSize](labelSizes, func(a labelSize, b labelSize) bool {
-	//	return a.bytes < b.bytes
-	//})
-	//
-	//for _, ls := range labelSizes {
-	//	fmt.Printf("label: %s bytes: %s\n", ls.label, humanize.Bytes(ls.bytes))
-	//}
+	// Make a list so we can sort it
+	labelSizes := make([]*labelValueStat, 0, len(dataByLabel))
+	for _, s := range dataByLabel {
+		labelSizes = append(labelSizes, s)
+	}
+
+	slices.SortFunc[*labelValueStat](labelSizes, func(a *labelValueStat, b *labelValueStat) bool {
+		return a.totalLines < b.totalLines
+	})
+
+	for _, ls := range labelSizes {
+		if !strings.HasPrefix(ls.labelValue, "route_paths_1") {
+			continue
+		}
+		fmt.Printf("%s,%d,%d,%d\n", ls.labelValue, ls.totalBytes, ls.totalChunks, ls.totalLines)
+	}
 
 	// looking for what labels lead to the most streams with the fewest data
 
@@ -403,56 +424,56 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 	})
 
 	// add average and median bytes want an even distribution
-	fmt.Println("label name,total bytes,total chunks,max chunk size,min chunk size,avg chunk size,median chunk size,number values,max bytes per value,min bytes per value,avg bytes per value,median bytes per value")
-	for _, s := range labelStats {
-
-		// get all the stats for each value
-		chunksForVal := make([]uint64, 0, len(s.bytesPerValue))
-		for _, v := range s.bytesPerValue {
-			chunksForVal = append(chunksForVal, v)
-		}
-		slices.SortFunc[uint64](chunksForVal, func(a uint64, b uint64) bool {
-			return a < b
-		})
-		maxByValue := uint64(0)
-		minByValue := uint64(math.MaxUint64)
-		sumBytesForAllVal := uint64(0)
-		for _, b := range chunksForVal {
-			if b > maxByValue {
-				maxByValue = b
-			}
-			if b < minByValue {
-				minByValue = b
-			}
-			sumBytesForAllVal += b
-		}
-		avgByVal := sumBytesForAllVal / uint64(len(chunksForVal))
-		medByVal := medianBytes(chunksForVal)
-
-		// get stats for all chunks
-		avgAllChunks := s.bytesPerLabel / uint64(len(s.chunksPerLabelBytes))
-		maxAllChunks := uint64(0)
-		minAllChunks := uint64(math.MaxUint64)
-		for _, c := range s.chunksPerLabelBytes {
-			if c > maxAllChunks {
-				maxAllChunks = c
-			}
-			if c < minAllChunks {
-				minAllChunks = c
-			}
-		}
-		slices.SortFunc[uint64](s.chunksPerLabelBytes, func(a uint64, b uint64) bool {
-			return a < b
-		})
-		medAllChunks := medianBytes(s.chunksPerLabelBytes)
-
-		//fmt.Printf("label=%s bytes=%s chunks=%d numLabelVals=%d max=%s min=%s avg=%s avg/chunk=%s median=%s median/chunk=%s\n", s.label, humanize.Bytes(s.bytes), s.chunks, len(s.bytesPerValue), humanize.Bytes(max), humanize.Bytes(min), humanize.Bytes(avg), humanize.Bytes(avgPerChunk), humanize.Bytes(med), humanize.Bytes(medianPerChunk))
-
-		fmt.Printf("%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
-			s.label, s.bytesPerLabel, s.chunksPerLabel, maxAllChunks, minAllChunks, avgAllChunks, medAllChunks, len(s.bytesPerValue), maxByValue, minByValue, avgByVal, medByVal)
-		//fmt.Printf("label=%s bytes=%s chunks=%d max/label=%s min/label=%s avg/label=%s med/label=%s numLabelVals=%d max/val=%s min/val=%s avg/val=%s median/val=%s\n",
-		//	s.label, humanize.Bytes(s.bytesPerLabel), s.chunksPerLabel, humanize.Bytes(maxAllChunks), humanize.Bytes(minAllChunks), humanize.Bytes(avgAllChunks), humanize.Bytes(medAllChunks), len(s.bytesPerValue), humanize.Bytes(maxByValue), humanize.Bytes(minByValue), humanize.Bytes(avgByVal), humanize.Bytes(medByVal))
-	}
+	//fmt.Println("label name,total bytes,total chunks,max chunk size,min chunk size,avg chunk size,median chunk size,number values,max bytes per value,min bytes per value,avg bytes per value,median bytes per value")
+	//for _, s := range labelStats {
+	//
+	//	// get all the stats for each value
+	//	chunksForVal := make([]uint64, 0, len(s.bytesPerValue))
+	//	for _, v := range s.bytesPerValue {
+	//		chunksForVal = append(chunksForVal, v)
+	//	}
+	//	slices.SortFunc[uint64](chunksForVal, func(a uint64, b uint64) bool {
+	//		return a < b
+	//	})
+	//	maxByValue := uint64(0)
+	//	minByValue := uint64(math.MaxUint64)
+	//	sumBytesForAllVal := uint64(0)
+	//	for _, b := range chunksForVal {
+	//		if b > maxByValue {
+	//			maxByValue = b
+	//		}
+	//		if b < minByValue {
+	//			minByValue = b
+	//		}
+	//		sumBytesForAllVal += b
+	//	}
+	//	avgByVal := sumBytesForAllVal / uint64(len(chunksForVal))
+	//	medByVal := medianBytes(chunksForVal)
+	//
+	//	// get stats for all chunks
+	//	avgAllChunks := s.bytesPerLabel / uint64(len(s.chunksPerLabelBytes))
+	//	maxAllChunks := uint64(0)
+	//	minAllChunks := uint64(math.MaxUint64)
+	//	for _, c := range s.chunksPerLabelBytes {
+	//		if c > maxAllChunks {
+	//			maxAllChunks = c
+	//		}
+	//		if c < minAllChunks {
+	//			minAllChunks = c
+	//		}
+	//	}
+	//	slices.SortFunc[uint64](s.chunksPerLabelBytes, func(a uint64, b uint64) bool {
+	//		return a < b
+	//	})
+	//	medAllChunks := medianBytes(s.chunksPerLabelBytes)
+	//
+	//	//fmt.Printf("label=%s bytes=%s chunks=%d numLabelVals=%d max=%s min=%s avg=%s avg/chunk=%s median=%s median/chunk=%s\n", s.label, humanize.Bytes(s.bytes), s.chunks, len(s.bytesPerValue), humanize.Bytes(max), humanize.Bytes(min), humanize.Bytes(avg), humanize.Bytes(avgPerChunk), humanize.Bytes(med), humanize.Bytes(medianPerChunk))
+	//
+	//	fmt.Printf("%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+	//		s.label, s.bytesPerLabel, s.chunksPerLabel, maxAllChunks, minAllChunks, avgAllChunks, medAllChunks, len(s.bytesPerValue), maxByValue, minByValue, avgByVal, medByVal)
+	//	//fmt.Printf("label=%s bytes=%s chunks=%d max/label=%s min/label=%s avg/label=%s med/label=%s numLabelVals=%d max/val=%s min/val=%s avg/val=%s median/val=%s\n",
+	//	//	s.label, humanize.Bytes(s.bytesPerLabel), s.chunksPerLabel, humanize.Bytes(maxAllChunks), humanize.Bytes(minAllChunks), humanize.Bytes(avgAllChunks), humanize.Bytes(medAllChunks), len(s.bytesPerValue), humanize.Bytes(maxByValue), humanize.Bytes(minByValue), humanize.Bytes(avgByVal), humanize.Bytes(medByVal))
+	//}
 
 	return err
 }
@@ -554,4 +575,115 @@ func quantile(q float64, values []index.ChunkMeta) float64 {
 	lb := (float64(values[int(lowerIndex)].KB) * (1 - weight)) * 1024
 	ub := (float64(values[int(upperIndex)].KB) * weight) * 1024
 	return lb + ub
+}
+
+type labelValueStats struct {
+	name   string
+	bytes  uint64
+	chunks int
+}
+
+func (i *TSDBIndex) LabelValueDistribution(ctx context.Context, labelName string, matchers ...*labels.Matcher) error {
+	lv := map[string]*labelValueStats{}
+
+	//For each label, sort values by most data, add value to matcher and iterate
+	err := i.forSeries(ctx, nil,
+		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			val := ls.Get(labelName)
+			if val == "" {
+				return
+			}
+			totalBytes := uint64(0)
+			for _, c := range chks {
+				totalBytes = totalBytes + uint64(c.KB<<10)
+			}
+			if cur, ok := lv[val]; ok {
+				lv[val].chunks = cur.chunks + len(chks)
+				lv[val].bytes = cur.bytes + totalBytes
+			} else {
+				lv[val] = &labelValueStats{
+					name:   val,
+					bytes:  totalBytes,
+					chunks: len(chks),
+				}
+			}
+		}, matchers...)
+
+	vals := make([]*labelValueStats, 0, len(lv))
+	for _, v := range lv {
+		vals = append(vals, v)
+	}
+	slices.SortFunc[*labelValueStats](vals, func(a *labelValueStats, b *labelValueStats) bool {
+		return a.bytes < b.bytes
+	})
+
+	bytes := make([]float64, 0, len(vals))
+
+	for _, v := range vals {
+		//hChunks.Update(float64(v.chunks))
+		bytes = append(bytes, float64(v.bytes))
+		fmt.Printf("val=%s chunks=%d bytes=%s bytes/chunk=%s\n", v.name, v.chunks, humanize.Bytes(v.bytes), humanize.Bytes(v.bytes/uint64(v.chunks)))
+	}
+
+	//hChunks := thist.NewHist(nil, "Chunks per value", "auto", -1, true)
+	//hBytes := thist.NewHist(bytes, "Bytes per value", "termfit", -1, false)
+	//
+	////fmt.Println(hChunks.Draw())
+	//fmt.Println(hBytes.Draw())
+
+	return err
+}
+
+func (i *TSDBIndex) LabelValueCombos(ctx context.Context, labelName string, matchers ...*labels.Matcher) error {
+
+	// for each label, take a value and
+
+	lv := map[string]*labelValueStats{}
+
+	//For each label, sort values by most data, add value to matcher and iterate
+	err := i.forSeries(ctx, nil,
+		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			val := ls.Get(labelName)
+			if val == "" {
+				return
+			}
+			totalBytes := uint64(0)
+			for _, c := range chks {
+				totalBytes = totalBytes + uint64(c.KB<<10)
+			}
+			if cur, ok := lv[val]; ok {
+				lv[val].chunks = cur.chunks + len(chks)
+				lv[val].bytes = cur.bytes + totalBytes
+			} else {
+				lv[val] = &labelValueStats{
+					name:   val,
+					bytes:  totalBytes,
+					chunks: len(chks),
+				}
+			}
+		}, matchers...)
+
+	vals := make([]*labelValueStats, 0, len(lv))
+	for _, v := range lv {
+		vals = append(vals, v)
+	}
+	slices.SortFunc[*labelValueStats](vals, func(a *labelValueStats, b *labelValueStats) bool {
+		return a.bytes < b.bytes
+	})
+
+	bytes := make([]float64, 0, len(vals))
+
+	for _, v := range vals {
+		//hChunks.Update(float64(v.chunks))
+		bytes = append(bytes, float64(v.bytes))
+		fmt.Printf("val=%s chunks=%d bytes=%s bytes/chunk=%s\n", v.name, v.chunks, humanize.Bytes(v.bytes), humanize.Bytes(v.bytes/uint64(v.chunks)))
+	}
+
+	//hChunks := thist.NewHist(nil, "Chunks per value", "auto", -1, true)
+	hBytes := thist.NewHist(bytes, "Bytes per value", "termfit", -1, false)
+
+	//fmt.Println(hChunks.Draw())
+	fmt.Println(hBytes.Draw())
+
+	return err
 }
