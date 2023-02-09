@@ -200,22 +200,11 @@ var cases = map[string]watcherTest{
 
 	"series are reclaimed after new segment is started and old one reclaimed": func(t *testing.T, res *watcherTestResources) {
 		res.startWatcher()
-		lines := []string{
-			"holis",
-			"holus",
-			"chau",
-		}
-		linesAfter := []string{
-			"holis2",
-			"holus2",
-			"chau2",
-		}
 		testLabels := model.LabelSet{
 			"test": "watcher_read",
 		}
 
-		// writing segment 0
-		for _, line := range lines {
+		writeAndWaitForWatcherToCatchUp := func(line string, expectedReadEntries int) {
 			res.writeEntry(api.Entry{
 				Labels: testLabels,
 				Entry: logproto.Entry{
@@ -223,43 +212,37 @@ var cases = map[string]watcherTest{
 					Line:      line,
 				},
 			})
+			require.NoError(t, res.syncWAL())
+			require.Eventually(t, func() bool {
+				return len(res.writeTo.ReadEntries) == expectedReadEntries
+			}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
 		}
-		require.NoError(t, res.syncWAL())
 
-		require.Eventually(t, func() bool {
-			return len(res.writeTo.ReadEntries) == 3
-		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
-		for _, readEntry := range res.writeTo.ReadEntries {
-			require.Contains(t, lines, readEntry.Line, "not expected log line")
-		}
+		// writing segment 0
+		writeAndWaitForWatcherToCatchUp("segment 0", 1)
+
+		// moving to segment 1
+		require.NoError(t, res.nextWALSegment(), "expected no error when moving to next wal segment")
 
 		// moving on to segment 1
-		err := res.nextWALSegment()
-		require.NoError(t, err, "expected no error when moving to next wal segment")
-
-		for _, line := range linesAfter {
-			res.writeEntry(api.Entry{
-				Labels: testLabels,
-				Entry: logproto.Entry{
-					Timestamp: time.Now(),
-					Line:      line,
-				},
-			})
-		}
-		require.NoError(t, res.syncWAL())
-
-		require.Eventually(t, func() bool {
-			return len(res.writeTo.ReadEntries) == 6
-		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
-		// assert over second half of entries
-		for _, readEntry := range res.writeTo.ReadEntries[3:] {
-			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
-		}
+		writeAndWaitForWatcherToCatchUp("segment 1", 2)
 
 		// collecting segment 0
 		require.NoError(t, res.deleteSegment(0), "error deleting old segment")
 		require.Eventually(t, func() bool {
 			return len(res.writeTo.ReceivedSeriesReset) == 1 && res.writeTo.ReceivedSeriesReset[0] == 0
+		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
+
+		// moving to segment 2
+		require.NoError(t, res.nextWALSegment(), "expected no error when moving to next wal segment")
+
+		// writing segment 2
+		writeAndWaitForWatcherToCatchUp("segment 2", 3)
+
+		// collecting segment 1
+		require.NoError(t, res.deleteSegment(1), "error deleting old segment")
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReceivedSeriesReset) == 2 && res.writeTo.ReceivedSeriesReset[1] == 1
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
 	},
 }
