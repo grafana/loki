@@ -321,7 +321,7 @@ func NewLogFilterTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
-				nil,
+				0, // 0 is unlimited shards
 			),
 		)
 	}
@@ -391,7 +391,7 @@ func NewLimitedTripperware(
 				limits,
 				// Too many shards on limited queries results in slowing down this type of query
 				// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
-				logql.ConstantShards(32),
+				32,
 			),
 		)
 	}
@@ -565,7 +565,7 @@ func NewMetricTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
-				nil,
+				0, // 0 is unlimited shards
 			),
 		)
 	}
@@ -613,7 +613,7 @@ func NewInstantMetricTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
-				nil,
+				0, // 0 is unlimited shards
 			),
 		)
 	}

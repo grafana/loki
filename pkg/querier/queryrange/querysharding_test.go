@@ -167,7 +167,7 @@ func Test_astMapper(t *testing.T) {
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
-		nil,
+		0,
 	)
 
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
@@ -201,7 +201,7 @@ func Test_ShardingByPass(t *testing.T) {
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
-		nil,
+		0,
 	)
 
 	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
@@ -275,7 +275,7 @@ func Test_InstantSharding(t *testing.T) {
 			maxQueryParallelism: 10,
 			queryTimeout:        time.Second,
 		},
-		nil)
+		0)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
@@ -556,7 +556,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
-				nil,
+				0,
 			)
 
 			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), tc.req)
