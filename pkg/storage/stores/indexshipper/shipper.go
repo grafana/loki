@@ -111,7 +111,7 @@ type indexShipper struct {
 // Since IndexShipper is generic, which means it can be used to manage various index types under the same object storage and/or local disk path,
 // it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
-func NewIndexShipper(name string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
@@ -123,7 +123,7 @@ func NewIndexShipper(name string, cfg Config, storageClient client.ObjectClient,
 		openIndexFileFunc: open,
 	}
 
-	err := shipper.init(name, storageClient, limits, ownsTenantFn, tableRangeToHandle, reg)
+	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangeToHandle, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func NewIndexShipper(name string, cfg Config, storageClient client.ObjectClient,
 	return &shipper, nil
 }
 
-func (s *indexShipper) init(name string, storageClient client.ObjectClient, limits downloads.Limits,
+func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
 	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 

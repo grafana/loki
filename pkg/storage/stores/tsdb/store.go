@@ -92,7 +92,6 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
-		name,
 		indexShipperCfg,
 		objectClient,
 		limits,
