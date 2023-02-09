@@ -321,6 +321,7 @@ func NewLogFilterTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
+				nil,
 			),
 		)
 	}
@@ -379,18 +380,18 @@ func NewLimitedTripperware(
 		)
 	}
 
-	// TODO(ewelch): Disabling sharding for now because it creates too many shards for large volumes
-	//if cfg.ShardedQueries {
-	//	queryRangeMiddleware = append(queryRangeMiddleware,
-	//		NewQueryShardMiddleware(
-	//			log,
-	//			schema.Configs,
-	//			metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-	//			metrics.MiddlewareMapperMetrics.shardMapper,
-	//			limits,
-	//		),
-	//	)
-	//}
+	if cfg.ShardedQueries {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQueryShardMiddleware(
+				log,
+				schema.Configs,
+				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+				metrics.MiddlewareMapperMetrics.shardMapper,
+				limits,
+				logql.ConstantShards(16),
+			),
+		)
+	}
 
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
@@ -561,6 +562,7 @@ func NewMetricTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
+				nil,
 			),
 		)
 	}
@@ -608,6 +610,7 @@ func NewInstantMetricTripperware(
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
+				nil,
 			),
 		)
 	}
