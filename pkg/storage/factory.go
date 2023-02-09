@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -487,7 +487,7 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 			var ok bool
 			ossCfg, ok = cfg.NamedStores.AlibabaCloud[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named bos storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", name)
 			}
 		}
 		return alibaba.NewOssObjectClient(context.Background(), ossCfg)
