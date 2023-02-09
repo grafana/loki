@@ -206,26 +206,34 @@ func BenchmarkWriter_WriteEntries(b *testing.B) {
 		lines          int
 		labelSetsCount int
 	}
-	var cases = map[string]testCase{
-		"1000 lines, 1 labelset": {
+	var cases = []testCase{
+		{
 			lines:          1000,
 			labelSetsCount: 1,
 		},
-		"1000 lines, 4 labelset": {
+		{
 			lines:          1000,
 			labelSetsCount: 4,
 		},
-		"1000000 lines, 1 labelset": {
+		{
 			lines:          1e6,
 			labelSetsCount: 1,
 		},
-		"1000000 lines, 100 labelset": {
+		{
 			lines:          1e6,
 			labelSetsCount: 100,
 		},
+		{
+			lines:          1e7,
+			labelSetsCount: 1,
+		},
+		{
+			lines:          1e7,
+			labelSetsCount: 1e3,
+		},
 	}
-	for name, testCase := range cases {
-		b.Run(name, func(b *testing.B) {
+	for _, testCase := range cases {
+		b.Run(fmt.Sprintf("%d lines, %d different label sets", testCase.lines, testCase.labelSetsCount), func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				benchWriteEntries(b, testCase.lines, testCase.labelSetsCount)
 			}
