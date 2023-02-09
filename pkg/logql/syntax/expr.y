@@ -38,6 +38,8 @@ import (
   BinOpModifier           *BinOpOptions
   BoolModifier            *BinOpOptions
   OnOrIgnoringModifier    *BinOpOptions
+  PatternParser           *LabelParserExpr
+  PatternParsers          *LabelParserExpr
   LabelParser             *LabelParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
@@ -90,6 +92,8 @@ import (
 %type <BinOpModifier>         binOpModifier
 %type <BoolModifier>          boolModifier
 %type <OnOrIgnoringModifier>  onOrIgnoringModifier
+%type <PatternParser>         patternParser
+%type <PatternParsers>        patternParsers
 %type <LabelParser>           labelParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
@@ -277,12 +281,20 @@ lineFilters:
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
+patternParser:
+  PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) };
+
+patternParsers:
+    patternParsers OR patternParser { $$ = newOrPatternLabelParserExpr($1, $3) }
+  | patternParser                   { $$ = $1) }
+  ;
+
 labelParser:
     JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
   | LOGFMT         { $$ = newLabelParserExpr(OpParserTypeLogfmt, "") }
   | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
   | UNPACK         { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
-  | PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
+  | patternParsers { $$ = $1 }
   ;
 
 jsonExpressionParser:

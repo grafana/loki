@@ -36,6 +36,8 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" | foo>5`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" or pattern "<foo> baz" | foo>5`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" or pattern "<foo> baz" or pattern "bur <foo> baz" | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1")`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error"`, true},

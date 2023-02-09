@@ -139,6 +139,14 @@ func (b *LabelsBuilder) Reset() {
 	b.errDetails = ""
 }
 
+// Changed returns true if this LabelsBuilder has changed.
+func (b *LabelsBuilder) Changed() bool {
+	if len(b.add) > 0 || len(b.del) > 0 {
+		return true
+	}
+	return false
+}
+
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
 // Returns nil when it's impossible to hint labels extractions.
 func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {

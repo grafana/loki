@@ -332,6 +332,21 @@ type LabelParserExpr struct {
 	Op    string
 	Param string
 	implicit
+
+	left *LabelParserExpr
+}
+
+func newOrPatternLabelParserExpr(left, right *LabelParserExpr) *LabelParserExpr {
+	_, err := log.NewPatternParser(right.Param)
+	if err != nil {
+		panic(logqlmodel.NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
+	}
+
+	return &LabelParserExpr{
+		Op:    OpParserTypePattern,
+		Param: right.Param,
+		left:  left,
+	}
 }
 
 func newLabelParserExpr(op, param string) *LabelParserExpr {
@@ -369,6 +384,13 @@ func (e *LabelParserExpr) Stage() (log.Stage, error) {
 	case OpParserTypeUnpack:
 		return log.NewUnpackParser(), nil
 	case OpParserTypePattern:
+		if e.left != nil {
+			left, err := log.NewPatternParser(e.left.Param)
+			if err != nil {
+				return nil, err
+			}
+			return log.NewOrPatternParser(left, e.Param)
+		}
 		return log.NewPatternParser(e.Param)
 	default:
 		return nil, fmt.Errorf("unknown parser operator: %s", e.Op)
@@ -379,6 +401,17 @@ func (e *LabelParserExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpPipe)
 	sb.WriteString(" ")
+
+	sb.WriteString(e.oneOperandString())
+	return sb.String()
+}
+
+func (e *LabelParserExpr) oneOperandString() string {
+	var sb strings.Builder
+	if e.left != nil {
+		sb.WriteString(e.left.oneOperandString())
+		sb.WriteString(" or ")
+	}
 	sb.WriteString(e.Op)
 	if e.Param != "" {
 		sb.WriteString(" ")
@@ -386,7 +419,9 @@ func (e *LabelParserExpr) String() string {
 	}
 	if (e.Op == OpParserTypeRegexp || e.Op == OpParserTypePattern) && e.Param == "" {
 		sb.WriteString(" \"\"")
+
 	}
+
 	return sb.String()
 }
 

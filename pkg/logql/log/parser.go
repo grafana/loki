@@ -341,6 +341,38 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
+type OrPatternParser struct {
+	left  *PatternParser
+	right *PatternParser
+}
+
+func NewOrPatternParser(left *PatternParser, pattern string) (*OrPatternParser, error) {
+	right, err := NewPatternParser(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return &OrPatternParser{
+		left:  left,
+		right: right,
+	}, nil
+}
+
+func (o *OrPatternParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	localLbs := NewBaseLabelsBuilder().ForLabels(lbs.labels(), lbs.labels().Hash())
+	var localLine []byte
+	_, _ = o.left.Process(ts, line, localLbs)
+	if localLbs.Changed() {
+		localLine, _ = o.left.Process(ts, line, lbs)
+		return localLine, true
+	}
+
+	localLine, _ = o.right.Process(ts, line, lbs)
+	return localLine, true
+}
+
+func (l *OrPatternParser) RequiredLabelNames() []string { return []string{} }
+
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
 

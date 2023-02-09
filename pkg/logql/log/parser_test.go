@@ -885,3 +885,33 @@ func Test_PatternParser(t *testing.T) {
 		})
 	}
 }
+
+func TestOrPatternParser(t *testing.T) {
+	p1, err := NewPatternParser("=== FAIL <testname>")
+	require.NoError(t, err)
+
+	lbls := labels.Labels{
+		{Name: "method", Value: "bar"},
+	}
+	lblBuilder := NewBaseLabelsBuilder().ForLabels(lbls, lbls.Hash())
+	lblBuilder.Reset()
+
+	p, err := NewOrPatternParser(p1, "PASS <method>")
+	require.NoError(t, err)
+	p.Process(0, []byte("=== FAIL abc"), lblBuilder)
+
+	expected := labels.Labels{
+		{Name: "method", Value: "bar"},
+		{Name: "testname", Value: "abc"},
+	}
+	require.Equal(t, expected, lblBuilder.LabelsResult().Labels())
+
+	p.Process(0, []byte("PASS xyz"), lblBuilder)
+
+	expected = labels.Labels{
+		{Name: "method", Value: "bar"},
+		{Name: "method_extracted", Value: "xyz"},
+		{Name: "testname", Value: "abc"},
+	}
+	require.Equal(t, expected, lblBuilder.LabelsResult().Labels())
+}
