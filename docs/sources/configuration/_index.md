@@ -3622,6 +3622,11 @@ dynamodb:
     # CLI flag: -dynamodb.max-retries
     [max_retries: <int> | default = 20]
 
+  # KMS key used for encrypting DynamoDB items.  DynamoDB will use an Amazon
+  # owned KMS key if not provided.
+  # CLI flag: -dynamodb.kms-key-id
+  [kms_key_id: <string> | default = ""]
+
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
