@@ -85,10 +85,10 @@ behaviour:
 
 	--parallel-duration
 	--parallel-max-workers
-	--part-file-prefix
+	--part-prefix
 	--overwrite-completed-parts
-	--merge-part-files
-	--keep-part-files
+	--merge-parts
+	--keep-parts
 
 Refer to the help of these specific flags to understand what each of them do.
 
@@ -101,8 +101,8 @@ Example:
 	   --output=jsonl
 	   --parallel-duration="15m"
 	   --parallel-max-workers="10"
-	   --part-file-prefix="/tmp/my_query"
-	   --merge-part-files
+	   --part-prefix="/tmp/my_query"
+	   --merge-parts
 	   'my-query'
 
 This will start 10 workers, and they will each start downloading 15 minute
@@ -116,13 +116,13 @@ is complete, the file will be renamed to remove this ".part" extension.
 By default, if a completed part file is found, that part will not be downloaded
 again. This can be overridden with the --overwrite-completed-parts flag.
 
-If you do not specify the --merge-part-files flag, the part files will be
+If you do not specify the --merge-parts flag, the part files will be
 downloaded, and logcli will exit, and you can process the files as you wish.
 With the flag specified, the part files will be read in order, and the output
 printed to the terminal. The lines will be printed as soon as the next part is
 complete, you don't have to wait for all the parts to download before getting
-output. --merge-part-files will remove the part files when it is done reading
-each of them, to change this, you can add --keep-part-files and the part file
+output. --merge-parts will remove the part files when it is done reading
+each of them, to change this, you can add --keep-parts and the part file
 wParallelizationill not be removed.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
@@ -423,12 +423,12 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
-		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-file-prefix to create a file per job to maintain ordering.").Default("1h").DurationVar(&q.ParallelDuration)
+		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-prefix to create a file per job to maintain ordering.").Default("1h").DurationVar(&q.ParallelDuration)
 		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.").Default("1").IntVar(&q.ParallelMaxWorkers)
-		cmd.Flag("part-file-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-unix_start-unix_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartFilePrefix)
+		cmd.Flag("part-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-unix_start-unix_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartPrefix)
 		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
-		cmd.Flag("merge-part-files", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").Default("false").BoolVar(&q.MergePartFiles)
-		cmd.Flag("keep-part-files", "Overrides the default behaviour of --merge-part-files which will delete the part files once all the files have been read. This option will keep the part files.").Default("false").BoolVar(&q.KeepPartFiles)
+		cmd.Flag("merge-parts", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").Default("false").BoolVar(&q.MergeParts)
+		cmd.Flag("keep-parts", "Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been read. This option will keep the part files.").Default("false").BoolVar(&q.KeepParts)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)

@@ -76,7 +76,7 @@ type Query struct {
 	// Prefix of the name for each part file.
 	// The idea for this is to allow the user to download many different queries at the same
 	// time, and/or give a directory for the part files to be placed.
-	PartFilePrefix string
+	PartPrefix string
 
 	// By default (false value), if the part file has finished downloading, and another job with
 	// the same filename is run, it will skip the completed files. This will remove the completed
@@ -84,11 +84,11 @@ type Query struct {
 	OverwriteCompleted bool
 
 	// If true, the part files will be read in order, and the data will be output to stdout.
-	MergePartFiles bool
+	MergeParts bool
 
 	// If MergeParts is false, this parameter has no effect, part files will be kept.
 	// Otherwise, if this is true, the part files will not be deleted once they have been merged.
-	KeepPartFiles bool
+	KeepParts bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -209,13 +209,13 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 }
 
 func (q *Query) outputFilename() string {
-	return fmt.Sprintf("%s-%d-%d.part", q.PartFilePrefix, q.Start.Unix(), q.End.Unix())
+	return fmt.Sprintf("%s-%d-%d.part", q.PartPrefix, q.Start.Unix(), q.End.Unix())
 }
 
 // createPartFile returns a PartFile if the PartFilePrefix is set.
 // The bool value shows if the part file already exists, and this range should be skipped.
 func (q *Query) createPartFile() (*PartFile, bool) {
-	if q.PartFilePrefix == "" {
+	if q.PartPrefix == "" {
 		return nil, false
 	}
 
@@ -258,11 +258,11 @@ func (q *Query) nextJob(start, end time.Time) (time.Time, time.Time) {
 }
 
 type parallelJob struct {
-	q    Query
+	q    *Query
 	done chan struct{}
 }
 
-func newParallelJob(q Query) *parallelJob {
+func newParallelJob(q *Query) *parallelJob {
 	return &parallelJob{
 		q:    q,
 		done: make(chan struct{}),
@@ -274,35 +274,31 @@ func (j *parallelJob) run(c client.Client, out output.LogOutput, statistics bool
 	j.done <- struct{}{}
 }
 
-func (q *Query) parallelJobs() (chan Query, []*parallelJob) {
+func (q *Query) parallelJobs() []*parallelJob {
 	nJobs := durationCeilDiv(q.End.Sub(q.Start), q.ParallelDuration)
-	jobsChan := make(chan Query, nJobs)
-	jobsArr := make([]*parallelJob, 0, nJobs)
+	jobs := make([]*parallelJob, nJobs)
 
 	// Normally `nextJob` will swap the start/end to get the next job. Here, we swap them
 	// on input so that we calculate the starting job instead of the next job.
 	start, end := q.nextJob(q.End, q.Start)
 
 	// Queue up jobs
-	for i := nJobs; i != 0; i-- {
+	for i := range jobs {
 		rq := *q
 		rq.Start = start
 		rq.End = end
 
-		jobsChan <- rq
-		jobsArr = append(jobsArr, newParallelJob(rq))
+		jobs[i] = newParallelJob(&rq)
 
 		start, end = q.nextJob(start, end)
 	}
 
-	close(jobsChan)
-
-	return jobsChan, jobsArr
+	return jobs
 }
 
 // Waits for each job to finish in order, reads the part file and copies it to stdout
 func (q *Query) mergeJobs(jobs []*parallelJob) error {
-	if !q.MergePartFiles {
+	if !q.MergeParts {
 		return nil
 	}
 
@@ -320,7 +316,7 @@ func (q *Query) mergeJobs(jobs []*parallelJob) error {
 			return fmt.Errorf("copying file error: %w", err)
 		}
 
-		if !q.KeepPartFiles {
+		if !q.KeepParts {
 			err := os.Remove(job.q.outputFilename())
 			if err != nil {
 				return fmt.Errorf("removing file error: %w", err)
@@ -331,21 +327,31 @@ func (q *Query) mergeJobs(jobs []*parallelJob) error {
 	return nil
 }
 
+// Starts `ParallelMaxWorkers` number of workers to process all of the `parallelJob`s
+// This function is non-blocking. The caller should `Wait` on the returned `WaitGroup`.
 func (q *Query) startWorkers(
-	jobs chan Query,
+	jobs []*parallelJob,
 	c client.Client,
 	out output.LogOutput,
 	statistics bool,
 ) *sync.WaitGroup {
 	wg := sync.WaitGroup{}
+	jobsChan := make(chan *parallelJob, len(jobs))
 
+	// Queue up the jobs
+	for _, job := range jobs {
+		jobsChan <- job
+	}
+	close(jobsChan)
+
+	// Start workers
 	for w := 0; w < q.ParallelMaxWorkers; w++ {
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
-			for rq := range jobs {
-				rq.DoQuery(c, out, statistics)
+			for job := range jobsChan {
+				job.run(c, out, statistics)
 			}
 		}()
 	}
@@ -358,9 +364,9 @@ func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistic
 		log.Fatalf("Parallel duration has to be a positive value\n")
 	}
 
-	jobsChan, jobs := q.parallelJobs()
+	jobs := q.parallelJobs()
 
-	wg := q.startWorkers(jobsChan, c, out, statistics)
+	wg := q.startWorkers(jobs, c, out, statistics)
 
 	if err := q.mergeJobs(jobs); err != nil {
 		log.Fatalf("Merging part files error: %s\n", err)

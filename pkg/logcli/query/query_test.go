@@ -681,3 +681,229 @@ func TestLoadFromURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)
 }
+
+func TestDurationCeilDiv(t *testing.T) {
+	tests := []struct {
+		name   string
+		d      time.Duration
+		m      time.Duration
+		expect int64
+	}{
+		{
+			"10m / 5m = 2",
+			10 * time.Minute,
+			5 * time.Minute,
+			2,
+		},
+		{
+			"11m / 5m = 3",
+			11 * time.Minute,
+			5 * time.Minute,
+			3,
+		},
+		{
+			"1h / 15m = 4",
+			1 * time.Hour,
+			15 * time.Minute,
+			4,
+		},
+		{
+			"1h / 14m = 5",
+			1 * time.Hour,
+			14 * time.Minute,
+			5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				require.Equal(t, tt.expect, durationCeilDiv(tt.d, tt.m))
+			},
+		)
+	}
+}
+
+func mustParseTime(value string) time.Time {
+	t, err := time.Parse("2006-01-02 15:04:05", value)
+	if err != nil {
+		panic(fmt.Errorf("invalid timestamp: %w", err))
+	}
+
+	return t
+}
+
+func cmpParallelJobSlice(t *testing.T, expected, actual []*parallelJob) {
+	require.Equal(t, len(expected), len(actual), "job slice lengths don't match")
+
+	for i, jobE := range expected {
+		jobA := actual[i]
+
+		require.Equal(t, jobE.q.Start, jobA.q.Start, "i=%d: job start not equal", i)
+		require.Equal(t, jobE.q.End, jobA.q.End, "i=%d: job end not equal", i)
+		require.Equal(t, jobE.q.Forward, jobA.q.Forward, "i=%d: job direction not equal", i)
+	}
+}
+
+func TestParallelJobs(t *testing.T) {
+	mkQuery := func(start, end string, d time.Duration, forward bool) *Query {
+		return &Query{
+			Start:            mustParseTime(start),
+			End:              mustParseTime(end),
+			ParallelDuration: d,
+			Forward:          forward,
+		}
+	}
+
+	mkParallelJob := func(start, end string, forward bool) *parallelJob {
+		return &parallelJob{
+			q: mkQuery(start, end, time.Minute, forward),
+		}
+	}
+
+	tests := []struct {
+		name string
+		q    *Query
+		jobs []*parallelJob
+	}{
+		{
+			"1h range, 30m period, forward",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:00:00",
+				30*time.Minute,
+				true,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:30:00",
+					true,
+				),
+				mkParallelJob(
+					"2023-02-10 15:30:00",
+					"2023-02-10 16:00:00",
+					true,
+				),
+			},
+		},
+		{
+			"1h range, 30m period, reverse",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:00:00",
+				30*time.Minute,
+				false,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:30:00",
+					"2023-02-10 16:00:00",
+					false,
+				),
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:30:00",
+					false,
+				),
+			},
+		},
+		{
+			"1h1m range, 30m period, forward",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:01:00",
+				30*time.Minute,
+				true,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:30:00",
+					true,
+				),
+				mkParallelJob(
+					"2023-02-10 15:30:00",
+					"2023-02-10 16:00:00",
+					true,
+				),
+				mkParallelJob(
+					"2023-02-10 16:00:00",
+					"2023-02-10 16:01:00",
+					true,
+				),
+			},
+		},
+		{
+			"1h1m range, 30m period, reverse",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:01:00",
+				30*time.Minute,
+				false,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:31:00",
+					"2023-02-10 16:01:00",
+					false,
+				),
+				mkParallelJob(
+					"2023-02-10 15:01:00",
+					"2023-02-10 15:31:00",
+					false,
+				),
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:01:00",
+					false,
+				),
+			},
+		},
+		{
+			"15m range, 30m period, forward",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 15:15:00",
+				30*time.Minute,
+				true,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:15:00",
+					true,
+				),
+			},
+		},
+		{
+			"15m range, 30m period, reverse",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 15:15:00",
+				30*time.Minute,
+				false,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:15:00",
+					false,
+				),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				jobs := tt.q.parallelJobs()
+				cmpParallelJobSlice(t, tt.jobs, jobs)
+			},
+		)
+	}
+}
