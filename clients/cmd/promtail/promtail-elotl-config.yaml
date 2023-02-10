@@ -1,0 +1,16 @@
+server:
+  http_listen_port: 0
+  grpc_listen_port: 0
+  log_level: "debug"
+positions:
+  filename: /tmp/positions.yaml
+client:
+  url: "https://333814:eyJvIjoiNzUxODQxIiwibiI6Imx1bmEtdGVsZW1ldHJ5LWRlZmF1bHQiLCJrIjoiMlVPTzk3d2tWdjUzNDhuMmI1VkUyS2N2IiwibSI6eyJyIjoidXMifX0=@logs-prod3.grafana.net/api/prom/push"
+scrape_configs:
+- job_name: luna
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: luna
+      __path__: /logs/luna*

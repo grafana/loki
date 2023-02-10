@@ -18,6 +18,6 @@ RUN apt-get update && \
 RUN apt-get install -t bullseye-backports -qy libsystemd-dev && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/clients/cmd/promtail/promtail /usr/bin/promtail
-COPY clients/cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
+COPY clients/cmd/promtail/promtail-elotl-config.yaml /etc/promtail/config.yml
 ENTRYPOINT ["/usr/bin/promtail"]
 CMD ["-config.file=/etc/promtail/config.yml"]

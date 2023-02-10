@@ -1,3 +1,21 @@
+# Elotl notes
+
+Used to build custom promtail image with our own Grafana instance URL backed in.
+
+We do this to make it a bit harder for people to spam us by getting the URL.
+
+To build the image run:
+
+    $ make promtail-image IMAGE_PREFIX=elotl IMAGE_TAG=$(git describe --dirty --tags --match 'v*')
+    $ docker push elotl/promtail:$(git describe --dirty --tags --match 'v*')
+
+To update the latest image in the repository:
+
+    $ docker tag elotl/promtail:$(git describe --dirty --tags --match 'v*') elot/promtail:latest
+    $ docker push elotl/promtail:latest
+
+---
+
 <p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
 
 <a href="https://drone.grafana.net/grafana/loki"><img src="https://drone.grafana.net/api/badges/grafana/loki/status.svg" alt="Drone CI" /></a>
