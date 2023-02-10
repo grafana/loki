@@ -43,19 +43,20 @@ It is not possible to run the scalable mode with the `filesystem` storage.
     - Create the configuration file `values.yaml`. The example below illustrates a s3 configuration:
 
       ```yaml
-      storage:
-        bucketNames:
-          chunks: chunks
-          ruler: ruler
-          admin: admin
-        type: s3
-        s3:
-          endpoint: <endpoint>
-          region: <AWS region>
-          secretAccessKey: <AWS secret access key>
-          accessKeyId: <AWS access key ID>
-          s3ForcePathStyle: false
-          insecure: false
+      loki:
+        storage:
+          bucketNames:
+            chunks: chunks
+            ruler: ruler
+            admin: admin
+          type: s3
+          s3:
+            endpoint: <endpoint>
+            region: <AWS region>
+            secretAccessKey: <AWS secret access key>
+            accessKeyId: <AWS access key ID>
+            s3ForcePathStyle: false
+            insecure: false
       ```
 
       Consult the [Reference]({{<relref "../reference">}}) for configuring other storage providers.
