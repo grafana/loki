@@ -472,9 +472,13 @@ func rangeAggEvaluator(
 		return nil, err
 	}
 	if expr.Operation == syntax.OpRangeTypeAbsent {
+		absentLabels, err := absentLabels(expr)
+		if err != nil {
+			return nil, err
+		}
 		return &absentRangeVectorEvaluator{
 			iter: iter,
-			lbs:  absentLabels(expr),
+			lbs:  absentLabels,
 		}, nil
 	}
 	return &rangeVectorEvaluator{
@@ -771,8 +775,11 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				ls, rs = rs, ls
 			}
 		}
-
-		if merged := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op)); merged != nil {
+		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		if err != nil {
+			return nil, err
+		}
+		if merged != nil {
 			// replace with labels specified by expr
 			merged.Metric = metric
 			results = append(results, *merged)
@@ -886,29 +893,39 @@ func literalStepEvaluator(
 	inverted bool,
 	returnBool bool,
 ) (StepEvaluator, error) {
+	val, err := lit.Value()
+	if err != nil {
+		return nil, err
+	}
+	var mergeErr error
+
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
 			ok, ts, vec := eval.Next()
-
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
+
 				literalPoint := promql.Sample{
 					Metric: sample.Metric,
-					Point:  promql.Point{T: ts, V: lit.Value()},
+					Point:  promql.Point{T: ts, V: val},
 				}
 
 				left, right := &literalPoint, &sample
 				if inverted {
 					left, right = right, left
 				}
-
-				if merged := syntax.MergeBinOp(
+				merged, err := syntax.MergeBinOp(
 					op,
 					left,
 					right,
 					!returnBool,
 					syntax.IsComparisonOperator(op),
-				); merged != nil {
+				)
+				if err != nil {
+					mergeErr = err
+					return false, 0, nil
+				}
+				if merged != nil {
 					results = append(results, *merged)
 				}
 			}
@@ -916,7 +933,12 @@ func literalStepEvaluator(
 			return ok, ts, results
 		},
 		eval.Close,
-		eval.Error,
+		func() error {
+			if mergeErr != nil {
+				return mergeErr
+			}
+			return eval.Error()
+		},
 	)
 }
 
@@ -1010,12 +1032,16 @@ func labelReplaceEvaluator(
 }
 
 // This is to replace missing timeseries during absent_over_time aggregation.
-func absentLabels(expr syntax.SampleExpr) labels.Labels {
+func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	m := labels.Labels{}
 
-	lm := expr.Selector().Matchers()
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	lm := selector.Matchers()
 	if len(lm) == 0 {
-		return m
+		return m, nil
 	}
 
 	empty := []string{}
@@ -1033,5 +1059,5 @@ func absentLabels(expr syntax.SampleExpr) labels.Labels {
 	for _, v := range empty {
 		m = labels.NewBuilder(m).Del(v).Labels(nil)
 	}
-	return m
+	return m, nil
 }

@@ -15,6 +15,7 @@ require (
 	github.com/Shopify/sarama v1.38.1
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/alicebob/miniredis/v2 v2.30.0
+	github.com/aliyun/aliyun-oss-go-sdk v2.2.2+incompatible
 	github.com/aws/aws-sdk-go v1.44.187
 	github.com/baidubce/bce-sdk-go v0.9.141
 	github.com/bmatcuk/doublestar v1.3.4
@@ -30,7 +31,7 @@ require (
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
-	github.com/fatih/color v1.13.0
+	github.com/fatih/color v1.14.1
 	github.com/felixge/fgprof v0.9.3
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/fsouza/fake-gcs-server v1.7.0
@@ -102,7 +103,7 @@ require (
 	golang.org/x/sync v0.1.0
 	golang.org/x/sys v0.4.0
 	golang.org/x/time v0.3.0
-	google.golang.org/api v0.108.0
+	google.golang.org/api v0.109.0
 	google.golang.org/grpc v1.52.3
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
@@ -234,8 +235,8 @@ require (
 	github.com/klauspost/cpuid/v2 v2.0.14 // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.12 // indirect
-	github.com/mattn/go-isatty v0.0.14 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect

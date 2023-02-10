@@ -1,5 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable .Values.gateway.enabled }}
+{{- if .Values.gateway.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
