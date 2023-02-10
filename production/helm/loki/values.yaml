@@ -598,6 +598,8 @@ monitoring:
       labels: {}
       # -- Enable the config read api on port 8080 of the agent
       enableConfigReadAPI: false
+      # -- The name of the PriorityClass for GrafanaAgent pods
+      priorityClassName: null
 
     # PodLogs configuration
     podLogs:
