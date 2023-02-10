@@ -50,10 +50,11 @@ func toUpperFirst(s string, args ...string) string {
 }
 
 // toDefault returns a copy of the string s if not empty, else
-// returns a copy of the first string arugment.
+// returns a concatenation of the args without a separator.
 func toDefault(s string, args ...string) string {
-	if len(s) == 0 && len(args) == 1 {
-		s = args[0]
+	if len(s) == 0 && len(args) > 0 {
+		// don't use any separator
+		s = strings.Join(args, "")
 	}
 	return s
 }
@@ -70,6 +71,18 @@ func toSubstr(s string, args ...string) string {
 		// bash returns the string if the position
 		// cannot be parsed.
 		return s
+	}
+
+	if pos < 0 {
+		// if pos is negative (counts from the end) add it
+		// to length to get first character offset
+		pos = len(s) + pos
+
+		// if negative offset exceeds the length of the string
+		// start from 0
+		if pos < 0 {
+			pos = 0
+		}
 	}
 
 	if len(args) == 1 {
@@ -89,9 +102,14 @@ func toSubstr(s string, args ...string) string {
 	}
 
 	if pos+length >= len(s) {
+		if pos < len(s) {
+			// if the position exceeds the length of the
+			// string just return the rest of it like bash
+			return s[pos:]
+		}
 		// if the position exceeds the length of the
-		// string just return the rest of it like bash
-		return s[pos:]
+		// string an empty string is returned
+		return ""
 	}
 
 	return s[pos : pos+length]

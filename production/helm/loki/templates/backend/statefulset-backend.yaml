@@ -40,6 +40,12 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.backendSelectorLabels" . | nindent 8 }}
+        {{- with .Values.loki.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.backend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.backend.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
@@ -99,6 +105,8 @@ spec:
               mountPath: /etc/loki/config
             - name: runtime-config
               mountPath: /etc/loki/runtime-config
+            - name: tmp
+              mountPath: /tmp
             - name: data
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
@@ -123,6 +131,8 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: config
           {{- if .Values.loki.existingSecretForConfig }}
           secret:

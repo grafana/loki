@@ -199,6 +199,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.
 [common: <common>]
+
+# How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki
+# will report 503 Service Unavailable status via /ready endpoint.
+# CLI flag: -shutdown-delay
+[shutdown_delay: <duration> | default = 0s]
 ```
 
 ### server
@@ -772,6 +777,10 @@ storage:
   # Configures backend rule storage for Azure.
   # The CLI flags prefix for this block configuration is: ruler.storage
   [azure: <azure_storage_config>]
+
+  # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
+  # The CLI flags prefix for this block configuration is: ruler
+  [alibabacloud: <alibabacloud_storage_config>]
 
   # Configures backend rule storage for GCS.
   # The CLI flags prefix for this block configuration is: ruler.storage
@@ -1469,6 +1478,11 @@ ring:
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
 
 ```yaml
+# The alibabacloud_storage_config block configures the connection to Alibaba
+# Cloud Storage object storage backend.
+# The CLI flags prefix for this block configuration is: common
+[alibabacloud: <alibabacloud_storage_config>]
+
 # The aws_storage_config block configures the connection to dynamoDB and S3
 # object storage. Either one of them or both can be configured.
 [aws: <aws_storage_config>]
@@ -2802,6 +2816,10 @@ storage:
   # The CLI flags prefix for this block configuration is: common.storage
   [azure: <azure_storage_config>]
 
+  # The alibabacloud_storage_config block configures the connection to Alibaba
+  # Cloud Storage object storage backend.
+  [alibabacloud: <alibabacloud_storage_config>]
+
   # The bos_storage_config block configures the connection to Baidu Object
   # Storage (BOS) object storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
@@ -3791,6 +3809,33 @@ The `azure_storage_config` block configures the connection to Azure object stora
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
+### alibabacloud_storage_config
+
+The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common`
+- `ruler`
+
+&nbsp;
+
+```yaml
+# Name of OSS bucket.
+# CLI flag: -common.storage.oss.bucketname
+[bucket: <string> | default = ""]
+
+# oss Endpoint to connect to.
+# CLI flag: -common.storage.oss.endpoint
+[endpoint: <string> | default = ""]
+
+# alibabacloud Access Key ID
+# CLI flag: -common.storage.oss.access-key-id
+[access_key_id: <string> | default = ""]
+
+# alibabacloud Secret Access Key
+# CLI flag: -common.storage.oss.secret-access-key
+[secret_access_key: <string> | default = ""]
+```
+
 ### gcs_storage_config
 
 The `gcs_storage_config` block configures the connection to Google Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
@@ -3979,6 +4024,10 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
 
+# Set this to true to use the internal OpenStack Swift endpoint URL
+# CLI flag: -<prefix>.swift.internal
+[internal: <boolean> | default = false]
+
 # OpenStack Swift username.
 # CLI flag: -<prefix>.swift.username
 [username: <string> | default = ""]
@@ -4081,6 +4130,8 @@ Named store from this example can be used by setting object_store to store-1 in 
 [filesystem: <map of string to local_storage_config>]
 
 [gcs: <map of string to gcs_storage_config>]
+
+[alibabacloud: <map of string to alibabacloud_storage_config>]
 
 [swift: <map of string to swift_storage_config>]
 ```

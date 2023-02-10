@@ -148,6 +148,8 @@ steps:
     event:
     - pull_request
 - commands:
+  - total_diff=$(sed 's/%//' diff.txt | awk '{sum+=$3;}END{print sum;}')
+  - if [ $total_diff = 0 ]; then exit 0; fi
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
   - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
@@ -1277,11 +1279,11 @@ platform:
 steps:
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: identify-runner
 - commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: test
 trigger:
   ref:
@@ -1673,6 +1675,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 5624f951bb85d3ea60019de484eb85a68bb75c1fffc16150bfefd1cfa129d52d
+hmac: c1930caa8e7ffedf82b641cc1204d87319cddf576efa787d2ef1a86d16c2b9cf
 
 ...

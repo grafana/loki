@@ -14,7 +14,7 @@ keywords: []
 
 This Helm Chart installation runs the Grafana Loki cluster within a Kubernetes cluster.
 
-If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{<relref "../../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
+If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{<relref "../../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode">}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
 
 It is not possible to run the scalable mode with the `filesystem` storage.
 
@@ -40,7 +40,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 
 1. Configure the object storage:
 
-    - Create the configuration file `values.yaml`:
+    - Create the configuration file `values.yaml`. The example below illustrates a s3 configuration:
 
       ```yaml
       loki:
@@ -61,10 +61,16 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 
       Consult the [Reference]({{<relref "../reference">}}) for configuring other storage providers.
 
-    - Define the AWS S3 credentials in the file.
+    - If you're just trying things, you can use the following configuration instead, that sets MinIO as storage:
+      ```yaml
+      minio:
+        enabled: true
+      ```
 
-1. Upgrade the Loki deployment with this command.
+1. Install or upgrade the Loki deployment with this command.
 
    ```bash
+   helm install --values values.yaml loki grafana/loki
+   # or upgrade for existing installations
    helm upgrade --values values.yaml loki grafana/loki
    ```

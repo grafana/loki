@@ -28,7 +28,8 @@ type Config struct {
 	BatchWait time.Duration `yaml:"batchwait"`
 	BatchSize int           `yaml:"batchsize"`
 
-	Client config.HTTPClientConfig `yaml:",inline"`
+	Client  config.HTTPClientConfig `yaml:",inline"`
+	Headers map[string]string       `yaml:"headers,omitempty"`
 
 	BackoffConfig backoff.Config `yaml:"backoff_config"`
 	// The labels to add to any time series or alerts when communicating with loki

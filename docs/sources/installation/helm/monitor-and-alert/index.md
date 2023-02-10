@@ -80,6 +80,25 @@ prometheus:
         targetLabel: cluster
 ```
 
+In order to make sure the Prometheus Operator discovers the `ServiceMonitor` resources deployed by the `loki` chart, you will need to make sure those resources have the correct labels the Prometheus Operator is configured to look for. By default this is the key value label pair `release: prometheus`. Make sure the Loki `ServiceMonitor`s have this label by adding the following to the `values.yaml` for your Loki helm chart:
+
+```yaml
+monitoring:
+  serviceMonitor:
+    labels:
+      release: prometheus
+```
+
+This is also true for the `PrometheusRule` resource deployed by the Helm chart, which in addition to a label, need to be in the same namespace as the Prometheus Operator. For example, if you installed the Prometheus Operator in the `monitoring` namespace, you would need to also add the following to the `values.yaml` for you Loki helm chart to ensure recroding rules are properly discoverd:
+
+```yaml
+monitoring:
+  rules:
+    namespace: monitoring
+    labels:
+      release: prometheus
+```
+
 The `kube-prometheus-stack` installs `ServicMonitor` and `PrometheusRule` resources for monitoring Kubernetes, and it depends on the `kube-state-metrics` and `prometheus-node-exporter` helm charts which also install `ServiceMonitor` resources for collecting `kubelet` and `node-exporter` metrics. The above values file adds the necessary additional labels required for these metrics to work with the included dashboards.
 
 If you are using this helm chart in an environment which does not allow for the installation of `kube-prometheus-stack` or custom CRDs, you should run `helm template` on the `kube-prometheus-stack` helm chart with the above values file, and review all generated `ServiceMonitor` and `PrometheusRule` resources. These resources may have to be modified with the correct ports and selectors to find the various services such as `kubelet` and `node-exporter` in your environment.
