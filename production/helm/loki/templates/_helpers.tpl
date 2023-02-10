@@ -592,14 +592,14 @@ http {
     {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    .Release.Namespace .Values.global.clusterDomain }}
     {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost .Release.Namespace .Values.global.clusterDomain }}
 
-    {{- if .Values.gateway.nginxConfig.customLokiWriteUrl }}
-    {{- $writeUrl  = .Values.gateway.nginxConfig.customLokiWriteUrl }}
+    {{- if .Values.gateway.nginxConfig.customWriteUrl }}
+    {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
     {{- end }}
-    {{- if .Values.gateway.nginxConfig.customLokiReadUrl }}
-    {{- $readUrl = .Values.gateway.nginxConfig.customLokiReadUrl }}
+    {{- if .Values.gateway.nginxConfig.customReadUrl }}
+    {{- $readUrl = .Values.gateway.nginxConfig.customReadUrl }}
     {{- end }}
-    {{- if .Values.gateway.nginxConfig.customLokiBackendUrl }}
-    {{- $backendUrl = .Values.gateway.nginxConfig.customLokiBackendUrl }}
+    {{- if .Values.gateway.nginxConfig.customBackendUrl }}
+    {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
     {{- end }}
 
     location = /api/prom/push {

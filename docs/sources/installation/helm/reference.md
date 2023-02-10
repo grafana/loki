@@ -1016,7 +1016,7 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>gateway.nginxConfig.customLokiBackendUrl</td>
+			<td>gateway.nginxConfig.customBackendUrl</td>
 			<td>string</td>
 			<td>Override Backend URL</td>
 			<td><pre lang="json">
@@ -1025,7 +1025,7 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>gateway.nginxConfig.customLokiReadUrl</td>
+			<td>gateway.nginxConfig.customReadUrl</td>
 			<td>string</td>
 			<td>Override Read URL</td>
 			<td><pre lang="json">
@@ -1034,7 +1034,7 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>gateway.nginxConfig.customLokiWriteUrl</td>
+			<td>gateway.nginxConfig.customWriteUrl</td>
 			<td>string</td>
 			<td>Override Write URL</td>
 			<td><pre lang="json">
