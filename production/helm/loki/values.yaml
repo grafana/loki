@@ -47,7 +47,7 @@ loki:
     # -- Overrides the image tag whose default is the chart's appVersion
     # TODO: needed for 3rd target backend functionality
     # revert to null or latest once this behavior is relased
-    tag: "main-5e53303"
+    tag: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   # -- Common annotations for all pods
@@ -812,7 +812,7 @@ read:
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
   # 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will
   # run two targets, false will run 3 targets.
-  legacyReadTarget: false
+  legacyReadTarget: true
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods

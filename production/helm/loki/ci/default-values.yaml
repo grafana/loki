@@ -2,6 +2,8 @@
 loki:
   commonConfig:
     replication_factor: 1
+  image:
+    tag: "main-5e53303"
 read:
   replicas: 1
 write:
