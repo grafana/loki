@@ -96,14 +96,12 @@ func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClie
 
 	require.NoError(t, cfg.Validate())
 
-	indexType := "dummy"
-
 	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
 		Configs: periodConfigs,
 	}, nil, nil)
 	require.NoError(t, err)
 
-	c.RegisterIndexCompactor(indexType, testIndexCompactor{})
+	c.RegisterIndexCompactor("dummy", testIndexCompactor{})
 
 	return c
 }

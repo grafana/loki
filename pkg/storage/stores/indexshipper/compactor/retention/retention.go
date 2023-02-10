@@ -430,8 +430,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 }
 
 // since compactor supports multiple stores, markers need to be written to store specific dir.
-// MoveMarkersToSharedStoreDir checks for markers in retention dir and migrates them.
-func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) error {
+// MigrateMarkers checks for markers in retention dir and migrates them.
+func MigrateMarkers(workingDir string, deleteRequestStore string) error {
 	markersDir := filepath.Join(workingDir, markersFolder)
 	info, err := os.Stat(markersDir)
 	if err != nil {
@@ -447,20 +447,11 @@ func MoveMarkersToSharedStoreDir(workingDir string, sharedStoreType string) erro
 		return nil
 	}
 
-	if sharedStoreType != "" {
-		targetDir := filepath.Join(workingDir, sharedStoreType, markersFolder)
-		if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, sharedStoreType)); err != nil {
-			return err
-		}
-
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s", targetDir))
-		err := os.Rename(markersDir, targetDir)
-		if err != nil {
-			return err
-		}
-	} else {
-		level.Warn(util_log.Logger).Log("msg", "found markers in retention dir, not moving it since SharedStoreType is not configured")
+	targetDir := filepath.Join(workingDir, deleteRequestStore, markersFolder)
+	if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, deleteRequestStore)); err != nil {
+		return err
 	}
 
-	return err
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s", targetDir))
+	return os.Rename(markersDir, targetDir)
 }

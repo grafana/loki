@@ -1870,13 +1870,14 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -boltdb.shipper.compactor.working-directory
 [working_directory: <string> | default = ""]
 
-# The Shared store used for storing boltdb files. Supported types: gcs, s3,
+# The shared store used for storing boltdb files. Supported types: gcs, s3,
 # azure, swift, filesystem, bos. If not set, compactor will be initialized to
-# operate on all the object store indexes defined in the schema config.
+# operate on all the object stores that contain either boltdb-shipper or tsdb
+# index.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
-# Prefix to add to Object Keys in Shared store. Path separator(if any) should
+# Prefix to add to object keys in shared store. Path separator(if any) should
 # always be a '/'. Prefix should never start with a separator but should always
 # end with it.
 # CLI flag: -boltdb.shipper.compactor.shared-store.key-prefix
@@ -1909,8 +1910,8 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. If not set, shared_store is used as a
-# fallback.
+# Store used for managing delete requests. If not set,
+# -boltdb.shipper.compactor.shared-store is used as fallback.
 # CLI flag: -boltdb.shipper.compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
 
