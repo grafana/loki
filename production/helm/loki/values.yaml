@@ -638,6 +638,8 @@ monitoring:
     nodeSelector: {}
     # -- Tolerations for canary pods
     tolerations: []
+    # -- The name of the PriorityClass for loki-canary pods
+    priorityClassName: null
     # -- Image to use for loki canary
     image:
       # -- The Docker registry

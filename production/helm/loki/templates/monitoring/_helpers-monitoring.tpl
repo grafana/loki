@@ -35,3 +35,13 @@ Convert a recording rule group to yaml
     {{- toYaml .rules | nindent 4 }}
 {{- end }}
 {{- end }}
+
+{{/*
+GrafanaAgent priority class name
+*/}}
+{{- define "grafana-agent.priorityClassName" -}}
+{{- $pcn := coalesce .Values.global.priorityClassName .Values.monitoring.selfMonitoring.grafanaAgent.priorityClassName -}}
+{{- if $pcn }}
+priorityClassName: {{ $pcn }}
+{{- end }}
+{{- end }}
