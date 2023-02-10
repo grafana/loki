@@ -28,6 +28,7 @@ func shardResolverForConf(
 	defaultLookback time.Duration,
 	logger log.Logger,
 	maxParallelism int,
+	maxShards int,
 	r queryrangebase.Request,
 	handler queryrangebase.Handler,
 ) (logql.ShardResolver, bool) {
@@ -39,6 +40,7 @@ func shardResolverForConf(
 			from:            model.Time(r.GetStart()),
 			through:         model.Time(r.GetEnd()),
 			maxParallelism:  maxParallelism,
+			maxShards:       maxShards,
 			defaultLookback: defaultLookback,
 		}, true
 	}
@@ -55,6 +57,7 @@ type dynamicShardResolver struct {
 
 	from, through   model.Time
 	maxParallelism  int
+	maxShards       int
 	defaultLookback time.Duration
 }
 
@@ -122,6 +125,9 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 	combined := stats.MergeStats(results...)
 	factor := guessShardFactor(combined)
+	if r.maxShards >= 0 && factor > r.maxShards {
+		factor = r.maxShards
+	}
 	var bytesPerShard = combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
