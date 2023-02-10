@@ -6,6 +6,10 @@ IMAGE_TAG := $(shell ../../../tools/image-tag)
 EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
 REGISTRY_PORT ?= $(or $(EXISTING_REGISTRY_PORT),46453)
 
+# For verbose output, run make DEBUG=true <TARGET>
+DEBUG := false
+HELM := helm --debug=$(DEBUG)
+
 enterprise-logs: prepare-gel helm-cluster
 	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
 	echo "Waiting 5s for cluster to be ready for helm installation."
@@ -55,12 +59,12 @@ down:
 	k3d cluster delete helm-cluster
 
 add-repos:
-	helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
-	helm repo add --force-update grafana https://grafana.github.io/helm-charts
-	helm repo add --force-update minio https://charts.min.io/
+	$(HELM) repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
+	$(HELM) repo add --force-update grafana https://grafana.github.io/helm-charts
+	$(HELM) repo add --force-update minio https://charts.min.io/
 
 update-repos: add-repos
-	helm repo update
+	$(HELM) repo update
 	tk tool charts vendor
 	jb update
 
@@ -111,37 +115,37 @@ build-latest-image:
 
 HELM_DIR := $(shell cd $(CURDIR)/../../../production/helm/loki && pwd)
 helm-install-enterprise-logs:
-	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+	$(HELM) install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
 
 helm-upgrade-enterprise-logs:
-	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
+	$(HELM) upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs.yaml"
 
 helm-uninstall-enterprise-logs:
-	helm uninstall enterprise-logs-test-fixture -n loki
+	$(HELM) uninstall enterprise-logs-test-fixture -n loki
 
 helm-install-enterprise-logs-ha-single-binary:
-	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-ha-single-binary.yaml"
+	$(HELM) install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-ha-single-binary.yaml"
 
 helm-upgrade-enterprise-logs-ha-single-binary:
-	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-ha-single-binary.yaml"
+	$(HELM) upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-ha-single-binary.yaml"
 
 helm-uninstall-enterprise-logs-ha-single-binary:
-	helm uninstall enterprise-logs-test-fixture -n loki
+	$(HELM) uninstall enterprise-logs-test-fixture -n loki
 
 helm-install-loki:
-	helm install loki "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
+	$(HELM) install loki "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
 
 helm-upgrade-loki:
-	helm upgrade loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
+	$(HELM) upgrade loki "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki.yaml"
 
 helm-uninstall-loki:
-	helm uninstall loki -n loki
+	$(HELM) uninstall loki -n loki
 
 helm-install-loki-ha-single-binary:
-	helm install loki-single-binary "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki-ha-single-binary.yaml"
+	$(HELM) install loki-single-binary "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/loki-ha-single-binary.yaml"
 
 helm-upgrade-loki-ha-single-binary:
-	helm upgrade loki-single-binary "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki-ha-single-binary.yaml"
+	$(HELM) upgrade loki-single-binary "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/loki-ha-single-binary.yaml"
 
 helm-uninstall-loki-binary:
-	helm uninstall loki-single-binary -n loki
+	$(HELM) uninstall loki-single-binary -n loki
