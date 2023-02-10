@@ -24,11 +24,30 @@ The following are examples showing the use of the `sampling` stage.
 
 Simple `sampling` stage configurations.
 
-#### Match a line and sampling
+#### Simple sampling
 
 Given the pipeline:
 
 ```yaml
 - sampling:
     rate: 0.1
+```
+
+Complex `sampling` stage configurations.
+
+#### Match a line and sampling
+
+Given the pipeline:
+
+```yaml
+pipeline_stages:
+- json:
+    expressions:
+      app:
+- match:
+    pipeline_name: "app2"
+    selector: "{app="poki"}"
+    stages:
+    - sampling:
+        rate: 0.1
 ```
