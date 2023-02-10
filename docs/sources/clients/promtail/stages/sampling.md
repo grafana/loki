@@ -22,8 +22,6 @@ The following are examples showing the use of the `sampling` stage.
 
 ### sampling
 
-Simple `sampling` stage configurations.
-
 #### Simple sampling
 
 Given the pipeline:
@@ -32,8 +30,6 @@ Given the pipeline:
 - sampling:
     rate: 0.1
 ```
-
-Complex `sampling` stage configurations.
 
 #### Match a line and sampling
 
@@ -51,3 +47,5 @@ pipeline_stages:
     - sampling:
         rate: 0.1
 ```
+Complex `sampling` stage configurations.
+
