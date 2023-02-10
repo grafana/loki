@@ -1346,7 +1346,7 @@ go.uber.org/zap/zapgrpc
 # go4.org/intern v0.0.0-20211027215823-ae77deb06f29
 ## explicit; go 1.13
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20230209150437-ee73d164e760
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.5.0
