@@ -28,7 +28,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
@@ -378,6 +377,12 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
+func grafanaLinkForExpression(expr string) string {
+	escapedExpression := url.QueryEscape(strings.ReplaceAll(expr, `"`, `\"`))
+	str := `/explore?left={"queries":[{"editorMode":"code","expr":"%s","queryType":"range"}]}`
+	return fmt.Sprintf(str, escapedExpression)
+}
+
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
@@ -391,7 +396,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: externalURL + grafanaLinkForExpression(expr),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt
