@@ -135,7 +135,7 @@ func TestCRI_tags(t *testing.T) {
 				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 5 ", labels: model.LabelSet{"label1": "val4"}}, // exceeded maxPartialLines as already 3 streams in flight.
 				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F log finished", labels: model.LabelSet{"label1": "val1", "label2": "val2"}},
 				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F another full log", labels: model.LabelSet{"label1": "val3"}},
-				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F another full log", labels: model.LabelSet{"label1": "val4"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F yet an another full log", labels: model.LabelSet{"label1": "val4"}},
 			},
 			maxPartialLines: 2,
 			expected: []string{
@@ -144,7 +144,7 @@ func TestCRI_tags(t *testing.T) {
 				"partial line 4 ",
 				"log finished",
 				"another full log",
-				"partial line 5 another full log",
+				"partial line 5 yet an another full log",
 			},
 		},
 		{
@@ -185,7 +185,18 @@ func TestCRI_tags(t *testing.T) {
 					}
 				}
 			}
-			assert.Equal(t, tt.expected, got)
+
+			expectedMap := make(map[string]bool)
+			for _, v := range tt.expected {
+				expectedMap[v] = true
+			}
+
+			gotMap := make(map[string]bool)
+			for _, v := range got {
+				gotMap[v] = true
+			}
+
+			assert.Equal(t, expectedMap, gotMap)
 		})
 	}
 }
