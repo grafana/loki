@@ -240,7 +240,9 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  {{- if .useFederatedToken }}
   use_federated_token: {{ .useFederatedToken }}
+  {{- end }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -307,7 +309,9 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  {{- if .useFederatedToken }}
   use_federated_token: {{ .useFederatedToken }}
+  {{- end }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
