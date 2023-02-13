@@ -13,17 +13,20 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. Add your changelog bellow this line. This locator is used by CI pipeline to find the place where to put changelog entry.)
 
-- [FEATURE] add `gateway.nginxConfig.customReadUrl`, `gateway.nginxConfig.customWriteUrl` and `gateway.nginxConfig.customBackendUrl` to override read/write/backend paths.
-- [BUGFIX] Azure config: don't set `use_federated_token` when not needed. Avoids crashes when loki does not support this parameter.
+## 4.6.1
+
+- [FEATURE] Add `gateway.nginxConfig.customReadUrl`, `gateway.nginxConfig.customWriteUrl` and `gateway.nginxConfig.customBackendUrl` to override read/write/backend paths.
+- [BUGFIX] Remove unreleased setting `useFederatedToken` from Azure configuration block.
+
+## 4.6
+
+- [Change] Bump Loki version to 2.7.3. Revert to 2 target simple scalable mode as default until third target ships in minor release.
 
 ## 4.5.1
 
 - [BUGFIX] Fix rendering of namespace in provisioner job.
 - [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
 - [BUGFIX] Correctly set `compactor_address` for 3 target scalable configuration.
-## 4.6
-
-- [Change] Bump Loki verstion to 2.7.3. Revert to 2 target simple scalable mode as default until third target ships in minor release.
 
 ## 4.5
 
