@@ -90,7 +90,7 @@ behaviour:
 	--merge-parts
 	--keep-parts
 
-Refer to the help of these specific flags to understand what each of them do.
+Refer to the help for each flag for details about what each of them do.
 
 Example:
 
@@ -100,15 +100,19 @@ Example:
 	   --to="2021-01-19T20:00:00Z"
 	   --output=jsonl
 	   --parallel-duration="15m"
-	   --parallel-max-workers="10"
+	   --parallel-max-workers="4"
 	   --part-prefix="/tmp/my_query"
 	   --merge-parts
 	   'my-query'
 
-This will start 10 workers, and they will each start downloading 15 minute
-slices of the specified time range.
+This example will create a queue of jobs to execute, each being 15 minutes in
+duration. In this case, that means, for the 10-hour total duration, there will
+be forty 15-minute jobs.
 
-Each worker will save a "part" file to the location specified in the prefix.
+It will start four workers, and they will each take a job to work on from the
+queue until all the jobs have been completed.
+
+Each job will save a "part" file to the location specified by the --part-path-prefix.
 Different prefixes can be used to run multiple queries at the same time.
 The timestamp of the start and end of the part is in the file name.
 While the part is being downloaded, the filename will end in ".part", when it
@@ -116,14 +120,30 @@ is complete, the file will be renamed to remove this ".part" extension.
 By default, if a completed part file is found, that part will not be downloaded
 again. This can be overridden with the --overwrite-completed-parts flag.
 
+Part file example using the previous command, adding --keep-parts so they are
+not deleted:
+
+Since we don't have the --forward flag, the parts will be downloaded in reverse.
+Two of the workers have finished their jobs (last two files), and have picked
+up the next jobs in the queue.
+Running ls, this is what we should expect to see.
+
+$ ls -1 /tmp/my_query*
+/tmp/my_query_20210119T183000_20210119T184500.part.tmp
+/tmp/my_query_20210119T184500_20210119T190000.part.tmp
+/tmp/my_query_20210119T190000_20210119T191500.part.tmp
+/tmp/my_query_20210119T191500_20210119T193000.part.tmp
+/tmp/my_query_20210119T193000_20210119T194500.part
+/tmp/my_query_20210119T194500_20210119T200000.part
+
 If you do not specify the --merge-parts flag, the part files will be
 downloaded, and logcli will exit, and you can process the files as you wish.
 With the flag specified, the part files will be read in order, and the output
 printed to the terminal. The lines will be printed as soon as the next part is
 complete, you don't have to wait for all the parts to download before getting
-output. --merge-parts will remove the part files when it is done reading
-each of them, to change this, you can add --keep-parts and the part file
-wParallelizationill not be removed.`)
+output. The --merge-parts flag will remove the part files when it is done
+reading each of them. To change this, you can use the --keep-parts flag, and
+the part files will not be removed.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
 	follow     = queryCmd.Flag("follow", "Alias for --tail").Short('f').Default("false").Bool()
@@ -426,7 +446,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-prefix to create a file per job to maintain ordering.").Default("1h").DurationVar(&q.ParallelDuration)
 		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.").Default("1").IntVar(&q.ParallelMaxWorkers)
 		cmd.Flag("part-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-unix_start-unix_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartPrefix)
-		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
+		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if its part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
 		cmd.Flag("merge-parts", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").Default("false").BoolVar(&q.MergeParts)
 		cmd.Flag("keep-parts", "Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been read. This option will keep the part files.").Default("false").BoolVar(&q.KeepParts)
 	}
