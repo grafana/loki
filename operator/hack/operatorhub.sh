@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e -u -o pipefail
+
 COMMUNITY_OPERATORS_REPOSITORY="k8s-operatorhub/community-operators"
 UPSTREAM_REPOSITORY="redhat-openshift-ecosystem/community-operators-prod"
 LOCAL_REPOSITORIES_PATH=${LOCAL_REPOSITORIES_PATH:-"$(dirname "$(dirname "$(dirname "$(pwd)")")")"}
