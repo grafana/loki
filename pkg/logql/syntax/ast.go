@@ -1174,8 +1174,15 @@ func (e *BinOpExpr) String() string {
 // impl SampleExpr
 func (e *BinOpExpr) Shardable() bool {
 	if e.Opts != nil && e.Opts.VectorMatching != nil {
-		// prohibit sharding when we're changing the label groupings, such as on or ignoring
-		return false
+		matching := e.Opts.VectorMatching
+		// prohibit sharding when we're changing the label groupings,
+		// such as when using `on` grouping or when using
+		// `ignoring` with a non-zero set of labels to ignore.
+		// `ignoring ()` is effectively the zero value
+		// that doesn't mutate labels and is shardable.
+		if matching.On || len(matching.MatchingLabels) > 0 {
+			return false
+		}
 	}
 	return shardableOps[e.Op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
 }
@@ -1755,7 +1762,7 @@ func (e *VectorExpr) Value() (float64, error) {
 
 func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Shardable() bool                         { return false }
 func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
