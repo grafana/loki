@@ -75,6 +75,12 @@ loki:
   enableServiceLinks: true
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
+  # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
+  # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).
+  # Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
+  configStorageType: ConfigMap
+  # -- Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).
+  externalConfigSecretName: '{{ include "loki.name" . }}'
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
