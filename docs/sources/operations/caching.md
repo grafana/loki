@@ -43,7 +43,7 @@ To enable and configure Memcached:
        
        Ensure that the connection limit of Memcached is at least `number_of_clients * max_idle_conns`.
        
-       The options `host` and `service` depend on the type of installation. For example using the `bitname/memcached` Helm Charts with the following commands the `service` values is always `memcache`.
+       The options `host` and `service` depend on the type of installation. For example, using the `bitname/memcached` Helm Charts with the following commands, the `service` values are always `memcached`.
        ```
        helm upgrade --install chunk-cache -n loki bitnami/memcached -f memcached-overrides.yaml
        helm upgrade --install write-cache -n loki bitnami/memcached -f memcached-overrides.yaml
