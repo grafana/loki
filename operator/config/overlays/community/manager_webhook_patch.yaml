@@ -19,4 +19,4 @@ spec:
       - name: webhook-cert
         secret:
           defaultMode: 420
-          secretName: loki-operator-webhook-server-cert
+          secretName: loki-operator-controller-manager-service-cert
