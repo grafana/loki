@@ -87,6 +87,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix tokengen and provisioner secrets creation on enterprise-logs chart.
 
+## 4.6.2
+
+- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
+
 ## 4.6.1
 
 - [FEATURE] Add `gateway.nginxConfig.customReadUrl`, `gateway.nginxConfig.customWriteUrl` and `gateway.nginxConfig.customBackendUrl` to override read/write/backend paths.
