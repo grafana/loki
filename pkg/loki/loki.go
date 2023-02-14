@@ -5,11 +5,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.uber.org/atomic"
 	"net/http"
 	"os"
 	rt "runtime"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"

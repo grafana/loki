@@ -46,6 +46,10 @@ const maxMultipartPutObjectSize = 1024 * 1024 * 1024 * 1024 * 5
 // we don't want to sign the request payload
 const unsignedPayload = "UNSIGNED-PAYLOAD"
 
+// unsignedPayloadTrailer value to be set to X-Amz-Content-Sha256 header when
+// we don't want to sign the request payload, but have a trailer.
+const unsignedPayloadTrailer = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+
 // Total number of parallel workers used for multipart operation.
 const totalWorkers = 4
 
@@ -96,6 +100,9 @@ const (
 	minIOBucketReplicationObjectRetentionTimestamp = "X-Minio-Source-Replication-Retention-Timestamp"
 	// Header indicates last legalhold update time on source
 	minIOBucketReplicationObjectLegalHoldTimestamp = "X-Minio-Source-Replication-LegalHold-Timestamp"
-
-	minIOForceDelete = "x-minio-force-delete"
+	minIOForceDelete                               = "x-minio-force-delete"
+	// Header indicates delete marker replication request can be sent by source now.
+	minioTgtReplicationReady = "X-Minio-Replication-Ready"
+	// Header asks if delete marker replication request can be sent by source now.
+	isMinioTgtReplicationReady = "X-Minio-Check-Replication-Ready"
 )
