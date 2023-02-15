@@ -80,8 +80,8 @@ the "instant-query" command instead.
 
 Parallelization:
 
-You can download logs in parallel, there are a few flags which control this
-behaviour:
+You can download an unlimited number of logs in parallel, there are a few
+flags which control this behaviour:
 
 	--parallel-duration
 	--parallel-max-workers
@@ -107,7 +107,7 @@ Example:
 
 This example will create a queue of jobs to execute, each being 15 minutes in
 duration. In this case, that means, for the 10-hour total duration, there will
-be forty 15-minute jobs.
+be forty 15-minute jobs. The --limit flag is ignored.
 
 It will start four workers, and they will each take a job to work on from the
 queue until all the jobs have been completed.
@@ -263,6 +263,8 @@ func main() {
 		} else if rangeQuery.ParallelMaxWorkers == 1 {
 			rangeQuery.DoQuery(queryClient, out, *statistics)
 		} else {
+			// `--limit` doesn't make sense when using parallelism.
+			rangeQuery.Limit = 0
 			rangeQuery.DoQueryParallel(queryClient, out, *statistics)
 		}
 	case instantQueryCmd.FullCommand():
@@ -449,7 +451,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
 		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create a file per job to maintain ordering.").Default("1h").DurationVar(&q.ParallelDuration)
-		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.").Default("1").IntVar(&q.ParallelMaxWorkers)
+		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers. When using parallel workers, limit is ignored.").Default("1").IntVar(&q.ParallelMaxWorkers)
 		cmd.Flag("part-path-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-utc_start-utc_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartPathPrefix)
 		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
 		cmd.Flag("merge-parts", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").Default("false").BoolVar(&q.MergeParts)
