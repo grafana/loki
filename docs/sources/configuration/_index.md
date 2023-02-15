@@ -3691,8 +3691,9 @@ http_config:
 # CLI flag: -s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The storage class to use when uploading S3 objects. Supported values
-# are: STANDARD, REDUCED_REDUNDANCY, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER, DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR.
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
 # CLI flag: -s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -3960,9 +3961,10 @@ http_config:
 # CLI flag: -<prefix>.storage.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The storage class to use when uploading S3 objects. Supported values
-# are: STANDARD, REDUCED_REDUNDANCY, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER, DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR.
-# CLI flag: -s3.storage-class
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -<prefix>.storage.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
 sse:
