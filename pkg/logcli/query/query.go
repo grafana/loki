@@ -348,6 +348,10 @@ func (q *Query) startWorkers(
 	jobsChan := make(chan *parallelJob, len(jobs))
 
 	// Queue up the jobs
+	// There is a possible optimization here to use an unbuffered channel,
+	// But the memory and CPU overhead for yet another go routine makes me
+	// think that this optimization is not worth it. So I used a buffered
+	// channel instead.
 	for _, job := range jobs {
 		jobsChan <- job
 	}
