@@ -27,13 +27,27 @@ const (
 	// SSES3 config type constant to configure S3 server side encryption with AES-256
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html
 	SSES3 = "SSE-S3"
+
+	// S3 Storage Class options which define the data access, resiliency & cost requirements of objects
+	// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
+	StorageClassGlacier                  = "GLACIER"
+	StorageClassDeepArchive              = "DEEP_ARCHIVE"
+	StorageClassGlacierInstantRetrieval  = "GLACIER_IR"
+	StorageClassIntelligentTiering       = "INTELLIGENT_TIERING"
+	StorageClassOneZoneInfrequentAccess  = "ONEZONE_IA"
+	StorageClassOutposts                 = "OUTPOSTS"
+	StorageClassReducedRedundancy        = "REDUCED_REDUNDANCY"
+	StorageClassStandard                 = "STANDARD"
+	StorageClassStandardInfrequentAccess = "STANDARD_IA"
 )
 
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
 	supportedSSETypes              = []string{SSEKMS, SSES3}
+	supportedStorageClasses        = []string{StorageClassGlacier, StorageClassDeepArchive, StorageClassGlacierInstantRetrieval, StorageClassIntelligentTiering, StorageClassOneZoneInfrequentAccess, StorageClassOutposts, StorageClassReducedRedundancy, StorageClassStandard, StorageClassStandardInfrequentAccess}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
+	errUnsupportedStorageClass     = errors.New("unsupported S3 storage class")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
 )
 
@@ -59,6 +73,7 @@ type Config struct {
 	AccessKeyID      string         `yaml:"access_key_id"`
 	Insecure         bool           `yaml:"insecure"`
 	SignatureVersion string         `yaml:"signature_version"`
+	StorageClass     string         `yaml:"storage_class"`
 
 	SSE  SSEConfig  `yaml:"sse"`
 	HTTP HTTPConfig `yaml:"http"`
@@ -78,6 +93,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", StorageClassStandard, "The S3 storage class to use. Details can be found at https://aws.amazon.com/s3/storage-classes/.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }
@@ -86,6 +102,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
+	}
+
+	if !util.StringsContain(supportedStorageClasses, cfg.StorageClass) {
+		return errUnsupportedStorageClass
 	}
 
 	return cfg.SSE.Validate()

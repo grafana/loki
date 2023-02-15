@@ -39,11 +39,25 @@ import (
 const (
 	SignatureVersionV4 = "v4"
 	SignatureVersionV2 = "v2"
+
+	// S3 Storage Class options which define the data access, resiliency & cost requirements of objects
+	// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
+	StorageClassGlacier                  = "GLACIER"
+	StorageClassDeepArchive              = "DEEP_ARCHIVE"
+	StorageClassGlacierInstantRetrieval  = "GLACIER_IR"
+	StorageClassIntelligentTiering       = "INTELLIGENT_TIERING"
+	StorageClassOneZoneInfrequentAccess  = "ONEZONE_IA"
+	StorageClassOutposts                 = "OUTPOSTS"
+	StorageClassReducedRedundancy        = "REDUCED_REDUNDANCY"
+	StorageClassStandard                 = "STANDARD"
+	StorageClassStandardInfrequentAccess = "STANDARD_IA"
 )
 
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedStorageClasses        = []string{StorageClassGlacier, StorageClassDeepArchive, StorageClassGlacierInstantRetrieval, StorageClassIntelligentTiering, StorageClassOneZoneInfrequentAccess, StorageClassOutposts, StorageClassReducedRedundancy, StorageClassStandard, StorageClassStandardInfrequentAccess}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
+	errUnsupportedStorageClass     = errors.New("unsupported S3 storage class")
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -75,6 +89,7 @@ type S3Config struct {
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
+	StorageClass     string              `yaml:"storage_class"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
 
@@ -117,6 +132,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", StorageClassStandard, fmt.Sprintf("The S3 storage class which objects will use. Supported values are: %s.", strings.Join(supportedStorageClasses, ", ")))
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
@@ -127,6 +143,9 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (cfg *S3Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
+	}
+	if !util.StringsContain(supportedStorageClasses, cfg.StorageClass) {
+		return errUnsupportedStorageClass
 	}
 	return nil
 }
@@ -393,9 +412,10 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
-			Body:   object,
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+			Body:         object,
+			Bucket:       aws.String(a.bucketFromKey(objectKey)),
+			Key:          aws.String(objectKey),
+			StorageClass: aws.String(a.cfg.StorageClass),
 		}
 
 		if a.sseConfig != nil {

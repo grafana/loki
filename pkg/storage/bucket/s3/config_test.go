@@ -17,6 +17,7 @@ import (
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
+	StorageClass:     StorageClassStandard,
 	HTTP: HTTPConfig{
 		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -53,6 +54,7 @@ secret_access_key: test-secret-access-key
 access_key_id: test-access-key-id
 insecure: true
 signature_version: test-signature-version
+storage_class: test-storage-class
 sse:
   type: test-type
   kms_key_id: test-kms-key-id
@@ -75,6 +77,7 @@ http:
 				AccessKeyID:      "test-access-key-id",
 				Insecure:         true,
 				SignatureVersion: "test-signature-version",
+				StorageClass:     "test-storage-class",
 				SSE: SSEConfig{
 					Type:                 "test-type",
 					KMSKeyID:             "test-kms-key-id",
@@ -217,4 +220,33 @@ func TestParseKMSEncryptionContext(t *testing.T) {
 	actual, err = parseKMSEncryptionContext(`{"department": "10103.0"}`)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, actual)
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		cfg         Config
+		expectedErr error
+	}{
+		"should fail if invalid signature version is set": {
+			Config{SignatureVersion: "foo"},
+			errUnsupportedSignatureVersion,
+		},
+		"should pass if valid signature version is set": {
+			defaultConfig,
+			nil,
+		},
+		"should fail if invalid storage class is set": {
+			Config{SignatureVersion: SignatureVersionV4, StorageClass: "foo"},
+			errUnsupportedStorageClass,
+		},
+		"should pass if valid storage signature version is set": {
+			Config{SignatureVersion: SignatureVersionV4, StorageClass: StorageClassStandardInfrequentAccess},
+			nil,
+		},
+	}
+
+	for name, test := range tests {
+		actual := test.cfg.Validate()
+		assert.Equal(t, test.expectedErr, actual, name)
+	}
 }
