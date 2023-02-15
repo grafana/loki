@@ -719,7 +719,7 @@ func TestDurationCeilDiv(t *testing.T) {
 		t.Run(
 			tt.name,
 			func(t *testing.T) {
-				require.Equal(t, tt.expect, durationCeilDiv(tt.d, tt.m))
+				require.Equal(t, tt.expect, ceilingDivision(tt.d, tt.m))
 			},
 		)
 	}

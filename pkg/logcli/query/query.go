@@ -250,7 +250,7 @@ func (q *Query) createPartFile() (*PartFile, bool) {
 }
 
 // rounds up duration d by the multiple m, and then divides by m.
-func durationCeilDiv(d, m time.Duration) int64 {
+func ceilingDivision(d, m time.Duration) int64 {
 	return int64((d + m - 1) / m)
 }
 
@@ -283,7 +283,7 @@ func (j *parallelJob) run(c client.Client, out output.LogOutput, statistics bool
 }
 
 func (q *Query) parallelJobs() []*parallelJob {
-	nJobs := durationCeilDiv(q.End.Sub(q.Start), q.ParallelDuration)
+	nJobs := ceilingDivision(q.End.Sub(q.Start), q.ParallelDuration)
 	jobs := make([]*parallelJob, nJobs)
 
 	// Normally `nextJob` will swap the start/end to get the next job. Here, we swap them
