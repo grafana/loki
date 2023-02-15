@@ -73,10 +73,10 @@ type Query struct {
 	// Number of workers to start.
 	ParallelMaxWorkers int
 
-	// Prefix of the name for each part file.
+	// Path prefix of the name for each part file.
 	// The idea for this is to allow the user to download many different queries at the same
 	// time, and/or give a directory for the part files to be placed.
-	PartPrefix string
+	PartPathPrefix string
 
 	// By default (false value), if the part file has finished downloading, and another job with
 	// the same filename is run, it will skip the completed files. This will remove the completed
@@ -209,13 +209,18 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 }
 
 func (q *Query) outputFilename() string {
-	return fmt.Sprintf("%s-%d-%d.part", q.PartPrefix, q.Start.Unix(), q.End.Unix())
+	return fmt.Sprintf(
+		"%s_%s_%s.part",
+		q.PartPathPrefix,
+		q.Start.UTC().Format("20060102T150405"),
+		q.End.UTC().Format("20060102T150405"),
+	)
 }
 
 // createPartFile returns a PartFile if the PartFilePrefix is set.
 // The bool value shows if the part file already exists, and this range should be skipped.
 func (q *Query) createPartFile() (*PartFile, bool) {
-	if q.PartPrefix == "" {
+	if q.PartPathPrefix == "" {
 		return nil, false
 	}
 
