@@ -170,7 +170,7 @@ func main() {
 		}
 
 		// `--limit` doesn't make sense when using `--stdin` flag.
-		rangeQuery.Limit = math.MaxInt // TODO(kavi): is it a good idea?
+		rangeQuery.Limit = 0
 	}
 
 	switch cmd {
@@ -362,7 +362,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		return nil
 	})
 
-	cmd.Flag("limit", "Limit on number of entries to print.").Default("30").IntVar(&q.Limit)
+	cmd.Flag("limit", "Limit on number of entries to print. Setting it to 0 will fetch all entries.").Default("30").IntVar(&q.Limit)
 	if instant {
 		cmd.Arg("query", "eg 'rate({foo=\"bar\"} |~ \".*error.*\" [5m])'").Required().StringVar(&q.QueryString)
 		cmd.Flag("now", "Time at which to execute the instant query.").StringVar(&now)

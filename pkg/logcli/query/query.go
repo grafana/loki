@@ -92,7 +92,9 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		}
 		_, _ = q.printResult(resp.Data.Result, out, nil)
 	} else {
-		if q.Limit < q.BatchSize {
+		unlimited := q.Limit == 0
+
+		if q.Limit < q.BatchSize && !unlimited {
 			q.BatchSize = q.Limit
 		}
 		resultLength := 0
@@ -100,11 +102,12 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		start := q.Start
 		end := q.End
 		var lastEntry []*loghttp.Entry
-		for total < q.Limit {
+		for total < q.Limit || unlimited {
 			bs := q.BatchSize
 			// We want to truncate the batch size if the remaining number
 			// of items needed to reach the limit is less than the batch size
-			if q.Limit-total < q.BatchSize {
+			// unless the query has no limit, ie limit==0.
+			if q.Limit-total < q.BatchSize && !unlimited {
 				// Truncated batchsize is q.Limit - total, however we add to this
 				// the length of the overlap from the last query to make sure we get the
 				// correct amount of new logs knowing there will be some overlapping logs returned.

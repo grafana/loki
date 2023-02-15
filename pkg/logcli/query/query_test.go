@@ -460,6 +460,46 @@ func Test_batch(t *testing.T) {
 				"line10", "line9", "line8", "line7", "line6b", "line6a", "line6", "line5", "line4", "line3", "line2",
 			},
 		},
+		{
+			name: "single stream backward batch identical timestamps without limit",
+			streams: []logproto.Stream{
+				{
+					Labels: "{test=\"simple\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(6, 0), Line: "line6a"},
+						{Timestamp: time.Unix(6, 0), Line: "line6b"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
+					},
+				},
+			},
+			start:        time.Unix(1, 0),
+			end:          time.Unix(11, 0),
+			limit:        0,
+			batch:        4,
+			labelMatcher: "{test=\"simple\"}",
+			forward:      false,
+			// Our batchsize is 2 but each query will also return the overlapping last element from the
+			// previous batch, as such we only get one item per call so we make a lot of calls
+			// Call one:   line10 line9 line8 line7
+			// Call two:   line7 line6b line6a line6
+			// Call three: line6b line6a line6 line5
+			// Call four:  line5 line5 line3 line2
+			// Call five:  line1
+			// Call six:   -
+			expectedCalls: 6,
+			expected: []string{
+				"line10", "line9", "line8", "line7", "line6b", "line6a", "line6", "line5", "line4", "line3", "line2", "line1",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
