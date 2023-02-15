@@ -202,7 +202,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 	}
 
 	if partFile != nil {
-		if err := partFile.Complete(); err != nil {
+		if err := partFile.Finalize(); err != nil {
 			log.Fatalln(err)
 		}
 	}
@@ -239,7 +239,7 @@ func (q *Query) createPartFile() (*PartFile, bool) {
 		}
 	}
 
-	if err := partFile.CreateTemp(); err != nil {
+	if err := partFile.CreateTempFile(); err != nil {
 		log.Fatalf("Query failed: %s\n", err)
 	}
 

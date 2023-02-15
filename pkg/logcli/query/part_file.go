@@ -11,24 +11,26 @@ import (
 // Expected usage:
 //  1. Create the temp file: CreateTemp
 //  2. Write the data to the file
-//  3. When you're done, call Complete and the temp file will be closed and renamed
+//  3. When you're done, call Finalize and the temp file will be closed and renamed
 type PartFile struct {
-	completeName string
-	fd           *os.File
-	lock         sync.Mutex
+	finalName string
+	fd        *os.File
+	lock      sync.Mutex
 }
 
-// NewPartFile creates a new partial file, setting the filename which will be used
-// when the file is closed with the Complete function.
+// NewPartFile initializes a new partial file object, setting the filename
+// which will be used when the file is closed with the Finalize function.
+//
+// This will not create the file, call CreateTemp to create the file.
 func NewPartFile(filename string) *PartFile {
 	return &PartFile{
-		completeName: filename,
+		finalName: filename,
 	}
 }
 
 // Exists checks if the completed file exists.
 func (f *PartFile) Exists() (bool, error) {
-	if _, err := os.Stat(f.completeName); err == nil {
+	if _, err := os.Stat(f.finalName); err == nil {
 		// No error means file exits, and we can stat it.
 		return true, nil
 	} else if errors.Is(err, os.ErrNotExist) {
@@ -36,16 +38,16 @@ func (f *PartFile) Exists() (bool, error) {
 		return false, nil
 	} else {
 		// Unclear if file exists or not, we cannot stat it.
-		return false, fmt.Errorf("failed to check if part file exists: %s: %s", f.completeName, err)
+		return false, fmt.Errorf("failed to check if part file exists: %s: %s", f.finalName, err)
 	}
 }
 
-// CreateTemp creates the temp file to store the data before Complete is called.
-func (f *PartFile) CreateTemp() error {
+// CreateTempFile creates the temp file to store the data before Finalize is called.
+func (f *PartFile) CreateTempFile() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	tmpName := f.completeName + ".tmp"
+	tmpName := f.finalName + ".tmp"
 
 	fd, err := os.Create(tmpName)
 	if err != nil {
@@ -63,7 +65,7 @@ func (f *PartFile) Write(b []byte) (int, error) {
 
 // Close closes the temporary file.
 // Double close is handled gracefully without error so that Close can be deferred for errors,
-// and is also called when Complete is called.
+// and is also called when Finalize is called.
 func (f *PartFile) Close() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -87,8 +89,8 @@ func (f *PartFile) Close() error {
 	return nil
 }
 
-// Complete closes the temporary file, and renames it to the complete file name.
-func (f *PartFile) Complete() error {
+// Finalize closes the temporary file, and renames it to the final file name.
+func (f *PartFile) Finalize() error {
 	tmpFileName := f.fd.Name()
 
 	if err := f.Close(); err != nil {
@@ -98,7 +100,7 @@ func (f *PartFile) Complete() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	if err := os.Rename(tmpFileName, f.completeName); err != nil {
+	if err := os.Rename(tmpFileName, f.finalName); err != nil {
 		return fmt.Errorf("failed to rename part file: %s: %s", tmpFileName, err)
 	}
 
