@@ -145,7 +145,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (chan Request, string, int) {
+func (q *queues) getNextQueueForQuerier(lastUserIndex UserIndex, querierID string) (chan Request, string, UserIndex) {
 	uid := lastUserIndex
 
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
@@ -159,7 +159,7 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (ch
 
 		// Don't use "mod len(q.users)", as that could skip users at the beginning of the list
 		// for example when q.users has shrunk since last call.
-		if uid >= len(q.users) {
+		if int(uid) >= len(q.users) {
 			uid = 0
 		}
 

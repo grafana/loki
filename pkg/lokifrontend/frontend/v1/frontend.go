@@ -198,7 +198,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	f.requestQueue.RegisterQuerierConnection(querierID)
 	defer f.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastUserIndex := queue.FirstUser()
+	lastUserIndex := queue.FirstUser
 
 	for {
 		reqWrapper, idx, err := f.requestQueue.GetNextRequestForQuerier(server.Context(), lastUserIndex, querierID)

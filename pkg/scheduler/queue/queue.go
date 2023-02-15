@@ -23,22 +23,18 @@ var (
 
 // UserIndex is opaque type that allows to resume iteration over users between successive calls
 // of RequestQueue.GetNextRequestForQuerier method.
-type UserIndex struct {
-	last int
-}
+type UserIndex int
 
 // Modify index to start iteration on the same user, for which last queue was returned.
 func (ui UserIndex) ReuseLastUser() UserIndex {
-	if ui.last >= 0 {
-		return UserIndex{last: ui.last - 1}
+	if ui < 0 {
+		return ui
 	}
-	return ui
+	return ui - 1
 }
 
-// FirstUser returns UserIndex that starts iteration over user queues from the very first user.
-func FirstUser() UserIndex {
-	return UserIndex{last: -1}
-}
+// FirstUser is the UserIndex that starts iteration over user queues from the very first user.
+var FirstUser UserIndex = -1
 
 // Request stored into the queue.
 type Request interface{}
@@ -133,8 +129,8 @@ FindQueue:
 	}
 
 	for {
-		queue, userID, idx := q.queues.getNextQueueForQuerier(last.last, querierID)
-		last.last = idx
+		queue, userID, idx := q.queues.getNextQueueForQuerier(last, querierID)
+		last = idx
 		if queue == nil {
 			break
 		}

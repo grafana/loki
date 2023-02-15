@@ -144,7 +144,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	for q := 0; q < queriers; q++ {
 		qid := fmt.Sprintf("querier-%d", q)
 
-		lastUserIndex := -1
+		lastUserIndex := FirstUser
 		for {
 			_, _, newIx := uq.getNextQueueForQuerier(lastUserIndex, qid)
 			if newIx < lastUserIndex {
@@ -189,7 +189,7 @@ func TestQueuesConsistency(t *testing.T) {
 
 			r := rand.New(rand.NewSource(time.Now().Unix()))
 
-			lastUserIndexes := map[string]int{}
+			lastUserIndexes := map[string]UserIndex{}
 
 			conns := map[string]int{}
 

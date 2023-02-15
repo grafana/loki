@@ -446,7 +446,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	s.requestQueue.RegisterQuerierConnection(querierID)
 	defer s.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastUserIndex := queue.FirstUser()
+	lastUserIndex := queue.FirstUser
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
 	for s.isRunningOrStopping() {
