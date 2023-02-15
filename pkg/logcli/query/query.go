@@ -109,10 +109,17 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 	var resp *loghttp.QueryResponse
 	var err error
 
-	partFile, shouldSkip := q.createPartFile()
+	var partFile *PartFile
+	if q.PartPathPrefix != "" {
+		var shouldSkip bool
+		partFile, shouldSkip = q.createPartFile()
 
-	if shouldSkip {
-		return
+		// createPartFile will return true if the part file exists and
+		// OverwriteCompleted is false, therefor, we should exit the function
+		// here because we have nothing to do.
+		if shouldSkip {
+			return
+		}
 	}
 
 	if partFile != nil {
@@ -217,13 +224,9 @@ func (q *Query) outputFilename() string {
 	)
 }
 
-// createPartFile returns a PartFile if the PartFilePrefix is set.
+// createPartFile returns a PartFile.
 // The bool value shows if the part file already exists, and this range should be skipped.
 func (q *Query) createPartFile() (*PartFile, bool) {
-	if q.PartPathPrefix == "" {
-		return nil, false
-	}
-
 	partFile := NewPartFile(q.outputFilename())
 
 	if !q.OverwriteCompleted {
