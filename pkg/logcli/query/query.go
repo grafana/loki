@@ -318,6 +318,7 @@ func (q *Query) mergeJobs(jobs []*parallelJob) error {
 		if err != nil {
 			return fmt.Errorf("open file error: %w", err)
 		}
+		defer f.Close()
 
 		_, err = io.Copy(os.Stdout, f)
 		if err != nil {
