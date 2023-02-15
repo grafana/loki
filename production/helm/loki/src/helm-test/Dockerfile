@@ -1,4 +1,4 @@
-FROM golang:1.18.5 as build
+FROM golang:1.19.5 as build
 
 # build via Makefile target helm-test-image in root
 # Makefile. Building from this directory will not be
