@@ -428,6 +428,11 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 			q.End = mustParse(to, defaultEnd)
 		}
 		q.Quiet = *quiet
+
+		if q.ParallelMaxWorkers < 1 {
+			return fmt.Errorf("parallel-max-workers must be greater than 0")
+		}
+
 		return nil
 	})
 
