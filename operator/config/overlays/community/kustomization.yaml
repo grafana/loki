@@ -4,7 +4,6 @@ resources:
 - ../../manager
 - ../../webhook
 - ../../certmanager
-- ../../prometheus
 
 # Adds namespace to all resources.
 namespace: loki-operator
@@ -23,8 +22,8 @@ labels:
     app.kubernetes.io/managed-by: operator-lifecycle-manager
   includeSelectors: true
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.0.1
-    app.kubernetes.io/version: "0.0.1"
+    app.kubernetes.io/instance: loki-operator-v0.1.0
+    app.kubernetes.io/version: "0.1.0"
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -39,15 +38,12 @@ patchesStrategicMerge:
 - manager_related_image_patch.yaml
 - manager_run_flags_patch.yaml
 - manager_webhook_patch.yaml
-- prometheus_service_monitor_patch.yaml
 - webhookcainjection_patch.yaml
 
 images:
 - name: controller
-  # Change this to docker.io/grafana/loki-operator once the following issue is resolved:
-  # https://github.com/grafana/loki/issues/5617
-  newName: quay.io/openshift-logging/loki-operator
-  newTag: v0.0.1
+  newName: docker.io/grafana/loki-operator
+  newTag: main-39f2856
 
 # the following config is for teaching kustomize how to do var substitution
 vars:
