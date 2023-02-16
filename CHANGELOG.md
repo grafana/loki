@@ -43,6 +43,7 @@
 * [8251](https://github.com/grafana/loki/pull/8251) **sandeepsukhani** index-store: fix indexing of chunks overlapping multiple schemas.
 * [8151](https://github.com/grafana/loki/pull/8151) **sandeepsukhani** fix log deletion with line filters.
 * [8448](https://github.com/grafana/loki/pull/8448) **chaudum**: Fix bug in LogQL parser that caused certain queries that contain a vector expression to fail.
+* [8531](https://github.com/grafana/loki/pull/8531) **garrettlish**: logql: fix panics when cloning a special query
 
 ##### Changes
 
