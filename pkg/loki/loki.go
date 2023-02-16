@@ -270,7 +270,7 @@ func ValidateConfigTimeouts(c *Config) error {
 	}
 
 	if c.Server.HTTPServerWriteTimeout < time.Duration(c.LimitsConfig.QueryTimeout) {
-		return fmt.Errorf("invalid write timeout, the server write timeout (%s) must be larger than the limtis timeout (%s)", c.Server.HTTPServerReadTimeout, c.LimitsConfig.QueryTimeout)
+		return fmt.Errorf("invalid write timeout, the server write timeout (%s) must be longer than the limits timeout (%s)", c.Server.HTTPServerReadTimeout, c.LimitsConfig.QueryTimeout)
 	}
 
 	return nil
