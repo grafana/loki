@@ -2,7 +2,9 @@ package s3
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,12 +14,13 @@ import (
 	"gopkg.in/yaml.v2"
 
 	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
+	"github.com/grafana/loki/pkg/storage/common/aws"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
-	StorageClass:     StorageClassStandard,
+	StorageClass:     aws.StorageClassStandard,
 	HTTP: HTTPConfig{
 		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -237,10 +240,10 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail if invalid storage class is set": {
 			Config{SignatureVersion: SignatureVersionV4, StorageClass: "foo"},
-			errUnsupportedStorageClass,
+			fmt.Errorf("unsupported S3 storage class: foo. Supported values: %s", strings.Join(aws.SupportedStorageClasses, ", ")),
 		},
 		"should pass if valid storage signature version is set": {
-			Config{SignatureVersion: SignatureVersionV4, StorageClass: StorageClassStandardInfrequentAccess},
+			Config{SignatureVersion: SignatureVersionV4, StorageClass: aws.StorageClassStandardInfrequentAccess},
 			nil,
 		},
 	}
