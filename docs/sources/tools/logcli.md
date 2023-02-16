@@ -283,7 +283,7 @@ in the Grafana Explore graph view. If you are querying metrics and just want the
 
 Parallelization:
 
-You can download logs in parallel, there are a few flags which control this behaviour:
+You can download an unlimited number of logs in parallel, there are a few flags which control this behaviour:
 
   --parallel-duration
   --parallel-max-workers
@@ -308,6 +308,7 @@ Example:
      'my-query'
 
 This example will create a queue of jobs to execute, each being 15 minutes in duration. In this case, that means, for the 10-hour total duration, there will be forty 15-minute jobs.
+The --limit flag is ignored.
 
 It will start four workers, and they will each take a job to work on from the queue until all the jobs have been completed.
 
@@ -358,7 +359,7 @@ Flags:
       --auth-header="Authorization"
                                 The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""            The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
-      --limit=30                Limit on number of entries to print.
+      --limit=30                Limit on number of entries to print. Setting it to 0 will fetch all entries.
       --since=1h                Lookback window.
       --from=FROM               Start looking for logs at this absolute time (inclusive)
       --to=TO                   Stop looking for logs at this absolute time (exclusive)
@@ -367,7 +368,7 @@ Flags:
       --batch=1000              Query batch size to use until 'limit' is reached
       --parallel-duration=1h    Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create
                                 a file per job to maintain ordering.
-      --parallel-max-workers=1  Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.
+      --parallel-max-workers=1  Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers. When using parallel workers, limit is ignored.
       --part-path-prefix=PART-PATH-PREFIX
                                 When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-utc_start-utc_end.part'. Intended to be used
                                 with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.
