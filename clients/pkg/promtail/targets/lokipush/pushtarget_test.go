@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -196,6 +197,65 @@ func TestPlaintextPushTarget(t *testing.T) {
 
 	// Timestamp is always set in the handler, we expect received timestamps to be slightly higher than the timestamp when we started sending logs.
 	require.GreaterOrEqual(t, eh.Received()[99].Timestamp.Unix(), ts.Unix())
+
+	_ = pt.Stop()
+
+}
+
+func TestReady(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	//Create PushTarget
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	// Get a randomly available port by open and closing a TCP socket
+	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
+	require.NoError(t, err)
+	l, err := net.ListenTCP("tcp", addr)
+	require.NoError(t, err)
+	port := l.Addr().(*net.TCPAddr).Port
+	err = l.Close()
+	require.NoError(t, err)
+
+	// Adjust some of the defaults
+	defaults := server.Config{}
+	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
+	defaults.HTTPListenAddress = localhost
+	defaults.HTTPListenPort = port
+	defaults.GRPCListenAddress = localhost
+	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+
+	config := &scrapeconfig.PushTargetConfig{
+		Server: defaults,
+		Labels: model.LabelSet{
+			"pushserver": "pushserver2",
+			"keepme":     "label",
+		},
+		KeepTimestamp: true,
+	}
+
+	pt, err := NewPushTarget(logger, eh, []*relabel.Config{}, "job3", config)
+	require.NoError(t, err)
+
+	//
+	url := fmt.Sprintf("http://%s:%d/ready", localhost, port)
+	response, err := http.Get(url)
+
+	b, err := io.ReadAll(response.Body)
+	response_code := fmt.Sprint(response.StatusCode)
+	response_body := string(b)
+
+	fmt.Println(response_body)
+	wanted_response := "ready"
+	if response_body != wanted_response {
+		t.Errorf("response_body %q, want %q", response_body, wanted_response)
+	}
+	wanted_code := "200"
+	if response_code != wanted_code {
+		t.Errorf("response_body %q, want %q", response_code, wanted_code)
+	}
 
 	_ = pt.Stop()
 
