@@ -128,6 +128,7 @@ job "loki" {
         interval = "20s"
         timeout  = "1s"
       }
+    }
 
     task "ruler" {
       driver       = "docker"
@@ -503,6 +504,7 @@ job "loki" {
         interval = "20s"
         timeout  = "1s"
       }
+    }
 
     task "query-frontend" {
       driver       = "docker"

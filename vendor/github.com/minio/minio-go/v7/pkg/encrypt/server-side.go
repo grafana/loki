@@ -67,9 +67,9 @@ var DefaultPBKDF PBKDF = func(password, salt []byte) ServerSide {
 
 // Type is the server-side-encryption method. It represents one of
 // the following encryption methods:
-//  - SSE-C: server-side-encryption with customer provided keys
-//  - KMS:   server-side-encryption with managed keys
-//  - S3:    server-side-encryption using S3 storage encryption
+//   - SSE-C: server-side-encryption with customer provided keys
+//   - KMS:   server-side-encryption with managed keys
+//   - S3:    server-side-encryption using S3 storage encryption
 type Type string
 
 const (

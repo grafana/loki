@@ -3691,6 +3691,12 @@ http_config:
 # CLI flag: -s3.signature-version
 [signature_version: <string> | default = "v4"]
 
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -s3.storage-class
+[storage_class: <string> | default = "STANDARD"]
+
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
   # CLI flag: -s3.sse.type
@@ -3954,6 +3960,12 @@ http_config:
 # are: v4, v2.
 # CLI flag: -<prefix>.storage.s3.signature-version
 [signature_version: <string> | default = "v4"]
+
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -<prefix>.storage.s3.storage-class
+[storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.

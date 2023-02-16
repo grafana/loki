@@ -22,14 +22,14 @@ type identity struct {
 	PrincipalID string `json:"principalId"`
 }
 
-//  event bucket metadata.
+// event bucket metadata.
 type bucketMeta struct {
 	Name          string   `json:"name"`
 	OwnerIdentity identity `json:"ownerIdentity"`
 	ARN           string   `json:"arn"`
 }
 
-//  event object metadata.
+// event object metadata.
 type objectMeta struct {
 	Key          string            `json:"key"`
 	Size         int64             `json:"size,omitempty"`
@@ -40,7 +40,7 @@ type objectMeta struct {
 	Sequencer    string            `json:"sequencer"`
 }
 
-//  event server specific metadata.
+// event server specific metadata.
 type eventMeta struct {
 	SchemaVersion   string     `json:"s3SchemaVersion"`
 	ConfigurationID string     `json:"configurationId"`
