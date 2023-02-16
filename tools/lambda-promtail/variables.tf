@@ -66,6 +66,12 @@ variable "extra_labels" {
   default     = ""
 }
 
+variable "omit_extra_labels_prefix" {
+  type        = string
+  description = "Whether or not to omit the prefix `__extra_` from extra labels defined in the variable `extra_labels`."
+  default     = "false"
+}
+
 variable "batch_size" {
   type        = string
   description = "Determines when to flush the batch of logs (bytes)."
