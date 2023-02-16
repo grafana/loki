@@ -35,3 +35,11 @@ func (o *JSONLOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxL
 
 	fmt.Fprintln(o.w, string(out))
 }
+
+// WithWriter returns a copy of the LogOutput with the writer set to the given writer
+func (o JSONLOutput) WithWriter(w io.Writer) LogOutput {
+	return &JSONLOutput{
+		w:       w,
+		options: o.options,
+	}
+}

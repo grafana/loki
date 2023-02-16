@@ -32,7 +32,14 @@ func (o *DefaultOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, ma
 	} else {
 		fmt.Fprintf(o.w, "%s %s %s\n", color.BlueString(timestamp), color.RedString(padLabel(lbls, maxLabelsLen)), line)
 	}
+}
 
+// WithWriter returns a copy of the LogOutput with the writer set to the given writer
+func (o DefaultOutput) WithWriter(w io.Writer) LogOutput {
+	return &DefaultOutput{
+		w:       w,
+		options: o.options,
+	}
 }
 
 // add some padding after labels

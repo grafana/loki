@@ -234,6 +234,7 @@ Check the history of the branch `release-2.7.x`.
 
 #### Logcli
 * [7325](https://github.com/grafana/loki/pull/7325) **dbirks**: Document setting up command completion
+* [8518](https://github.com/grafana/loki/pull/8518) **SN9NV**: Add parallel flags
 
 #### Fluent Bit
 
