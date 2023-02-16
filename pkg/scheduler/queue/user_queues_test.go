@@ -18,7 +18,7 @@ import (
 )
 
 func TestQueues(t *testing.T) {
-	uq := newUserQueues(0, 0)
+	uq := newTenantQueues(0, 0)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -76,7 +76,7 @@ func TestQueues(t *testing.T) {
 }
 
 func TestQueuesOnTerminatingQuerier(t *testing.T) {
-	uq := newUserQueues(0, 0)
+	uq := newTenantQueues(0, 0)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -106,7 +106,7 @@ func TestQueuesOnTerminatingQuerier(t *testing.T) {
 }
 
 func TestQueuesWithQueriers(t *testing.T) {
-	uq := newUserQueues(0, 0)
+	uq := newTenantQueues(0, 0)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -133,7 +133,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 		getOrAdd(t, uq, uid, maxQueriersPerUser)
 
 		// Verify it has maxQueriersPerUser queriers assigned now.
-		qs := uq.userQueues[uid].queriers
+		qs := uq.queues[uid].queriers
 		assert.Equal(t, maxQueriersPerUser, len(qs))
 	}
 
@@ -144,7 +144,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	for q := 0; q < queriers; q++ {
 		qid := fmt.Sprintf("querier-%d", q)
 
-		lastUserIndex := FirstUser
+		lastUserIndex := FirstTenant
 		for {
 			_, _, newIx := uq.getNextQueueForQuerier(lastUserIndex, qid)
 			if newIx < lastUserIndex {
@@ -183,13 +183,13 @@ func TestQueuesConsistency(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			uq := newUserQueues(0, testData.forgetDelay)
+			uq := newTenantQueues(0, testData.forgetDelay)
 			assert.NotNil(t, uq)
 			assert.NoError(t, isConsistent(uq))
 
 			r := rand.New(rand.NewSource(time.Now().Unix()))
 
-			lastUserIndexes := map[string]UserIndex{}
+			lastUserIndexes := map[string]TenantIndex{}
 
 			conns := map[string]int{}
 
@@ -232,7 +232,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetDelay)
+	uq := newTenantQueues(0, forgetDelay)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -324,7 +324,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetDelay)
+	uq := newTenantQueues(0, forgetDelay)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -397,7 +397,7 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan Request {
+func getOrAdd(t *testing.T, uq *tenantQueues, tenant string, maxQueriers int) RequestChannel {
 	q := uq.getOrAddQueue(tenant, maxQueriers)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
@@ -405,8 +405,8 @@ func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan Req
 	return q
 }
 
-func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...chan Request) int {
-	var n chan Request
+func confirmOrderForQuerier(t *testing.T, uq *tenantQueues, querier string, lastUserIndex TenantIndex, qs ...RequestChannel) TenantIndex {
+	var n RequestChannel
 	for _, q := range qs {
 		n, _, lastUserIndex = uq.getNextQueueForQuerier(lastUserIndex, querier)
 		assert.Equal(t, q, n)
@@ -415,14 +415,14 @@ func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIn
 	return lastUserIndex
 }
 
-func isConsistent(uq *queues) error {
+func isConsistent(uq *tenantQueues) error {
 	if len(uq.sortedQueriers) != len(uq.queriers) {
 		return fmt.Errorf("inconsistent number of sorted queriers and querier connections")
 	}
 
 	uc := 0
-	for ix, u := range uq.users {
-		q := uq.userQueues[u]
+	for ix, u := range uq.tenants {
+		q := uq.queues[u]
 		if u != "" && q == nil {
 			return fmt.Errorf("user %s doesn't have queue", u)
 		}
@@ -452,7 +452,7 @@ func isConsistent(uq *queues) error {
 		}
 	}
 
-	if uc != len(uq.userQueues) {
+	if uc != len(uq.queues) {
 		return fmt.Errorf("inconsistent number of users list and user queues")
 	}
 
@@ -460,9 +460,9 @@ func isConsistent(uq *queues) error {
 }
 
 // getUsersByQuerier returns the list of users handled by the provided querierID.
-func getUsersByQuerier(queues *queues, querierID string) []string {
+func getUsersByQuerier(queues *tenantQueues, querierID string) []string {
 	var userIDs []string
-	for userID, q := range queues.userQueues {
+	for userID, q := range queues.queues {
 		if q.queriers == nil {
 			// If it's nil then all queriers can handle this user.
 			userIDs = append(userIDs, userID)
@@ -478,14 +478,14 @@ func getUsersByQuerier(queues *queues, querierID string) []string {
 func TestShuffleQueriers(t *testing.T) {
 	allQueriers := []string{"a", "b", "c", "d", "e"}
 
-	require.Nil(t, shuffleQueriersForUser(12345, 10, allQueriers, nil))
-	require.Nil(t, shuffleQueriersForUser(12345, len(allQueriers), allQueriers, nil))
+	require.Nil(t, shuffleQueriersForTenants(12345, 10, allQueriers, nil))
+	require.Nil(t, shuffleQueriersForTenants(12345, len(allQueriers), allQueriers, nil))
 
-	r1 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
+	r1 := shuffleQueriersForTenants(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, len(r1))
 
 	// Same input produces same output.
-	r2 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
+	r2 := shuffleQueriersForTenants(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, len(r2))
 	require.Equal(t, r1, r2)
 }
@@ -507,7 +507,7 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 			toSelect = 3
 		}
 
-		selected := shuffleQueriersForUser(r.Int63(), toSelect, allSortedQueriers, nil)
+		selected := shuffleQueriersForTenants(r.Int63(), toSelect, allSortedQueriers, nil)
 
 		require.Equal(t, toSelect, len(selected))
 

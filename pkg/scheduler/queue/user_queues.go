@@ -25,15 +25,15 @@ type querier struct {
 	disconnectedAt time.Time
 }
 
-// This struct holds user queues for pending requests. It also keeps track of connected queriers,
-// and mapping between users and queriers.
-type queues struct {
-	userQueues map[string]*userQueue
+// This struct holds tenant queues for pending requests. It also keeps track of connected queriers,
+// and mapping between tenants and queriers.
+type tenantQueues struct {
+	queues map[string]*tenantQueue
 
-	// List of all users with queues, used for iteration when searching for next queue to handle.
-	// Users removed from the middle are replaced with "". To avoid skipping users during iteration, we only shrink
+	// List of all tenants with queues, used for iteration when searching for next queue to handle.
+	// Tenants removed from the middle are replaced with "". To avoid skipping tenants during iteration, we only shrink
 	// this list when there are ""'s at the end of it.
-	users []string
+	tenants []string
 
 	maxUserQueueSize int
 
@@ -48,8 +48,8 @@ type queues struct {
 	sortedQueriers []string
 }
 
-type userQueue struct {
-	ch chan Request
+type tenantQueue struct {
+	ch RequestChannel
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
@@ -64,10 +64,10 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration) *queues {
-	return &queues{
-		userQueues:       map[string]*userQueue{},
-		users:            nil,
+func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
+	return &tenantQueues{
+		queues:           map[string]*tenantQueue{},
+		tenants:          nil,
 		maxUserQueueSize: maxUserQueueSize,
 		forgetDelay:      forgetDelay,
 		queriers:         map[string]*querier{},
@@ -75,32 +75,32 @@ func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration) *queues {
 	}
 }
 
-func (q *queues) len() int {
-	return len(q.userQueues)
+func (q *tenantQueues) len() int {
+	return len(q.queues)
 }
 
-func (q *queues) deleteQueue(userID string) {
-	uq := q.userQueues[userID]
+func (q *tenantQueues) deleteQueue(tenant string) {
+	uq := q.queues[tenant]
 	if uq == nil {
 		return
 	}
 
-	delete(q.userQueues, userID)
-	q.users[uq.index] = ""
+	delete(q.queues, tenant)
+	q.tenants[uq.index] = ""
 
 	// Shrink users list size if possible. This is safe, and no users will be skipped during iteration.
-	for ix := len(q.users) - 1; ix >= 0 && q.users[ix] == ""; ix-- {
-		q.users = q.users[:ix]
+	for ix := len(q.tenants) - 1; ix >= 0 && q.tenants[ix] == ""; ix-- {
+		q.tenants = q.tenants[:ix]
 	}
 }
 
-// Returns existing or new queue for user.
-// MaxQueriers is used to compute which queriers should handle requests for this user.
-// If maxQueriers is <= 0, all queriers can handle this user's requests.
+// Returns existing or new queue for a tenant.
+// MaxQueriers is used to compute which queriers should handle requests for this tenant.
+// If maxQueriers is <= 0, all queriers can handle this tenant's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
-	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
-	if userID == "" {
+func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) RequestChannel {
+	// Empty tenant is not allowed, as that would break our tenants list ("" is used for free spot).
+	if tenant == "" {
 		return nil
 	}
 
@@ -108,35 +108,35 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 		maxQueriers = 0
 	}
 
-	uq := q.userQueues[userID]
+	uq := q.queues[tenant]
 
 	if uq == nil {
-		uq = &userQueue{
-			ch:    make(chan Request, q.maxUserQueueSize),
-			seed:  util.ShuffleShardSeed(userID, ""),
+		uq = &tenantQueue{
+			ch:    make(RequestChannel, q.maxUserQueueSize),
+			seed:  util.ShuffleShardSeed(tenant, ""),
 			index: -1,
 		}
-		q.userQueues[userID] = uq
+		q.queues[tenant] = uq
 
 		// Add user to the list of users... find first free spot, and put it there.
-		for ix, u := range q.users {
+		for ix, u := range q.tenants {
 			if u == "" {
 				uq.index = ix
-				q.users[ix] = userID
+				q.tenants[ix] = tenant
 				break
 			}
 		}
 
 		// ... or add to the end.
 		if uq.index < 0 {
-			uq.index = len(q.users)
-			q.users = append(q.users, userID)
+			uq.index = len(q.tenants)
+			q.tenants = append(q.tenants, tenant)
 		}
 	}
 
 	if uq.maxQueriers != maxQueriers {
 		uq.maxQueriers = maxQueriers
-		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
+		uq.queriers = shuffleQueriersForTenants(uq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
 	return uq.ch
@@ -145,7 +145,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *queues) getNextQueueForQuerier(lastUserIndex UserIndex, querierID string) (chan Request, string, UserIndex) {
+func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex TenantIndex, querierID string) (RequestChannel, string, TenantIndex) {
 	uid := lastUserIndex
 
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
@@ -154,21 +154,21 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex UserIndex, querierID strin
 		return nil, "", uid
 	}
 
-	for iters := 0; iters < len(q.users); iters++ {
+	for iters := 0; iters < len(q.tenants); iters++ {
 		uid = uid + 1
 
 		// Don't use "mod len(q.users)", as that could skip users at the beginning of the list
 		// for example when q.users has shrunk since last call.
-		if int(uid) >= len(q.users) {
+		if int(uid) >= len(q.tenants) {
 			uid = 0
 		}
 
-		u := q.users[uid]
+		u := q.tenants[uid]
 		if u == "" {
 			continue
 		}
 
-		q := q.userQueues[u]
+		q := q.queues[u]
 
 		if q.queriers != nil {
 			if _, ok := q.queriers[querierID]; !ok {
@@ -182,7 +182,7 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex UserIndex, querierID strin
 	return nil, "", uid
 }
 
-func (q *queues) addQuerierConnection(querierID string) {
+func (q *tenantQueues) addQuerierConnection(querierID string) {
 	info := q.queriers[querierID]
 	if info != nil {
 		info.connections++
@@ -202,7 +202,7 @@ func (q *queues) addQuerierConnection(querierID string) {
 	q.recomputeUserQueriers()
 }
 
-func (q *queues) removeQuerierConnection(querierID string, now time.Time) {
+func (q *tenantQueues) removeQuerierConnection(querierID string, now time.Time) {
 	info := q.queriers[querierID]
 	if info == nil || info.connections <= 0 {
 		panic("unexpected number of connections for querier")
@@ -227,7 +227,7 @@ func (q *queues) removeQuerierConnection(querierID string, now time.Time) {
 	info.disconnectedAt = now
 }
 
-func (q *queues) removeQuerier(querierID string) {
+func (q *tenantQueues) removeQuerier(querierID string) {
 	delete(q.queriers, querierID)
 
 	ix := sort.SearchStrings(q.sortedQueriers, querierID)
@@ -241,7 +241,7 @@ func (q *queues) removeQuerier(querierID string) {
 }
 
 // notifyQuerierShutdown records that a querier has sent notification about a graceful shutdown.
-func (q *queues) notifyQuerierShutdown(querierID string) {
+func (q *tenantQueues) notifyQuerierShutdown(querierID string) {
 	info := q.queriers[querierID]
 	if info == nil {
 		// The querier may have already been removed, so we just ignore it.
@@ -261,7 +261,7 @@ func (q *queues) notifyQuerierShutdown(querierID string) {
 
 // forgetDisconnectedQueriers removes all disconnected queriers that have gone since at least
 // the forget delay. Returns the number of forgotten queriers.
-func (q *queues) forgetDisconnectedQueriers(now time.Time) int {
+func (q *tenantQueues) forgetDisconnectedQueriers(now time.Time) int {
 	// Nothing to do if the forget delay is disabled.
 	if q.forgetDelay == 0 {
 		return 0
@@ -281,18 +281,18 @@ func (q *queues) forgetDisconnectedQueriers(now time.Time) int {
 	return forgotten
 }
 
-func (q *queues) recomputeUserQueriers() {
+func (q *tenantQueues) recomputeUserQueriers() {
 	scratchpad := make([]string, 0, len(q.sortedQueriers))
 
-	for _, uq := range q.userQueues {
-		uq.queriers = shuffleQueriersForUser(uq.seed, uq.maxQueriers, q.sortedQueriers, scratchpad)
+	for _, uq := range q.queues {
+		uq.queriers = shuffleQueriersForTenants(uq.seed, uq.maxQueriers, q.sortedQueriers, scratchpad)
 	}
 }
 
-// shuffleQueriersForUser returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
+// shuffleQueriersForTenants returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
 // In that case *all* queriers should be used.
 // Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
-func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
+func shuffleQueriersForTenants(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
 	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
 		return nil
 	}
