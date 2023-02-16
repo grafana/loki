@@ -266,7 +266,7 @@ func (c *Config) Validate() error {
 
 func ValidateConfigTimeouts(c *Config) error {
 	if c.Server.HTTPServerReadTimeout < time.Duration(c.LimitsConfig.QueryTimeout) {
-		return fmt.Errorf("invalid read timeout, the server read timeout (%s) must be larger than the limits timeout (%s)", c.Server.HTTPServerReadTimeout, c.LimitsConfig.QueryTimeout)
+		return fmt.Errorf("invalid read timeout, the server read timeout (%s) must be longer than the limits timeout (%s)", c.Server.HTTPServerReadTimeout, c.LimitsConfig.QueryTimeout)
 	}
 
 	if c.Server.HTTPServerWriteTimeout < time.Duration(c.LimitsConfig.QueryTimeout) {
