@@ -28,7 +28,7 @@ data "aws_iam_policy_document" "logs" {
   }
 
   dynamic "statement" {
-    for_each = toset(var.bucket_names)
+    for_each = var.bucket_names
     content {
       actions = [
         "s3:GetObject",
@@ -138,7 +138,7 @@ resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
 # However, if you need to provide an actual filter_pattern for a specific log group you should
 # copy this block and modify it accordingly.
 resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
-  for_each        = toset(var.log_group_names)
+  for_each        = var.log_group_names
   name            = "lambdafunction_logfilter_${each.value}"
   log_group_name  = each.value
   destination_arn = aws_lambda_function.lambda_promtail.arn
@@ -148,7 +148,7 @@ resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
 }
 
 resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
-  for_each      = toset(var.bucket_names)
+  for_each      = var.bucket_names
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_promtail.arn
   principal     = "s3.amazonaws.com"
@@ -156,7 +156,7 @@ resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
 }
 
 resource "aws_kinesis_stream" "kinesis_stream" {
-  for_each         = toset(var.kinesis_stream_name)
+  for_each         = var.kinesis_stream_name
   name             = each.value
   shard_count      = 1
   retention_period = 48
@@ -172,7 +172,7 @@ resource "aws_kinesis_stream" "kinesis_stream" {
 }
 
 resource "aws_lambda_event_source_mapping" "kinesis_event_source" {
-  for_each          = toset(var.kinesis_stream_name)
+  for_each          = var.kinesis_stream_name
   event_source_arn  = aws_kinesis_stream.kinesis_stream[each.key].arn
   function_name     = aws_lambda_function.lambda_promtail.arn
   starting_position = "LATEST"
@@ -180,7 +180,7 @@ resource "aws_lambda_event_source_mapping" "kinesis_event_source" {
 }
 
 resource "aws_s3_bucket_notification" "push-to-lambda-promtail" {
-  for_each = toset(var.bucket_names)
+  for_each = var.bucket_names
   bucket   = each.value
 
   lambda_function {
