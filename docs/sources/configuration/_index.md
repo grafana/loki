@@ -1846,7 +1846,7 @@ the index to a backing cache store.
 <span style="background-color:#f3f973;">The memcached configuration variable addresses is experimental.</span>
 
 ```yaml
-# NOTE: `fifocache` is deprecated. Use `embedded-cache` instead.
+# NOTE: `fifocache` is deprecated. Use `embedded_cache` instead.
 # Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean>]
@@ -1857,9 +1857,9 @@ the index to a backing cache store.
 [default_validity: <duration>]
 
 # Configures embedded cache settings.
-embedded-cache:
+embedded_cache:
   # Whether embedded cache is enabled.
-  # CLI flag: -<prefix>.embeddec-cache.enabled
+  # CLI flag: -<prefix>.embedded-cache.enabled
   [enabled: <bool> | default = false]
 
   # Maximum memory size of the cache in MB.
