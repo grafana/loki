@@ -13,7 +13,7 @@ keywords:
 
 # Configure monitoring and alerting
 
-By default this Helm Chart configures meta-monitoring of metrics (service monitoring) and logs (self monitoring). This guide will walk you through configuring monitoring using a monitoring solution local to the same cluster Loki is installed in.
+By default this Helm Chart configures meta-monitoring of metrics (service monitoring) and logs (self monitoring). This topic will walk you through configuring monitoring using a monitoring solution local to the same cluster where Loki is installed.
 
 The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. Scraping this Loki cluster using the scrape config defined in the `SerivceMonitor` resource is required for the included dashboards to work. A `MetricsInstance` can be configured to write the metrics to a remote Prometheus instance such as Grafana Cloud Metrics.
 
