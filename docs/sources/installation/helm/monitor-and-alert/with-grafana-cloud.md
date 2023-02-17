@@ -19,7 +19,7 @@ This guide will walk you through using Grafana Cloud to monitor a Loki installat
 **Before you begin:**
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A Grafana Cloud account and instance
+- A Grafana Cloud account and stack (including Cloud Grafana, Cloud Metrics, and Cloud Logs)
 - [Grafana Kubernetes Monitoring using Agent](https://grafana.com/docs/grafana-cloud/kubernetes-monitoring/configuration/config-k8s-agent-guide/) configured for the Kubernetes cluster
 - A running Loki deployment installed in that Kubernetes cluster via the Helm chart
 
@@ -34,33 +34,33 @@ Walking through this installation will create two Grafana Agent configurations, 
 1. Get your Cloud Metrics and Cloud Logs credentials for your Grafana Cloud account.
 1. Create a secret in the same namespace as Loki to store your Cloud Logs credentials.
 
-```bash
-cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
-apiVersion: v1
-data:
-  password: <BASE64_ENCODED_CLOUD_LOGS_PASSWORD>
-  username: <BASE64_ENCODED_CLOUD_LOGS_USERNAME>
-kind: Secret
-metadata:
-  name: grafana-cloud-logs-credentials
-type: Opaque
-EOF
-```
+    ```bash
+    cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
+    apiVersion: v1
+    data:
+      password: <BASE64_ENCODED_CLOUD_LOGS_PASSWORD>
+      username: <BASE64_ENCODED_CLOUD_LOGS_USERNAME>
+    kind: Secret
+    metadata:
+      name: grafana-cloud-logs-credentials
+    type: Opaque
+    EOF
+    ```
 
 1. Create a secret to store your Cloud Metrics credentials.
 
-```bash
-cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
-apiVersion: v1
-data:
-  password: <BASE64_ENCODED_CLOUD_METRICS_PASSWORD>
-  username: <BASE64_ENCODED_CLOUD_METRICS_USERNAME>
-kind: Secret
-metadata:
-  name: grafana-cloud-metrics-credentials
-type: Opaque
-EOF
-```
+    ```bash
+    cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
+    apiVersion: v1
+    data:
+      password: <BASE64_ENCODED_CLOUD_METRICS_PASSWORD>
+      username: <BASE64_ENCODED_CLOUD_METRICS_USERNAME>
+    kind: Secret
+    metadata:
+      name: grafana-cloud-metrics-credentials
+    type: Opaque
+    EOF
+    ```
 
 1. Enable monitoring metrics and logs for the Loki installation to be sent your cloud database instances by adding the following to your Helm `values.yaml` file:
 
