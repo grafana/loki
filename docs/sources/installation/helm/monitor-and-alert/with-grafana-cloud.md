@@ -14,7 +14,7 @@ keywords:
 
 # Configure Monitoring and Alerting of Loki Using Grafana Cloud
 
-This guide will walk you through using Grafana Cloud to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a Grafana Cloud Logs instance. This approach also does not require the installation of the Prometheus Operator and instead sends metrics to a Grafana Cloud Metrics instance. Using Grafana Cloud to monitor Loki has the added benefit of being able to troubleshoot problems with Loki when the Helm installed Loki is down, as the logs will still be available in the Grafana Cloud Logs instance.
+This topic will walk you through using Grafana Cloud to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a Grafana Cloud Logs instance. This approach also does not require the installation of the Prometheus Operator and instead sends metrics to a Grafana Cloud Metrics instance. Using Grafana Cloud to monitor Loki has the added benefit of being able to troubleshoot problems with Loki when the Helm installed Loki is down, as the logs will still be available in the Grafana Cloud Logs instance.
 
 **Before you begin:**
 
@@ -34,67 +34,67 @@ Walking through this installation will create two Grafana Agent configurations, 
 1. Get your Cloud Metrics and Cloud Logs credentials for your Grafana Cloud account.
 1. Create a secret in the same namespace as Loki to store your Cloud Logs credentials.
 
-    ```bash
-    cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
-    apiVersion: v1
-    data:
-      password: <BASE64_ENCODED_CLOUD_LOGS_PASSWORD>
-      username: <BASE64_ENCODED_CLOUD_LOGS_USERNAME>
-    kind: Secret
-    metadata:
-      name: grafana-cloud-logs-credentials
-    type: Opaque
-    EOF
-    ```
+   ```bash
+   cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
+   apiVersion: v1
+   data:
+     password: <BASE64_ENCODED_CLOUD_LOGS_PASSWORD>
+     username: <BASE64_ENCODED_CLOUD_LOGS_USERNAME>
+   kind: Secret
+   metadata:
+     name: grafana-cloud-logs-credentials
+   type: Opaque
+   EOF
+   ```
 
 1. Create a secret to store your Cloud Metrics credentials.
 
-    ```bash
-    cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
-    apiVersion: v1
-    data:
-      password: <BASE64_ENCODED_CLOUD_METRICS_PASSWORD>
-      username: <BASE64_ENCODED_CLOUD_METRICS_USERNAME>
-    kind: Secret
-    metadata:
-      name: grafana-cloud-metrics-credentials
-    type: Opaque
-    EOF
-    ```
+   ```bash
+   cat <<'EOF' | NAMESPACE=loki /bin/sh -c 'kubectl apply -n $NAMESPACE -f -'
+   apiVersion: v1
+   data:
+     password: <BASE64_ENCODED_CLOUD_METRICS_PASSWORD>
+     username: <BASE64_ENCODED_CLOUD_METRICS_USERNAME>
+   kind: Secret
+   metadata:
+     name: grafana-cloud-metrics-credentials
+   type: Opaque
+   EOF
+   ```
 
 1. Enable monitoring metrics and logs for the Loki installation to be sent your cloud database instances by adding the following to your Helm `values.yaml` file:
 
-    ```yaml
-    ---
-    monitoring:
-      dashboards:
-        enabled: false
-      rules:
-        enabled: false
-      selfMonitoring:
-        logsInstance:
-          clients:
-            - url: <CLOUD_METRICS_URL>
-              basicAuth:
-                username:
-                  name: grafana-cloud-logs-credentials
-                  key: username
-                password:
-                  name: grafana-cloud-logs-credentials
-                  key: password
-      serviceMonitor:
-        metricsInstance:
-          remoteWrite:
-            - url: <CLOUD_LOGS_URL>
-              basicAuth:
-                username:
-                  name: grafana-cloud-metrics-credentials
-                  key: username
-                password:
-                  name: grafana-cloud-metrics-credentials
-                  key: password
-    ```
+   ```yaml
+   ---
+   monitoring:
+     dashboards:
+       enabled: false
+     rules:
+       enabled: false
+     selfMonitoring:
+       logsInstance:
+         clients:
+           - url: <CLOUD_METRICS_URL>
+             basicAuth:
+               username:
+                 name: grafana-cloud-logs-credentials
+                 key: username
+               password:
+                 name: grafana-cloud-logs-credentials
+                 key: password
+     serviceMonitor:
+       metricsInstance:
+         remoteWrite:
+           - url: <CLOUD_LOGS_URL>
+             basicAuth:
+               username:
+                 name: grafana-cloud-metrics-credentials
+                 key: username
+               password:
+                 name: grafana-cloud-metrics-credentials
+                 key: password
+   ```
 
-1. Install the "Self-hosted Grafana Loki" integration by going to your hosted Grafana instance, clicking the lightning bold icon labeled "Integrations and Connections", then search for and install the "Self-hosted Grafana Loki" integration.
+1. Install the self-hosted Grafana Loki integration by going to your hosted Grafana instance, clicking the lightning bolt icon labeled **Integrations and Connections**, then search for and install the **Self-hosted Grafana Loki** integration.
 
-1. Once the "Self-hosted Grafana Loki" integration is installed, you should be able to click the `View Dashboards` button to see the installed dashboards.
+1. Once the self-hosted Grafana Loki integration is installed, you should be able to click the **View Dashboards** button to see the installed dashboards.
