@@ -62,7 +62,7 @@ type: Opaque
 EOF
 ```
 
-1. Enable monitoring metrics and logs for the Loki installation to be sent your cloud database instances by adding the following to you Helm `values.yaml` file:
+1. Enable monitoring metrics and logs for the Loki installation to be sent your cloud database instances by adding the following to your Helm `values.yaml` file:
 
     ```yaml
     ---
