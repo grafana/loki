@@ -1,7 +1,3 @@
-provider "aws" {
-  region = "us-east-2"
-}
-
 data "aws_region" "current" {}
 
 resource "aws_iam_role" "iam_for_lambda" {
