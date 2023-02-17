@@ -456,6 +456,17 @@ func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, er
 		req.Header.Set("X-Scope-OrgID", tenantID)
 	}
 
+	// Add custom headers on request
+	if len(c.cfg.Headers) > 0 {
+		for k, v := range c.cfg.Headers {
+			if req.Header.Get(k) == "" {
+				req.Header.Add(k, v)
+			} else {
+				level.Warn(c.logger).Log("msg", "custom header key already exists, skipping", "key", k)
+			}
+		}
+	}
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return -1, err

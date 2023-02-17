@@ -26,7 +26,7 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
 * Deploy the storage size calculator by executing following command in the terminal:
 
   ```console
-  make deploy-size-calculator REGISTRY_ORG=$YOUR_QUAY_ORG
+  make deploy-size-calculator REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG
   ```
 
   where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images.
@@ -88,7 +88,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
   After replacing the image name, deploy the storage size calculator to test your changes:
 
   ```console
-  make deploy-size-calculator REGISTRY_ORG=$YOUR_QUAY_ORG
+  make deploy-size-calculator REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG
   ```
 
   where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you pushed your container image.

@@ -11,7 +11,12 @@ import (
 	"testing"
 	"time"
 
-	blob "github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -22,12 +27,9 @@ import (
 	"github.com/thanos-io/objstore/exthttp"
 )
 
-const (
-	azureDefaultEndpoint = "blob.core.windows.net"
-)
-
 // DefaultConfig for Azure objstore client.
 var DefaultConfig = Config{
+	Endpoint: "blob.core.windows.net",
 	HTTPConfig: exthttp.HTTPConfig{
 		IdleConnTimeout:       model.Duration(90 * time.Second),
 		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
@@ -46,12 +48,14 @@ type Config struct {
 	StorageAccountKey  string             `yaml:"storage_account_key"`
 	ContainerName      string             `yaml:"container"`
 	Endpoint           string             `yaml:"endpoint"`
-	MaxRetries         int                `yaml:"max_retries"`
-	MSIResource        string             `yaml:"msi_resource"`
 	UserAssignedID     string             `yaml:"user_assigned_id"`
-	PipelineConfig     PipelineConfig     `yaml:"pipeline_config"`
+	MaxRetries         int                `yaml:"max_retries"`
 	ReaderConfig       ReaderConfig       `yaml:"reader_config"`
+	PipelineConfig     PipelineConfig     `yaml:"pipeline_config"`
 	HTTPConfig         exthttp.HTTPConfig `yaml:"http_config"`
+
+	// Deprecated: Is automatically set by the Azure SDK.
+	MSIResource string `yaml:"msi_resource"`
 }
 
 type ReaderConfig struct {
@@ -65,51 +69,19 @@ type PipelineConfig struct {
 	MaxRetryDelay model.Duration `yaml:"max_retry_delay"`
 }
 
-// Bucket implements the store.Bucket interface against Azure APIs.
-type Bucket struct {
-	logger       log.Logger
-	containerURL blob.ContainerURL
-	config       *Config
-}
-
 // Validate checks to see if any of the config options are set.
 func (conf *Config) validate() error {
-
 	var errMsg []string
-	if conf.MSIResource == "" {
-		if conf.UserAssignedID == "" {
-			if conf.StorageAccountName == "" ||
-				conf.StorageAccountKey == "" {
-				errMsg = append(errMsg, "invalid Azure storage configuration")
-			}
-			if conf.StorageAccountName == "" && conf.StorageAccountKey != "" {
-				errMsg = append(errMsg, "no Azure storage_account specified while storage_account_key is present in config file; both should be present")
-			}
-			if conf.StorageAccountName != "" && conf.StorageAccountKey == "" {
-				errMsg = append(errMsg, "no Azure storage_account_key specified while storage_account is present in config file; both should be present")
-			}
-		} else {
-			if conf.StorageAccountName == "" {
-				errMsg = append(errMsg, "UserAssignedID is configured but storage account name is missing")
-			}
-			if conf.StorageAccountKey != "" {
-				errMsg = append(errMsg, "UserAssignedID is configured but storage account key is used")
-			}
-		}
-	} else {
-		if conf.StorageAccountName == "" {
-			errMsg = append(errMsg, "MSI resource is configured but storage account name is missing")
-		}
-		if conf.StorageAccountKey != "" {
-			errMsg = append(errMsg, "MSI resource is configured but storage account key is used")
-		}
+	if conf.UserAssignedID != "" && conf.StorageAccountKey != "" {
+		errMsg = append(errMsg, "user_assigned_id cannot be set when using storage_account_key authentication")
+	}
+
+	if conf.StorageAccountName == "" {
+		errMsg = append(errMsg, "storage_account_name is required but not configured")
 	}
 
 	if conf.ContainerName == "" {
-		errMsg = append(errMsg, "no Azure container specified")
-	}
-	if conf.Endpoint == "" {
-		conf.Endpoint = azureDefaultEndpoint
+		errMsg = append(errMsg, "no container specified")
 	}
 
 	if conf.PipelineConfig.MaxTries < 0 {
@@ -153,15 +125,24 @@ func parseConfig(conf []byte) (Config, error) {
 	return config, nil
 }
 
+// Bucket implements the store.Bucket interface against Azure APIs.
+type Bucket struct {
+	logger           log.Logger
+	containerClient  *container.Client
+	containerName    string
+	readerMaxRetries int
+}
+
 // NewBucket returns a new Bucket using the provided Azure config.
 func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket, error) {
 	level.Debug(logger).Log("msg", "creating new Azure bucket connection", "component", component)
-
 	conf, err := parseConfig(azureConfig)
 	if err != nil {
 		return nil, err
 	}
-
+	if conf.MSIResource != "" {
+		level.Warn(logger).Log("msg", "The field msi_resource has been deprecated and should no longer be set")
+	}
 	return NewBucketWithConfig(logger, conf, component)
 }
 
@@ -171,30 +152,30 @@ func NewBucketWithConfig(logger log.Logger, conf Config, component string) (*Buc
 		return nil, err
 	}
 
-	ctx := context.Background()
-	container, err := createContainer(ctx, logger, conf)
+	containerClient, err := getContainerClient(conf)
 	if err != nil {
-		ret, ok := err.(blob.StorageError)
-		if !ok {
-			return nil, errors.Wrapf(err, "Azure API return unexpected error: %T\n", err)
+		return nil, err
+	}
+
+	// Check if storage account container already exists, and create one if it does not.
+	ctx := context.Background()
+	_, err = containerClient.GetProperties(ctx, &container.GetPropertiesOptions{})
+	if err != nil {
+		if !bloberror.HasCode(err, bloberror.ContainerNotFound) {
+			return nil, err
 		}
-		if ret.ServiceCode() == "ContainerAlreadyExists" {
-			level.Debug(logger).Log("msg", "Getting connection to existing Azure blob container", "container", conf.ContainerName)
-			container, err = getContainer(ctx, logger, conf)
-			if err != nil {
-				return nil, errors.Wrapf(err, "cannot get existing Azure blob container: %s", container)
-			}
-		} else {
-			return nil, errors.Wrapf(err, "error creating Azure blob container: %s", container)
+		_, err := containerClient.Create(ctx, nil)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error creating Azure blob container: %s", conf.ContainerName)
 		}
-	} else {
-		level.Info(logger).Log("msg", "Azure blob container successfully created", "address", container)
+		level.Info(logger).Log("msg", "Azure blob container successfully created", "address", conf.ContainerName)
 	}
 
 	bkt := &Bucket{
-		logger:       logger,
-		containerURL: container,
-		config:       &conf,
+		logger:           logger,
+		containerClient:  containerClient,
+		containerName:    conf.ContainerName,
+		readerMaxRetries: conf.ReaderConfig.MaxRetryRequests,
 	}
 	return bkt, nil
 }
@@ -207,60 +188,42 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		prefix += DirDelim
 	}
 
-	marker := blob.Marker{}
 	params := objstore.ApplyIterOptions(options...)
-	listOptions := blob.ListBlobsSegmentOptions{Prefix: prefix}
-
-	for i := 1; ; i++ {
-		var (
-			blobPrefixes []blob.BlobPrefix
-			blobItems    []blob.BlobItemInternal
-		)
-
-		if params.Recursive {
-			list, err := b.containerURL.ListBlobsFlatSegment(ctx, marker, listOptions)
+	if params.Recursive {
+		opt := &container.ListBlobsFlatOptions{Prefix: &prefix}
+		pager := b.containerClient.NewListBlobsFlatPager(opt)
+		for pager.More() {
+			resp, err := pager.NextPage(ctx)
 			if err != nil {
-				return errors.Wrapf(err, "cannot list flat blobs with prefix %s (iteration #%d)", dir, i)
+				return err
 			}
-
-			marker = list.NextMarker
-			blobItems = list.Segment.BlobItems
-			blobPrefixes = nil
-		} else {
-			list, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, DirDelim, listOptions)
-			if err != nil {
-				return errors.Wrapf(err, "cannot list hierarchy blobs with prefix %s (iteration #%d)", dir, i)
+			for _, blob := range resp.Segment.BlobItems {
+				if err := f(*blob.Name); err != nil {
+					return err
+				}
 			}
-
-			marker = list.NextMarker
-			blobItems = list.Segment.BlobItems
-			blobPrefixes = list.Segment.BlobPrefixes
 		}
+		return nil
+	}
 
-		var listNames []string
-
-		for _, blob := range blobItems {
-			listNames = append(listNames, blob.Name)
+	opt := &container.ListBlobsHierarchyOptions{Prefix: &prefix}
+	pager := b.containerClient.NewListBlobsHierarchyPager(DirDelim, opt)
+	for pager.More() {
+		resp, err := pager.NextPage(ctx)
+		if err != nil {
+			return err
 		}
-
-		for _, blobPrefix := range blobPrefixes {
-			listNames = append(listNames, blobPrefix.Name)
-		}
-
-		for _, name := range listNames {
-			if err := f(name); err != nil {
+		for _, blobItem := range resp.Segment.BlobItems {
+			if err := f(*blobItem.Name); err != nil {
 				return err
 			}
 		}
-
-		// Continue iterating if we are not done.
-		if !marker.NotDone() {
-			break
+		for _, blobPrefix := range resp.Segment.BlobPrefixes {
+			if err := f(*blobPrefix.Name); err != nil {
+				return err
+			}
 		}
-
-		level.Debug(b.logger).Log("msg", "requesting next iteration of listing blobs", "last_entries", len(listNames), "iteration", i)
 	}
-
 	return nil
 }
 
@@ -269,95 +232,72 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorCode := parseError(err.Error())
-	if errorCode == "InvalidUri" || errorCode == "BlobNotFound" {
-		return true
-	}
-
-	return false
+	return bloberror.HasCode(err, bloberror.BlobNotFound) || bloberror.HasCode(err, bloberror.InvalidURI)
 }
 
-func (b *Bucket) getBlobReader(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
-	level.Debug(b.logger).Log("msg", "getting blob", "blob", name, "offset", offset, "length", length)
+func (b *Bucket) getBlobReader(ctx context.Context, name string, httpRange blob.HTTPRange) (io.ReadCloser, error) {
+	level.Debug(b.logger).Log("msg", "getting blob", "blob", name, "offset", httpRange.Offset, "length", httpRange.Count)
 	if name == "" {
-		return nil, errors.New("X-Ms-Error-Code: [EmptyContainerName]")
+		return nil, errors.New("blob name cannot be empty")
 	}
-	exists, err := b.Exists(ctx, name)
+	blobClient := b.containerClient.NewBlobClient(name)
+	downloadOpt := &blob.DownloadStreamOptions{
+		Range: httpRange,
+	}
+	resp, err := blobClient.DownloadStream(ctx, downloadOpt)
 	if err != nil {
-		return nil, errors.Wrapf(err, "cannot get blob reader: %s", name)
+		return nil, errors.Wrapf(err, "cannot download blob, address: %s", blobClient.URL())
 	}
-
-	if !exists {
-		return nil, errors.New("X-Ms-Error-Code: [BlobNotFound]")
-	}
-
-	blobURL := getBlobURL(name, b.containerURL)
-	if err != nil {
-		return nil, errors.Wrapf(err, "cannot get Azure blob URL, address: %s", name)
-	}
-
-	dl, err := blobURL.Download(ctx, offset, length, blob.BlobAccessConditions{}, false, blob.ClientProvidedKeyOptions{})
-	if err != nil {
-		return nil, errors.Wrapf(err, "cannot download Azure blob, address: %s", name)
-	}
-
-	return dl.Body(blob.RetryReaderOptions{
-		MaxRetryRequests: b.config.ReaderConfig.MaxRetryRequests,
-	}), nil
+	retryOpts := azblob.RetryReaderOptions{MaxRetries: int32(b.readerMaxRetries)}
+	return resp.NewRetryReader(ctx, &retryOpts), nil
 }
 
 // Get returns a reader for the given object name.
 func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return b.getBlobReader(ctx, name, 0, blob.CountToEnd)
+	return b.getBlobReader(ctx, name, blob.HTTPRange{})
 }
 
 // GetRange returns a new range reader for the given object name and range.
-func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return b.getBlobReader(ctx, name, off, length)
+func (b *Bucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
+	return b.getBlobReader(ctx, name, blob.HTTPRange{Offset: offset, Count: length})
 }
 
 // Attributes returns information about the specified object.
 func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	blobURL := getBlobURL(name, b.containerURL)
-
-	props, err := blobURL.GetProperties(ctx, blob.BlobAccessConditions{}, blob.ClientProvidedKeyOptions{})
+	level.Debug(b.logger).Log("msg", "Getting blob attributes", "blob", name)
+	blobClient := b.containerClient.NewBlobClient(name)
+	resp, err := blobClient.GetProperties(ctx, nil)
 	if err != nil {
 		return objstore.ObjectAttributes{}, err
 	}
-
 	return objstore.ObjectAttributes{
-		Size:         props.ContentLength(),
-		LastModified: props.LastModified(),
+		Size:         *resp.ContentLength,
+		LastModified: *resp.LastModified,
 	}, nil
 }
 
 // Exists checks if the given object exists.
 func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
-	level.Debug(b.logger).Log("msg", "check if blob exists", "blob", name)
-	blobURL := getBlobURL(name, b.containerURL)
-
-	if _, err := blobURL.GetProperties(ctx, blob.BlobAccessConditions{}, blob.ClientProvidedKeyOptions{}); err != nil {
+	level.Debug(b.logger).Log("msg", "checking if blob exists", "blob", name)
+	blobClient := b.containerClient.NewBlobClient(name)
+	if _, err := blobClient.GetProperties(ctx, nil); err != nil {
 		if b.IsObjNotFoundErr(err) {
 			return false, nil
 		}
 		return false, errors.Wrapf(err, "cannot get properties for Azure blob, address: %s", name)
 	}
-
 	return true, nil
 }
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	level.Debug(b.logger).Log("msg", "Uploading blob", "blob", name)
-	blobURL := getBlobURL(name, b.containerURL)
-
-	if _, err := blob.UploadStreamToBlockBlob(ctx, r, blobURL,
-		blob.UploadStreamToBlockBlobOptions{
-			BufferSize: 3 * 1024 * 1024,
-			MaxBuffers: 4,
-		},
-	); err != nil {
+	level.Debug(b.logger).Log("msg", "uploading blob", "blob", name)
+	blobClient := b.containerClient.NewBlockBlobClient(name)
+	opts := &blockblob.UploadStreamOptions{
+		BlockSize:   3 * 1024 * 1024,
+		Concurrency: 4,
+	}
+	if _, err := blobClient.UploadStream(ctx, r, opts); err != nil {
 		return errors.Wrapf(err, "cannot upload Azure blob, address: %s", name)
 	}
 	return nil
@@ -365,10 +305,12 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 
 // Delete removes the object with the given name.
 func (b *Bucket) Delete(ctx context.Context, name string) error {
-	level.Debug(b.logger).Log("msg", "Deleting blob", "blob", name)
-	blobURL := getBlobURL(name, b.containerURL)
-
-	if _, err := blobURL.Delete(ctx, blob.DeleteSnapshotsOptionInclude, blob.BlobAccessConditions{}); err != nil {
+	level.Debug(b.logger).Log("msg", "deleting blob", "blob", name)
+	blobClient := b.containerClient.NewBlobClient(name)
+	opt := &blob.DeleteOptions{
+		DeleteSnapshots: to.Ptr(blob.DeleteSnapshotsOptionTypeInclude),
+	}
+	if _, err := blobClient.Delete(ctx, opt); err != nil {
 		return errors.Wrapf(err, "error deleting blob, address: %s", name)
 	}
 	return nil
@@ -376,7 +318,7 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 
 // Name returns Azure container name.
 func (b *Bucket) Name() string {
-	return b.config.ContainerName
+	return b.containerName
 }
 
 // NewTestBucket creates test bkt client that before returning creates temporary bucket.
@@ -384,28 +326,24 @@ func (b *Bucket) Name() string {
 func NewTestBucket(t testing.TB, component string) (objstore.Bucket, func(), error) {
 	t.Log("Using test Azure bucket.")
 
-	conf := &Config{
-		StorageAccountName: os.Getenv("AZURE_STORAGE_ACCOUNT"),
-		StorageAccountKey:  os.Getenv("AZURE_STORAGE_ACCESS_KEY"),
-		ContainerName:      objstore.CreateTemporaryTestBucketName(t),
-	}
+	conf := &DefaultConfig
+	conf.StorageAccountName = os.Getenv("AZURE_STORAGE_ACCOUNT")
+	conf.StorageAccountKey = os.Getenv("AZURE_STORAGE_ACCESS_KEY")
+	conf.ContainerName = objstore.CreateTemporaryTestBucketName(t)
 
 	bc, err := yaml.Marshal(conf)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	ctx := context.Background()
-
 	bkt, err := NewBucket(log.NewNopLogger(), bc, component)
 	if err != nil {
 		t.Errorf("Cannot create Azure storage container:")
 		return nil, nil, err
 	}
-
+	ctx := context.Background()
 	return bkt, func() {
 		objstore.EmptyBucket(t, ctx, bkt)
-		err = bkt.Delete(ctx, conf.ContainerName)
+		_, err := bkt.containerClient.Delete(ctx, &container.DeleteOptions{})
 		if err != nil {
 			t.Logf("deleting bucket failed: %s", err)
 		}

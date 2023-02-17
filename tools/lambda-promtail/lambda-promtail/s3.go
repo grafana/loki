@@ -85,9 +85,9 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	}
 
 	ls := model.LabelSet{
-		model.LabelName("__aws_log_type"):                          model.LabelValue(logType),
-		model.LabelName(fmt.Sprintf("__aws_%s_lb", logType)):       model.LabelValue(labels["src"]),
-		model.LabelName(fmt.Sprintf("__aws_%s_lb_owner", logType)): model.LabelValue(labels["account_id"]),
+		model.LabelName("__aws_log_type"):                       model.LabelValue(logType),
+		model.LabelName(fmt.Sprintf("__aws_%s", logType)):       model.LabelValue(labels["src"]),
+		model.LabelName(fmt.Sprintf("__aws_%s_owner", logType)): model.LabelValue(labels["account_id"]),
 	}
 
 	ls = applyExtraLabels(ls)
