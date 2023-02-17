@@ -21,56 +21,55 @@ resource "aws_iam_role" "iam_for_lambda" {
   })
 }
 
-resource "aws_iam_role_policy" "logs" {
-  name = "lambda-logs"
-  role = aws_iam_role.iam_for_lambda.name
-  policy = jsonencode({
-    "Statement" : [
-      {
-        "Action" : [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ],
-        "Effect" : "Allow",
-        "Resource" : "arn:aws:logs:*:*:*",
-      },
-      {
-        "Action" : [
-          "s3:GetObject",
-        ],
-        "Effect" : "Allow",
-        "Resource" : [
-          for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
-        ]
-      },
-      {
-        "Action" : [
-          "kms:Decrypt",
-        ],
-        "Effect" : "Allow",
-        "Resource" : "arn:aws:kms:*:*:*",
-      },
-      {
-        "Action" : [
-          "ec2:DescribeNetworkInterfaces",
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
-          "ec2:DescribeInstances",
-          "ec2:AttachNetworkInterface"
-        ],
-        "Effect" : "Allow",
-        "Resource" : "*",
-      },
-      {
-        "Action" : [
-          "kinesis:*",
-        ],
-        "Effect" : "Allow",
-        "Resource" : "*"
-      }
+data "aws_iam_policy_document" "logs" {
+  statement {
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
     ]
-  })
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+
+  statement {
+    actions = [
+      "s3:GetObject",
+    ]
+    resources = [
+      for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
+    ]
+  }
+
+  statement {
+    actions = [
+      "kms:Decrypt",
+    ]
+    resources = ["arn:aws:kms:*:*:*"]
+  }
+
+  statement {
+    actions = [
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:CreateNetworkInterface",
+      "ec2:DeleteNetworkInterface",
+      "ec2:DescribeInstances",
+      "ec2:AttachNetworkInterface",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    actions = [
+      "kinesis:*",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "logs" {
+  name   = "lambda-logs"
+  role   = aws_iam_role.iam_for_lambda.name
+  policy = data.aws_iam_policy_document.logs.json
 }
 
 data "aws_iam_policy" "lambda_vpc_execution" {
