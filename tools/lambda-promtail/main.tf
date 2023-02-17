@@ -31,13 +31,14 @@ data "aws_iam_policy_document" "logs" {
     resources = ["arn:aws:logs:*:*:*"]
   }
 
-  statement {
-    actions = [
-      "s3:GetObject",
-    ]
-    resources = [
-      for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
-    ]
+  dynamic "statement" {
+    for_each = toset(var.bucket_names)
+    content {
+      actions = [
+        "s3:GetObject",
+      ]
+      resources = ["arn:aws:s3:::${statement.value}/*"]
+    }
   }
 
   statement {
