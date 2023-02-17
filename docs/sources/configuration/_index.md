@@ -195,12 +195,12 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for usage report.
 [analytics: <analytics>]
 
+[remote_read: <list of ReadConfigs>]
+
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.
 [common: <common>]
-
-[remote_read: <list of remote_read>]
 
 # How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki
 # will report 503 Service Unavailable status via /ready endpoint.
@@ -2793,21 +2793,6 @@ Configuration for usage report.
 # Enable anonymous usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
-```
-
-### remote_read
-
-Configuration for remote read.
-
-```yaml
-# The URL of the endpoint to query from.
-[url: <string>]
-
-# Name of the remote read config, which if specified must be unique among remote read configs.
-[name: <string>]
-
-# loki tenant ID.
-[orgID: <string>]
 ```
 
 ### common
