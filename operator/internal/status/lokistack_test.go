@@ -6,9 +6,8 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-
 	"github.com/stretchr/testify/require"
-
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -151,4 +150,50 @@ func TestSetDegradedCondition_WhenNoneExisting_AppendDegradedCondition(t *testin
 
 	require.NotZero(t, k.StatusCallCount())
 	require.NotZero(t, sw.UpdateCallCount())
+}
+
+func TestGenerateConditions(t *testing.T) {
+	tt := []struct {
+		desc            string
+		componentStatus *lokiv1.LokiStackComponentStatus
+		wantCondition   metav1.Condition
+	}{
+		{
+			desc:            "no error",
+			componentStatus: &lokiv1.LokiStackComponentStatus{},
+			wantCondition:   conditionReady,
+		},
+		{
+			desc: "container pending",
+			componentStatus: &lokiv1.LokiStackComponentStatus{
+				Ingester: map[corev1.PodPhase][]string{
+					corev1.PodPending: {
+						"pod-0",
+					},
+				},
+			},
+			wantCondition: conditionPending,
+		},
+		{
+			desc: "container failed",
+			componentStatus: &lokiv1.LokiStackComponentStatus{
+				Ingester: map[corev1.PodPhase][]string{
+					corev1.PodFailed: {
+						"pod-0",
+					},
+				},
+			},
+			wantCondition: conditionFailed,
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			condition := generateCondition(tc.componentStatus)
+			require.Equal(t, tc.wantCondition, condition)
+		})
+	}
 }

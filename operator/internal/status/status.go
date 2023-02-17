@@ -30,10 +30,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		return err
 	}
 
-	condition, err := generateConditions(cs)
-	if err != nil {
-		return err
-	}
+	condition := generateCondition(cs)
 
 	now := metav1.Now()
 	condition.LastTransitionTime = now
@@ -55,9 +52,9 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		}
 
 		if index == -1 {
-			stack.Status.Conditions = append(stack.Status.Conditions, *condition)
+			stack.Status.Conditions = append(stack.Status.Conditions, condition)
 		} else {
-			stack.Status.Conditions[index] = *condition
+			stack.Status.Conditions[index] = condition
 		}
 	}
 

@@ -21,6 +21,24 @@ const (
 	messagePending = "Some LokiStack components pending on dependencies"
 )
 
+var (
+	conditionFailed = metav1.Condition{
+		Type:    string(lokiv1.ConditionFailed),
+		Message: messageFailed,
+		Reason:  string(lokiv1.ReasonFailedComponents),
+	}
+	conditionPending = metav1.Condition{
+		Type:    string(lokiv1.ConditionPending),
+		Message: messagePending,
+		Reason:  string(lokiv1.ReasonPendingComponents),
+	}
+	conditionReady = metav1.Condition{
+		Type:    string(lokiv1.ConditionReady),
+		Message: messageReady,
+		Reason:  string(lokiv1.ReasonReadyComponents),
+	}
+)
+
 // DegradedError contains information about why the managed LokiStack has an invalid configuration.
 type DegradedError struct {
 	Message string
@@ -43,7 +61,7 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, m
 	return updateCondition(ctx, k, req, degraded)
 }
 
-func generateConditions(cs *lokiv1.LokiStackComponentStatus) (*metav1.Condition, error) {
+func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
 	// Check for failed pods first
 	failed := len(cs.Compactor[corev1.PodFailed]) +
 		len(cs.Distributor[corev1.PodFailed]) +
@@ -55,11 +73,7 @@ func generateConditions(cs *lokiv1.LokiStackComponentStatus) (*metav1.Condition,
 		len(cs.Ruler[corev1.PodFailed])
 
 	if failed != 0 {
-		return &metav1.Condition{
-			Type:    string(lokiv1.ConditionFailed),
-			Message: messageFailed,
-			Reason:  string(lokiv1.ReasonFailedComponents),
-		}, nil
+		return conditionFailed
 	}
 
 	// Check for pending pods
@@ -73,18 +87,10 @@ func generateConditions(cs *lokiv1.LokiStackComponentStatus) (*metav1.Condition,
 		len(cs.Ruler[corev1.PodPending])
 
 	if pending != 0 {
-		return &metav1.Condition{
-			Type:    string(lokiv1.ConditionPending),
-			Message: messagePending,
-			Reason:  string(lokiv1.ReasonPendingComponents),
-		}, nil
+		return conditionPending
 	}
 
-	return &metav1.Condition{
-		Type:    string(lokiv1.ConditionReady),
-		Message: messageReady,
-		Reason:  string(lokiv1.ReasonReadyComponents),
-	}, nil
+	return conditionReady
 }
 
 func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {
