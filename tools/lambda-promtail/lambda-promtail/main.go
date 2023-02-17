@@ -51,8 +51,9 @@ func setupArguments() {
 
 	fmt.Println("write address: ", writeAddress.String())
 
+	omitExtraLabelsPrefix := os.Getenv("OMIT_EXTRA_LABELS_PREFIX")
 	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
-	extraLabels, err = parseExtraLabels(extraLabelsRaw)
+	extraLabels, err = parseExtraLabels(extraLabelsRaw, strings.EqualFold(omitExtraLabelsPrefix, "true"))
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +101,11 @@ func setupArguments() {
 	s3Clients = make(map[string]*s3.Client)
 }
 
-func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
+func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, error) {
+	prefix := "__extra_"
+	if omitPrefix {
+		prefix = ""
+	}
 	var extractedLabels = model.LabelSet{}
 	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
 
@@ -112,7 +117,7 @@ func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
 		return nil, fmt.Errorf(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraLabelsSplit); i += 2 {
-		extractedLabels[model.LabelName("__extra_"+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
+		extractedLabels[model.LabelName(prefix+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
 	}
 	err := extractedLabels.Validate()
 	if err != nil {

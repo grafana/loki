@@ -239,22 +239,26 @@ func TestReady(t *testing.T) {
 	pt, err := NewPushTarget(logger, eh, []*relabel.Config{}, "job3", config)
 	require.NoError(t, err)
 
-	//
 	url := fmt.Sprintf("http://%s:%d/ready", localhost, port)
 	response, err := http.Get(url)
-
-	b, err := io.ReadAll(response.Body)
-	response_code := fmt.Sprint(response.StatusCode)
-	response_body := string(b)
-
-	fmt.Println(response_body)
-	wanted_response := "ready"
-	if response_body != wanted_response {
-		t.Errorf("response_body %q, want %q", response_body, wanted_response)
+	if err != nil {
+		require.NoError(t, err)
 	}
-	wanted_code := "200"
-	if response_code != wanted_code {
-		t.Errorf("response_body %q, want %q", response_code, wanted_code)
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		require.NoError(t, err)
+	}
+	responseCode := fmt.Sprint(response.StatusCode)
+	responseBody := string(body)
+
+	fmt.Println(responseBody)
+	wantedResponse := "ready"
+	if responseBody != wantedResponse {
+		t.Errorf("response_body %q, want %q", responseBody, wantedResponse)
+	}
+	wantedCode := "200"
+	if responseCode != wantedCode {
+		t.Errorf("response_body %q, want %q", responseCode, wantedCode)
 	}
 
 	_ = pt.Stop()

@@ -289,7 +289,10 @@ func getCredentials(client *http.Client, endpoint string) (ec2RoleCredRespBody, 
 	}
 
 	// https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
-	token, _ := fetchIMDSToken(client, endpoint)
+	token, err := fetchIMDSToken(client, endpoint)
+	if err != nil {
+		return ec2RoleCredRespBody{}, err
+	}
 
 	// http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html
 	u, err := getIAMRoleURL(endpoint)

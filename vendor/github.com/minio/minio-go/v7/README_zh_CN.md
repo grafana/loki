@@ -14,7 +14,7 @@ MinIO Go Client SDK提供了简单的API来访问任何与Amazon S3兼容的对�
    - Ceph Object Gateway
    - Riak CS
 
-本文我们将学习如何安装MinIO client SDK，连接到MinIO，并提供一下文件上传的示例。对于完整的API以及示例，请参考[Go Client API Reference](https://docs.min.io/docs/golang-client-api-reference)。
+本文我们将学习如何安装MinIO client SDK，连接到MinIO，并提供一下文件上传的示例。对于完整的API以及示例，请参考[Go Client API Reference](https://min.io/docs/minio/linux/developers/go/API.html)。
 
 本文假设你已经有 [Go开发环境](https://golang.org/doc/install)。
 
@@ -140,52 +140,52 @@ mc ls play/mymusic/
 
 ## API文档
 完整的API文档在这里。
-* [完整API文档](https://docs.min.io/docs/golang-client-api-reference)
+* [完整API文档](https://min.io/docs/minio/linux/developers/go/API.html)
 
 ### API文档 : 操作存储桶
-* [`MakeBucket`](https://docs.min.io/docs/golang-client-api-reference#MakeBucket)
-* [`ListBuckets`](https://docs.min.io/docs/golang-client-api-reference#ListBuckets)
-* [`BucketExists`](https://docs.min.io/docs/golang-client-api-reference#BucketExists)
-* [`RemoveBucket`](https://docs.min.io/docs/golang-client-api-reference#RemoveBucket)
-* [`ListObjects`](https://docs.min.io/docs/golang-client-api-reference#ListObjects)
-* [`ListIncompleteUploads`](https://docs.min.io/docs/golang-client-api-reference#ListIncompleteUploads)
+* [`MakeBucket`](https://min.io/docs/minio/linux/developers/go/API.html#MakeBucket)
+* [`ListBuckets`](https://min.io/docs/minio/linux/developers/go/API.html#ListBuckets)
+* [`BucketExists`](https://min.io/docs/minio/linux/developers/go/API.html#BucketExists)
+* [`RemoveBucket`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveBucket)
+* [`ListObjects`](https://min.io/docs/minio/linux/developers/go/API.html#ListObjects)
+* [`ListIncompleteUploads`](https://min.io/docs/minio/linux/developers/go/API.html#ListIncompleteUploads)
 
 ### API文档 : 存储桶策略
-* [`SetBucketPolicy`](https://docs.min.io/docs/golang-client-api-reference#SetBucketPolicy)
-* [`GetBucketPolicy`](https://docs.min.io/docs/golang-client-api-reference#GetBucketPolicy)
+* [`SetBucketPolicy`](https://min.io/docs/minio/linux/developers/go/API.html#SetBucketPolicy)
+* [`GetBucketPolicy`](https://min.io/docs/minio/linux/developers/go/API.html#GetBucketPolicy)
 
 ### API文档 : 存储桶通知
-* [`SetBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#SetBucketNotification)
-* [`GetBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#GetBucketNotification)
-* [`RemoveAllBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#RemoveAllBucketNotification)
-* [`ListenBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#ListenBucketNotification) (MinIO 扩展)
-* [`ListenNotification`](https://docs.min.io/docs/golang-client-api-reference#ListenNotification) (MinIO 扩展)
+* [`SetBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#SetBucketNotification)
+* [`GetBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#GetBucketNotification)
+* [`RemoveAllBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveAllBucketNotification)
+* [`ListenBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#ListenBucketNotification) (MinIO 扩展)
+* [`ListenNotification`](https://min.io/docs/minio/linux/developers/go/API.html#ListenNotification) (MinIO 扩展)
 
 ### API文档 : 操作文件对象
-* [`FPutObject`](https://docs.min.io/docs/golang-client-api-reference#FPutObject)
-* [`FGetObject`](https://docs.min.io/docs/golang-client-api-reference#FPutObject)
+* [`FPutObject`](https://min.io/docs/minio/linux/developers/go/API.html#FPutObject)
+* [`FGetObject`](https://min.io/docs/minio/linux/developers/go/API.html#FPutObject)
 
 ### API文档 : 操作对象
-* [`GetObject`](https://docs.min.io/docs/golang-client-api-reference#GetObject)
-* [`PutObject`](https://docs.min.io/docs/golang-client-api-reference#PutObject)
-* [`PutObjectStreaming`](https://docs.min.io/docs/golang-client-api-reference#PutObjectStreaming)
-* [`StatObject`](https://docs.min.io/docs/golang-client-api-reference#StatObject)
-* [`CopyObject`](https://docs.min.io/docs/golang-client-api-reference#CopyObject)
-* [`RemoveObject`](https://docs.min.io/docs/golang-client-api-reference#RemoveObject)
-* [`RemoveObjects`](https://docs.min.io/docs/golang-client-api-reference#RemoveObjects)
-* [`RemoveIncompleteUpload`](https://docs.min.io/docs/golang-client-api-reference#RemoveIncompleteUpload)
-* [`SelectObjectContent`](https://docs.min.io/docs/golang-client-api-reference#SelectObjectContent)
+* [`GetObject`](https://min.io/docs/minio/linux/developers/go/API.html#GetObject)
+* [`PutObject`](https://min.io/docs/minio/linux/developers/go/API.html#PutObject)
+* [`PutObjectStreaming`](https://min.io/docs/minio/linux/developers/go/API.html#PutObjectStreaming)
+* [`StatObject`](https://min.io/docs/minio/linux/developers/go/API.html#StatObject)
+* [`CopyObject`](https://min.io/docs/minio/linux/developers/go/API.html#CopyObject)
+* [`RemoveObject`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveObject)
+* [`RemoveObjects`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveObjects)
+* [`RemoveIncompleteUpload`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveIncompleteUpload)
+* [`SelectObjectContent`](https://min.io/docs/minio/linux/developers/go/API.html#SelectObjectContent)
 
 ### API文档 : Presigned操作
-* [`PresignedGetObject`](https://docs.min.io/docs/golang-client-api-reference#PresignedGetObject)
-* [`PresignedPutObject`](https://docs.min.io/docs/golang-client-api-reference#PresignedPutObject)
-* [`PresignedHeadObject`](https://docs.min.io/docs/golang-client-api-reference#PresignedHeadObject)
-* [`PresignedPostPolicy`](https://docs.min.io/docs/golang-client-api-reference#PresignedPostPolicy)
+* [`PresignedGetObject`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedGetObject)
+* [`PresignedPutObject`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedPutObject)
+* [`PresignedHeadObject`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedHeadObject)
+* [`PresignedPostPolicy`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedPostPolicy)
 
 ### API文档 : 客户端自定义设置
-* [`SetAppInfo`](http://docs.min.io/docs/golang-client-api-reference#SetAppInfo)
-* [`TraceOn`](http://docs.min.io/docs/golang-client-api-reference#TraceOn)
-* [`TraceOff`](http://docs.min.io/docs/golang-client-api-reference#TraceOff)
+* [`SetAppInfo`](https://min.io/docs/minio/linux/developers/go/API.html#SetAppInfo)
+* [`TraceOn`](https://min.io/docs/minio/linux/developers/go/API.html#TraceOn)
+* [`TraceOff`](https://min.io/docs/minio/linux/developers/go/API.html#TraceOff)
 
 ## 完整示例
 
@@ -253,8 +253,8 @@ mc ls play/mymusic/
 * [presignedpostpolicy.go](https://github.com/minio/minio-go/blob/master/examples/s3/presignedpostpolicy.go)
 
 ## 了解更多
-* [完整文档](https://docs.min.io)
-* [MinIO Go Client SDK API文档](https://docs.min.io/docs/golang-client-api-reference)
+* [完整文档](https://min.io/docs/minio/kubernetes/upstream/index.html)
+* [MinIO Go Client SDK API文档](https://min.io/docs/minio/linux/developers/go/API.html)
 
 ## 贡献
 [贡献指南](https://github.com/minio/minio-go/blob/master/docs/zh_CN/CONTRIBUTING.md)

@@ -239,6 +239,7 @@ func (t *PushTarget) Stop() error {
 // ready function serves the ready endpoint
 func (t *PushTarget) ready(w http.ResponseWriter, r *http.Request) {
 	resp := "ready"
-	w.Write([]byte(resp))
-	return
+	if _, err := w.Write([]byte(resp)); err != nil {
+		level.Error(t.logger).Log("msg", "failed to respond to ready endoint", "err", err)
+	}
 }
