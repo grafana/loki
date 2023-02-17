@@ -67,9 +67,9 @@ variable "extra_labels" {
 }
 
 variable "omit_extra_labels_prefix" {
-  type        = string
+  type        = bool
   description = "Whether or not to omit the prefix `__extra_` from extra labels defined in the variable `extra_labels`."
-  default     = "false"
+  default     = false
 }
 
 variable "batch_size" {
