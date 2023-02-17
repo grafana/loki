@@ -97,4 +97,4 @@ EOF
 
 1. Install the "Self-hosted Grafana Loki" integration by going to your hosted Grafana instance, clicking the lightning bold icon labeled "Integrations and Connections", then search for and install the "Self-hosted Grafana Loki" integration.
 
-1. Once the "Self-hosted Grafana Loki" integration is installed, you should be able to clik the `View Dashboards` button to see the installed dashbards.
+1. Once the "Self-hosted Grafana Loki" integration is installed, you should be able to click the `View Dashboards` button to see the installed dashboards.
