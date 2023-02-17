@@ -429,7 +429,7 @@ The **logfmt** parser can operate in two modes:
 
 2. **with** parameters:
 
-    Similar to [JSON](./log_queries.md#JSON), using `| logfmt label="expression", another="expression"` in the pipeline will result in extracting only the fields specified by the labels.
+    Similar to [JSON](#json), using `| logfmt label="expression", another="expression"` in the pipeline will result in extracting only the fields specified by the labels.
 
     For example, `| logfmt host, fwd_ip="fwd"` will extract the labels `host` and `fwd` from the following log line:
     ```logfmt
