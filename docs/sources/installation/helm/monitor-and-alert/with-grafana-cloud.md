@@ -27,7 +27,7 @@ This guide will walk you through using Grafana Cloud to monitor a Loki installat
 
 It is necessary to setup the Grafana Kubernetes Integration following the instructions in [Grafana Kubernetes Monitoring using Agent](https://grafana.com/docs/grafana-cloud/kubernetes-monitoring/configuration/config-k8s-agent-guide/) as this will install necessary components for collecting metrics about your Kubernetes cluster and sending them to Grafana Cloud. Many of the dashboards installed as a part of the Loki integration rely on these metrics.
 
-Walking through this installation will create two Grafana Agent configs, one for metrics and one for logs, that will add the External Label of `cluster: cloud`. In order for the Dashboards in the "Self-hosted Grafana Loki" integration to work, the cluster name needs to match your Helm installation name. If you installed Loki using the command `helm install best-loki-cluster grafana/loki`, you would need to change the `cluster` value in both Grafana Agent configs from `cloud` to `best-loki-cluster` when setting up the Grafana Kubernetes Integration.
+Walking through this installation will create two Grafana Agent configurations, one for metrics and one for logs, that will add the external label `cluster: cloud`. In order for the Dashboards in the self-hosted Grafana Loki integration to work, the cluster name needs to match your Helm installation name. If you installed Loki using the command `helm install best-loki-cluster grafana/loki`, you would need to change the `cluster` value in both Grafana Agent configurations from `cloud` to `best-loki-cluster` when setting up the Grafana Kubernetes integration.
 
 **To set up the Loki integration in Grafana Cloud:**
 
