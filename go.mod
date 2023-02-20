@@ -108,7 +108,6 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 	k8s.io/klog v1.0.0
 )
 
@@ -121,6 +120,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/willf/bloom v2.0.3+incompatible
+	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/oauth2 v0.4.0
 	golang.org/x/text v0.6.0
@@ -287,8 +287,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
-	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
-	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/term v0.4.0 // indirect
 	golang.org/x/tools v0.4.0 // indirect

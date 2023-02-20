@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package netaddr
+package netipx
 
 // mask6 are bitmasks with the topmost n bits of a
 // 128-bit number, where n is the array index.
