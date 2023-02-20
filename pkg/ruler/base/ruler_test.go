@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -1645,6 +1646,7 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 }
 
 func TestSendAlerts(t *testing.T) {
+	escapedExpression := url.QueryEscape("{\"editorMode\":\"code\",\"expr\":\"up\",\"queryType\":\"range\"}")
 	testCases := []struct {
 		in  []*promRules.Alert
 		exp []*notifier.Alert
@@ -1665,7 +1667,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
-					GeneratorURL: "http://localhost:9090/explore?left={\"queries\":[{\"editorMode\":\"code\",\"expr\":\"up\",\"queryType\":\"range\"}]}",
+					GeneratorURL: fmt.Sprintf("http://localhost:9090/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1685,7 +1687,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
-					GeneratorURL: "http://localhost:9090/explore?left={\"queries\":[{\"editorMode\":\"code\",\"expr\":\"up\",\"queryType\":\"range\"}]}",
+					GeneratorURL: fmt.Sprintf("http://localhost:9090/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},

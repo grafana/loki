@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -377,9 +378,22 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
+type query struct {
+	EditorMode string `json:"editorMode"`
+	Expr       string `json:"expr"`
+	QueryType  string `json:"queryType"`
+}
+
 func grafanaLinkForExpression(expr string) string {
-	escapedExpression := url.QueryEscape(strings.ReplaceAll(expr, `"`, `\"`))
-	str := `/explore?left={"queries":[{"editorMode":"code","expr":"%s","queryType":"range"}]}`
+	exprStruct := query{
+		EditorMode: "code",
+		Expr:       expr,
+		QueryType:  "range",
+	}
+
+	marshaledExpression, _ := json.Marshal(exprStruct)
+	escapedExpression := url.QueryEscape(string(marshaledExpression))
+	str := `/explore?left={"queries":[%s]}`
 	return fmt.Sprintf(str, escapedExpression)
 }
 
