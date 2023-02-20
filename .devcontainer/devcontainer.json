@@ -3,6 +3,12 @@
   "containerEnv": {
     "BUILD_IN_CONTAINER": "false"
   },
+  "customizations": {
+		"vscode": {
+			"settings": {},
+			"extensions": ["golang.go"],
+		}
+  },
   "features": {
   }
 }
