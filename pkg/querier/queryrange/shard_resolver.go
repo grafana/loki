@@ -28,6 +28,7 @@ func shardResolverForConf(
 	defaultLookback time.Duration,
 	logger log.Logger,
 	maxParallelism int,
+	maxShards int,
 	r queryrangebase.Request,
 	handler queryrangebase.Handler,
 ) (logql.ShardResolver, bool) {
@@ -39,6 +40,7 @@ func shardResolverForConf(
 			from:            model.Time(r.GetStart()),
 			through:         model.Time(r.GetEnd()),
 			maxParallelism:  maxParallelism,
+			maxShards:       maxShards,
 			defaultLookback: defaultLookback,
 		}, true
 	}
@@ -55,6 +57,7 @@ type dynamicShardResolver struct {
 
 	from, through   model.Time
 	maxParallelism  int
+	maxShards       int
 	defaultLookback time.Duration
 }
 
@@ -121,7 +124,8 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	}
 
 	combined := stats.MergeStats(results...)
-	factor := guessShardFactor(combined)
+	factor := guessShardFactor(combined, r.maxShards)
+
 	var bytesPerShard = combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
@@ -151,7 +155,7 @@ const (
 // is at least two, the range of data per shard is (maxBytesPerShard/2, maxBytesPerShard]
 // For instance, for a maxBytesPerShard of 500MB and a query touching 1000MB, we split into two shards of 500MB.
 // If there are 1004MB, we split into four shards of 251MB.
-func guessShardFactor(stats stats.Stats) int {
+func guessShardFactor(stats stats.Stats, maxShards int) int {
 	minShards := float64(stats.Bytes) / float64(maxBytesPerShard)
 
 	// round up to nearest power of 2
@@ -160,8 +164,21 @@ func guessShardFactor(stats stats.Stats) int {
 	// Since x^0 == 1 and we only support factors of 2
 	// reset this edge case manually
 	factor := int(math.Pow(2, power))
+	if maxShards > 0 {
+		factor = min(factor, maxShards)
+	}
+
+	// shortcut: no need to run any sharding logic when factor=1
+	// as it's the same as no sharding
 	if factor == 1 {
 		factor = 0
 	}
 	return factor
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

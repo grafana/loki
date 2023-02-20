@@ -249,7 +249,6 @@ loki:
       accountName: null
       accountKey: null
       useManagedIdentity: false
-      useFederatedToken: false
       userAssignedId: null
       requestTimeout: null
     filesystem:
@@ -1197,6 +1196,12 @@ gateway:
     serverSnippet: ""
     # -- Allows appending custom configuration to the http block
     httpSnippet: ""
+    # -- Override Read URL
+    customReadUrl: null
+    # -- Override Write URL
+    customWriteUrl: null
+    # -- Override Backend URL
+    customBackendUrl: null
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |

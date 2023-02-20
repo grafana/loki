@@ -36,6 +36,7 @@ func NewQueryShardMiddleware(
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
+	maxShards int,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -49,7 +50,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics, limits)
+		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -71,24 +72,27 @@ func newASTMapperware(
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
 	limits Limits,
+	maxShards int,
 ) *astMapperware {
 	return &astMapperware{
-		confs:   confs,
-		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
-		limits:  limits,
-		next:    next,
-		ng:      logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
-		metrics: metrics,
+		confs:     confs,
+		logger:    log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:    limits,
+		next:      next,
+		ng:        logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		metrics:   metrics,
+		maxShards: maxShards,
 	}
 }
 
 type astMapperware struct {
-	confs   ShardingConfigs
-	logger  log.Logger
-	limits  Limits
-	next    queryrangebase.Handler
-	ng      *logql.DownstreamEngine
-	metrics *logql.MapperMetrics
+	confs     ShardingConfigs
+	logger    log.Logger
+	limits    Limits
+	next      queryrangebase.Handler
+	ng        *logql.DownstreamEngine
+	metrics   *logql.MapperMetrics
+	maxShards int
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -121,6 +125,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
+		ast.maxShards,
 		r,
 		ast.next,
 	)

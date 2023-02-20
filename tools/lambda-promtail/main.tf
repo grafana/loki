@@ -106,16 +106,17 @@ resource "aws_lambda_function" "lambda_promtail" {
 
   environment {
     variables = {
-      WRITE_ADDRESS   = var.write_address
-      USERNAME        = var.username
-      PASSWORD        = var.password
-      BEARER_TOKEN    = var.bearer_token
-      KEEP_STREAM     = var.keep_stream
-      BATCH_SIZE      = var.batch_size
-      EXTRA_LABELS    = var.extra_labels
-      TENANT_ID       = var.tenant_id
-      SKIP_TLS_VERIFY = var.skip_tls_verify
-      PRINT_LOG_LINE = var.print_log_line
+      WRITE_ADDRESS            = var.write_address
+      USERNAME                 = var.username
+      PASSWORD                 = var.password
+      BEARER_TOKEN             = var.bearer_token
+      KEEP_STREAM              = var.keep_stream
+      BATCH_SIZE               = var.batch_size
+      EXTRA_LABELS             = var.extra_labels
+      OMIT_EXTRA_LABELS_PREFIX = var.omit_extra_labels_prefix
+      TENANT_ID                = var.tenant_id
+      SKIP_TLS_VERIFY          = var.skip_tls_verify
+      PRINT_LOG_LINE           = var.print_log_line
     }
   }
 

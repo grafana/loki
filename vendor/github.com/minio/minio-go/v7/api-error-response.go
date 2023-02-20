@@ -67,14 +67,14 @@ type ErrorResponse struct {
 //
 // For example:
 //
-//   import s3 "github.com/minio/minio-go/v7"
-//   ...
-//   ...
-//   reader, stat, err := s3.GetObject(...)
-//   if err != nil {
-//      resp := s3.ToErrorResponse(err)
-//   }
-//   ...
+//	import s3 "github.com/minio/minio-go/v7"
+//	...
+//	...
+//	reader, stat, err := s3.GetObject(...)
+//	if err != nil {
+//	   resp := s3.ToErrorResponse(err)
+//	}
+//	...
 func ToErrorResponse(err error) ErrorResponse {
 	switch err := err.(type) {
 	case ErrorResponse:
