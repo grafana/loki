@@ -1,5 +1,6 @@
 /*
- * MinIO Cloud Storage, (C) 2020 MinIO, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2020-2022 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +21,8 @@ import (
 	"encoding/xml"
 	"io"
 	"net/url"
+	"regexp"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -63,8 +66,17 @@ const (
 	maxTagCount       = 50
 )
 
+// https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions
+// borrowed from this article and also testing various ASCII characters following regex
+// is supported by AWS S3 for both tags and values.
+var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ ]+$`)
+
 func checkKey(key string) error {
-	if len(key) == 0 || utf8.RuneCountInString(key) > maxKeyLength || strings.Contains(key, "&") {
+	if len(key) == 0 {
+		return errInvalidTagKey
+	}
+
+	if utf8.RuneCountInString(key) > maxKeyLength || !validTagKeyValue.MatchString(key) {
 		return errInvalidTagKey
 	}
 
@@ -72,8 +84,10 @@ func checkKey(key string) error {
 }
 
 func checkValue(value string) error {
-	if utf8.RuneCountInString(value) > maxValueLength || strings.Contains(value, "&") {
-		return errInvalidTagValue
+	if value != "" {
+		if utf8.RuneCountInString(value) > maxValueLength || !validTagKeyValue.MatchString(value) {
+			return errInvalidTagValue
+		}
 	}
 
 	return nil
@@ -136,11 +150,26 @@ type tagSet struct {
 }
 
 func (tags tagSet) String() string {
-	vals := make(url.Values)
-	for key, value := range tags.tagMap {
-		vals.Set(key, value)
+	if len(tags.tagMap) == 0 {
+		return ""
 	}
-	return vals.Encode()
+	var buf strings.Builder
+	keys := make([]string, 0, len(tags.tagMap))
+	for k := range tags.tagMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		keyEscaped := url.QueryEscape(k)
+		valueEscaped := url.QueryEscape(tags.tagMap[k])
+		if buf.Len() > 0 {
+			buf.WriteByte('&')
+		}
+		buf.WriteString(keyEscaped)
+		buf.WriteByte('=')
+		buf.WriteString(valueEscaped)
+	}
+	return buf.String()
 }
 
 func (tags *tagSet) remove(key string) {
@@ -175,7 +204,7 @@ func (tags *tagSet) set(key, value string, failOnExist bool) error {
 }
 
 func (tags tagSet) toMap() map[string]string {
-	m := make(map[string]string)
+	m := make(map[string]string, len(tags.tagMap))
 	for key, value := range tags.tagMap {
 		m[key] = value
 	}
@@ -188,6 +217,7 @@ func (tags tagSet) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 		Tags []Tag `xml:"Tag"`
 	}{}
 
+	tagList.Tags = make([]Tag, 0, len(tags.tagMap))
 	for key, value := range tags.tagMap {
 		tagList.Tags = append(tagList.Tags, Tag{key, value})
 	}
@@ -213,7 +243,7 @@ func (tags *tagSet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		return errTooManyTags
 	}
 
-	m := map[string]string{}
+	m := make(map[string]string, len(tagList.Tags))
 	for _, tag := range tagList.Tags {
 		if _, found := m[tag.Key]; found {
 			return errDuplicateTagKey
@@ -311,14 +341,49 @@ func ParseObjectXML(reader io.Reader) (*Tags, error) {
 	return unmarshalXML(reader, true)
 }
 
+// stringsCut slices s around the first instance of sep,
+// returning the text before and after sep.
+// The found result reports whether sep appears in s.
+// If sep does not appear in s, cut returns s, "", false.
+func stringsCut(s, sep string) (before, after string, found bool) {
+	if i := strings.Index(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
+}
+
+func (tags *tagSet) parseTags(tgs string) (err error) {
+	for tgs != "" {
+		var key string
+		key, tgs, _ = stringsCut(tgs, "&")
+		if key == "" {
+			continue
+		}
+		key, value, _ := stringsCut(key, "=")
+		key, err1 := url.QueryUnescape(key)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+		value, err1 = url.QueryUnescape(value)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+		if err = tags.set(key, value, true); err != nil {
+			return err
+		}
+	}
+	return err
+}
+
 // Parse decodes HTTP query formatted string into tags which is limited by isObject.
 // A query formatted string is like "key1=value1&key2=value2".
 func Parse(s string, isObject bool) (*Tags, error) {
-	values, err := url.ParseQuery(s)
-	if err != nil {
-		return nil, err
-	}
-
 	tagging := &Tags{
 		TagSet: &tagSet{
 			tagMap:   make(map[string]string),
@@ -326,10 +391,8 @@ func Parse(s string, isObject bool) (*Tags, error) {
 		},
 	}
 
-	for key := range values {
-		if err := tagging.TagSet.set(key, values.Get(key), true); err != nil {
-			return nil, err
-		}
+	if err := tagging.TagSet.parseTags(s); err != nil {
+		return nil, err
 	}
 
 	return tagging, nil
