@@ -348,6 +348,9 @@ type LogfmtExpressionParser struct {
 }
 
 func NewLogfmtExpressionParser(expressions []LogfmtExpression) (*LogfmtExpressionParser, error) {
+	if len(expressions) == 0 {
+		return nil, fmt.Errorf("no logfmt expression provided")
+	}
 	paths := make(map[string][]interface{}, len(expressions))
 
 	for _, exp := range expressions {
@@ -369,18 +372,13 @@ func NewLogfmtExpressionParser(expressions []LogfmtExpression) (*LogfmtExpressio
 }
 
 func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-
-	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
-	}
-
 	// If there are no expressions, extract common labels
 	// and add the suffix "_extracted"
 	if len(l.expressions) == 0 {
-		for _, v := range lbs.currentResult.Labels() {
-			lbs.Set(v.Name+"_extracted", v.Value)
-			lbs.Del(v.Name)
-		}
+		return line, false
+	}
+
+	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
@@ -389,22 +387,23 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	keys := make(map[string]string, len(l.expressions))
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
-		lbs.Set(id, "")
+		if !lbs.BaseHas(id) {
+			lbs.Set(id, "")
+		}
 	}
 
 	l.dec.Reset(line)
+	var current []byte
 	for l.dec.ScanKeyval() {
-		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
-			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
+		current = l.dec.Key()
+		key, ok := l.keys.Get(current, func() (string, bool) {
+			sanitized := sanitizeLabelKey(string(current), true)
 			if len(sanitized) == 0 {
 				return "", false
 			}
+
 			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
-			}
-			if lbs.BaseHas(sanitized) {
-				sanitized = sanitized + duplicateSuffix
-				//lbs.Set(sanitized, string(l.dec.Value()))
 			}
 			return sanitized, true
 		})
@@ -413,16 +412,21 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 		val := l.dec.Value()
 
-		for id, originalLabelName := range keys {
-			if key == originalLabelName {
+		for id, orig := range keys {
+			if key == orig {
 				key = id
+				break
 			}
 		}
 
 		if bytes.ContainsRune(val, utf8.RuneError) {
 			val = nil
 		}
+
 		if _, ok := l.expressions[key]; ok {
+			if lbs.BaseHas(key) {
+				key = key + duplicateSuffix
+			}
 			lbs.Set(key, string(val))
 		}
 	}

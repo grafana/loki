@@ -743,13 +743,6 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			},
 		},
 		{
-			"empty line",
-			[]byte("{}"),
-			[]LogfmtExpression{},
-			labels.Labels{},
-			labels.Labels{},
-		},
-		{
 			"multiple fields",
 			testLine,
 			[]LogfmtExpression{
@@ -829,12 +822,15 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"label override",
 			testLine,
-			[]LogfmtExpression{},
+			[]LogfmtExpression{
+				NewLogfmtExpr("app", "app"),
+			},
 			labels.Labels{
 				{Name: "app", Value: "bar"},
 			},
 			labels.Labels{
-				{Name: "app_extracted", Value: "bar"},
+				{Name: "app", Value: "bar"},
+				{Name: "app_extracted", Value: "foo"},
 			},
 		},
 		{
@@ -842,25 +838,22 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			testLine,
 			[]LogfmtExpression{
 				NewLogfmtExpr("lvl", "level"),
-				NewLogfmtExpr("ts", "ts"),
 			},
 			labels.Labels{
-				{Name: "app", Value: "bar"},
+				{Name: "level", Value: "debug"},
 			},
 			labels.Labels{
-				{Name: "app", Value: "bar"},
+				{Name: "level", Value: "debug"},
 				{Name: "lvl", Value: "error"},
-				{Name: "ts", Value: "2021-02-12T19:18:10.037940878Z"},
 			},
 		},
 	}
 	for _, tt := range tests {
-		l, err := NewLogfmtExpressionParser(tt.expressions)
-		if err != nil {
-			t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
-		}
-
 		t.Run(tt.name, func(t *testing.T) {
+			l, err := NewLogfmtExpressionParser(tt.expressions)
+			if err != nil {
+				t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
+			}
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			_, _ = l.Process(0, tt.line, b)
