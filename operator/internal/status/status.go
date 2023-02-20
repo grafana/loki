@@ -2,6 +2,7 @@ package status
 
 import (
 	"context"
+	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -16,7 +17,7 @@ import (
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
-func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
+func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time) error {
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -32,8 +33,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 
 	condition := generateCondition(cs)
 
-	now := metav1.Now()
-	condition.LastTransitionTime = now
+	condition.LastTransitionTime = metav1.NewTime(now)
 	condition.Status = metav1.ConditionTrue
 
 	statusUpdater := func(stack *lokiv1.LokiStack) {
@@ -43,7 +43,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
 		for i := range stack.Status.Conditions {
 			// Reset all other conditions first
 			stack.Status.Conditions[i].Status = metav1.ConditionFalse
-			stack.Status.Conditions[i].LastTransitionTime = now
+			stack.Status.Conditions[i].LastTransitionTime = metav1.NewTime(now)
 
 			// Locate existing pending condition if any
 			if stack.Status.Conditions[i].Type == condition.Type {
