@@ -254,13 +254,14 @@ func TestReady(t *testing.T) {
 	fmt.Println(responseBody)
 	wantedResponse := "ready"
 	if responseBody != wantedResponse {
-		t.Errorf("response_body %q, want %q", responseBody, wantedResponse)
+		t.Errorf("got the response %q, want %q", responseBody, wantedResponse)
 	}
 	wantedCode := "200"
 	if responseCode != wantedCode {
-		t.Errorf("response_body %q, want %q", responseCode, wantedCode)
+		t.Errorf("Got the response code %q, want %q", responseCode, wantedCode)
 	}
 
-	_ = pt.Stop()
-
+	t.Cleanup(func() {
+		_ = pt.Stop()
+	})
 }

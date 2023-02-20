@@ -877,6 +877,8 @@ Note the `server` configuration is the same as [server](#server).
 Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
 This can be used to send NDJSON or plaintext logs.
 
+The readiness of the loki_push_api server can be checked using the endpoint `/ready`
+
 ```yaml
 # The push server configuration options
 [server: <server_config>]
