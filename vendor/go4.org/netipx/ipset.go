@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package netaddr
+package netipx
 
 import (
 	"fmt"
+	"net/netip"
 	"runtime"
 	"sort"
 	"strings"
@@ -106,7 +107,7 @@ func (s *IPSetBuilder) normalize() {
 			// f-------------t
 			//    f------t
 			//       out
-			min = append(min, IPRange{from: rin.from, to: rout.from.Prior()})
+			min = append(min, IPRange{from: rin.from, to: AddrPrior(rout.from)})
 			// Adjust in[0], not ir, because we want to consider the
 			// mutated range on the next iteration.
 			in[0].from = rout.to.Next()
@@ -136,7 +137,7 @@ func (s *IPSetBuilder) normalize() {
 			//        f------t
 			//    f------t
 			//       in
-			min = append(min, IPRange{from: rin.from, to: rout.from.Prior()})
+			min = append(min, IPRange{from: rin.from, to: AddrPrior(rout.from)})
 			in = in[1:]
 			if debug {
 				debugf("merge out cuts end of in; append shortened in")
@@ -181,8 +182,8 @@ func (s *IPSetBuilder) addError(msg string, args ...interface{}) {
 }
 
 // Add adds ip to s.
-func (s *IPSetBuilder) Add(ip IP) {
-	if ip.IsZero() {
+func (s *IPSetBuilder) Add(ip netip.Addr) {
+	if !ip.IsValid() {
 		s.addError("Add(IP{})")
 		return
 	}
@@ -190,11 +191,11 @@ func (s *IPSetBuilder) Add(ip IP) {
 }
 
 // AddPrefix adds all IPs in p to s.
-func (s *IPSetBuilder) AddPrefix(p IPPrefix) {
-	if r := p.Range(); r.IsValid() {
+func (s *IPSetBuilder) AddPrefix(p netip.Prefix) {
+	if r := RangeOfPrefix(p); r.IsValid() {
 		s.AddRange(r)
 	} else {
-		s.addError("AddPrefix(%v/%v)", p.IP(), p.Bits())
+		s.addError("AddPrefix(%v/%v)", p.Addr(), p.Bits())
 	}
 }
 
@@ -224,8 +225,8 @@ func (s *IPSetBuilder) AddSet(b *IPSet) {
 }
 
 // Remove removes ip from s.
-func (s *IPSetBuilder) Remove(ip IP) {
-	if ip.IsZero() {
+func (s *IPSetBuilder) Remove(ip netip.Addr) {
+	if !ip.IsValid() {
 		s.addError("Remove(IP{})")
 	} else {
 		s.RemoveRange(IPRangeFrom(ip, ip))
@@ -233,11 +234,11 @@ func (s *IPSetBuilder) Remove(ip IP) {
 }
 
 // RemovePrefix removes all IPs in p from s.
-func (s *IPSetBuilder) RemovePrefix(p IPPrefix) {
-	if r := p.Range(); r.IsValid() {
+func (s *IPSetBuilder) RemovePrefix(p netip.Prefix) {
+	if r := RangeOfPrefix(p); r.IsValid() {
 		s.RemoveRange(r)
 	} else {
-		s.addError("RemovePrefix(%v/%v)", p.IP(), p.Bits())
+		s.addError("RemovePrefix(%v/%v)", p.Addr(), p.Bits())
 	}
 }
 
@@ -274,8 +275,8 @@ func (s *IPSetBuilder) Complement() {
 	s.normalize()
 	s.out = s.in
 	s.in = []IPRange{
-		IPPrefix{ip: IPv4(0, 0, 0, 0), bits: 0}.Range(),
-		IPPrefix{ip: IPv6Unspecified(), bits: 0}.Range(),
+		RangeOfPrefix(netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0)),
+		RangeOfPrefix(netip.PrefixFrom(netip.IPv6Unspecified(), 0)),
 	}
 }
 
@@ -340,8 +341,8 @@ func (s *IPSet) Ranges() []IPRange {
 
 // Prefixes returns the minimum and sorted set of IP prefixes
 // that covers s.
-func (s *IPSet) Prefixes() []IPPrefix {
-	out := make([]IPPrefix, 0, len(s.rr))
+func (s *IPSet) Prefixes() []netip.Prefix {
+	out := make([]netip.Prefix, 0, len(s.rr))
 	for _, r := range s.rr {
 		out = append(out, r.Prefixes()...)
 	}
@@ -365,8 +366,8 @@ func (s *IPSet) Equal(o *IPSet) bool {
 // Contains reports whether ip is in s.
 // If ip has an IPv6 zone, Contains returns false,
 // because IPSets do not track zones.
-func (s *IPSet) Contains(ip IP) bool {
-	if ip.hasZone() {
+func (s *IPSet) Contains(ip netip.Addr) bool {
+	if ip.Zone() != "" {
 		return false
 	}
 	// TODO: data structure permitting more efficient lookups:
@@ -392,8 +393,8 @@ func (s *IPSet) ContainsRange(r IPRange) bool {
 }
 
 // ContainsPrefix reports whether all IPs in p are in s.
-func (s *IPSet) ContainsPrefix(p IPPrefix) bool {
-	return s.ContainsRange(p.Range())
+func (s *IPSet) ContainsPrefix(p netip.Prefix) bool {
+	return s.ContainsRange(RangeOfPrefix(p))
 }
 
 // Overlaps reports whether any IP in b is also in s.
@@ -421,8 +422,8 @@ func (s *IPSet) OverlapsRange(r IPRange) bool {
 }
 
 // OverlapsPrefix reports whether any IP in p is also in s.
-func (s *IPSet) OverlapsPrefix(p IPPrefix) bool {
-	return s.OverlapsRange(p.Range())
+func (s *IPSet) OverlapsPrefix(p netip.Prefix) bool {
+	return s.OverlapsRange(RangeOfPrefix(p))
 }
 
 // RemoveFreePrefix splits s into a Prefix of length bitLen and a new
@@ -430,16 +431,16 @@ func (s *IPSet) OverlapsPrefix(p IPPrefix) bool {
 //
 // If no contiguous prefix of length bitLen exists in s,
 // RemoveFreePrefix returns ok=false.
-func (s *IPSet) RemoveFreePrefix(bitLen uint8) (p IPPrefix, newSet *IPSet, ok bool) {
-	var bestFit IPPrefix
+func (s *IPSet) RemoveFreePrefix(bitLen uint8) (p netip.Prefix, newSet *IPSet, ok bool) {
+	var bestFit netip.Prefix
 	for _, r := range s.rr {
 		for _, prefix := range r.Prefixes() {
-			if prefix.bits > bitLen {
+			if uint8(prefix.Bits()) > bitLen {
 				continue
 			}
-			if bestFit.ip.IsZero() || prefix.bits > bestFit.bits {
+			if !bestFit.Addr().IsValid() || prefix.Bits() > bestFit.Bits() {
 				bestFit = prefix
-				if bestFit.bits == bitLen {
+				if uint8(bestFit.Bits()) == bitLen {
 					// exact match, done.
 					break
 				}
@@ -447,11 +448,11 @@ func (s *IPSet) RemoveFreePrefix(bitLen uint8) (p IPPrefix, newSet *IPSet, ok bo
 		}
 	}
 
-	if bestFit.ip.IsZero() {
-		return IPPrefix{}, s, false
+	if !bestFit.Addr().IsValid() {
+		return netip.Prefix{}, s, false
 	}
 
-	prefix := IPPrefix{ip: bestFit.ip, bits: bitLen}
+	prefix := netip.PrefixFrom(bestFit.Addr(), int(bitLen))
 
 	var b IPSetBuilder
 	b.AddSet(s)
