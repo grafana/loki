@@ -145,7 +145,7 @@ func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) RequestChan
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex TenantIndex, querierID string) (RequestChannel, string, TenantIndex) {
+func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierID string) (RequestChannel, string, QueueIndex) {
 	uid := lastUserIndex
 
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward

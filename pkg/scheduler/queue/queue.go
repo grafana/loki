@@ -21,26 +21,31 @@ var (
 	ErrStopped         = errors.New("queue is stopped")
 )
 
-// TenantIndex is opaque type that allows to resume iteration over tenants between successive calls
+// QueueIndex is opaque type that allows to resume iteration over tenants between successive calls
 // of RequestQueue.GetNextRequestForQuerier method.
-type TenantIndex int
+type QueueIndex int // nolint:revive
 
 // Modify index to start iteration on the same tenant, for which last queue was returned.
-func (ui TenantIndex) ReuseLastTenant() TenantIndex {
+func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	if ui < 0 {
 		return ui
 	}
 	return ui - 1
 }
 
-// FirstTenant is the UserIndex that starts iteration over tenant queues from the very first tenant.
-var FirstTenant TenantIndex = -1
+// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
+var StartIndex QueueIndex = -1
 
 // Request stored into the queue.
 type Request any
 
 // RequestChannel is a channel that queues Requests
 type RequestChannel chan Request
+
+type Queue interface {
+	EnqueueRequest(tenant string, req Request, maxQueriers int, successFn func()) error
+	Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error)
+}
 
 // RequestQueue holds incoming requests in per-tenant queues. It also assigns each tenant specified number of queriers,
 // and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
@@ -73,12 +78,12 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, que
 	return q
 }
 
-// EnqueueRequest puts the request into the queue. MaxQueries is tenant-specific value that specifies how many queriers can
-// this tenant use (zero or negative = all queriers). It is passed to each EnqueueRequest, because it can change
+// Enqueue puts the request into the queue. MaxQueries is tenant-specific value that specifies how many queriers can
+// this tenant use (zero or negative = all queriers). It is passed to each Enqueue, because it can change
 // between calls.
 //
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) EnqueueRequest(tenant string, req Request, maxQueriers int, successFn func()) error {
+func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -107,10 +112,10 @@ func (q *RequestQueue) EnqueueRequest(tenant string, req Request, maxQueriers in
 	}
 }
 
-// GetNextRequestForQuerier find next tenant queue and takes the next request off of it. Will block if there are no requests.
+// Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
 // If querier finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
-func (q *RequestQueue) GetNextRequestForQuerier(ctx context.Context, last TenantIndex, querierID string) (Request, TenantIndex, error) {
+func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 

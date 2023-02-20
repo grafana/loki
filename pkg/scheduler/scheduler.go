@@ -410,7 +410,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
 	s.activeUsers.UpdateUserTimestamp(userID, now)
-	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
+	return s.requestQueue.Enqueue(userID, req, maxQueriers, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()
@@ -445,11 +445,11 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	s.requestQueue.RegisterQuerierConnection(querierID)
 	defer s.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastUserIndex := queue.FirstTenant
+	lastUserIndex := queue.StartIndex
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
 	for s.isRunningOrStopping() {
-		req, idx, err := s.requestQueue.GetNextRequestForQuerier(querier.Context(), lastUserIndex, querierID)
+		req, idx, err := s.requestQueue.Dequeue(querier.Context(), lastUserIndex, querierID)
 		if err != nil {
 			return err
 		}
@@ -483,7 +483,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 			// Remove from pending requests.
 			s.cancelRequestAndRemoveFromPending(r.frontendAddress, r.queryID)
 
-			lastUserIndex = lastUserIndex.ReuseLastTenant()
+			lastUserIndex = lastUserIndex.ReuseLastIndex()
 			continue
 		}
 
