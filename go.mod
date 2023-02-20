@@ -120,6 +120,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/willf/bloom v2.0.3+incompatible
+	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/oauth2 v0.4.0
 	golang.org/x/text v0.6.0

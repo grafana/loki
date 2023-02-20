@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"go4.org/netipx"
 	"net/netip"
 )
 
@@ -21,7 +22,7 @@ const (
 	IPv6Charset = "0123456789abcdefABCDEF:."
 )
 
-// Should be one of the netip.Addr, netip.Prefix.
+// Should be one of the netip.Addr, netip.Prefix, netipx.IPRange.
 type IPMatcher interface{}
 
 type IPLineFilter struct {
@@ -227,6 +228,8 @@ func containsIP(matcher IPMatcher, ip netip.Addr) bool {
 	switch m := matcher.(type) {
 	case netip.Addr:
 		return m.Compare(ip) == 0
+	case netipx.IPRange:
+		return m.Contains(ip)
 	case netip.Prefix:
 		return m.Contains(ip)
 	}
@@ -244,6 +247,11 @@ func getMatcher(pattern string) (IPMatcher, error) {
 		return matcher, nil
 	}
 	matcher, err = netip.ParsePrefix(pattern) // is it cidr format? (192.168.0.1/16)
+	if err == nil {
+		return matcher, nil
+	}
+
+	matcher, err = netipx.ParseIPRange(pattern) // is it IP range format? (192.168.0.1 - 192.168.4.5
 	if err == nil {
 		return matcher, nil
 	}
