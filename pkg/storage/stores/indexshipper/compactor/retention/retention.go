@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/services"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +20,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/filter"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	util_storage "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -25,6 +29,10 @@ var chunkBucket = []byte("chunks")
 
 const (
 	markersFolder = "markers"
+
+	// sizeBasedRetentionEnforcementInterval sets the timer interval to check and clean up chunks if the
+	// disk space usage is too high on local filesystem stores
+	sizeBasedRetentionEnforcementInterval = 60 * time.Second
 )
 
 type ChunkRef struct {
@@ -73,6 +81,47 @@ type IndexProcessor interface {
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
+
+type SizeBasedRetentionCleaner struct {
+	workingDirectory string
+	expiration       ExpirationChecker
+	cleanupMetrics   *cleanupMetrics
+	chunkClient      client.Client
+	cleanupThreshold int
+
+	RetentionLoop         services.Service
+	RetentionLoopInterval time.Duration
+}
+
+func NewSizeBasedRetentionCleaner(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client,
+	cleanupThreshold int, r prometheus.Registerer, fsconfig local.FSConfig) (*SizeBasedRetentionCleaner, error) {
+	metrics := newCleanupMetrics(r)
+	return &SizeBasedRetentionCleaner{
+		workingDirectory:      fsconfig.Directory,
+		expiration:            expiration,
+		cleanupMetrics:        metrics,
+		chunkClient:           chunkClient,
+		cleanupThreshold:      cleanupThreshold,
+		RetentionLoopInterval: sizeBasedRetentionEnforcementInterval,
+	}, nil
+}
+
+func (c *SizeBasedRetentionCleaner) RunIteration(ctx context.Context) error {
+	diskUsage, err := util_storage.DiskUsage(c.workingDirectory)
+	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
+
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
+	}
+	err = DeleteChunksBasedOnBlockSize(ctx, c.workingDirectory, diskUsage, c.cleanupThreshold)
+
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
+	}
+
+	// don't return error, otherwise timer service would stop.
+	return nil
+}
 
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.

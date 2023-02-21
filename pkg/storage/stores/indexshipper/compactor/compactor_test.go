@@ -112,7 +112,7 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 				},
 			},
 		},
-	}, nil, nil)
+	}, nil, nil, local.FSConfig{Directory: tempDir})
 	require.NoError(t, err)
 
 	c.RegisterIndexCompactor(indexType, testIndexCompactor{})

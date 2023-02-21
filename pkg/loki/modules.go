@@ -992,8 +992,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
+	if !(config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) || config.UsingBoltDBtorageIndex(t.Cfg.SchemaConfig.Configs)) {
+		level.Info(util_log.Logger).Log("msg", "Not using object storage index (boltdb-shipper or tsdb) or boltdb storage index, not starting compactor")
 		return nil, nil
 	}
 
@@ -1007,7 +1007,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClient, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClient, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, t.Cfg.StorageConfig.FSConfig)
 	if err != nil {
 		return nil, err
 	}
