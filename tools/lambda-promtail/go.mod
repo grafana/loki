@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.16.0
 	github.com/aws/aws-sdk-go-v2/config v1.15.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.22.0
+	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2
@@ -40,7 +41,6 @@ require (
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
-	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/status v1.1.1 // indirect
