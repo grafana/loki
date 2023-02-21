@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [8532](https://github.com/grafana/loki/pull/8532) **justcompile**: Adds Storage Class option to S3 objects
 * [7951](https://github.com/grafana/loki/pull/7951) **MichelHollands**: Add a count template function to line_format and label_format.
 * [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap.
 * [7731](https://github.com/grafana/loki/pull/7731) **bitkill**: Add healthchecks to the docker-compose example.
@@ -42,6 +43,7 @@
 * [8251](https://github.com/grafana/loki/pull/8251) **sandeepsukhani** index-store: fix indexing of chunks overlapping multiple schemas.
 * [8151](https://github.com/grafana/loki/pull/8151) **sandeepsukhani** fix log deletion with line filters.
 * [8448](https://github.com/grafana/loki/pull/8448) **chaudum**: Fix bug in LogQL parser that caused certain queries that contain a vector expression to fail.
+* [8531](https://github.com/grafana/loki/pull/8531) **garrettlish**: logql: fix panics when cloning a special query
 
 ##### Changes
 
@@ -72,6 +74,7 @@
 ##### Enhancement
 
 * [8413](https://github.com/grafana/loki/pull/8413) **chaudum**: Try to load tenant-specific `schemaconfig-{orgID}.yaml` when using `--remote-schema` argument and fallback to global `schemaconfig.yaml`.
+* [8537](https://github.com/grafana/loki/pull/8537) **jeschkies**: Allow fetching all entries with `--limit=0`.
 
 #### Fluent Bit
 
@@ -232,6 +235,7 @@ Check the history of the branch `release-2.7.x`.
 
 #### Logcli
 * [7325](https://github.com/grafana/loki/pull/7325) **dbirks**: Document setting up command completion
+* [8518](https://github.com/grafana/loki/pull/8518) **SN9NV**: Add parallel flags
 
 #### Fluent Bit
 
@@ -465,6 +469,7 @@ to include only the most relevant.
 * [5544](https://github.com/grafana/loki/pull/5544) **ssncferreira**: Update vectorAggEvaluator to fail for expressions without grouping
 * [5543](https://github.com/grafana/loki/pull/5543) **cyriltovena**: update loki go version to 1.17.8
 * [5450](https://github.com/grafana/loki/pull/5450) **BenoitKnecht**: pkg/ruler/base: Add external_labels option
+* [5522](https://github.com/grafana/loki/pull/5522) **liguozhong**: chunk backend: Integrate Alibaba Cloud oss
 * [5484](https://github.com/grafana/loki/pull/5484) **sandeepsukhani**: Add support for per user index query readiness with limits overrides
 * [5719](https://github.com/grafana/loki/pull/5719) **kovaxur**: Loki can use both basic-auth and tenant-id
 * [5358](https://github.com/grafana/loki/pull/5358) **DylanGuedes**: Add `RingMode` support to `IndexGateway`

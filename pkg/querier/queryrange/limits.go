@@ -49,18 +49,44 @@ type Limits interface {
 
 type limits struct {
 	Limits
-	splitDuration time.Duration
+	// Use pointers so nil value can indicate if the value was set.
+	splitDuration       *time.Duration
+	maxQueryParallelism *int
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
-	return l.splitDuration
+	if l.splitDuration == nil {
+		return l.Limits.QuerySplitDuration(user)
+	}
+	return *l.splitDuration
+}
+
+func (l limits) TSDBMaxQueryParallelism(user string) int {
+	if l.maxQueryParallelism == nil {
+		return l.Limits.TSDBMaxQueryParallelism(user)
+	}
+	return *l.maxQueryParallelism
+}
+
+func (l limits) MaxQueryParallelism(user string) int {
+	if l.maxQueryParallelism == nil {
+		return l.Limits.MaxQueryParallelism(user)
+	}
+	return *l.maxQueryParallelism
 }
 
 // WithSplitByLimits will construct a Limits with a static split by duration.
 func WithSplitByLimits(l Limits, splitBy time.Duration) Limits {
 	return limits{
 		Limits:        l,
-		splitDuration: splitBy,
+		splitDuration: &splitBy,
+	}
+}
+
+func WithMaxParallelism(l Limits, maxParallelism int) Limits {
+	return limits{
+		Limits:              l,
+		maxQueryParallelism: &maxParallelism,
 	}
 }
 

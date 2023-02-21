@@ -13,6 +13,7 @@ import (
 	"github.com/thanos-io/objstore/providers/s3"
 
 	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
+	"github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -30,8 +31,9 @@ const (
 )
 
 var (
-	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
-	supportedSSETypes              = []string{SSEKMS, SSES3}
+	supportedSignatureVersions = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedSSETypes          = []string{SSEKMS, SSES3}
+
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
@@ -59,6 +61,7 @@ type Config struct {
 	AccessKeyID      string         `yaml:"access_key_id"`
 	Insecure         bool           `yaml:"insecure"`
 	SignatureVersion string         `yaml:"signature_version"`
+	StorageClass     string         `yaml:"storage_class"`
 
 	SSE  SSEConfig  `yaml:"sse"`
 	HTTP HTTPConfig `yaml:"http"`
@@ -78,6 +81,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", aws.StorageClassStandard, "The S3 storage class to use. Details can be found at https://aws.amazon.com/s3/storage-classes/.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }
@@ -86,6 +90,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
+	}
+
+	if err := aws.ValidateStorageClass(cfg.StorageClass); err != nil {
+		return err
 	}
 
 	return cfg.SSE.Validate()
