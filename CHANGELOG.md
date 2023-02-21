@@ -1,5 +1,7 @@
 ## Main/Unreleased
 
+### All Changes
+
 #### Loki
 
 ##### Enhancements
@@ -27,8 +29,6 @@
 * [9099](https://github.com/grafana/loki/pull/9099) **salvacorts**: Fix the estimated size of chunks when writing a new TSDB file during compaction.
 * [9130](https://github.com/grafana/loki/pull/9130) **salvacorts**: Pass LogQL engine options down to the _split by range_, _sharding_, and _query size limiter_ middlewares.
 
-### All Changes
-
 #### Promtail
 
 ##### Enhancements
@@ -40,6 +40,12 @@
 ##### Fixes
 
 * [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
+
+#### LogCLI
+
+##### Fixes
+
+* [8566](https://github.com/grafana/loki/pull/8566) **ndrpnt**: Allow queries to start with negative filters (`!=` and `!~`) when omitting stream selector with `--stdin` flag
 
 #### Mixins
 
