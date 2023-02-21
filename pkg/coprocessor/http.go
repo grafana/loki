@@ -38,7 +38,7 @@ func WrapQueryRangePreQuery(querierObserver QuerierObserver) middleware.Interfac
 				return
 			}
 
-			if pass == true {
+			if pass {
 				next.ServeHTTP(w, req)
 				return
 			}

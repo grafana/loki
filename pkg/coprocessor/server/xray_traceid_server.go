@@ -34,13 +34,13 @@ func PreQuery(res http.ResponseWriter, request *http.Request) {
 	}
 
 	logql := queryPreQueryRequest.Selector
-	traceId := ExtractXRayTraceId(logql)
-	if traceId == "" {
+	traceID := ExtractXRayTraceId(logql)
+	if traceID == "" {
 		http.Error(res, "logql do not contain XTray TraceID", http.StatusBadRequest)
 		return
 	}
 
-	traceGenTime, err := ExtractTimeFromTraceID(traceId)
+	traceGenTime, err := ExtractTimeFromTraceID(traceID)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
