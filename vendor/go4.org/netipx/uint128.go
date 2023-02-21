@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package netaddr
+package netipx
 
-import "math/bits"
+import (
+	"encoding/binary"
+	"math/bits"
+	"net/netip"
+)
 
 // uint128 represents a uint128 using two uint64s.
 //
@@ -13,6 +17,26 @@ import "math/bits"
 type uint128 struct {
 	hi uint64
 	lo uint64
+}
+
+func u128From16(a [16]byte) uint128 {
+	return uint128{
+		binary.BigEndian.Uint64(a[:8]),
+		binary.BigEndian.Uint64(a[8:]),
+	}
+}
+
+func (u uint128) IP6() netip.Addr {
+	var a [16]byte
+	binary.BigEndian.PutUint64(a[:8], u.hi)
+	binary.BigEndian.PutUint64(a[8:], u.lo)
+	return netip.AddrFrom16(a)
+}
+
+func (u uint128) IP4() netip.Addr {
+	var a [8]byte
+	binary.BigEndian.PutUint64(a[:], u.lo)
+	return netip.AddrFrom4([4]byte{a[4], a[5], a[6], a[7]})
 }
 
 // isZero reports whether u == 0.
@@ -65,9 +89,9 @@ func (u uint128) commonPrefixLen(v uint128) (n uint8) {
 	return
 }
 
-func (u *uint128) halves() [2]*uint64 {
-	return [2]*uint64{&u.hi, &u.lo}
-}
+// func (u *uint128) halves() [2]*uint64 {
+// 	return [2]*uint64{&u.hi, &u.lo}
+// }
 
 // bitsSetFrom returns a copy of u with the given bit
 // and all subsequent ones set.
