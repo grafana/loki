@@ -1023,7 +1023,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 			objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to create object client: %w", err)
 			}
 
 			objectClients[periodConfig.ObjectType] = objectClient

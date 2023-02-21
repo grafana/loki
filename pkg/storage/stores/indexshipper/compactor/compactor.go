@@ -179,7 +179,7 @@ type storeContainer struct {
 	indexStorageClient shipper_storage.Client
 }
 
-func NewCompactor(cfg Config, storeClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -234,7 +234,7 @@ func NewCompactor(cfg Config, storeClients map[string]client.ObjectClient, schem
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(storeClients, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(objectStoreClients, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
 
@@ -542,7 +542,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 
 	sc, ok := c.storeContainers[schemaCfg.ObjectType]
 	if !ok {
-		return fmt.Errorf("failed to compact table %s. object store client not found for %s", tableName, schemaCfg.ObjectType)
+		return fmt.Errorf("index store client not found for %s", schemaCfg.ObjectType)
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,

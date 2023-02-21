@@ -112,12 +112,12 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
-		}
-
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
 			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+		}
+
+		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
 		applyFIFOCacheConfig(r)
