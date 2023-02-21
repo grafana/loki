@@ -793,10 +793,8 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		{
 			Name: "tenants",
 			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: "abcd-gateway",
-					},
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "abcd-gateway",
 				},
 			},
 		},
