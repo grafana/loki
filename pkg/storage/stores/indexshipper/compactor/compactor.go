@@ -152,13 +152,13 @@ type Compactor struct {
 	DeleteRequestsGRPCHandler *deletion.GRPCRequestHandler
 	deleteRequestsManager     *deletion.DeleteRequestsManager
 	//expirationChecker         retention.ExpirationChecker
-	sizeBasedRetention        *retention.SizeBasedRetentionCleaner
-	metrics         *metrics
-	running         bool
-	wg              sync.WaitGroup
-	indexCompactors map[string]IndexCompactor
-	schemaConfig    config.SchemaConfig
-	fsConfig                  local.FSConfig
+	sizeBasedRetention *retention.SizeBasedRetentionCleaner
+	metrics            *metrics
+	running            bool
+	wg                 sync.WaitGroup
+	indexCompactors    map[string]IndexCompactor
+	schemaConfig       config.SchemaConfig
+	fsConfig           local.FSConfig
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
@@ -168,10 +168,15 @@ type Compactor struct {
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
-	limits             *validation.Overrides
-	retentionWorkDir   string
-	chunkClient        client.Client
-	registerer         prometheus.Registerer
+
+	limits           *validation.Overrides
+	retentionWorkDir string
+	chunkClient      client.Client
+	registerer       prometheus.Registerer
+
+	// Size based compaction means that two compactions might try to happen at the same time.
+	// Use this to ensure size-based and normal compaction can't step on eachother.
+	compactionMtx sync.Mutex
 }
 
 func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer, fsconfig local.FSConfig) (*Compactor, error) {
@@ -270,7 +275,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 		}
 
 		if c.cfg.SharedStoreType == config.StorageTypeFileSystem {
-			c.sizeBasedRetention, err = retention.NewSizeBasedRetentionCleaner(c.retentionWorkDir, c.chunkClient, c.cfg.RetentionDiskSpacePercentage, r, c.fsConfig)
+			c.sizeBasedRetention, err = retention.NewSizeBasedRetentionCleaner(c.chunkClient, c.cfg.RetentionDiskSpacePercentage, r, c.fsConfig)
 		}
 		if err != nil {
 			return err
@@ -327,8 +332,12 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 	}
 
 	if c.sizeBasedRetention != nil {
-		c.sizeBasedRetention.RetentionLoop = services.NewTimerService(c.sizeBasedRetention.RetentionLoopInterval, nil,
-			c.sizeBasedRetention.RunIteration, nil)
+		c.sizeBasedRetention.RetentionLoop = services.NewTimerService(
+			c.sizeBasedRetention.RetentionLoopInterval,
+			nil,
+			c.sizeBasedCompaction,
+			nil,
+		)
 		if err := services.StartAndAwaitRunning(ctx, c.sizeBasedRetention.RetentionLoop); err != nil {
 			return errors.Wrap(err, "unable to start size based retention subservices")
 		}
@@ -365,6 +374,23 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 		return err
 	}
 
+	return nil
+}
+
+// TODO: This goes in your service
+func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
+	if c.cfg.SharedStoreType != config.StorageTypeFileSystem {
+		return nil
+	}
+
+	// TODO: Find the chunks you want to delete
+	// Use the stuff you wrote before
+	// Make sure you use the absolute path
+	// Turn your paths into chunk refs with index_util.ParseChunkRef(index_util.DecodeKey([]byte("absolute path")))
+	// Pass the list of to delete to RunSizeCompaction
+
+	var toDelete []retention.ChunkRef
+	_ = c.RunSizeCompaction(ctx, toDelete) // just log this error so the service doesn't exit
 	return nil
 }
 
@@ -555,6 +581,9 @@ func (c *Compactor) RegisterIndexCompactor(indexType string, indexCompactor Inde
 }
 
 func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) error {
+	c.compactionMtx.Lock()
+	defer c.compactionMtx.Unlock()
+
 	status := statusSuccess
 	start := time.Now()
 
@@ -606,7 +635,10 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	return err
 }
 
-func (c *Compactor) RunSizeCompaction(ctx context.Context, toDelete map[string]struct{}) error {
+func (c *Compactor) RunSizeCompaction(ctx context.Context, toDelete []retention.ChunkRef) error {
+	c.compactionMtx.Lock()
+	defer c.compactionMtx.Unlock()
+
 	status := statusSuccess
 
 	expirationChecker := retention.DeletedChunksExpirationChecker(toDelete)
@@ -626,11 +658,10 @@ func (c *Compactor) RunSizeCompaction(ctx context.Context, toDelete map[string]s
 	}
 
 	var tables []string
-	for k := range toDelete {
-		_ = k
-		from := model.Time(0) //TODO: parse chunk time
-		chunkSchema, _ := c.schemaConfig.SchemaForTime(from)
-		tables = append(tables, chunkSchema.IndexTables.TableFor(from))
+	for _, ref := range toDelete {
+		// TODO: Something with this error
+		chunkSchema, _ := c.schemaConfig.SchemaForTime(ref.From)
+		tables = append(tables, chunkSchema.IndexTables.TableFor(ref.From))
 	}
 
 	err = c.compactTables(ctx, expirationChecker, tableMarker, true, tables)

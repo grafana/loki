@@ -114,9 +114,17 @@ func (e *neverExpiringExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndT
 }
 
 // DeletedChunksExpirationChecker returns an expiration checker that signals a
-func DeletedChunksExpirationChecker(deleted map[string]struct{}) ExpirationChecker {
+func DeletedChunksExpirationChecker(deleted []ChunkRef) ExpirationChecker {
+	// Golang doesn't have a concept of a set so we do this instead.
+	// we key on r.String() because chunk refs aren't comparable and so
+	// can't be map keys
+	toDelete := make(map[string]struct{}, len(deleted))
+	for _, r := range deleted {
+		toDelete[r.String()] = struct{}{}
+	}
+
 	return &deletedChunksExpirationChecker{
-		deleted: deleted,
+		deleted: toDelete,
 	}
 }
 

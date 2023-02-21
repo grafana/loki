@@ -18,10 +18,10 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/filter"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/util"
 	util_storage "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -84,7 +84,6 @@ var errNoChunksFound = errors.New("no chunks found in table, please check if the
 
 type SizeBasedRetentionCleaner struct {
 	workingDirectory string
-	expiration       ExpirationChecker
 	cleanupMetrics   *cleanupMetrics
 	chunkClient      client.Client
 	cleanupThreshold int
@@ -93,12 +92,15 @@ type SizeBasedRetentionCleaner struct {
 	RetentionLoopInterval time.Duration
 }
 
-func NewSizeBasedRetentionCleaner(workingDirectory string, expiration ExpirationChecker, chunkClient client.Client,
-	cleanupThreshold int, r prometheus.Registerer, fsconfig local.FSConfig) (*SizeBasedRetentionCleaner, error) {
+func NewSizeBasedRetentionCleaner(
+	chunkClient client.Client,
+	cleanupThreshold int,
+	r prometheus.Registerer,
+	fsconfig local.FSConfig,
+) (*SizeBasedRetentionCleaner, error) {
 	metrics := newCleanupMetrics(r)
 	return &SizeBasedRetentionCleaner{
 		workingDirectory:      fsconfig.Directory,
-		expiration:            expiration,
 		cleanupMetrics:        metrics,
 		chunkClient:           chunkClient,
 		cleanupThreshold:      cleanupThreshold,
@@ -108,13 +110,12 @@ func NewSizeBasedRetentionCleaner(workingDirectory string, expiration Expiration
 
 func (c *SizeBasedRetentionCleaner) RunIteration(ctx context.Context) error {
 	diskUsage, err := util_storage.DiskUsage(c.workingDirectory)
-	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
-
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
-	err = DeleteChunksBasedOnBlockSize(ctx, c.workingDirectory, diskUsage, c.cleanupThreshold)
+	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
 
+	err = DeleteChunksBasedOnBlockSize(ctx, c.workingDirectory, diskUsage, c.cleanupThreshold)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
