@@ -341,6 +341,10 @@ func gatewayTokenSecretName(gwName string) string {
 	return fmt.Sprintf("%s-token", gwName)
 }
 
+func gatewayTenantSecretName(gwName string) string {
+	return fmt.Sprintf("%s-tenant", gwName)
+}
+
 func alertmanagerSigningCABundleName(rulerName string) string {
 	return fmt.Sprintf("%s-ca-bundle", rulerName)
 }

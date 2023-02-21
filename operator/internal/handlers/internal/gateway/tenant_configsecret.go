@@ -35,22 +35,22 @@ type openShiftSpec struct {
 	CookieSecret   string `json:"cookieSecret"`
 }
 
-// GetTenantConfigMapData returns the tenantName, tenantId, cookieSecret
+// GetTenantConfigSecretData returns the tenantName, tenantId, cookieSecret
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
-func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request) (map[string]manifests.TenantConfig, error) {
-	var tenantConfigMap corev1.ConfigMap
+func GetTenantConfigSecretData(ctx context.Context, k k8s.Client, req ctrl.Request) (map[string]manifests.TenantConfig, error) {
+	var tenantSecret corev1.Secret
 	key := client.ObjectKey{Name: manifests.GatewayName(req.Name), Namespace: req.Namespace}
-	if err := k.Get(ctx, key, &tenantConfigMap); err != nil {
-		return nil, kverrors.Wrap(err, "couldn't find tenant configMap.")
+	if err := k.Get(ctx, key, &tenantSecret); err != nil {
+		return nil, kverrors.Wrap(err, "couldn't find tenant secret.")
 	}
 
-	tcm, err := extractTenantConfigMap(&tenantConfigMap)
+	ts, err := extractTenantConfigMap(&tenantSecret)
 	if err != nil {
-		return nil, kverrors.Wrap(err, "error occurred in extracting tenants.yaml configMap.")
+		return nil, kverrors.Wrap(err, "error occurred in extracting tenants.yaml secret.")
 	}
 
-	tcmMap := make(map[string]manifests.TenantConfig)
-	for _, tenant := range tcm.Tenants {
+	tsMap := make(map[string]manifests.TenantConfig)
+	for _, tenant := range ts.Tenants {
 		tc := manifests.TenantConfig{}
 		if tenant.OpenShift != nil {
 			tc.OpenShift = &manifests.TenantOpenShiftSpec{
@@ -58,17 +58,17 @@ func GetTenantConfigMapData(ctx context.Context, k k8s.Client, req ctrl.Request)
 			}
 		}
 
-		tcmMap[tenant.Name] = tc
+		tsMap[tenant.Name] = tc
 	}
 
-	return tcmMap, nil
+	return tsMap, nil
 }
 
 // extractTenantConfigMap extracts tenants.yaml data if valid.
 // This is to be used to configure tenant's authentication spec when exists.
-func extractTenantConfigMap(cm *corev1.ConfigMap) (*tenantsConfigJSON, error) {
+func extractTenantConfigMap(s *corev1.Secret) (*tenantsConfigJSON, error) {
 	// Extract required fields from tenants.yaml
-	tenantConfigYAML, ok := cm.BinaryData[LokiGatewayTenantFileName]
+	tenantConfigYAML, ok := s.Data[LokiGatewayTenantFileName]
 	if !ok {
 		return nil, kverrors.New("missing tenants.yaml file in configMap.")
 	}
