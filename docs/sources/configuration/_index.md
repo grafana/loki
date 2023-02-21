@@ -505,6 +505,9 @@ engine:
 # When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
+
+pre_query_url:
+  [url: <url>]
 ```
 
 ### query_scheduler
