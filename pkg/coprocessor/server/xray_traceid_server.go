@@ -23,30 +23,26 @@ func main() {
 func PreQuery(res http.ResponseWriter, request *http.Request) {
 	req, err := io.ReadAll(request.Body)
 	if err != nil {
-		res.Write([]byte(err.Error()))
-		res.WriteHeader(http.StatusInternalServerError)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	queryPreQueryRequest := proto.QueryPreQueryRequest{}
 	err = queryPreQueryRequest.Unmarshal(req)
 	if err != nil {
-		res.Write([]byte(err.Error()))
-		res.WriteHeader(http.StatusInternalServerError)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	logql := queryPreQueryRequest.Selector
 	traceId := ExtractXRayTraceId(logql)
 	if traceId == "" {
-		res.Write([]byte("logql do not contain XTray TraceID"))
-		res.WriteHeader(http.StatusBadRequest)
+		http.Error(res, "logql do not contain XTray TraceID", http.StatusBadRequest)
 		return
 	}
 
 	traceGenTime, err := ExtractTimeFromTraceID(traceId)
 	if err != nil {
-		res.Write([]byte(err.Error()))
-		res.WriteHeader(http.StatusInternalServerError)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -70,12 +66,14 @@ func returnPass(pass bool, res http.ResponseWriter) {
 	queryPreQueryResponse.Pass = pass
 	marshal, err := queryPreQueryResponse.Marshal()
 	if err != nil {
-		res.Write([]byte(err.Error()))
-		res.WriteHeader(http.StatusInternalServerError)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	res.Write(marshal)
 	res.WriteHeader(http.StatusOK)
+	_, err = res.Write(marshal)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 var XRayRegex = "[1]{1}-[0-9a-f]{8}-[0-9a-f]{24}"
