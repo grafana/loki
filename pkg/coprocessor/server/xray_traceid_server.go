@@ -34,7 +34,7 @@ func PreQuery(res http.ResponseWriter, request *http.Request) {
 	}
 
 	logql := queryPreQueryRequest.Selector
-	traceID := ExtractXRayTraceId(logql)
+	traceID := ExtractXRayTraceID(logql)
 	if traceID == "" {
 		http.Error(res, "logql do not contain XTray TraceID", http.StatusBadRequest)
 		return
@@ -78,7 +78,7 @@ func returnPass(pass bool, res http.ResponseWriter) {
 
 var XRayRegex = "[1]{1}-[0-9a-f]{8}-[0-9a-f]{24}"
 
-func ExtractXRayTraceId(line string) string {
+func ExtractXRayTraceID(line string) string {
 	rgx := regexp.MustCompile(XRayRegex)
 	matchString := rgx.MatchString(line)
 	if matchString {
