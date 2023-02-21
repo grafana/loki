@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
@@ -55,6 +56,7 @@ type Config struct {
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	QueryTimeout                  time.Duration    `yaml:"query_timeout" doc:"hidden"`
+	PreQueryURL                   *config.URL      `yaml:"pre_query_url"`
 }
 
 // RegisterFlags register flags.
