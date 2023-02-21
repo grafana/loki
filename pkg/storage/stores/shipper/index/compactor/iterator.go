@@ -32,7 +32,7 @@ func ForEachChunk(ctx context.Context, bucket *bbolt.Bucket, config config.Perio
 	var current retention.ChunkEntry
 
 	for key, _ := cursor.First(); key != nil && ctx.Err() == nil; key, _ = cursor.Next() {
-		ref, ok, err := parseChunkRef(decodeKey(key))
+		ref, ok, err := ParseChunkRef(DecodeKey(key))
 		if err != nil {
 			return err
 		}

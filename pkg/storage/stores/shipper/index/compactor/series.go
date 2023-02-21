@@ -82,7 +82,7 @@ func (sm *seriesLabelsMapper) Get(seriesID []byte, userID []byte) labels.Labels 
 func (sm *seriesLabelsMapper) build() error {
 Outer:
 	for k, v := sm.cursor.First(); k != nil; k, v = sm.cursor.Next() {
-		ref, ok, err := parseLabelSeriesRangeKey(decodeKey(k))
+		ref, ok, err := parseLabelSeriesRangeKey(DecodeKey(k))
 		if err != nil {
 			return err
 		}

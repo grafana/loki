@@ -113,6 +113,33 @@ func (e *neverExpiringExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndT
 	return false
 }
 
+// DeletedChunksExpirationChecker returns an expiration checker that signals a
+func DeletedChunksExpirationChecker(deleted map[string]struct{}) ExpirationChecker {
+	return &deletedChunksExpirationChecker{
+		deleted: deleted,
+	}
+}
+
+type deletedChunksExpirationChecker struct {
+	deleted map[string]struct{}
+}
+
+func (e *deletedChunksExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
+	_, ok := e.deleted[ref.String()]
+	return ok, nil
+}
+func (e *deletedChunksExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+	return true
+}
+func (e *deletedChunksExpirationChecker) MarkPhaseStarted()  {}
+func (e *deletedChunksExpirationChecker) MarkPhaseFailed()   {}
+func (e *deletedChunksExpirationChecker) MarkPhaseTimedOut() {}
+func (e *deletedChunksExpirationChecker) MarkPhaseFinished() {}
+func (e *deletedChunksExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+	_, ok := e.deleted[ref.String()]
+	return ok
+}
+
 type TenantsRetention struct {
 	limits Limits
 }

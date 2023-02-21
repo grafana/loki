@@ -39,7 +39,7 @@ func (e InvalidIndexKeyError) Is(target error) bool {
 	return target == ErrInvalidIndexKey
 }
 
-func parseChunkRef(hashKey, rangeKey []byte) (retention.ChunkRef, bool, error) {
+func ParseChunkRef(hashKey, rangeKey []byte) (retention.ChunkRef, bool, error) {
 	componentsRef := getComponents()
 	defer putComponents(componentsRef)
 	components := componentsRef.components
@@ -211,8 +211,8 @@ func seriesFromHash(h []byte) (seriesID []byte) {
 	return
 }
 
-// decodeKey decodes hash and range value from a boltdb key.
-func decodeKey(k []byte) (hashValue, rangeValue []byte) {
+// DecodeKey decodes hash and range value from a boltdb key.
+func DecodeKey(k []byte) (hashValue, rangeValue []byte) {
 	// hashValue + 0 + string(rangeValue)
 	for i := range k {
 		if k[i] == 0 {

@@ -74,7 +74,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			err = modifiedBoltDB.View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
 					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
-					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
+					series, ok, err := parseLabelIndexSeriesID(DecodeKey(k))
 					if !ok {
 						return nil
 					}
