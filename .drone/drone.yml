@@ -1675,10 +1675,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-<<<<<<< HEAD
 hmac: e5f127d71d3dcb4ae93d348ff2641c9639bf0372640fd398328cff25eda62a9d
-=======
-hmac: cebba8fba935e80dcde4b19012ac13ced5d4b9f47f49e07bb81e4c966a5026eb
->>>>>>> 54af3c4e7 (Run `make drone` to update drone.yaml with latest build image)
 
 ...
