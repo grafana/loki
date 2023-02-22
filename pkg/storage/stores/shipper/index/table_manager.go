@@ -275,7 +275,7 @@ func migrateTables(dir string, tableRange config.TableRange, logger log.Logger) 
 
 	for _, entry := range entries {
 		if ok, err := tableRange.TableInRange(entry.Name()); !ok {
-			level.Warn(logger).Log("msg", fmt.Sprintf("skip table migration readiness. table not in range: %s", entry.Name()), "err", err)
+			level.Warn(logger).Log("msg", fmt.Sprintf("skip table migration. table not in range: %s", entry.Name()), "err", err)
 			continue
 		}
 
