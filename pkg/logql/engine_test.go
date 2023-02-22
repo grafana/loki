@@ -2392,9 +2392,9 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			tc := tc
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,

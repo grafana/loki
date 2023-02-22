@@ -68,10 +68,10 @@ func TestBlocksInclusive(t *testing.T) {
 
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
+		localEnc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
-
-			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+			chk := NewMemChunk(localEnc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 			cases := []struct {
 				ts  int64
 				str string
@@ -180,10 +180,11 @@ func TestBlock(t *testing.T) {
 
 func TestCorruptChunk(t *testing.T) {
 	for _, enc := range testEncoding {
+		localEnc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
-			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+			chk := NewMemChunk(localEnc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 			cases := []struct {
 				data []byte
 			}{
@@ -251,11 +252,12 @@ func TestRoundtripV2(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
 			for _, version := range []byte{chunkFormatV2, chunkFormatV3} {
+				localVersion := version
 				t.Run(enc.String(), func(t *testing.T) {
 					t.Parallel()
 
 					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-					c.format = version
+					c.format = localVersion
 					populated := fillChunk(c)
 
 					assertLines := func(c *MemChunk) {
@@ -908,12 +910,12 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
 	} {
+		tt := tt
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
 				t.Parallel()
 
-				tt := tt
 				c := createChunk()
 
 				// testing headchunk
