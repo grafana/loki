@@ -912,9 +912,8 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
-				// t.Parallel()
+				t.Parallel()
 
-				tt := tt
 				c := createChunk()
 
 				// testing headchunk
