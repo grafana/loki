@@ -298,7 +298,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 
 		tableNumber, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
-			return fmt.Errorf("cannot extract table number: %w", err)
+			return fmt.Errorf("cannot extract table number from %s: %w", tableName, err)
 		}
 
 		// continue if the table is not within query readiness

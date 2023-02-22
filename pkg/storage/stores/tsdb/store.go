@@ -52,8 +52,6 @@ type newStoreFactoryFunc func(
 	err error,
 )
 
-var tsdbMetrics *Metrics
-
 // NewStore creates a new tsdb index ReaderWriter.
 var NewStore = func() newStoreFactoryFunc {
 	return func(
@@ -120,13 +118,10 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
 
 		var (
-			nodeName = indexShipperCfg.IngesterName
-			dir      = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
-		)
-
-		if tsdbMetrics == nil {
+			nodeName    = indexShipperCfg.IngesterName
+			dir         = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
 			tsdbMetrics = NewMetrics(reg)
-		}
+		)
 
 		tsdbManager := NewTSDBManager(
 			nodeName,
