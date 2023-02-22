@@ -1,4 +1,5 @@
 ## Main/Unreleased
+* [6675](https://github.com/grafana/loki/pull/6675) **btaani**: Add logfmt expression parser for selective extraction of labels from logfmt formatted logs
 
 ### All Changes
 
