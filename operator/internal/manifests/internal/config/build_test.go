@@ -115,7 +115,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -351,7 +350,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -691,7 +689,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -1028,7 +1025,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -1366,7 +1362,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -1742,7 +1737,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -2047,7 +2041,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -2466,7 +2459,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -2770,7 +2762,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
