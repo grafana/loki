@@ -62,6 +62,7 @@
 * [8233](https://github.com/grafana/loki/pull/8233) **nicoche**: promtail: Add `max-line-size-truncate` limit to truncate too long lines on client side
 * [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
 * [7597](https://github.com/grafana/loki/pull/7597) **redbaron**: allow ratelimiting by label
+* [3493](https://github.com/grafana/loki/pull/3493) **adityacs** Support geoip stage.
 * [8382](https://github.com/grafana/loki/pull/8382) **kelnage**: Promtail: Add event log message stage
 
 ##### Fixes
