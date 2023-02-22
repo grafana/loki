@@ -388,8 +388,8 @@ func BenchmarkJSONParserInvalidLine(b *testing.B) {
 }
 
 func BenchmarkJSONExpressionParser(b *testing.B) {
-	parser, err := NewJSONExpressionParser([]JSONExpression{
-		NewJSONExpr("context_file", "context.file"),
+	parser, err := NewJSONExpressionParser([]XExpression{
+		NewXExpr("context_file", "context.file"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new JSON expression parser")
@@ -399,12 +399,56 @@ func BenchmarkJSONExpressionParser(b *testing.B) {
 }
 
 func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
-	parser, err := NewJSONExpressionParser([]JSONExpression{
-		NewJSONExpr("context_file", "some.expression"),
+	parser, err := NewJSONExpressionParser([]XExpression{
+		NewXExpr("context_file", "some.expression"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new JSON expression parser")
 	}
 
 	invalidJSONBenchmark(b, parser)
+}
+
+func logfmtBenchmark(b *testing.B, parser Stage) {
+	b.ReportAllocs()
+
+	p := NewPipeline([]Stage{
+		mustFilter(NewFilter("ts", labels.MatchEqual)).ToStage(),
+		parser,
+	})
+
+	line := []byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116`)
+	lbs := labels.Labels{
+		{Name: "cluster", Value: "ops-tool1"},
+		{Name: "name", Value: "querier"},
+		{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
+	}
+	b.ResetTimer()
+	sp := p.ForStream(lbs)
+	for n := 0; n < b.N; n++ {
+		resLine, resLbs, resMatches = sp.Process(0, line)
+
+		if !resMatches {
+			b.Fatalf("resulting line not ok: %s\n", line)
+		}
+
+		if resLbs.Labels().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
+			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+		}
+	}
+}
+
+func BenchmarkLogfmtParser(b *testing.B) {
+	logfmtBenchmark(b, NewLogfmtParser())
+}
+
+func BenchmarkLogfmtExpressionParser(b *testing.B) {
+	parser, err := NewLogfmtExpressionParser([]XExpression{
+		NewXExpr("timestamp", "ts"),
+	})
+	if err != nil {
+		b.Fatal("cannot create new logfmt expression parser:", err.Error())
+	}
+
+	logfmtBenchmark(b, parser)
 }
