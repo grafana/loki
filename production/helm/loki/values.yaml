@@ -502,6 +502,16 @@ test:
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
 
+## -- Application controller Pod Disruption Budget Configuration
+## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+podDisruptionBudget:
+  # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+  # @default -- `""` (defaults to 0 if not specified)
+  #minAvailable: ""
+  # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+  ## Has higher precedence over `controller.pdb.minAvailable`
+  maxUnavailable: "1"
+
 # Monitoring section determines which monitoring features to enable
 monitoring:
   # Dashboards for monitoring Loki
@@ -717,6 +727,15 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+  ## -- Application controller Pod Disruption Budget Configuration
+  ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  podDisruptionBudget:
+    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # @default -- `""` (defaults to 0 if not specified)
+    minAvailable: ""
+    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    ## Has higher precedence over `controller.pdb.minAvailable`
+    maxUnavailable: "1"
 
 # Configuration for the table-manager
 tableManager:
@@ -856,6 +875,15 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+  ## -- Application controller Pod Disruption Budget Configuration
+  ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  podDisruptionBudget:
+    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # @default -- `""` (defaults to 0 if not specified)
+    minAvailable: ""
+    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    ## Has higher precedence over `controller.pdb.minAvailable`
+    maxUnavailable: "1"
 
 # Configuration for the backend pod(s)
 backend:
@@ -924,6 +952,15 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+  ## -- Application controller Pod Disruption Budget Configuration
+  ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  podDisruptionBudget:
+    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # @default -- `""` (defaults to 0 if not specified)
+    minAvailable: ""
+    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    ## Has higher precedence over `controller.pdb.minAvailable`
+    maxUnavailable: "1"
 
 # Configuration for the single binary node(s)
 singleBinary:
@@ -1215,6 +1252,16 @@ gateway:
     # @default -- See values.yaml
     file: |
       {{- include "loki.nginxFile" . | indent 2 -}}
+  ## -- Application controller Pod Disruption Budget Configuration
+  ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  podDisruptionBudget:
+    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # @default -- `""` (defaults to 0 if not specified)
+    minAvailable: ""
+    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    ## Has higher precedence over `controller.pdb.minAvailable`
+    maxUnavailable: "1"
+
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false
