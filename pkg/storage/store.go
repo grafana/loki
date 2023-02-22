@@ -161,17 +161,11 @@ func (s *store) init() error {
 			return err
 		}
 
-		// getTableRange is used only for initializing boltdb and tsdb index clients.
-		// Computing TableRange for other indexTypes might cause a panic if PeriodConfig.IndexTables.Period is not configured.
-		getTableRange := func() config.TableRange {
-			periodEndTime := config.DayTime{Time: math.MaxInt64}
-			if i < len(s.schemaCfg.Configs)-1 {
-				periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Time.Add(-time.Millisecond)}
-			}
-			return p.GetIndexTableNumberRange(periodEndTime)
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(s.schemaCfg.Configs)-1 {
+			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Time.Add(-time.Millisecond)}
 		}
-
-		w, idx, stop, err := s.storeForPeriod(p, getTableRange, chunkClient, f)
+		w, idx, stop, err := s.storeForPeriod(p, p.GetIndexTableNumberRange(periodEndTime), chunkClient, f)
 		if err != nil {
 			return err
 		}
@@ -215,7 +209,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{
 			"component": fmt.Sprintf(
@@ -250,7 +244,6 @@ func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() confi
 			return nil, nil, nil, err
 		}
 
-		tableRange := getTableRange()
 		var backupIndexWriter index.Writer
 		backupStoreStop := func() {}
 		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
@@ -258,12 +251,10 @@ func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() confi
 			pCopy.IndexType = config.BoltDBShipperType
 			pCopy.IndexTables.Prefix = fmt.Sprintf("%sbackup_", pCopy.IndexTables.Prefix)
 
-			getTableRange := func() config.TableRange {
-				tableRange := tableRange
-				tableRange.PeriodConfig = &pCopy
-				return tableRange
-			}
-			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, getTableRange, chunkClient, f)
+			tableRange := tableRange
+			tableRange.PeriodConfig = &pCopy
+
+			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, tableRange, chunkClient, f)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -289,7 +280,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, getTableRange func() confi
 			}, nil
 	}
 
-	idx, err := NewIndexClient(p, getTableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
+	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}

@@ -291,13 +291,14 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			continue
 		}
 
+		if ok, err := tm.tableRangeToHandle.TableInRange(tableName); !ok {
+			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip query readiness. table not in range: %s", tableName), "err", err)
+			continue
+		}
+
 		tableNumber, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
 			return fmt.Errorf("cannot extract table number: %w", err)
-		}
-
-		if !tm.tableRangeToHandle.TableInRange(tableNumber, tableName) {
-			continue
 		}
 
 		// continue if the table is not within query readiness
@@ -393,11 +394,8 @@ func (tm *tableManager) loadLocalTables() error {
 			continue
 		}
 
-		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
-		if err != nil {
-			return err
-		}
-		if !tm.tableRangeToHandle.TableInRange(tableNumber, entry.Name()) {
+		if ok, err := tm.tableRangeToHandle.TableInRange(entry.Name()); !ok {
+			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip loading local table. table not in range: %s", entry.Name()), "err", err)
 			continue
 		}
 

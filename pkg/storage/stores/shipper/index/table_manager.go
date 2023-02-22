@@ -272,12 +272,8 @@ func migrateTables(dir string, tableRange config.TableRange) error {
 	}
 
 	for _, entry := range entries {
-		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
-		if err != nil {
-			continue
-		}
-
-		if !tableRange.TableInRange(tableNumber, entry.Name()) {
+		if ok, err := tableRange.TableInRange(entry.Name()); !ok {
+			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip table migration readiness. table not in range: %s", entry.Name()), "err", err)
 			continue
 		}
 

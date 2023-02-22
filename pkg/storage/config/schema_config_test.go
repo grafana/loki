@@ -760,30 +760,66 @@ func TestTableRange_TableInRange(t *testing.T) {
 		End:   10,
 		PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
 			Prefix: "index_",
+			Period: 24 * time.Hour,
 		}},
 	}
 
-	for i, tc := range []struct {
-		tableNumber int64
-		tableName   string
-		expResp     bool
+	for _, tc := range []struct {
+		tableName string
+		expResp   bool
+		expError  error
 	}{
 		{
-			tableNumber: 1,
-			tableName:   "index_1",
-			expResp:     true,
+			tableName: "index_1",
+			expResp:   true,
 		},
 		{
-			tableNumber: 12,
-			tableName:   "index_12",
+			tableName: "index_12",
 		},
 		{
-			tableNumber: 5,
-			tableName:   "index_foo_5",
+			tableName: "index_foo_5",
+		},
+		{
+			tableName: "index_foo",
+			expError:  errInvalidTableName,
 		},
 	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			require.Equal(t, tc.expResp, tableRange.TableInRange(tc.tableNumber, tc.tableName))
+		t.Run(fmt.Sprintf("periodic table %s", tc.tableName), func(t *testing.T) {
+			ok, err := tableRange.TableInRange(tc.tableName)
+			require.Equal(t, tc.expResp, ok)
+
+			if tc.expError != nil {
+				require.ErrorIs(t, err, tc.expError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	nonPeriodicTableRange := TableRange{
+		PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+			Prefix: "index",
+		}},
+	}
+	for _, tc := range []struct {
+		tableName string
+		expResp   bool
+	}{
+		{
+			tableName: "index",
+			expResp:   true,
+		},
+		{
+			tableName: "index_foo",
+		},
+		{
+			tableName: "index_0",
+		},
+	} {
+		t.Run(fmt.Sprintf("non-periodic table %s", tc.tableName), func(t *testing.T) {
+			ok, err := nonPeriodicTableRange.TableInRange(tc.tableName)
+			require.Equal(t, tc.expResp, ok)
+			require.NoError(t, err)
 		})
 	}
 }

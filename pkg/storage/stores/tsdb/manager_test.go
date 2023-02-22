@@ -4,10 +4,12 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestMigrateMultitenantDir(t *testing.T) {
@@ -16,6 +18,7 @@ func TestMigrateMultitenantDir(t *testing.T) {
 		End:   20,
 		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
 			Prefix: "index_",
+			Period: 24 * time.Hour,
 		}},
 	}
 

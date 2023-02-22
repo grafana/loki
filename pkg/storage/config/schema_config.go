@@ -89,10 +89,20 @@ type TableRange struct {
 }
 
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
-func (t TableRange) TableInRange(tableNumber int64, tableName string) bool {
+func (t TableRange) TableInRange(tableName string) (bool, error) {
+	// non-periodic tables
+	if t.PeriodConfig.IndexTables.Period == 0 {
+		return t.PeriodConfig.IndexTables.Prefix == tableName, nil
+	}
+
+	tableNumber, err := ExtractTableNumberFromName(tableName)
+	if err != nil {
+		return false, err
+	}
+
 	cfg := t.ConfigForTableNumber(tableNumber)
 	return cfg != nil &&
-		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName, nil
 }
 
 func (t TableRange) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
@@ -136,6 +146,13 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // GetIndexTableNumberRange returns the table number range calculated based on
 // the configured schema start date, index table period and the given schemaEndDate
 func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
+	// non-periodic tables
+	if cfg.IndexTables.Period == 0 {
+		return TableRange{
+			PeriodConfig: cfg,
+		}
+	}
+
 	return TableRange{
 		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
 		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),

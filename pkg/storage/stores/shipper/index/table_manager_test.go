@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
+
+const indexTablePeriod = 24 * time.Hour
 
 func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFunc) {
 	defer func() {
@@ -38,6 +41,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFun
 		End: math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
 			Prefix: "index_",
+			Period: indexTablePeriod,
 		}},
 	}
 	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil)
@@ -105,6 +109,7 @@ func TestLoadTables(t *testing.T) {
 		End: math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
 			Prefix: "index_",
+			Period: indexTablePeriod,
 		}},
 	}
 	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil)
@@ -231,6 +236,7 @@ func TestMigrateTables(t *testing.T) {
 		End:   20,
 		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
 			Prefix: "index_",
+			Period: indexTablePeriod,
 		}},
 	}
 

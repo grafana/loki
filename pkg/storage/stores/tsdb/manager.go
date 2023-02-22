@@ -310,12 +310,8 @@ func migrateMultitenantDir(dir string, tableRange config.TableRange) error {
 			continue
 		}
 
-		tableNumber, err := config.ExtractTableNumberFromName(f.Name())
-		if err != nil {
-			continue
-		}
-
-		if !tableRange.TableInRange(tableNumber, f.Name()) {
+		if ok, err := tableRange.TableInRange(f.Name()); !ok {
+			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip multi tenant dir migration. table not in range: %s", f.Name()), "err", err)
 			continue
 		}
 
