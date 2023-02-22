@@ -33,6 +33,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
         with:
           platforms: linux/arm64,linux/amd64
+          version: v0.9.1
 
       - name: Get image tags
         id: image_tags
