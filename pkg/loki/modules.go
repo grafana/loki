@@ -363,8 +363,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	httpMiddleware := middleware.Merge(toMerge...)
 
 	var querierObserver coprocessor.QuerierObserver
-	if t.Cfg.Querier.PreQueryURL != nil {
-		querierObserver = coprocessor.NewQuerierObserver(t.Cfg.Querier.PreQueryURL.URL)
+	if t.Cfg.CoprocessorConfig.PreQuery.URL != nil {
+		querierObserver = coprocessor.NewQuerierObserver(t.Cfg.CoprocessorConfig.PreQuery)
 	}
 
 	logger := log.With(util_log.Logger, "component", "querier")

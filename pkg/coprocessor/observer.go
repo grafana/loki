@@ -4,35 +4,57 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
-	"github.com/grafana/loki/pkg/coprocessor/proto"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 
+	"github.com/prometheus/common/config"
+
+	"github.com/grafana/loki/pkg/coprocessor/proto"
 	"github.com/grafana/loki/pkg/loghttp"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 )
 
-var timeout = 2 * time.Minute
 var UserAgent = fmt.Sprintf("lokiObserver/%s", build.Version)
 var contentType = "application/x-protobuf"
 
 const maxErrMsgLen = 1024
 
+type Config struct {
+	PreQuery PreQueryConfig `yaml:"pre_query"`
+}
+
+// RegisterFlags register flags.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.PreQuery.RegisterFlags(f)
+}
+
+type PreQueryConfig struct {
+	URL     *config.URL   `yaml:"url"`
+	Timeout time.Duration `yaml:"timeout"`
+}
+
+// RegisterFlags register flags.
+func (cfg *PreQueryConfig) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.Timeout, "coprocessor.pre-query-timeout", 2*time.Minute, "timeout.")
+}
+
 type querierObserver struct {
 	endpoint string
 	client   *http.Client
+	timeout  time.Duration
 }
 
-func NewQuerierObserver(URL *url.URL) QuerierObserver {
-	endpoint := URL.String()
+func NewQuerierObserver(preQueryConfig PreQueryConfig) QuerierObserver {
+	endpoint := preQueryConfig.URL.String()
 
 	return &querierObserver{
 		endpoint: endpoint,
 		client:   &http.Client{},
+		timeout:  preQueryConfig.Timeout,
 	}
 }
 func (q *querierObserver) PreQuery(ctx context.Context, rangeQuery loghttp.RangeQuery) (pass bool, err error) {
@@ -50,7 +72,7 @@ func (q *querierObserver) PreQuery(ctx context.Context, rangeQuery loghttp.Range
 		return false, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, q.timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", q.endpoint, bytes.NewReader(marshal))
 	if err != nil {
