@@ -344,8 +344,13 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	if len(is) == 1 {
 		return is[0]
 	}
-	var maxVal sortFields
-	var less func(a, b sortFields) bool
+	maxVal, less := treeLess(direction)
+	result := &entrySortIterator{}
+	result.tree = loser.New(is, maxVal, sortFieldsAt, less, result.closeEntry)
+	return result
+}
+
+func treeLess(direction logproto.Direction) (maxVal sortFields, less func(a, b sortFields) bool) {
 	switch direction {
 	case logproto.BACKWARD:
 		maxVal = sortFields{timeNanos: math.MinInt64}
@@ -356,9 +361,7 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	default:
 		panic("bad direction")
 	}
-	result := &entrySortIterator{}
-	result.tree = loser.New(is, maxVal, sortFieldsAt, less, result.closeEntry)
-	return result
+	return
 }
 
 type sortFields struct {
