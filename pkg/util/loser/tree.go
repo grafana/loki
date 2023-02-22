@@ -53,15 +53,14 @@ type node[E any, S Sequence] struct {
 
 func (t *Tree[E, S]) moveNext(index int) bool {
 	n := &t.nodes[index]
-	ret := n.items.Next()
-	if ret {
+	if n.items.Next() {
 		n.value = t.at(n.items)
-	} else {
-		t.close(n.items)
-		n.value = t.maxVal
-		n.index = -1
+		return true
 	}
-	return ret
+	t.close(n.items) // Next() returned false; close it and mark as finished.
+	n.value = t.maxVal
+	n.index = -1
+	return false
 }
 
 func (t *Tree[E, S]) Winner() S {
