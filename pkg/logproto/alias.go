@@ -1,8 +1,9 @@
 package logproto
 
 import (
-	"github.com/grafana/loki/pkg/push"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 // Aliases to avoid renaming all the imports of logproto

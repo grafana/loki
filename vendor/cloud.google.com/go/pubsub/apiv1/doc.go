@@ -58,7 +58,7 @@
 //
 //	req := &pubsubpb.CreateSchemaRequest{
 //		// TODO: Fill request struct fields.
-//		// See https://pkg.go.dev/google.golang.org/genproto/googleapis/pubsub/v1#CreateSchemaRequest.
+//		// See https://pkg.go.dev/cloud.google.com/go/pubsub/apiv1/pubsubpb#CreateSchemaRequest.
 //	}
 //	resp, err := c.CreateSchema(ctx, req)
 //	if err != nil {

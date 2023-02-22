@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.27.1
+    - 0.28.0
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.27.1
+    - 0.28.0
     username:
       from_secret: docker_username
   when:
@@ -1279,11 +1279,11 @@ platform:
 steps:
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: identify-runner
 - commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: test
 trigger:
   ref:
@@ -1675,6 +1675,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: fbc93106cac3a989c4b910682f2e08eadc21786d8502f3270bc2f4a5b1996b21
+hmac: de9f4851c4bfd1324e22a0cb983432801b59240128c1b162ea67c5cd814606c9
 
 ...

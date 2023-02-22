@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -199,6 +200,11 @@ var (
 			Name:       "azure_storage_config",
 			StructType: reflect.TypeOf(azure.BlobStorageConfig{}),
 			Desc:       "The azure_storage_config block configures the connection to Azure object storage backend.",
+		},
+		{
+			Name:       "alibabacloud_storage_config",
+			StructType: reflect.TypeOf(alibaba.OssConfig{}),
+			Desc:       "The alibabacloud_storage_config block configures the connection to Alibaba Cloud Storage object storage backend.",
 		},
 		{
 			Name:       "gcs_storage_config",

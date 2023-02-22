@@ -99,11 +99,12 @@ spec:
               {{- end }}
               {{- $namespace := $.Release.Namespace }}
               {{- with .Values.monitoring.selfMonitoring.tenant }}
+              {{- $secretNamespace := tpl .secretNamespace $ }}
               kubectl --namespace "{{ $namespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
                 --from-literal=username="{{ .name }}" \
                 --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
-              {{- if not (eq .secretNamespace $namespace) }}
-              kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
+              {{- if not (eq $secretNamespace $namespace) }}
+              kubectl --namespace "{{ $secretNamespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
                 --from-literal=username="{{ .name }}" \
                 --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
               {{- end }}

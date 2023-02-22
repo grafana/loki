@@ -82,8 +82,8 @@ func (c *Client) RemoveBucketWithOptions(ctx context.Context, bucketName string,
 
 // RemoveBucket deletes the bucket name.
 //
-//  All objects (including all object versions and delete markers).
-//  in the bucket must be deleted before successfully attempting this request.
+//	All objects (including all object versions and delete markers).
+//	in the bucket must be deleted before successfully attempting this request.
 func (c *Client) RemoveBucket(ctx context.Context, bucketName string) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -166,7 +166,7 @@ func (c *Client) removeObject(ctx context.Context, bucketName, objectName string
 		headers.Set(amzBucketReplicationStatus, string(opts.Internal.ReplicationStatus))
 	}
 	if opts.Internal.ReplicationRequest {
-		headers.Set(minIOBucketReplicationRequest, "")
+		headers.Set(minIOBucketReplicationRequest, "true")
 	}
 	if opts.ForceDelete {
 		headers.Set(minIOForceDelete, "true")
