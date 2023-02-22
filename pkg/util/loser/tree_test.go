@@ -38,7 +38,7 @@ func (it *List) Seek(val uint64) bool {
 	return len(it.list) > 0
 }
 
-func checkIterablesEqual[E loser.Value, S1 loser.Sequence, S2 loser.Sequence](t *testing.T, a S1, b S2, at1 func(S1) E, at2 func(S2) E, less func(E, E) bool) {
+func checkIterablesEqual[E any, S1 loser.Sequence, S2 loser.Sequence](t *testing.T, a S1, b S2, at1 func(S1) E, at2 func(S2) E, less func(E, E) bool) {
 	t.Helper()
 	count := 0
 	for a.Next() {
