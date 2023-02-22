@@ -68,10 +68,10 @@ func TestBlocksInclusive(t *testing.T) {
 
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
-		localEnc := enc
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
-			chk := NewMemChunk(localEnc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 			cases := []struct {
 				ts  int64
 				str string
@@ -180,11 +180,11 @@ func TestBlock(t *testing.T) {
 
 func TestCorruptChunk(t *testing.T) {
 	for _, enc := range testEncoding {
-		localEnc := enc
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
-			chk := NewMemChunk(localEnc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 			cases := []struct {
 				data []byte
 			}{
@@ -943,6 +943,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 func TestMemchunkLongLine(t *testing.T) {
 	for _, enc := range testEncoding {
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
