@@ -357,10 +357,7 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 		panic("bad direction")
 	}
 	result := &entrySortIterator{}
-	result.tree = loser.NewMerge(len(is), maxVal, sortFieldsAt, less, result.closeEntry)
-	for _, it := range is {
-		result.tree.Add(it)
-	}
+	result.tree = loser.New(is, maxVal, sortFieldsAt, less, result.closeEntry)
 	return result
 }
 

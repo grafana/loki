@@ -109,10 +109,7 @@ func TestMerge(t *testing.T) {
 			close := func(s *List) {
 				numCloses++
 			}
-			lt := loser.NewMerge(len(tt.args), math.MaxUint64, at, less, close)
-			for _, s := range tt.args {
-				lt.Add(s)
-			}
+			lt := loser.New(tt.args, math.MaxUint64, at, less, close)
 			at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
 			checkIterablesEqual(t, tt.want, lt, at, at2, less)
 			if numCloses != len(tt.args) {

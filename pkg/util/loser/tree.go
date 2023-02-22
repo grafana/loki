@@ -6,23 +6,22 @@ type Sequence interface {
 	Next() bool // Advances and returns true if there is a value at this new position.
 }
 
-func NewMerge[E any, S Sequence](nElements int, maxVal E, at func(S) E, less func(E, E) bool, close func(S)) *Tree[E, S] {
+func New[E any, S Sequence](sequences []S, maxVal E, at func(S) E, less func(E, E) bool, close func(S)) *Tree[E, S] {
+	nSequences := len(sequences)
 	t := Tree[E, S]{
 		maxVal: maxVal,
 		at:     at,
 		less:   less,
 		close:  close,
-		nodes:  make([]node[E, S], nElements, nElements*2),
+		nodes:  make([]node[E, S], nSequences*2),
 	}
-	if nElements > 0 {
+	for i, s := range sequences {
+		t.nodes[i+nSequences].items = s
+	}
+	if nSequences > 0 {
 		t.nodes[0].index = -1 // flag to be initialized on first call to Next().
 	}
 	return &t
-}
-
-// Must be called exactly nElements times after calling NewMerge.
-func (t *Tree[E, S]) Add(e S) {
-	t.nodes = append(t.nodes, node[E, S]{items: e})
 }
 
 // Call the close function on all sequences that are still open.
