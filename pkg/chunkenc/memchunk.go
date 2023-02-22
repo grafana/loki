@@ -1008,6 +1008,9 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		if e.t < mint || e.t > maxt {
 			return
 		}
+		if e.t == maxt && mint != maxt {
+			return
+		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
 		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
 		if !matches {

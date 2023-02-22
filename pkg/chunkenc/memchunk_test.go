@@ -867,23 +867,6 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-// TODO(DylanGuedes): Remove this before merging the PR.
-func TestMemChunk_IteratorBoundsSameStartAndEnd(t *testing.T) {
-	c := NewMemChunk(EncNone, DefaultHeadBlockFmt, 1e6, 1e6)
-
-	require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, 1), Line: "1"}))
-	require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, 2), Line: "2"}))
-
-	// testing headchunk
-	it, err := c.Iterator(context.Background(), time.Unix(0, 1) /* minT */, time.Unix(0, 1) /* maxT */, logproto.FORWARD, noopStreamPipeline)
-	require.NoError(t, err)
-	expected := []bool{true, false}
-	for _, i := range expected {
-		require.Equal(t, i, it.Next())
-	}
-	require.NoError(t, it.Close())
-}
-
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
@@ -925,10 +908,11 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
 	} {
+		tt := tt
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
-				t.Parallel()
+				// t.Parallel()
 
 				tt := tt
 				c := createChunk()
