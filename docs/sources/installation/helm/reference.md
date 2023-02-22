@@ -176,6 +176,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podDisruptionBudget.maxUnavailable</td>
+			<td>string</td>
+			<td>Number of pods that are unavailble after eviction as number or percentage (eg.: 50%). # Has higher precedence over `controller.pdb.minAvailable`</td>
+			<td><pre lang="json">
+"1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podDisruptionBudget.minAvailable</td>
+			<td>string</td>
+			<td>Number of pods that are available after eviction as number or percentage (eg.: 50%)</td>
+			<td><pre lang="">
+`""` (defaults to 0 if not specified)
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.podLabels</td>
 			<td>object</td>
 			<td>Additional labels for each `backend` pod</td>
@@ -1093,6 +1111,24 @@ See values.yaml
 			<td>Annotations for gateway pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.podDisruptionBudget.maxUnavailable</td>
+			<td>string</td>
+			<td>Number of pods that are unavailble after eviction as number or percentage (eg.: 50%). # Has higher precedence over `controller.pdb.minAvailable`</td>
+			<td><pre lang="json">
+"1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.podDisruptionBudget.minAvailable</td>
+			<td>string</td>
+			<td>Number of pods that are available after eviction as number or percentage (eg.: 50%)</td>
+			<td><pre lang="">
+`""` (defaults to 0 if not specified)
 </pre>
 </td>
 		</tr>
@@ -2650,6 +2686,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>podDisruptionBudget.maxUnavailable</td>
+			<td>string</td>
+			<td>Number of pods that are unavailble after eviction as number or percentage (eg.: 50%). # Has higher precedence over `controller.pdb.minAvailable`</td>
+			<td><pre lang="json">
+"1"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
@@ -2862,6 +2907,24 @@ null
 			<td>Annotations for read pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podDisruptionBudget.maxUnavailable</td>
+			<td>string</td>
+			<td>Number of pods that are unavailble after eviction as number or percentage (eg.: 50%). # Has higher precedence over `controller.pdb.minAvailable`</td>
+			<td><pre lang="json">
+"1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podDisruptionBudget.minAvailable</td>
+			<td>string</td>
+			<td>Number of pods that are available after eviction as number or percentage (eg.: 50%)</td>
+			<td><pre lang="">
+`""` (defaults to 0 if not specified)
 </pre>
 </td>
 		</tr>
@@ -3716,6 +3779,24 @@ null
 			<td>Annotations for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podDisruptionBudget.maxUnavailable</td>
+			<td>string</td>
+			<td>Number of pods that are unavailble after eviction as number or percentage (eg.: 50%). # Has higher precedence over `controller.pdb.minAvailable`</td>
+			<td><pre lang="json">
+"1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podDisruptionBudget.minAvailable</td>
+			<td>string</td>
+			<td>Number of pods that are available after eviction as number or percentage (eg.: 50%)</td>
+			<td><pre lang="">
+`""` (defaults to 0 if not specified)
 </pre>
 </td>
 		</tr>
