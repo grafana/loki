@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -59,7 +60,7 @@ func buildTestTableManager(t *testing.T, path string, tableRangeToHandle *config
 	}
 	tblManager, err := NewTableManager(cfg, func(s string) (index.Index, error) {
 		return openMockIndexFile(t, s), nil
-	}, indexStorageClient, nil, *tableRangeToHandle, nil)
+	}, indexStorageClient, nil, *tableRangeToHandle, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	return tblManager.(*tableManager), func() {
@@ -145,6 +146,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		},
 		ctx:    context.Background(),
 		cancel: func() {},
+		logger: log.NewNopLogger(),
 	}
 
 	// setup 10 tables with 5 latest tables having user index for user1 and user2

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
@@ -18,7 +19,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/uploads"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Mode string
@@ -102,6 +102,7 @@ type indexShipper struct {
 	uploadsManager    uploads.TableManager
 	downloadsManager  downloads.TableManager
 
+	logger   log.Logger
 	stopOnce sync.Once
 }
 
@@ -112,7 +113,7 @@ type indexShipper struct {
 // it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer) (IndexShipper, error) {
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -121,6 +122,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 	shipper := indexShipper{
 		cfg:               cfg,
 		openIndexFileFunc: open,
+		logger:            logger,
 	}
 
 	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangeToHandle, reg)
@@ -128,7 +130,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting index shipper in %s mode", cfg.Mode))
+	level.Info(shipper.logger).Log("msg", fmt.Sprintf("starting index shipper in %s mode", cfg.Mode))
 
 	return &shipper, nil
 }
@@ -142,7 +144,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg)
+		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg, s.logger)
 		if err != nil {
 			return err
 		}
@@ -158,7 +160,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangeToHandle, reg)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangeToHandle, reg, s.logger)
 		if err != nil {
 			return err
 		}

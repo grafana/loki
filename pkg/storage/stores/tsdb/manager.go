@@ -89,7 +89,7 @@ func (m *tsdbManager) Start() (err error) {
 
 	// as we are running multiple instances of tsdbManager, one for each period
 	// existing tables should be migrated to period specific directory
-	if err := migrateMultitenantDir(m.dir, m.tableRange); err != nil {
+	if err := migrateMultitenantDir(m.dir, m.tableRange, m.log); err != nil {
 		return errors.Wrap(err, "migrating multitenant dir")
 	}
 
@@ -287,7 +287,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func migrateMultitenantDir(dir string, tableRange config.TableRange) error {
+func migrateMultitenantDir(dir string, tableRange config.TableRange, logger log.Logger) error {
 	parentDir := filepath.Dir(filepath.Clean(dir))
 	mulitenantDir := managerMultitenantDir(parentDir)
 	if _, err := os.Stat(mulitenantDir); err != nil {
@@ -311,7 +311,7 @@ func migrateMultitenantDir(dir string, tableRange config.TableRange) error {
 		}
 
 		if ok, err := tableRange.TableInRange(f.Name()); !ok {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip multi tenant dir migration. table not in range: %s", f.Name()), "err", err)
+			level.Warn(logger).Log("msg", fmt.Sprintf("skip multi tenant dir migration. table not in range: %s", f.Name()), "err", err)
 			continue
 		}
 

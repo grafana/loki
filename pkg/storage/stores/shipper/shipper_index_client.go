@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
@@ -23,7 +24,6 @@ import (
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Config struct {
@@ -59,15 +59,17 @@ type indexClient struct {
 	querier      index.Querier
 
 	metrics  *metrics
+	logger   log.Logger
 	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer) (series_index.Client, error) {
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (series_index.Client, error) {
 	i := indexClient{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
+		logger:  logger,
 	}
 
 	err := i.init(name, storageClient, limits, ownsTenantFn, tableRange, registerer)
@@ -75,7 +77,7 @@ func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limi
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %s mode", cfg.Mode))
+	level.Info(i.logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %s mode", cfg.Mode))
 
 	return &i, nil
 }
@@ -84,7 +86,7 @@ func (i *indexClient) init(name string, storageClient client.ObjectClient, limit
 	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
 	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn,
-		indexfile.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
+		indexfile.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
 	if err != nil {
 		return err
 	}
@@ -101,7 +103,7 @@ func (i *indexClient) init(name string, storageClient client.ObjectClient, limit
 			DBRetainPeriod:       i.cfg.IngesterDBRetainPeriod,
 			MakePerTenantBuckets: i.cfg.BuildPerTenantIndex,
 		}
-		i.writer, err = index.NewTableManager(cfg, i.indexShipper, tableRange, registerer)
+		i.writer, err = index.NewTableManager(cfg, i.indexShipper, tableRange, registerer, i.logger)
 		if err != nil {
 			return err
 		}

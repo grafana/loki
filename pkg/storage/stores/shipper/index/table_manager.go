@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Config struct {
@@ -35,6 +35,7 @@ type TableManager struct {
 	indexShipper Shipper
 
 	metrics    *metrics
+	logger     log.Logger
 	tables     map[string]*Table
 	tableRange config.TableRange
 	tablesMtx  sync.RWMutex
@@ -49,7 +50,7 @@ type Shipper interface {
 	ForEach(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
 }
 
-func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRange, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (*TableManager, error) {
 	err := chunk_util.EnsureDirectory(cfg.IndexDir)
 	if err != nil {
 		return nil, err
@@ -63,6 +64,7 @@ func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRa
 		tableRange:   tableRange,
 		ctx:          ctx,
 		cancel:       cancel,
+		logger:       logger,
 	}
 
 	tables, err := tm.loadTables()
@@ -95,7 +97,7 @@ func (tm *TableManager) loop() {
 }
 
 func (tm *TableManager) Stop() {
-	level.Info(util_log.Logger).Log("msg", "stopping table manager")
+	level.Info(tm.logger).Log("msg", "stopping table manager")
 
 	tm.cancel()
 	tm.wg.Wait()
@@ -166,20 +168,20 @@ func (tm *TableManager) handoverIndexesToShipper(force bool) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
-	level.Info(util_log.Logger).Log("msg", "handing over indexes to shipper")
+	level.Info(tm.logger).Log("msg", "handing over indexes to shipper")
 
 	for _, table := range tm.tables {
 		err := table.HandoverIndexesToShipper(force)
 		if err != nil {
 			// continue handing over other tables while skipping cleanup for a failed one.
-			level.Error(util_log.Logger).Log("msg", "failed to handover index", "table", table.name, "err", err)
+			level.Error(tm.logger).Log("msg", "failed to handover index", "table", table.name, "err", err)
 			continue
 		}
 
 		err = table.Snapshot()
 		if err != nil {
 			// we do not want to stop handing over of index due to failures in snapshotting them so logging just the error here.
-			level.Error(util_log.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
+			level.Error(tm.logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
 		}
 	}
 }
@@ -187,7 +189,7 @@ func (tm *TableManager) handoverIndexesToShipper(force bool) {
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	// as we are running multiple instances of TableManger - one for each period
 	// existing tables should be migrated to period specific directory
-	if err := migrateTables(tm.cfg.IndexDir, tm.tableRange); err != nil {
+	if err := migrateTables(tm.cfg.IndexDir, tm.tableRange, tm.logger); err != nil {
 		return nil, errors.Wrap(err, "migrating tables")
 	}
 
@@ -211,7 +213,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		// since we are moving to keeping files for same table in a folder, if current element is a file we need to move it inside a directory with the same name
 		// i.e file index_123 would be moved to path index_123/index_123.
 		if !entry.IsDir() {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", entry.Name()))
+			level.Info(tm.logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", entry.Name()))
 			filePath := filepath.Join(tm.cfg.IndexDir, entry.Name())
 
 			// create a folder with .temp suffix since we can't create a directory with same name as file.
@@ -231,7 +233,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			}
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", entry.Name()))
+		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading table %s", entry.Name()))
 		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, entry.Name()), tm.cfg.Uploader, tm.indexShipper, tm.cfg.MakePerTenantBuckets, tm.metrics)
 		if err != nil {
 			return nil, err
@@ -241,7 +243,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			// if table is nil it means it has no files in it so remove the folder for that table.
 			err := os.Remove(filepath.Join(tm.cfg.IndexDir, entry.Name()))
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to remove empty table folder", "table", entry.Name(), "err", err)
+				level.Error(tm.logger).Log("msg", "failed to remove empty table folder", "table", entry.Name(), "err", err)
 			}
 			continue
 		}
@@ -264,7 +266,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	return localTables, nil
 }
 
-func migrateTables(dir string, tableRange config.TableRange) error {
+func migrateTables(dir string, tableRange config.TableRange, logger log.Logger) error {
 	parentDir := filepath.Dir(filepath.Clean(dir))
 	entries, err := os.ReadDir(parentDir)
 	if err != nil {
@@ -273,7 +275,7 @@ func migrateTables(dir string, tableRange config.TableRange) error {
 
 	for _, entry := range entries {
 		if ok, err := tableRange.TableInRange(entry.Name()); !ok {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip table migration readiness. table not in range: %s", entry.Name()), "err", err)
+			level.Warn(logger).Log("msg", fmt.Sprintf("skip table migration readiness. table not in range: %s", entry.Name()), "err", err)
 			continue
 		}
 

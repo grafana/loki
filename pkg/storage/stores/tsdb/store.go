@@ -7,6 +7,7 @@ import (
 	"path"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type IndexWriter interface {
@@ -33,6 +33,7 @@ type store struct {
 	indexShipper      indexshipper.IndexShipper
 	indexWriter       IndexWriter
 	backupIndexWriter index.Writer
+	logger            log.Logger
 	stopOnce          sync.Once
 }
 
@@ -46,6 +47,7 @@ type newStoreFactoryFunc func(
 	tableRange config.TableRange,
 	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
+	logger log.Logger,
 ) (
 	indexReaderWriter index.ReaderWriter,
 	stopFunc func(),
@@ -64,6 +66,7 @@ var NewStore = func() newStoreFactoryFunc {
 		tableRange config.TableRange,
 		backupIndexWriter index.Writer,
 		reg prometheus.Registerer,
+		logger log.Logger,
 	) (
 		index.ReaderWriter,
 		func(),
@@ -75,6 +78,7 @@ var NewStore = func() newStoreFactoryFunc {
 
 		storeInstance := &store{
 			backupIndexWriter: backupIndexWriter,
+			logger:            logger,
 		}
 		err := storeInstance.init(name, indexShipperCfg, objectClient, limits, tableRange, reg)
 		if err != nil {
@@ -97,6 +101,7 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 		OpenShippableTSDB,
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
+		s.logger,
 	)
 	if err != nil {
 		return err
@@ -128,12 +133,12 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 			dir,
 			s.indexShipper,
 			tableRange,
-			util_log.Logger,
+			s.logger,
 			tsdbMetrics,
 		)
 
 		headManager := NewHeadManager(
-			util_log.Logger,
+			s.logger,
 			dir,
 			tsdbMetrics,
 			tsdbManager,
@@ -160,7 +165,7 @@ func (s *store) Stop() {
 	s.stopOnce.Do(func() {
 		if hm, ok := s.indexWriter.(*HeadManager); ok {
 			if err := hm.Stop(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to stop head manager", "err", err)
+				level.Error(s.logger).Log("msg", "failed to stop head manager", "err", err)
 			}
 		}
 		s.indexShipper.Stop()

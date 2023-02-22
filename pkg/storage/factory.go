@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -245,7 +246,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (index.Client, error) {
+func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer, logger log.Logger) (index.Client, error) {
 	switch periodCfg.IndexType {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
@@ -278,7 +279,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return indexGatewayClient, nil
 			}
 
-			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
+			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, logger)
 			if err != nil {
 				return nil, err
 			}
@@ -303,7 +304,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 
 		instanceName := fmt.Sprintf("%s_%d", periodCfg.ObjectType, tableRange.Start)
 		shipper, err := shipper.NewShipper(instanceName, cfg.BoltDBShipperConfig, objectClient, limits,
-			ownsTenantFn, tableRange, registerer)
+			ownsTenantFn, tableRange, registerer, logger)
 		if err != nil {
 			return nil, err
 		}

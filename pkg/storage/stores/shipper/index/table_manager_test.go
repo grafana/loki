@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -44,7 +45,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFun
 			Period: indexTablePeriod,
 		}},
 	}
-	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil)
+	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	return tm, tm.Stop
@@ -112,7 +113,7 @@ func TestLoadTables(t *testing.T) {
 			Period: indexTablePeriod,
 		}},
 	}
-	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil)
+	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	defer tm.Stop()
 
@@ -241,7 +242,7 @@ func TestMigrateTables(t *testing.T) {
 	}
 
 	assert.NoError(t, util.EnsureDirectory(dir))
-	assert.NoError(t, migrateTables(dir, tableRange))
+	assert.NoError(t, migrateTables(dir, tableRange, log.NewNopLogger()))
 
 	files, err := os.ReadDir(dir)
 	assert.NoError(t, err)

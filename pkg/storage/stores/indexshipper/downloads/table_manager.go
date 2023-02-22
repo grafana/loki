@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -17,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -59,6 +59,7 @@ type tableManager struct {
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
 	metrics   *metrics
+	logger    log.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -68,7 +69,7 @@ type tableManager struct {
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
-	ownsTenantFn IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer) (TableManager, error) {
+	ownsTenantFn IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -82,6 +83,7 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		ownsTenant:         ownsTenantFn,
 		tables:             make(map[string]Table),
 		metrics:            newMetrics(reg),
+		logger:             logger,
 		ctx:                ctx,
 		cancel:             cancel,
 	}
@@ -121,18 +123,18 @@ func (tm *tableManager) loop() {
 		case <-syncTicker.C:
 			err := tm.syncTables(tm.ctx)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+				level.Error(tm.logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
 			err = tm.ensureQueryReadiness(tm.ctx)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
+				level.Error(tm.logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
 			err := tm.cleanupCache()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error cleaning up expired tables", "err", err)
+				level.Error(tm.logger).Log("msg", "error cleaning up expired tables", "err", err)
 			}
 		case <-tm.ctx.Done():
 			return
@@ -183,7 +185,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 		table, ok = tm.tables[tableName]
 		if !ok {
 			// table not found, creating one.
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
+			level.Info(tm.logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
 			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
 			err := util.EnsureDirectory(tablePath)
@@ -216,7 +218,7 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
 	}()
 
-	level.Info(util_log.Logger).Log("msg", "syncing tables")
+	level.Info(tm.logger).Log("msg", "syncing tables")
 
 	for _, table := range tm.tables {
 		err := table.Sync(ctx)
@@ -232,10 +234,10 @@ func (tm *tableManager) cleanupCache() error {
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
-	level.Info(util_log.Logger).Log("msg", "cleaning tables cache")
+	level.Info(tm.logger).Log("msg", "cleaning tables cache")
 
 	for name, table := range tm.tables {
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
+		level.Info(tm.logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
 		isEmpty, err := table.DropUnusedIndex(tm.cfg.CacheTTL, time.Now())
 		if err != nil {
 			return err
@@ -255,7 +257,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	distinctUsers := make(map[string]struct{})
 
 	defer func() {
-		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
+		level.Info(tm.logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -292,7 +294,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		if ok, err := tm.tableRangeToHandle.TableInRange(tableName); !ok {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip query readiness. table not in range: %s", tableName), "err", err)
+			level.Warn(tm.logger).Log("msg", fmt.Sprintf("skip query readiness. table not in range: %s", tableName), "err", err)
 			continue
 		}
 
@@ -339,7 +341,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 		ensureQueryReadinessDuration := time.Since(operationStart)
 
-		level.Info(util_log.Logger).Log(
+		level.Info(tm.logger).Log(
 			"msg", "index pre-download for query readiness completed",
 			"users_len", len(usersToBeQueryReadyFor),
 			"query_readiness_duration", ensureQueryReadinessDuration,
@@ -395,11 +397,11 @@ func (tm *tableManager) loadLocalTables() error {
 		}
 
 		if ok, err := tm.tableRangeToHandle.TableInRange(entry.Name()); !ok {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("skip loading local table. table not in range: %s", entry.Name()), "err", err)
+			level.Warn(tm.logger).Log("msg", fmt.Sprintf("skip loading local table. table not in range: %s", entry.Name()), "err", err)
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
+		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
 		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
 			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)

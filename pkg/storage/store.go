@@ -218,11 +218,12 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 				p.From.String(),
 			),
 		}, s.registerer)
+	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if p.IndexType == config.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, indexClientLogger)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -262,7 +263,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 
 		instanceName := fmt.Sprintf("%s_%d", p.ObjectType, tableRange.Start)
 		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(instanceName, s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
-			tableRange, backupIndexWriter, indexClientReg)
+			tableRange, backupIndexWriter, indexClientReg, indexClientLogger)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -280,11 +281,11 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			}, nil
 	}
 
-	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
+	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}
-	idx = series_index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, s.logger, s.cfg.DisableBroadIndexQueries)
+	idx = series_index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, indexClientLogger, s.cfg.DisableBroadIndexQueries)
 	schema, err := series_index.CreateSchema(p)
 	if err != nil {
 		return nil, nil, nil, err
