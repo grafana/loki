@@ -310,6 +310,7 @@ func TestRoundtripV2(t *testing.T) {
 func TestRoundtripV3(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(fmt.Sprintf("%v-%v", f, enc), func(t *testing.T) {
 				t.Parallel()
 
@@ -333,6 +334,7 @@ func TestRoundtripV3(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(enc.String(), func(t *testing.T) {
 				t.Parallel()
 
@@ -384,6 +386,7 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(enc.String(), func(t *testing.T) {
 				t.Parallel()
 
