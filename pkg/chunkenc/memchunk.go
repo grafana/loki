@@ -1005,7 +1005,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	baseHash := pipeline.BaseLabels().Hash()
 	process := func(e entry) {
 		// apply time filtering
-		if e.t < mint || e.t >= maxt {
+		if e.t < mint || e.t > maxt {
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))

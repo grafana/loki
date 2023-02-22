@@ -867,6 +867,23 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
+// TODO(DylanGuedes): Remove this before merging the PR.
+func TestMemChunk_IteratorBoundsSameStartAndEnd(t *testing.T) {
+	c := NewMemChunk(EncNone, DefaultHeadBlockFmt, 1e6, 1e6)
+
+	require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, 1), Line: "1"}))
+	require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, 2), Line: "2"}))
+
+	// testing headchunk
+	it, err := c.Iterator(context.Background(), time.Unix(0, 1) /* minT */, time.Unix(0, 1) /* maxT */, logproto.FORWARD, noopStreamPipeline)
+	require.NoError(t, err)
+	expected := []bool{true, false}
+	for _, i := range expected {
+		require.Equal(t, i, it.Next())
+	}
+	require.NoError(t, it.Close())
+}
+
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
