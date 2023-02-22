@@ -252,12 +252,13 @@ func TestRoundtripV2(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
 			for _, version := range []byte{chunkFormatV2, chunkFormatV3} {
-				localVersion := version
+				enc := enc
+				version := version
 				t.Run(enc.String(), func(t *testing.T) {
 					t.Parallel()
 
 					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-					c.format = localVersion
+					c.format = version
 					populated := fillChunk(c)
 
 					assertLines := func(c *MemChunk) {
