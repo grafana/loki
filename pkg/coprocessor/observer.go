@@ -107,10 +107,5 @@ func (q *querierObserver) PreQuery(ctx context.Context, rangeQuery loghttp.Range
 	if err != nil {
 		return false, err
 	}
-
-	if res.Pass {
-		return true, nil
-	}
-
-	return false, nil
+	return res.Pass, nil
 }
