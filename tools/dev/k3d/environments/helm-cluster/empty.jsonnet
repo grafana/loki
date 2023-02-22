@@ -19,16 +19,16 @@ local spec = (import './spec.json').spec;
   local grafanaCloudCredentials = import '../../secrets/grafana-cloud-credentials.json',
   grafanaCloudMetricsCredentials: k.core.v1.secret.new('grafana-cloud-metrics-credentials', {}, type='Opaque')
                                   + k.core.v1.secret.withStringData({
-                                    username: "%d" % grafanaCloudCredentials.metrics.username,
+                                    username: '%d' % grafanaCloudCredentials.metrics.username,
                                     password: grafanaCloudCredentials.metrics.password,
                                   })
                                   + k.core.v1.secret.metadata.withNamespace('loki'),
   grafanaCloudLogsCredentials: k.core.v1.secret.new('grafana-cloud-logs-credentials', {}, type='Opaque')
-                                  + k.core.v1.secret.withStringData({
-                                    username: "%d" % grafanaCloudCredentials.logs.username,
-                                    password: grafanaCloudCredentials.logs.password,
-                                  })
-                                  + k.core.v1.secret.metadata.withNamespace('loki'),
+                               + k.core.v1.secret.withStringData({
+                                 username: '%d' % grafanaCloudCredentials.logs.username,
+                                 password: grafanaCloudCredentials.logs.password,
+                               })
+                               + k.core.v1.secret.metadata.withNamespace('loki'),
 
 
 }

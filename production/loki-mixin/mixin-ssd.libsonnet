@@ -8,7 +8,7 @@
 
     // By default the helm chart uses the Grafana Agent instead of promtail
     promtail+: {
-      enabled: false
+      enabled: false,
     },
 
     ssd+: {

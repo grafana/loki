@@ -202,10 +202,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                              for e in ssp.targets
                                            ] else [],
                                          }
-                                         for ssp in sp.panels if !(isPanelHidden(ssp.title))
+                                         for ssp in sp.panels
+                                         if !(isPanelHidden(ssp.title))
                                        ] else [],
                                      }
-                                     for sp in p.panels if !(isPanelHidden(sp.title))
+                                     for sp in p.panels
+                                     if !(isPanelHidden(sp.title))
                                    ] else [],
                                    title: if !($._config.ssd.enabled && p.type == 'row') then p.title else
                                      if p.title == 'Distributor' then 'Write Path'
