@@ -126,3 +126,38 @@ func (t *Tree[E, S]) playGame(a, b int) (loser, winner int) {
 }
 
 func parent(i int) int { return i / 2 }
+
+// Add a new sequence to the merge set
+func (t *Tree[E, S]) Push(sequence S) {
+	// First, see if we can replace one that was previously finished.
+	for newPos := len(t.nodes) / 2; newPos < len(t.nodes); newPos++ {
+		if t.nodes[newPos].index == -1 {
+			t.nodes[newPos].index = newPos
+			t.nodes[newPos].items = sequence
+			t.moveNext(newPos)
+			t.nodes[0].index = -1 // flag for re-initialize on next call to Next()
+			return
+		}
+	}
+	// We need to expand the tree. Pick the next biggest power of 2 to amortise resizing cost.
+	size := 1
+	for ; size <= len(t.nodes)/2; size *= 2 {
+	}
+	newPos := size + len(t.nodes)/2
+	newNodes := make([]node[E, S], size*2)
+	// Copy data over and fix up the indexes.
+	for i, n := range t.nodes[len(t.nodes)/2:] {
+		newNodes[i+size] = n
+		newNodes[i+size].index = i + size
+	}
+	t.nodes = newNodes
+	t.nodes[newPos].index = newPos
+	t.nodes[newPos].items = sequence
+	// Mark all the empty nodes we have added as finished.
+	for i := newPos + 1; i < len(t.nodes); i++ {
+		t.nodes[i].index = -1
+		t.nodes[i].value = t.maxVal
+	}
+	t.moveNext(newPos)
+	t.nodes[0].index = -1 // flag for re-initialize on next call to Next()
+}
