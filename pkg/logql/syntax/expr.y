@@ -54,11 +54,11 @@ import (
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
   JSONExpressionParser    *JSONExpressionParser
-  JSONExpression          log.JSONExpression
-  JSONExpressionList      []log.JSONExpression
+  JSONExpression          log.XExpression
+  JSONExpressionList      []log.XExpression
   LogfmtExpressionParser  *LogfmtExpressionParser
-  LogfmtExpression        log.LogfmtExpression
-  LogfmtExpressionList    []log.LogfmtExpression
+  LogfmtExpression        log.XExpression
+  LogfmtExpressionList    []log.XExpression
 
   UnwrapExpr              *UnwrapExpr
   DecolorizeExpr          *DecolorizeExpr
@@ -330,20 +330,20 @@ labelFilter:
     ;
 
 jsonExpression:
-    IDENTIFIER EQ STRING { $$ = log.NewJSONExpr($1, $3) }
-  | IDENTIFIER { $$ = log.NewJSONExpr($1, $1) }
+    IDENTIFIER EQ STRING { $$ = log.NewXExpr($1, $3) }
+  | IDENTIFIER { $$ = log.NewXExpr($1, $1) }
 
 jsonExpressionList:
-    jsonExpression                          { $$ = []log.JSONExpression{$1} }
+    jsonExpression                          { $$ = []log.XExpression{$1} }
   | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
   ;
 
 logfmtExpression:
-    IDENTIFIER EQ STRING { $$ = log.NewLogfmtExpr($1, $3) }
-    | IDENTIFIER { $$ = log.NewLogfmtExpr($1, $1) }
+    IDENTIFIER EQ STRING { $$ = log.NewXExpr($1, $3) }
+    | IDENTIFIER { $$ = log.NewXExpr($1, $1) }
 
 logfmtExpressionList:
-    logfmtExpression                          { $$ = []log.LogfmtExpression{$1} }
+    logfmtExpression                          { $$ = []log.XExpression{$1} }
   | logfmtExpressionList COMMA logfmtExpression { $$ = append($1, $3) }
   ;
 

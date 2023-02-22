@@ -537,12 +537,12 @@ func (e *LabelFmtExpr) String() string {
 }
 
 type JSONExpressionParser struct {
-	Expressions []log.JSONExpression
+	Expressions []log.XExpression
 
 	implicit
 }
 
-func newJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
+func newJSONExpressionParser(expressions []log.XExpression) *JSONExpressionParser {
 	return &JSONExpressionParser{
 		Expressions: expressions,
 	}
@@ -577,14 +577,14 @@ type internedStringSet map[string]struct {
 }
 
 type LogfmtExpressionParser struct {
-	Expressions []log.LogfmtExpression
+	Expressions []log.XExpression
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 
 	implicit
 }
 
-func newLogfmtExpressionParser(expressions []log.LogfmtExpression) *LogfmtExpressionParser {
+func newLogfmtExpressionParser(expressions []log.XExpression) *LogfmtExpressionParser {
 	return &LogfmtExpressionParser{
 		Expressions: expressions,
 	}

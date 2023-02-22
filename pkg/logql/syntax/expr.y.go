@@ -60,11 +60,11 @@ type exprSymType struct {
 	LabelFormat            log.LabelFmt
 	LabelsFormat           []log.LabelFmt
 	JSONExpressionParser   *JSONExpressionParser
-	JSONExpression         log.JSONExpression
-	JSONExpressionList     []log.JSONExpression
+	JSONExpression         log.XExpression
+	JSONExpressionList     []log.XExpression
 	LogfmtExpressionParser *LogfmtExpressionParser
-	LogfmtExpression       log.LogfmtExpression
-	LogfmtExpressionList   []log.LogfmtExpression
+	LogfmtExpression       log.XExpression
+	LogfmtExpressionList   []log.XExpression
 
 	UnwrapExpr     *UnwrapExpr
 	DecolorizeExpr *DecolorizeExpr
@@ -1515,19 +1515,19 @@ exprdefault:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line expr.y:333
 		{
-			exprVAL.JSONExpression = log.NewJSONExpr(exprDollar[1].str, exprDollar[3].str)
+			exprVAL.JSONExpression = log.NewXExpr(exprDollar[1].str, exprDollar[3].str)
 		}
 	case 111:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 //line expr.y:334
 		{
-			exprVAL.JSONExpression = log.NewJSONExpr(exprDollar[1].str, exprDollar[1].str)
+			exprVAL.JSONExpression = log.NewXExpr(exprDollar[1].str, exprDollar[1].str)
 		}
 	case 112:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 //line expr.y:337
 		{
-			exprVAL.JSONExpressionList = []log.JSONExpression{exprDollar[1].JSONExpression}
+			exprVAL.JSONExpressionList = []log.XExpression{exprDollar[1].JSONExpression}
 		}
 	case 113:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1539,19 +1539,19 @@ exprdefault:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line expr.y:342
 		{
-			exprVAL.LogfmtExpression = log.NewLogfmtExpr(exprDollar[1].str, exprDollar[3].str)
+			exprVAL.LogfmtExpression = log.NewXExpr(exprDollar[1].str, exprDollar[3].str)
 		}
 	case 115:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 //line expr.y:343
 		{
-			exprVAL.LogfmtExpression = log.NewLogfmtExpr(exprDollar[1].str, exprDollar[1].str)
+			exprVAL.LogfmtExpression = log.NewXExpr(exprDollar[1].str, exprDollar[1].str)
 		}
 	case 116:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 //line expr.y:346
 		{
-			exprVAL.LogfmtExpressionList = []log.LogfmtExpression{exprDollar[1].LogfmtExpression}
+			exprVAL.LogfmtExpressionList = []log.XExpression{exprDollar[1].LogfmtExpression}
 		}
 	case 117:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
