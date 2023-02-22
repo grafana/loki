@@ -507,7 +507,7 @@ test:
 podDisruptionBudget:
   # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
   # @default -- `""` (defaults to 0 if not specified)
-  #minAvailable: ""
+  # minAvailable: ""
   # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
   ## Has higher precedence over `controller.pdb.minAvailable`
   maxUnavailable: "1"
