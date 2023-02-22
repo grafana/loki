@@ -31,7 +31,7 @@ Walking through this installation will create two Grafana Agent configurations, 
 
 **To set up the Loki integration in Grafana Cloud:**
 
-1. Get your Cloud Metrics and Cloud Logs credentials for your Grafana Cloud account.
+1. Get valid Push credentials for your Cloud Metrics and Cloud Logs instances.
 1. Create a secret in the same namespace as Loki to store your Cloud Logs credentials.
 
    ```bash
