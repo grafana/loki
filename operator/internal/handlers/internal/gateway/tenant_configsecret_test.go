@@ -36,7 +36,7 @@ tenants:
     cookieSecret: test789
 `)
 
-func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
+func TestGetTenantConfigSecretData_SecretExist(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -47,12 +47,12 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == "lokistack-dev-gateway" && name.Namespace == "some-ns" {
-			k.SetClientObject(object, &corev1.ConfigMap{
+			k.SetClientObject(object, &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "lokistack-dev-gateway",
 					Namespace: "some-ns",
 				},
-				BinaryData: map[string][]byte{
+				Data: map[string][]byte{
 					"tenants.yaml": tenantConfigData,
 				},
 			})
@@ -60,7 +60,7 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 		return nil
 	}
 
-	ts, err := GetTenantConfigMapData(context.TODO(), k, r)
+	ts, err := GetTenantConfigSecretData(context.TODO(), k, r)
 	require.NotNil(t, ts)
 	require.NoError(t, err)
 
@@ -84,7 +84,7 @@ func TestGetTenantConfigMapData_ConfigMapExist(t *testing.T) {
 	require.Equal(t, expected, ts)
 }
 
-func TestGetTenantConfigMapData_ConfigMapNotExist(t *testing.T) {
+func TestGetTenantConfigSecretData_SecretNotExist(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
@@ -97,7 +97,7 @@ func TestGetTenantConfigMapData_ConfigMapNotExist(t *testing.T) {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	ts, err := GetTenantConfigMapData(context.TODO(), k, r)
+	ts, err := GetTenantConfigSecretData(context.TODO(), k, r)
 	require.Nil(t, ts)
 	require.Error(t, err)
 }
