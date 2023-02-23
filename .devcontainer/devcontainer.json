@@ -1,12 +1,12 @@
 {
-  "image": "grafana/loki-build-image:0.27.1",
+  "image": "grafana/loki-build-image:0.28.1",
   "containerEnv": {
     "BUILD_IN_CONTAINER": "false"
   },
   "customizations": {
 		"vscode": {
 			"settings": {},
-			"extensions": ["golang.go"],
+			"extensions": ["golang.go", "Grafana.vscode-jsonnet"],
 		}
   },
   "features": {
