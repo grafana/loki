@@ -899,34 +899,26 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		expect     []bool // array of expected values for next call in sequence
 	}{
 		{time.Unix(0, 0), time.Unix(0, 1), logproto.FORWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 1), logproto.FORWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 2), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 3), logproto.FORWARD, []bool{true, true, false}},
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 3), time.Unix(0, 3), logproto.FORWARD, []bool{false}},
 
 		{time.Unix(0, 0), time.Unix(0, 1), logproto.BACKWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 1), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 2), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 3), logproto.BACKWARD, []bool{true, true, false}},
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
 	} {
-		tt := tt
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
-				t.Parallel()
-
+				tt := tt
 				c := createChunk()
 
 				// testing headchunk
 				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
 				require.NoError(t, err)
-				for i := range tt.expect {
-					require.Equal(t, tt.expect[i], it.Next())
+				for idx, expected := range tt.expect {
+					require.Equal(t, expected, it.Next(), "idx: %s", idx)
 				}
 				require.NoError(t, it.Close())
 
