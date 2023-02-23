@@ -6,7 +6,7 @@
   "customizations": {
 		"vscode": {
 			"settings": {},
-			"extensions": ["golang.go", "Grafana.vscode-jsonnet"],
+			"extensions": ["golang.go", "Grafana.vscode-jsonnet"]
 		}
   },
   "features": {
