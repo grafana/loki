@@ -1,13 +1,12 @@
 package stages
 
 import (
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/go-kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/clients/pkg/logentry/logql"
 )

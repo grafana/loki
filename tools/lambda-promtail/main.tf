@@ -1,7 +1,3 @@
-provider "aws" {
-  region = "us-east-2"
-}
-
 data "aws_region" "current" {}
 
 resource "aws_iam_role" "iam_for_lambda" {
@@ -21,56 +17,56 @@ resource "aws_iam_role" "iam_for_lambda" {
   })
 }
 
-resource "aws_iam_role_policy" "logs" {
-  name = "lambda-logs"
-  role = aws_iam_role.iam_for_lambda.name
-  policy = jsonencode({
-    "Statement" : [
-      {
-        "Action" : [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ],
-        "Effect" : "Allow",
-        "Resource" : "arn:aws:logs:*:*:*",
-      },
-      {
-        "Action" : [
-          "s3:GetObject",
-        ],
-        "Effect" : "Allow",
-        "Resource" : [
-          for bucket in toset(var.bucket_names) : "arn:aws:s3:::${bucket}/*"
-        ]
-      },
-      {
-        "Action" : [
-          "kms:Decrypt",
-        ],
-        "Effect" : "Allow",
-        "Resource" : "arn:aws:kms:*:*:*",
-      },
-      {
-        "Action" : [
-          "ec2:DescribeNetworkInterfaces",
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
-          "ec2:DescribeInstances",
-          "ec2:AttachNetworkInterface"
-        ],
-        "Effect" : "Allow",
-        "Resource" : "*",
-      },
-      {
-        "Action" : [
-          "kinesis:*",
-        ],
-        "Effect" : "Allow",
-        "Resource" : "*"
-      }
+data "aws_iam_policy_document" "logs" {
+  statement {
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
     ]
-  })
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+
+  dynamic "statement" {
+    for_each = var.bucket_names
+    content {
+      actions = [
+        "s3:GetObject",
+      ]
+      resources = ["arn:aws:s3:::${statement.value}/*"]
+    }
+  }
+
+  statement {
+    actions = [
+      "kms:Decrypt",
+    ]
+    resources = ["arn:aws:kms:*:*:*"]
+  }
+
+  statement {
+    actions = [
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:CreateNetworkInterface",
+      "ec2:DeleteNetworkInterface",
+      "ec2:DescribeInstances",
+      "ec2:AttachNetworkInterface",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    actions = [
+      "kinesis:*",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "logs" {
+  name   = "lambda-logs"
+  role   = aws_iam_role.iam_for_lambda.name
+  policy = data.aws_iam_policy_document.logs.json
 }
 
 data "aws_iam_policy" "lambda_vpc_execution" {
@@ -113,7 +109,7 @@ resource "aws_lambda_function" "lambda_promtail" {
       KEEP_STREAM              = var.keep_stream
       BATCH_SIZE               = var.batch_size
       EXTRA_LABELS             = var.extra_labels
-      OMIT_EXTRA_LABELS_PREFIX = var.omit_extra_labels_prefix
+      OMIT_EXTRA_LABELS_PREFIX = var.omit_extra_labels_prefix ? "true" : "false"
       TENANT_ID                = var.tenant_id
       SKIP_TLS_VERIFY          = var.skip_tls_verify
       PRINT_LOG_LINE           = var.print_log_line
@@ -142,7 +138,7 @@ resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
 # However, if you need to provide an actual filter_pattern for a specific log group you should
 # copy this block and modify it accordingly.
 resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
-  for_each        = toset(var.log_group_names)
+  for_each        = var.log_group_names
   name            = "lambdafunction_logfilter_${each.value}"
   log_group_name  = each.value
   destination_arn = aws_lambda_function.lambda_promtail.arn
@@ -152,7 +148,7 @@ resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
 }
 
 resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
-  for_each      = toset(var.bucket_names)
+  for_each      = var.bucket_names
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_promtail.arn
   principal     = "s3.amazonaws.com"
@@ -160,7 +156,7 @@ resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
 }
 
 resource "aws_kinesis_stream" "kinesis_stream" {
-  for_each         = toset(var.kinesis_stream_name)
+  for_each         = var.kinesis_stream_name
   name             = each.value
   shard_count      = 1
   retention_period = 48
@@ -176,7 +172,7 @@ resource "aws_kinesis_stream" "kinesis_stream" {
 }
 
 resource "aws_lambda_event_source_mapping" "kinesis_event_source" {
-  for_each          = toset(var.kinesis_stream_name)
+  for_each          = var.kinesis_stream_name
   event_source_arn  = aws_kinesis_stream.kinesis_stream[each.key].arn
   function_name     = aws_lambda_function.lambda_promtail.arn
   starting_position = "LATEST"
@@ -184,7 +180,7 @@ resource "aws_lambda_event_source_mapping" "kinesis_event_source" {
 }
 
 resource "aws_s3_bucket_notification" "push-to-lambda-promtail" {
-  for_each = toset(var.bucket_names)
+  for_each = var.bucket_names
   bucket   = each.value
 
   lambda_function {

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -536,12 +537,12 @@ func (e *LabelFmtExpr) String() string {
 }
 
 type JSONExpressionParser struct {
-	Expressions []log.JSONExpression
+	Expressions []log.XExpression
 
 	implicit
 }
 
-func newJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
+func newJSONExpressionParser(expressions []log.XExpression) *JSONExpressionParser {
 	return &JSONExpressionParser{
 		Expressions: expressions,
 	}
@@ -564,6 +565,48 @@ func (j *JSONExpressionParser) String() string {
 		sb.WriteString(strconv.Quote(exp.Expression))
 
 		if i+1 != len(j.Expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
+type internedStringSet map[string]struct {
+	s  string
+	ok bool
+}
+
+type LogfmtExpressionParser struct {
+	Expressions []log.XExpression
+	dec         *logfmt.Decoder
+	keys        internedStringSet
+
+	implicit
+}
+
+func newLogfmtExpressionParser(expressions []log.XExpression) *LogfmtExpressionParser {
+	return &LogfmtExpressionParser{
+		Expressions: expressions,
+	}
+}
+
+func (l *LogfmtExpressionParser) Shardable() bool { return true }
+
+func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
+
+func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
+	return log.NewLogfmtExpressionParser(l.Expressions)
+}
+
+func (l *LogfmtExpressionParser) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	for i, exp := range l.Expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(l.Expressions) {
 			sb.WriteString(",")
 		}
 	}
