@@ -8,12 +8,6 @@
 
 ##### Fixes
 
-* [7720](https://github.com/grafana/loki/pull/7720) **sandeepsukhani**: fix bugs in processing delete requests with line filters.
-
-* [7708](https://github.com/grafana/loki/pull/7708) **DylanGuedes**: Fix multitenant querying.
-
-* [7784](https://github.com/grafana/loki/pull/7784) **isodude**: Fix default values of connect addresses for compactor and querier workers to work with IPv6.
-
 ##### Changes
 
 #### Promtail
@@ -35,6 +29,12 @@
 ### Dependencies
 
 ## 2.7.4 (2023-02-23)
+
+#### Loki
+
+##### Fixes
+
+* [7784](https://github.com/grafana/loki/pull/7784) **isodude**: Fix default values of connect addresses for compactor and querier workers to work with IPv6.
 
 #### Promtail
 
