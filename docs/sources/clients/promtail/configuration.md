@@ -397,6 +397,11 @@ consulagent_sd_configs:
 # the same host as Promtail.
 docker_sd_configs:
   [ - <docker_sd_config> ... ]
+
+# Describes how to use the Docker daemon API to discover containers running on
+# the same host as Promtail.this model can discovery all containers of the host.
+dockerd_sd_configs:
+  [ - <docker_sd_config> ... ]
 ```
 
 ### pipeline_stages

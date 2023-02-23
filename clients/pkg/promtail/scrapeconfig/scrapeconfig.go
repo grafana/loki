@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
+	"github.com/grafana/loki/clients/pkg/promtail/discovery/dockerd"
 )
 
 // Config describes a job to scrape.
@@ -66,6 +67,8 @@ type ServiceDiscoveryConfig struct {
 	DigitalOceanSDConfigs []*digitalocean.SDConfig `mapstructure:"digitalocean_sd_configs,omitempty" yaml:"digitalocean_sd_configs,omitempty"`
 	// List of Docker Swarm service discovery configurations.
 	DockerSwarmSDConfigs []*moby.DockerSwarmSDConfig `mapstructure:"dockerswarm_sd_configs,omitempty" yaml:"dockerswarm_sd_configs,omitempty"`
+	// List of Docker service discovery configurations.
+	DockerDSDConfigs []*dockerd.SDConfig `mapstructure:"dockerd_sd_configs,omitempty" yaml:"dockerd_sd_configs,omitempty"`
 	// List of Serverset service discovery configurations.
 	ServersetSDConfigs []*zookeeper.ServersetSDConfig `mapstructure:"serverset_sd_configs,omitempty" yaml:"serverset_sd_configs,omitempty"`
 	// NerveSDConfigs is a list of Nerve service discovery configurations.
@@ -106,6 +109,9 @@ func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
 		res = append(res, x)
 	}
 	for _, x := range cfg.DockerSwarmSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.DockerDSDConfigs {
 		res = append(res, x)
 	}
 	for _, x := range cfg.ServersetSDConfigs {
