@@ -49,6 +49,11 @@
 
 * [8315](https://github.com/grafana/loki/pull/8315) **thepalbi** Relicense and export `pkg/ingester` WAL code to be used in Promtail's WAL.
  
+##### Build
+
+* [8575](https://github.com/grafana/loki/pull/8575) **MichelHollands** Update build image to go 1.20.1 and alpine 3.16.4.
+* [8583](https://github.com/grafana/loki/pull/8583) **MichelHollands** Use 0.28.1 build image and update go and alpine versions.
+
 #### Promtail
 
 ##### Enhancements
