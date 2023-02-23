@@ -53,12 +53,11 @@ import (
   LabelFormatExpr         *LabelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
-  JSONExpressionParser    *JSONExpressionParser
-  JSONExpression          log.XExpression
-  JSONExpressionList      []log.XExpression
-  LogfmtExpressionParser  *LogfmtExpressionParser
-  LogfmtExpression        log.XExpression
-  LogfmtExpressionList    []log.XExpression
+
+  LabelExtractionExpression     log.XExpression
+  LabelExtractionExpressionList []log.XExpression
+  JSONExpressionParser          *JSONExpressionParser
+  LogfmtExpressionParser        *LogfmtExpressionParser
 
   UnwrapExpr              *UnwrapExpr
   DecolorizeExpr          *DecolorizeExpr
@@ -111,12 +110,10 @@ import (
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
-%type <JSONExpressionParser>  jsonExpressionParser
-%type <JSONExpression>        jsonExpression
-%type <JSONExpressionList>    jsonExpressionList
-%type <LogfmtExpressionParser>  logfmtExpressionParser
-%type <LogfmtExpression>        logfmtExpression
-%type <LogfmtExpressionList>    logfmtExpressionList
+%type <LabelExtractionExpression>        labelExtractionExpression
+%type <LabelExtractionExpressionList>    labelExtractionExpressionList
+%type <LogfmtExpressionParser>           logfmtExpressionParser
+%type <JSONExpressionParser>             jsonExpressionParser
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
 %type <IPLabelFilter>         ipLabelFilter
@@ -294,10 +291,10 @@ labelParser:
   ;
 
 jsonExpressionParser:
-    JSON jsonExpressionList { $$ = newJSONExpressionParser($2) }
+    JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
   
 logfmtExpressionParser:
-    LOGFMT logfmtExpressionList { $$ = newLogfmtExpressionParser($2)}
+    LOGFMT labelExtractionExpressionList { $$ = newLogfmtExpressionParser($2)}
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
@@ -329,22 +326,13 @@ labelFilter:
     | labelFilter OR labelFilter                     { $$ = log.NewOrLabelFilter($1, $3 ) }
     ;
 
-jsonExpression:
+labelExtractionExpression:
     IDENTIFIER EQ STRING { $$ = log.NewXExpr($1, $3) }
-  | IDENTIFIER { $$ = log.NewXExpr($1, $1) }
+  | IDENTIFIER           { $$ = log.NewXExpr($1, $1) }
 
-jsonExpressionList:
-    jsonExpression                          { $$ = []log.XExpression{$1} }
-  | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
-  ;
-
-logfmtExpression:
-    IDENTIFIER EQ STRING { $$ = log.NewXExpr($1, $3) }
-    | IDENTIFIER { $$ = log.NewXExpr($1, $1) }
-
-logfmtExpressionList:
-    logfmtExpression                          { $$ = []log.XExpression{$1} }
-  | logfmtExpressionList COMMA logfmtExpression { $$ = append($1, $3) }
+labelExtractionExpressionList:
+    labelExtractionExpression                                     { $$ = []log.XExpression{$1} }
+  | labelExtractionExpressionList COMMA labelExtractionExpression { $$ = append($1, $3) }
   ;
 
 ipLabelFilter:
