@@ -88,6 +88,7 @@
 * [8024](https://github.com/grafana/loki/pull/8024) **jijotj**: Support passing loki address as environment variable
 
 #### Jsonnet
+
 * [7923](https://github.com/grafana/loki/pull/7923) **manohar-koukuntla**: Add zone aware ingesters in jsonnet deployment
 
 ##### Fixes
