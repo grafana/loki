@@ -152,7 +152,7 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 		},
 	}
 
-	_, sha1C, err := gatewayConfigMap(opts)
+	_, _, sha1C, err := gatewayConfigObjs(opts)
 	require.NoError(t, err)
 	require.NotEmpty(t, sha1C)
 }
@@ -178,7 +178,7 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 
 	require.NoError(t, err)
 
-	d, ok := objs[1].(*appsv1.Deployment)
+	d, ok := objs[2].(*appsv1.Deployment)
 	require.True(t, ok)
 	require.Len(t, d.Spec.Template.Spec.Containers, 2)
 }
@@ -210,7 +210,7 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Len(t, objs, 11)
+	require.Len(t, objs, 12)
 }
 
 func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T) {
@@ -243,8 +243,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 
 	require.NoError(t, err)
 
-	svc := objs[4].(*corev1.Service)
-	rt := objs[5].(*routev1.Route)
+	svc := objs[5].(*corev1.Service)
+	rt := objs[6].(*routev1.Route)
 	require.Equal(t, svc.Kind, rt.Spec.To.Kind)
 	require.Equal(t, svc.Name, rt.Spec.To.Name)
 	require.Equal(t, svc.Spec.Ports[0].Name, rt.Spec.Port.TargetPort.StrVal)
@@ -280,8 +280,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 
 	require.NoError(t, err)
 
-	dpl := objs[1].(*appsv1.Deployment)
-	sa := objs[2].(*corev1.ServiceAccount)
+	dpl := objs[2].(*appsv1.Deployment)
+	sa := objs[3].(*corev1.ServiceAccount)
 	require.Equal(t, dpl.Spec.Template.Spec.ServiceAccountName, sa.Name)
 }
 
@@ -450,7 +450,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			objs, err := BuildGateway(tc.options)
 			require.NoError(t, err)
 
-			d, ok := objs[1].(*appsv1.Deployment)
+			d, ok := objs[2].(*appsv1.Deployment)
 			require.True(t, ok)
 
 			for _, arg := range tc.expectedArgs {
@@ -659,7 +659,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			objs, err := BuildGateway(tc.opts)
 			require.NoError(t, err)
 
-			d, ok := objs[1].(*appsv1.Deployment)
+			d, ok := objs[2].(*appsv1.Deployment)
 			require.True(t, ok)
 
 			for _, arg := range tc.wantArgs {
@@ -702,7 +702,7 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 
 	require.NoError(t, err)
 
-	dpl := objs[1].(*appsv1.Deployment)
+	dpl := objs[2].(*appsv1.Deployment)
 	require.NotNil(t, dpl)
 	require.Len(t, dpl.Spec.Template.Spec.Containers, 1)
 
@@ -793,10 +793,8 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		{
 			Name: "tenants",
 			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: "abcd-gateway",
-					},
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "abcd-gateway",
 				},
 			},
 		},

@@ -1,14 +1,18 @@
 package ruler
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -23,14 +27,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
-	"gopkg.in/yaml.v3"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -150,6 +146,10 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
 		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
+		// GroupLoader builds a cache of the rules as they're loaded by the
+		// manager.This is used to back the memstore
+		groupLoader := NewCachingGroupLoader(GroupLoader{})
+
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:      registry,
 			Queryable:       memStore,
@@ -162,57 +162,51 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 			OutageTolerance: cfg.OutageTolerance,
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
-			GroupLoader:     GroupLoader{},
+			GroupLoader:     groupLoader,
 		})
 
-		// initialize memStore, bound to the manager's alerting rules
-		memStore.Start(mgr)
+		cachingManager := &CachingRulesManager{
+			manager:     mgr,
+			groupLoader: groupLoader,
+		}
 
-		return mgr
+		memStore.Start(groupLoader)
+
+		return cachingManager
 	}
 }
 
-type GroupLoader struct{}
+// CachingRulesManager holds a CachingGroupLoader to make sure the GroupLoader
+// has consistent state after update operations. Manager needs to hold the same
+// caching grouploader
+type CachingRulesManager struct {
+	manager     ruler.RulesManager
+	groupLoader *CachingGroupLoader
+}
 
-func (GroupLoader) Parse(query string) (parser.Expr, error) {
-	expr, err := syntax.ParseExpr(query)
+// Update reconciles the state of the CachingGroupLoader after a manager.Update.
+// The GroupLoader is mutated as part of a call to Update but it might still
+// contain removed files. Update tells the loader which files to keep
+func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error {
+	err := m.manager.Update(interval, files, externalLabels, externalURL, ruleGroupPostProcessFunc)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return exprAdapter{expr}, nil
+	m.groupLoader.Prune(files)
+	return nil
 }
 
-func (g GroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
-	b, err := os.ReadFile(identifier)
-	if err != nil {
-		return nil, []error{errors.Wrap(err, identifier)}
-	}
-	rgs, errs := g.parseRules(b)
-	for i := range errs {
-		errs[i] = errors.Wrap(errs[i], identifier)
-	}
-	return rgs, errs
+func (m *CachingRulesManager) Run() {
+	m.manager.Run()
 }
 
-func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
-	var (
-		groups rulefmt.RuleGroups
-		errs   []error
-	)
+func (m *CachingRulesManager) Stop() {
+	m.manager.Stop()
+}
 
-	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	decoder.KnownFields(true)
-
-	if err := decoder.Decode(&groups); err != nil {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		return nil, errs
-	}
-
-	return &groups, ValidateGroups(groups.Groups...)
+func (m *CachingRulesManager) RuleGroups() []*rules.Group {
+	return m.manager.RuleGroups()
 }
 
 func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {

@@ -1,6 +1,7 @@
 ## Main
 
 - [8578](https://github.com/grafana/loki/pull/8578) **xperimental**: Refactor status update to reduce API calls
+- [8577](https://github.com/grafana/loki/pull/8577) **Red-GV**: Store gateway tenant information in secret instead of configmap
 - [8397](https://github.com/grafana/loki/pull/8397) **periklis**: Update Loki operand to v2.7.3
 - [8308](https://github.com/grafana/loki/pull/8308) **aminesnow**: operator: Cleanup ruler resources when disabled
 - [8336](https://github.com/grafana/loki/pull/8336) **periklis**: Update Loki operand to v2.7.2
