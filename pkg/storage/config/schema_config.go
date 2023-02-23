@@ -23,6 +23,7 @@ import (
 const (
 	// Supported storage clients
 
+	StorageTypeAlibabaCloud   = "alibabacloud"
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"

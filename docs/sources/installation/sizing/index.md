@@ -66,7 +66,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 
   <blockquote v-if="help">
     <span v-if="help === 'ingest'">
-    Defines the log volume in terrabytes expected to be ingested each day.
+    Defines the log volume in gigabytes, ie 1e+9 bytes, expected to be ingested each day.
     </span>
     <span v-else-if="help === 'node'">
     Defines the node type of the Kubernetes cluster.

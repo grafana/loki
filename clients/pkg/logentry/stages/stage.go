@@ -15,28 +15,30 @@ import (
 )
 
 const (
-	StageTypeJSON         = "json"
-	StageTypeLogfmt       = "logfmt"
-	StageTypeRegex        = "regex"
-	StageTypeReplace      = "replace"
-	StageTypeMetric       = "metrics"
-	StageTypeLabel        = "labels"
-	StageTypeLabelDrop    = "labeldrop"
-	StageTypeTimestamp    = "timestamp"
-	StageTypeOutput       = "output"
-	StageTypeDocker       = "docker"
-	StageTypeCRI          = "cri"
-	StageTypeMatch        = "match"
-	StageTypeTemplate     = "template"
-	StageTypePipeline     = "pipeline"
-	StageTypeTenant       = "tenant"
-	StageTypeDrop         = "drop"
-	StageTypeLimit        = "limit"
-	StageTypeMultiline    = "multiline"
-	StageTypePack         = "pack"
-	StageTypeLabelAllow   = "labelallow"
-	StageTypeStaticLabels = "static_labels"
-	StageTypeDecolorize   = "decolorize"
+	StageTypeJSON            = "json"
+	StageTypeLogfmt          = "logfmt"
+	StageTypeRegex           = "regex"
+	StageTypeReplace         = "replace"
+	StageTypeMetric          = "metrics"
+	StageTypeLabel           = "labels"
+	StageTypeLabelDrop       = "labeldrop"
+	StageTypeTimestamp       = "timestamp"
+	StageTypeOutput          = "output"
+	StageTypeDocker          = "docker"
+	StageTypeCRI             = "cri"
+	StageTypeMatch           = "match"
+	StageTypeTemplate        = "template"
+	StageTypePipeline        = "pipeline"
+	StageTypeTenant          = "tenant"
+	StageTypeDrop            = "drop"
+	StageTypeLimit           = "limit"
+	StageTypeMultiline       = "multiline"
+	StageTypePack            = "pack"
+	StageTypeLabelAllow      = "labelallow"
+	StageTypeStaticLabels    = "static_labels"
+	StageTypeDecolorize      = "decolorize"
+	StageTypeEventLogMessage = "eventlogmessage"
+  StageTypeGeoIP           = "geoip"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -212,6 +214,16 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeDecolorize:
 		s, err = newDecolorizeStage(cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeEventLogMessage:
+		s, err = newEventLogMessageStage(logger, cfg)
+    if err != nil {
+			return nil, err
+		}
+  case StageTypeGeoIP:
+		s, err = newGeoIPStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

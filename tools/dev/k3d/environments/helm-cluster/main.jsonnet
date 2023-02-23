@@ -2,6 +2,8 @@ local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet'
 local tanka = import 'github.com/grafana/jsonnet-libs/tanka-util/main.libsonnet';
 local container = k.core.v1.container;
 local configMap = k.core.v1.configMap;
+local deployment = k.apps.v1.deployment;
+local volume = k.core.v1.volume;
 
 local grafana = import 'grafana/grafana.libsonnet';
 local envVar = if std.objectHasAll(k.core.v1, 'envVar') then k.core.v1.envVar else k.core.v1.container.envType;
@@ -152,10 +154,20 @@ local tenant = 'loki';
             + grafana.addDatasource('prometheus', $.prometheus_datasource)
             + grafana.addDatasource('loki', $.loki_datasource) + {
     grafana_deployment+:
-      k.apps.v1.deployment.emptyVolumeMount('grafana-var', '/var/lib/grafana')
-      + k.apps.v1.deployment.emptyVolumeMount('grafana-plugins', '/etc/grafana/provisioning/plugins')
-      + k.apps.v1.deployment.configVolumeMount('%s-dashboards-1' % dashboardsPrefix, '/var/lib/grafana/dashboards/loki-1')
-      + k.apps.v1.deployment.configVolumeMount('%s-dashboards-2' % dashboardsPrefix, '/var/lib/grafana/dashboards/loki-2'),
+      deployment.emptyVolumeMount('grafana-var', '/var/lib/grafana')
+      + deployment.emptyVolumeMount('grafana-plugins', '/etc/grafana/provisioning/plugins')
+      + deployment.configVolumeMount(
+        '%s-dashboards-1' % dashboardsPrefix,
+        '/var/lib/grafana/dashboards/loki-1',
+        {},
+        volume.configMap.withOptional(true)  //no dashboards for single binary mode
+      )
+      + deployment.configVolumeMount(
+        '%s-dashboards-2' % dashboardsPrefix,
+        '/var/lib/grafana/dashboards/loki-2',
+        {},
+        volume.configMap.withOptional(true)  //no dashboards for single binary mode
+      ),
 
     dashboard_provisioning_config_map:
       configMap.new('grafana-dashboard-provisioning') +

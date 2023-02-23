@@ -47,7 +47,7 @@ loki:
     # -- Overrides the image tag whose default is the chart's appVersion
     # TODO: needed for 3rd target backend functionality
     # revert to null or latest once this behavior is relased
-    tag: "main-5e53303"
+    tag: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   # -- Common annotations for all pods
@@ -202,6 +202,8 @@ loki:
 
   # Should authentication be enabled
   auth_enabled: true
+  # -- Tenants list to be created on nginx htpasswd file, with name and password keys
+  tenants: []
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
   server:
@@ -223,6 +225,7 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
+    compactor_address: '{{ include "loki.compactorAddress" . }}'
 
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
@@ -248,7 +251,6 @@ loki:
       accountName: null
       accountKey: null
       useManagedIdentity: false
-      useFederatedToken: false
       userAssignedId: null
       requestTimeout: null
     filesystem:
@@ -811,7 +813,7 @@ read:
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
   # 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will
   # run two targets, false will run 3 targets.
-  legacyReadTarget: false
+  legacyReadTarget: true
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
@@ -870,6 +872,8 @@ backend:
   priorityClassName: null
   # -- Annotations for backend pods
   podAnnotations: {}
+  # -- Additional labels for each `backend` pod
+  podLabels: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
   # -- Labels for ingester service
@@ -924,7 +928,7 @@ backend:
 # Configuration for the single binary node(s)
 singleBinary:
   # -- Number of replicas for the single binary
-  replicas: 1
+  replicas: 0
   autoscaling:
     # -- Enable autoscaling, this is only used if `queryIndex.enabled: true`
     enabled: false
@@ -1039,6 +1043,11 @@ ingress:
 #    - hosts:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
+
+# Configuration for the memberlist service
+memberlist:
+  service:
+    publishNotReadyAddresses: false
 
 # Configuration for the gateway
 gateway:
@@ -1164,12 +1173,18 @@ gateway:
     username: null
     # -- The basic auth password for the gateway
     password: null
-    # -- Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function.
+    # -- Uses the specified users from the `loki.tenants` list to create the htpasswd file
+    # if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
     htpasswd: >-
+      {{ if .Values.loki.tenants }}
+        {{- range $t := .Values.loki.tenants }}
+      {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
+        {{- end }}
+      {{ else }}
       {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }}
-
+      {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
   # Configures the readiness probe for the gateway
@@ -1187,8 +1202,15 @@ gateway:
               '"$http_user_agent" "$http_x_forwarded_for"';
     # -- Allows appending custom configuration to the server block
     serverSnippet: ""
-    # -- Allows appending custom configuration to the http block
-    httpSnippet: ""
+    # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
+    httpSnippet: >-
+      {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Override Read URL
+    customReadUrl: null
+    # -- Override Write URL
+    customWriteUrl: null
+    # -- Override Backend URL
+    customBackendUrl: null
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |

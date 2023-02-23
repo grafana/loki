@@ -99,7 +99,7 @@ func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return expr.Selector(), nil
+	return expr.Selector()
 }
 
 // Querier allows a LogQL expression to fetch an EntryIterator for a
@@ -403,9 +403,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql_parser.Value, error) {
+	value, err := expr.Value()
+	if err != nil {
+		return nil, err
+	}
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
-		V: expr.Value(),
+		V: value,
 	}
 
 	if GetRangeType(q.params) == InstantType {
@@ -426,7 +430,10 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 	}
 
 	if GetRangeType(q.params) == InstantType {
-		return s, nil
+		return promql.Vector{promql.Sample{
+			Point:  promql.Point{T: q.params.Start().UnixMilli(), V: value},
+			Metric: labels.Labels{},
+		}}, nil
 	}
 
 	return PopulateMatrixFromScalar(s, q.params), nil
