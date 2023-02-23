@@ -28,6 +28,14 @@
 
 ### Dependencies
 
+## 2.7.4 (2023-02-23)
+
+#### Promtail
+
+##### Fixes
+
+* [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
+
 ## 2.7.3 (2023-02-01)
 
 #### Loki
