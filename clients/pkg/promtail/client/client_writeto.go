@@ -39,23 +39,20 @@ func newClientWriteTo(toClient chan<- api.Entry, logger log.Logger) *clientWrite
 }
 
 func (c *clientWriteTo) StoreSeries(series []record.RefSeries, segment int) {
-	// todo: should I just acquire the write lock here?
+	c.cacheLock.Lock()
+	defer c.cacheLock.Unlock()
 	for _, seriesRec := range series {
-		c.cacheLock.RLock()
 		entry, ok := c.series[uint64(seriesRec.Ref)]
-		c.cacheLock.RUnlock()
 		if ok && entry.lastSeenInSegment < segment {
 			// entry is present, touch if required
 			entry.lastSeenInSegment = segment
 			continue
 		}
 		// entry is not present
-		c.cacheLock.Lock()
 		c.series[uint64(seriesRec.Ref)] = &seriesCacheEntry{
 			labels:            util.MapToModelLabelSet(seriesRec.Labels.Map()),
 			lastSeenInSegment: segment,
 		}
-		c.cacheLock.Unlock()
 	}
 }
 
