@@ -54,8 +54,8 @@ import (
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
 
-  LabelExtractionExpression     log.XExpression
-  LabelExtractionExpressionList []log.XExpression
+  LabelExtractionExpression     log.LabelExtractionExpr
+  LabelExtractionExpressionList []log.LabelExtractionExpr
   JSONExpressionParser          *JSONExpressionParser
   LogfmtExpressionParser        *LogfmtExpressionParser
 
@@ -327,11 +327,11 @@ labelFilter:
     ;
 
 labelExtractionExpression:
-    IDENTIFIER EQ STRING { $$ = log.NewXExpr($1, $3) }
-  | IDENTIFIER           { $$ = log.NewXExpr($1, $1) }
+    IDENTIFIER EQ STRING { $$ = log.NewLabelExtractionExpr($1, $3) }
+  | IDENTIFIER           { $$ = log.NewLabelExtractionExpr($1, $1) }
 
 labelExtractionExpressionList:
-    labelExtractionExpression                                     { $$ = []log.XExpression{$1} }
+    labelExtractionExpression                                     { $$ = []log.LabelExtractionExpr{$1} }
   | labelExtractionExpressionList COMMA labelExtractionExpression { $$ = append($1, $3) }
   ;
 

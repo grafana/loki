@@ -57,8 +57,8 @@ type exprSymType struct {
 	LabelFormat           log.LabelFmt
 	LabelsFormat          []log.LabelFmt
 
-	LabelExtractionExpression     log.XExpression
-	LabelExtractionExpressionList []log.XExpression
+	LabelExtractionExpression     log.LabelExtractionExpr
+	LabelExtractionExpressionList []log.LabelExtractionExpr
 	JSONExpressionParser          *JSONExpressionParser
 	LogfmtExpressionParser        *LogfmtExpressionParser
 
@@ -1399,17 +1399,17 @@ exprdefault:
 	case 110:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LabelExtractionExpression = log.NewXExpr(exprDollar[1].str, exprDollar[3].str)
+			exprVAL.LabelExtractionExpression = log.NewLabelExtractionExpr(exprDollar[1].str, exprDollar[3].str)
 		}
 	case 111:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.LabelExtractionExpression = log.NewXExpr(exprDollar[1].str, exprDollar[1].str)
+			exprVAL.LabelExtractionExpression = log.NewLabelExtractionExpr(exprDollar[1].str, exprDollar[1].str)
 		}
 	case 112:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.LabelExtractionExpressionList = []log.XExpression{exprDollar[1].LabelExtractionExpression}
+			exprVAL.LabelExtractionExpressionList = []log.LabelExtractionExpr{exprDollar[1].LabelExtractionExpression}
 		}
 	case 113:
 		exprDollar = exprS[exprpt-3 : exprpt+1]

@@ -388,8 +388,8 @@ func BenchmarkJSONParserInvalidLine(b *testing.B) {
 }
 
 func BenchmarkJSONExpressionParser(b *testing.B) {
-	parser, err := NewJSONExpressionParser([]XExpression{
-		NewXExpr("context_file", "context.file"),
+	parser, err := NewJSONExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("context_file", "context.file"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new JSON expression parser")
@@ -399,8 +399,8 @@ func BenchmarkJSONExpressionParser(b *testing.B) {
 }
 
 func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
-	parser, err := NewJSONExpressionParser([]XExpression{
-		NewXExpr("context_file", "some.expression"),
+	parser, err := NewJSONExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("context_file", "some.expression"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new JSON expression parser")
@@ -443,8 +443,8 @@ func BenchmarkLogfmtParser(b *testing.B) {
 }
 
 func BenchmarkLogfmtExpressionParser(b *testing.B) {
-	parser, err := NewLogfmtExpressionParser([]XExpression{
-		NewXExpr("timestamp", "ts"),
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("timestamp", "ts"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new logfmt expression parser:", err.Error())
