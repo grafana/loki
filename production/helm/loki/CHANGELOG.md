@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. Add your changelog bellow this line. This locator is used by CI pipeline to find the place where to put changelog entry.)
 
-## 4.6.2 
+## 4.6.2
 
 - [BUGFIX] Fix tokengen and provisioner secrets creation on enterprise-logs chart.
 
