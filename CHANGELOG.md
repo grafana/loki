@@ -40,6 +40,12 @@
 
 ## 2.7.4 (2023-02-23)
 
+#### Loki
+
+##### Fixes
+
+* [7925](https://github.com/grafana/loki/pull/7925) **sandeepsukhani**: Fix bugs in logs results caching causing query-frontend to return logs outside of query window.
+
 #### Promtail
 
 ##### Enhancements
