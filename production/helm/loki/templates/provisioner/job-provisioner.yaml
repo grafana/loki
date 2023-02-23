@@ -95,6 +95,9 @@ spec:
               # In case, the admin resources have already been created, the provisioner job
               # does not write the token files to the bootstrap mount.
               # Therefore, secrets are only created if the respective token files exist.
+              # Note: the following bash commands should always return a success status code. 
+              # Therefore, in case the token file does not exist, the first clause of the 
+              # or-operation is successful.
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               ! test -s /bootstrap/token-write-{{ .name }} || \
                 kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.provisionedSecretPrefix" $ }}-{{ .name }}" \
