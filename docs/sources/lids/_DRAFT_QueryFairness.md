@@ -111,7 +111,7 @@ That said, Loki does not have the notation of individual users.
 
 ## Goals
 
-The main goal of the following proposals is to lay out ideas how to improve the scheduler component to not only assure QoS across tenants, but also across actors (users) within a tenant, without requiring any changes to the deployment model of frontend, scheduler and queriers..
+The main goal of the following proposals is to lay out ideas how to improve the scheduler component to not only assure QoS across tenants, but also across actors (users) within a tenant, without requiring any changes to the deployment model of frontend, scheduler and queriers.
 This should also include changes to the queue structure to be easily extensible for future scheduling improvements. 
 
 ## Non-Goals (optional)
@@ -133,7 +133,7 @@ An alternative to changing the scheduling mechanism is to handle QoS control via
 
 ### Proposal 1: Add fixed second level to scheduler
 
-The scheduler is implemented in a way that it maintains a separate FIFO queue for each tenant. When a request (sub-query) is enqueued, the scheduler puts it into the existing queue for that tenant. If the queue does not exist yet, it creates it first and re-assignes the connected querier workers to the available tenant queues. Each querier worker pulls round-robin from the assigned queues in a loop.
+The current scheduler is implemented in a way that it maintains a separate FIFO queue for each tenant. When a request (sub-query) is enqueued, the scheduler puts it into the existing queue for that tenant. If the queue does not exist yet, it creates it first and re-assignes the connected querier workers to the available tenant queues. Each querier worker pulls round-robin from the assigned queues in a loop.
 
 Now, instead of enqueuing and pulling directly from the per-tenant queue, requests get enqueued in per-user queues and the per-tenant queue pulls round-robin from the user queues that are assigned to the tenant queues.
 
