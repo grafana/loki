@@ -62,15 +62,21 @@ func (w *wrapper) Delete() error {
 	return err
 }
 
-// Log writes a new wal.Record to the WAL. It's safe to assume that a record always contains at least one entry
-// and one series.
 func (w *wrapper) Log(record *wal.Record) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil
 	}
-	// After here we know that there's a record, and it contains either entries or series, but knowing the caller,
-	// we can assume it always does one of both for batching both entries and series records.
 
+	// The code below extracts the wal write operations to when possible, batch both series and records writes
+	if len(record.Series) > 0 && len(record.RefEntries) > 0 {
+		return w.logBatched(record)
+	} else {
+		return w.logSingle(record)
+	}
+}
+
+// logBatched logs to the WAL both series and records, batching the operation to prevent unnecessary page flushes.
+func (w *wrapper) logBatched(record *wal.Record) error {
 	seriesBuf := recordPool.GetBytes()[:0]
 	entriesBuf := recordPool.GetBytes()[:0]
 	defer func() {
@@ -80,9 +86,34 @@ func (w *wrapper) Log(record *wal.Record) error {
 
 	seriesBuf = record.EncodeSeries(seriesBuf)
 	entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, entriesBuf)
-	// Batch both wal records written to just produce one page flush after. Always write series then entries.
+	// Always write series then entries
 	if err := w.wal.Log(seriesBuf, entriesBuf); err != nil {
 		return err
+	}
+	return nil
+}
+
+// logSingle logs to the WAL series and records in separate WAL operation. This causes a page flush after each operation.
+func (w *wrapper) logSingle(record *wal.Record) error {
+	buf := recordPool.GetBytes()[:0]
+	defer func() {
+		recordPool.PutBytes(buf)
+	}()
+
+	// Always write series then entries.
+	if len(record.Series) > 0 {
+		buf = record.EncodeSeries(buf)
+		if err := w.wal.Log(buf); err != nil {
+			return err
+		}
+		buf = buf[:0]
+	}
+	if len(record.RefEntries) > 0 {
+		buf = record.EncodeEntries(wal.CurrentEntriesRec, buf)
+		if err := w.wal.Log(buf); err != nil {
+			return err
+		}
+
 	}
 	return nil
 }
