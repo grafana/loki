@@ -88,7 +88,7 @@ func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePar
 	value := response.Data.Result
 	switch value.Type() {
 	case logqlmodel.ValueTypeStreams:
-		return nil, fmt.Errorf("remote read Querier selectLogs fail,Unable to parse unsupported type: %s ", value.Type())
+		return nil, fmt.Errorf("Unable to parse unsupported type: %s ", value.Type())
 	case loghttp.ResultTypeMatrix:
 		return iter.NewSampleQueryResponseIterator(toSampleQueryResponse(value.(loghttp.Matrix))), nil
 	case loghttp.ResultTypeVector:
