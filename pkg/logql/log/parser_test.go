@@ -117,15 +117,15 @@ func TestJSONExpressionParser(t *testing.T) {
 	tests := []struct {
 		name        string
 		line        []byte
-		expressions []XExpression
+		expressions []LabelExtractionExpr
 		lbs         labels.Labels
 		want        labels.Labels
 	}{
 		{
 			"single field",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -135,8 +135,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"alternate syntax",
 			testLine,
-			[]XExpression{
-				NewXExpr("test", `["field with space"]`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("test", `["field with space"]`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -146,9 +146,9 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"multiple fields",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
-				NewXExpr("namespace", "namespace"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
+				NewLabelExtractionExpr("namespace", "namespace"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -159,8 +159,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"utf8",
 			testLine,
-			[]XExpression{
-				NewXExpr("utf8", `["field with ÜFT8👌"]`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("utf8", `["field with ÜFT8👌"]`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -170,8 +170,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"nested field",
 			testLine,
-			[]XExpression{
-				NewXExpr("uuid", "pod.uuid"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", "pod.uuid"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -181,8 +181,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"nested field alternate syntax",
 			testLine,
-			[]XExpression{
-				NewXExpr("uuid", `pod["uuid"]`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `pod["uuid"]`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -192,8 +192,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"nested field alternate syntax 2",
 			testLine,
-			[]XExpression{
-				NewXExpr("uuid", `["pod"]["uuid"]`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `["pod"]["uuid"]`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -203,8 +203,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"nested field alternate syntax 3",
 			testLine,
-			[]XExpression{
-				NewXExpr("uuid", `["pod"].uuid`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `["pod"].uuid`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -214,8 +214,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"array element",
 			testLine,
-			[]XExpression{
-				NewXExpr("param", `pod.deployment.params[0]`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("param", `pod.deployment.params[0]`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -225,8 +225,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"full array",
 			testLine,
-			[]XExpression{
-				NewXExpr("params", `pod.deployment.params`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("params", `pod.deployment.params`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -236,8 +236,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"full object",
 			testLine,
-			[]XExpression{
-				NewXExpr("deployment", `pod.deployment`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("deployment", `pod.deployment`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -247,8 +247,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"expression matching nothing",
 			testLine,
-			[]XExpression{
-				NewXExpr("nope", `pod.nope`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("nope", `pod.nope`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -258,8 +258,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"null field",
 			testLine,
-			[]XExpression{
-				NewXExpr("nf", `null_field`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("nf", `null_field`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -269,8 +269,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"boolean field",
 			testLine,
-			[]XExpression{
-				NewXExpr("bool", `bool_field`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("bool", `bool_field`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -280,8 +280,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"label override",
 			testLine,
-			[]XExpression{
-				NewXExpr("uuid", `pod.uuid`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `pod.uuid`),
 			},
 			labels.Labels{
 				{Name: "uuid", Value: "bar"},
@@ -294,8 +294,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"non-matching expression",
 			testLine,
-			[]XExpression{
-				NewXExpr("request_size", `request.size.invalid`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("request_size", `request.size.invalid`),
 			},
 			labels.Labels{
 				{Name: "uuid", Value: "bar"},
@@ -308,8 +308,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"empty line",
 			[]byte("{}"),
-			[]XExpression{
-				NewXExpr("uuid", `pod.uuid`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `pod.uuid`),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -319,8 +319,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"existing labels are not affected",
 			testLine,
-			[]XExpression{
-				NewXExpr("uuid", `will.not.work`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `will.not.work`),
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
@@ -333,8 +333,8 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"invalid JSON line",
 			[]byte(`invalid json`),
-			[]XExpression{
-				NewXExpr("uuid", `will.not.work`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `will.not.work`),
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
@@ -363,38 +363,38 @@ func TestJSONExpressionParser(t *testing.T) {
 func TestJSONExpressionParserFailures(t *testing.T) {
 	tests := []struct {
 		name       string
-		expression XExpression
+		expression LabelExtractionExpr
 		error      string
 	}{
 		{
 			"invalid field name",
-			NewXExpr("app", `field with space`),
+			NewLabelExtractionExpr("app", `field with space`),
 			"unexpected FIELD",
 		},
 		{
 			"missing opening square bracket",
-			NewXExpr("app", `"pod"]`),
+			NewLabelExtractionExpr("app", `"pod"]`),
 			"unexpected STRING, expecting LSB or FIELD",
 		},
 		{
 			"missing closing square bracket",
-			NewXExpr("app", `["pod"`),
+			NewLabelExtractionExpr("app", `["pod"`),
 			"unexpected $end, expecting RSB",
 		},
 		{
 			"missing closing square bracket",
-			NewXExpr("app", `["pod""uuid"]`),
+			NewLabelExtractionExpr("app", `["pod""uuid"]`),
 			"unexpected STRING, expecting RSB",
 		},
 		{
 			"invalid nesting",
-			NewXExpr("app", `pod..uuid`),
+			NewLabelExtractionExpr("app", `pod..uuid`),
 			"unexpected DOT, expecting FIELD",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewJSONExpressionParser([]XExpression{tt.expression})
+			_, err := NewJSONExpressionParser([]LabelExtractionExpr{tt.expression})
 
 			require.NotNil(t, err)
 			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))
@@ -727,15 +727,15 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	tests := []struct {
 		name        string
 		line        []byte
-		expressions []XExpression
+		expressions []LabelExtractionExpr
 		lbs         labels.Labels
 		want        labels.Labels
 	}{
 		{
 			"single field",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -745,10 +745,10 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"multiple fields",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
-				NewXExpr("level", "level"),
-				NewXExpr("ts", "ts"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
+				NewLabelExtractionExpr("level", "level"),
+				NewLabelExtractionExpr("ts", "ts"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -760,8 +760,8 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"label renaming",
 			testLine,
-			[]XExpression{
-				NewXExpr("test", "level"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("test", "level"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -771,10 +771,10 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"multiple fields with label renaming",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
-				NewXExpr("lvl", "level"),
-				NewXExpr("timestamp", "ts"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
+				NewLabelExtractionExpr("lvl", "level"),
+				NewLabelExtractionExpr("timestamp", "ts"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -786,8 +786,8 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"value with spaces and ÜFT8👌",
 			testLine,
-			[]XExpression{
-				NewXExpr("spaces", "spaces"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("spaces", "spaces"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -797,8 +797,8 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"expression matching nothing",
 			testLine,
-			[]XExpression{
-				NewXExpr("nope", "nope"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("nope", "nope"),
 			},
 			labels.Labels{},
 			labels.Labels{
@@ -808,8 +808,8 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"double property logfmt",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
 			},
 			labels.Labels{
 				{Name: "ap", Value: "bar"},
@@ -822,8 +822,8 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"label override",
 			testLine,
-			[]XExpression{
-				NewXExpr("app", "app"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
 			},
 			labels.Labels{
 				{Name: "app", Value: "bar"},
@@ -836,8 +836,8 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"label override 2",
 			testLine,
-			[]XExpression{
-				NewXExpr("lvl", "level"),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("lvl", "level"),
 			},
 			labels.Labels{
 				{Name: "level", Value: "debug"},
@@ -866,19 +866,19 @@ func TestLogfmtExpressionParser(t *testing.T) {
 func TestXExpressionParserFailures(t *testing.T) {
 	tests := []struct {
 		name       string
-		expression XExpression
+		expression LabelExtractionExpr
 		error      string
 	}{
 		{
 			"invalid field name",
-			NewXExpr("app", `field with space`),
+			NewLabelExtractionExpr("app", `field with space`),
 			"unexpected KEY",
 		},
 	}
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewLogfmtExpressionParser([]XExpression{tt.expression})
+			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression})
 
 			require.NotNil(t, err)
 			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))
