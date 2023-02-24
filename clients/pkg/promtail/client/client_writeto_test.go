@@ -129,59 +129,32 @@ func TestClientWriter_LogEntriesWithoutMatchingSeriesAreIgnored(t *testing.T) {
 	require.Empty(t, receivedEntries, "no entry should have arrived")
 }
 
-func startWriter(segmentNum, seriesToReset int, target *clientWriteTo, lines int, series record.RefSeries, maxInitialSleep time.Duration) {
-	randomSleepMax := func(max time.Duration) {
-		// random sleep to add some jitter
-		s := int64(rand.Uint64()) % int64(max)
-		time.Sleep(time.Duration(s))
+func BenchmarkClientWriteTo(b *testing.B) {
+	type testCase struct {
+		numWriters int
+		totalLines int
 	}
-	// random sleep to add some jitter
-	randomSleepMax(maxInitialSleep)
-
-	// store series
-	target.StoreSeries([]record.RefSeries{series}, segmentNum)
-
-	// write lines with that series
-	for i := 0; i < lines; i++ {
-		target.AppendEntries(wal.RefEntries{
-			Ref: series.Ref,
-			Entries: []logproto.Entry{
-				{
-					Timestamp: time.Now(),
-					Line:      fmt.Sprintf("%d - %d - hellooo", segmentNum, i),
-				},
-			},
-		})
-		// add some jitter between writes
-		randomSleepMax(time.Millisecond * 1)
-	}
-
-	// reset segment
-	target.SeriesReset(seriesToReset)
-}
-
-func waitNTimes(check func() bool, waitTime time.Duration, times int) <-chan struct{} {
-	ch := make(chan struct{})
-	go func() {
-		timer := time.NewTicker(waitTime)
-		defer func() {
-			close(ch)
-			timer.Stop()
-		}()
-		count := 0
-		for {
-			select {
-			case <-timer.C:
-				if check() || count >= times {
-					return
+	for _, tc := range []testCase{
+		{numWriters: 5, totalLines: 1_000},
+		{numWriters: 10, totalLines: 1_000},
+		{numWriters: 5, totalLines: 10_000},
+		{numWriters: 10, totalLines: 10_000},
+		{numWriters: 5, totalLines: 100_000},
+		{numWriters: 10, totalLines: 100_000},
+	} {
+		b.Run(fmt.Sprintf("num writers %d, with %d lines written in total", tc.numWriters, tc.totalLines),
+			func(b *testing.B) {
+				require.True(b, tc.totalLines%tc.numWriters == 0, "total lines must be divisible by num of writers")
+				for n := 0; n < b.N; n++ {
+					bench(tc.numWriters, tc.totalLines, b)
 				}
-				count++
-			}
-		}
-	}()
-	return ch
+			})
+	}
 }
 
+// bench is a single execution of the ClientWriteTo benchmark. During the execution of the benchmark, numWriters routines
+// will run, writing totalLines in total. After the writers have finished, the execution will block until the number of
+// expected written entries is reached, or it times out.
 func bench(numWriters, totalLines int, b *testing.B) {
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
 	readerWG := sync.WaitGroup{}
@@ -200,6 +173,7 @@ func bench(numWriters, totalLines int, b *testing.B) {
 
 	writeTo := newClientWriteTo(ch, logger)
 
+	// spin up the numWriters routines
 	writersWG := sync.WaitGroup{}
 	for n := 0; n < numWriters; n++ {
 		writersWG.Add(1)
@@ -232,25 +206,63 @@ func bench(numWriters, totalLines int, b *testing.B) {
 	require.Equal(b, int64(totalLines), totalReceived.Load(), "some lines where not read")
 }
 
-func BenchmarkTest(b *testing.B) {
-	type testCase struct {
-		numWriters int
-		totalLines int
+// startWriter orchestrates each writer routine that bench launches. Each routine will execute the following actions:
+// 1. Add some jitter to the whole routine execution by waiting between 0 and maxInitialSleep.
+// 2. Store the series that all written entries will use.
+// 3. Write the lines entries, adding a small jitter between 0 and 1 ms after each write operation.
+// 4. After all are written, call a SeriesReset. This will block the entire series map and will hopefully block
+// some other writing routine.
+func startWriter(segmentNum, seriesToReset int, target *clientWriteTo, lines int, series record.RefSeries, maxInitialSleep time.Duration) {
+	randomSleepMax := func(max time.Duration) {
+		// random sleep to add some jitter
+		s := int64(rand.Uint64()) % int64(max)
+		time.Sleep(time.Duration(s))
 	}
-	for _, tc := range []testCase{
-		{numWriters: 5, totalLines: 1_000},
-		{numWriters: 10, totalLines: 1_000},
-		{numWriters: 5, totalLines: 10_000},
-		{numWriters: 10, totalLines: 10_000},
-		{numWriters: 5, totalLines: 100_000},
-		{numWriters: 10, totalLines: 100_000},
-	} {
-		b.Run(fmt.Sprintf("num writers %d, with %d lines per writer", tc.numWriters, tc.totalLines),
-			func(b *testing.B) {
-				require.True(b, tc.totalLines%tc.numWriters == 0, "total lines must be divisible by num of writers")
-				for n := 0; n < b.N; n++ {
-					bench(tc.numWriters, tc.totalLines, b)
+	// random sleep to add some jitter
+	randomSleepMax(maxInitialSleep)
+
+	// store series
+	target.StoreSeries([]record.RefSeries{series}, segmentNum)
+
+	// write lines with that series
+	for i := 0; i < lines; i++ {
+		target.AppendEntries(wal.RefEntries{
+			Ref: series.Ref,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Now(),
+					Line:      fmt.Sprintf("%d - %d - hellooo", segmentNum, i),
+				},
+			},
+		})
+		// add some jitter between writes
+		randomSleepMax(time.Millisecond * 1)
+	}
+
+	// reset segment
+	target.SeriesReset(seriesToReset)
+}
+
+// waitNTimes will perform repeat the provided check every waitTime, until the check is valid or times repetitions are
+// exceeded.
+func waitNTimes(check func() bool, waitTime time.Duration, times int) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		timer := time.NewTicker(waitTime)
+		defer func() {
+			close(ch)
+			timer.Stop()
+		}()
+		count := 0
+		for {
+			select {
+			case <-timer.C:
+				if check() || count >= times {
+					return
 				}
-			})
-	}
+				count++
+			}
+		}
+	}()
+	return ch
 }
