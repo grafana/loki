@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 4.7
 
-- [CHANGE] **BREAKING** Rename `gel-license.jwt` property of secret `gel-secrets` to `license.jwt` on enterprise-logs chart. 
+- [CHANGE] **BREAKING** Rename `gel-license.jwt` property of secret `gel-secrets` to `license.jwt` on enterprise-logs chart.
 
 ## 4.6.2
 
