@@ -44,7 +44,7 @@
 
 ##### Fixes
 
-* [8497](https://github.com/grafana/loki/pull/8497) **kavirajk**: Fix `cry` tags treating different streams as the same
+* [8497](https://github.com/grafana/loki/pull/8497) **kavirajk**: Fix `cri` tags treating different streams as the same
 * [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
 * [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
