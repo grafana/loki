@@ -19,6 +19,7 @@ package credentials
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
@@ -31,7 +32,6 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7/pkg/signer"
-	sha256 "github.com/minio/sha256-simd"
 )
 
 // AssumeRoleResponse contains the result of successful AssumeRole request.

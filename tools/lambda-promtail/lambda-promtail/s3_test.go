@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_getLabels(t *testing.T) {
@@ -111,9 +112,10 @@ func Test_parseS3Log(t *testing.T) {
 		batchSize int
 	}
 	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
+		name           string
+		args           args
+		wantErr        bool
+		expectedStream string
 	}{
 		{
 			name: "vpcflowlogs",
@@ -124,10 +126,13 @@ func Test_parseS3Log(t *testing.T) {
 					streams: map[string]*logproto.Stream{},
 				},
 				labels: map[string]string{
-					"type": FLOW_LOG_TYPE,
+					"type":       FLOW_LOG_TYPE,
+					"src":        "source",
+					"account_id": "123456789",
 				},
 			},
-			wantErr: false,
+			expectedStream: `{__aws_log_type="s3_vpc_flow", __aws_s3_vpc_flow="source", __aws_s3_vpc_flow_owner="123456789"}`,
+			wantErr:        false,
 		},
 		{
 			name: "albaccesslogs",
@@ -138,10 +143,13 @@ func Test_parseS3Log(t *testing.T) {
 					streams: map[string]*logproto.Stream{},
 				},
 				labels: map[string]string{
-					"type": LB_LOG_TYPE,
+					"type":       LB_LOG_TYPE,
+					"src":        "source",
+					"account_id": "123456789",
 				},
 			},
-			wantErr: false,
+			expectedStream: `{__aws_log_type="s3_lb", __aws_s3_lb="source", __aws_s3_lb_owner="123456789"}`,
+			wantErr:        false,
 		},
 	}
 	for _, tt := range tests {
@@ -156,6 +164,11 @@ func Test_parseS3Log(t *testing.T) {
 			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
 			}
+
+			require.Len(t, tt.args.b.streams, 1)
+			stream, ok := tt.args.b.streams[tt.expectedStream]
+			require.True(t, ok, "batch does not contain stream: %s", tt.expectedStream)
+			require.NotNil(t, stream)
 		})
 	}
 }

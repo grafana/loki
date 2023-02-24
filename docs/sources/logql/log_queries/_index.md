@@ -403,25 +403,44 @@ The **json** parser operates in two modes:
 
 #### logfmt
 
-The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
+The **logfmt** parser can operate in two modes:
 
-For example the following log line:
+1. **without** parameters:
 
-```logfmt
-at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
-```
+    The **logfmt** parser can be added using `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
 
-will get those labels extracted:
+    For example the following log line:
 
-```kv
-"at" => "info"
-"method" => "GET"
-"path" => "/"
-"host" => "grafana.net"
-"fwd" => "124.133.124.161"
-"service" => "8ms"
-"status" => "200"
-```
+    ```logfmt
+    at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
+    ```
+
+    will result in having the following labels extracted:
+
+    ```kv
+    "at" => "info"
+    "method" => "GET"
+    "path" => "/"
+    "host" => "grafana.net"
+    "fwd" => "124.133.124.161"
+    "service" => "8ms"
+    "status" => "200"
+    ```
+
+2. **with** parameters:
+
+    Similar to [JSON](#json), using `| logfmt label="expression", another="expression"` in the pipeline will result in extracting only the fields specified by the labels.
+
+    For example, `| logfmt host, fwd_ip="fwd"` will extract the labels `host` and `fwd` from the following log line:
+    ```logfmt
+    at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
+    ```
+    
+    And rename `fwd` to `fwd_ip`:
+    ```kv
+    "host" => "grafana.net"
+    "fwd_ip" => "124.133.124.161"
+    ```
 
 #### Pattern
 

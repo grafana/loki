@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
@@ -158,7 +159,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return res, derr
 	}
 
-	err = status.Refresh(ctx, r.Client, req)
+	err = status.Refresh(ctx, r.Client, req, time.Now())
 	if err != nil {
 		return ctrl.Result{}, err
 	}

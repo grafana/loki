@@ -93,7 +93,8 @@ const (
 	AVX512VNNI                          // AVX-512 Vector Neural Network Instructions
 	AVX512VP2INTERSECT                  // AVX-512 Intersect for D/Q
 	AVX512VPOPCNTDQ                     // AVX-512 Vector Population Count Doubleword and Quadword
-	AVXSLOW                             // Indicates the CPU performs 2 128 bit operations instead of one.
+	AVXSLOW                             // Indicates the CPU performs 2 128 bit operations instead of one
+	AVXVNNI                             // AVX (VEX encoded) VNNI neural network instructions
 	BMI1                                // Bit Manipulation Instruction Set 1
 	BMI2                                // Bit Manipulation Instruction Set 2
 	CETIBT                              // Intel CET Indirect Branch Tracking
@@ -102,6 +103,7 @@ const (
 	CLMUL                               // Carry-less Multiplication
 	CLZERO                              // CLZERO instruction supported
 	CMOV                                // i686 CMOV
+	CMPSB_SCADBS_SHORT                  // Fast short CMPSB and SCASB
 	CMPXCHG8                            // CMPXCHG8 instruction
 	CPBOOST                             // Core Performance Boost
 	CX16                                // CMPXCHG16B Instruction
@@ -112,8 +114,9 @@ const (
 	FMA4                                // Bulldozer FMA4 functions
 	FXSR                                // FXSAVE, FXRESTOR instructions, CR4 bit 9
 	FXSROPT                             // FXSAVE/FXRSTOR optimizations
-	GFNI                                // Galois Field New Instructions
+	GFNI                                // Galois Field New Instructions. May require other features (AVX, AVX512VL,AVX512F) based on usage.
 	HLE                                 // Hardware Lock Elision
+	HRESET                              // If set CPU supports history reset and the IA32_HRESET_ENABLE MSR
 	HTT                                 // Hyperthreading (enabled)
 	HWA                                 // Hardware assert supported. Indicates support for MSRC001_10
 	HYPERVISOR                          // This bit has been reserved by Intel & AMD for use by hypervisors
@@ -131,6 +134,8 @@ const (
 	INT_WBINVD                          // WBINVD/WBNOINVD are interruptible.
 	INVLPGB                             // NVLPGB and TLBSYNC instruction supported
 	LAHF                                // LAHF/SAHF in long mode
+	LAM                                 // If set, CPU supports Linear Address Masking
+	LBRVIRT                             // LBR virtualization
 	LZCNT                               // LZCNT instruction
 	MCAOVERFLOW                         // MCA overflow recovery support.
 	MCOMMIT                             // MCOMMIT instruction supported
@@ -139,9 +144,11 @@ const (
 	MOVBE                               // MOVBE instruction (big-endian)
 	MOVDIR64B                           // Move 64 Bytes as Direct Store
 	MOVDIRI                             // Move Doubleword as Direct Store
+	MOVSB_ZL                            // Fast Zero-Length MOVSB
 	MPX                                 // Intel MPX (Memory Protection Extensions)
-	MSR_PAGEFLUSH                       // Page Flush MSR available
 	MSRIRC                              // Instruction Retired Counter MSR available
+	MSR_PAGEFLUSH                       // Page Flush MSR available
+	NRIPS                               // Indicates support for NRIP save on VMEXIT
 	NX                                  // NX (No-Execute) bit
 	OSXSAVE                             // XSAVE enabled by OS
 	PCONFIG                             // PCONFIG for Intel Multi-Key Total Memory Encryption
@@ -174,15 +181,25 @@ const (
 	SSE4A                               // AMD Barcelona microarchitecture SSE4a instructions
 	SSSE3                               // Conroe SSSE3 functions
 	STIBP                               // Single Thread Indirect Branch Predictors
+	STOSB_SHORT                         // Fast short STOSB
 	SUCCOR                              // Software uncorrectable error containment and recovery capability.
+	SVM                                 // AMD Secure Virtual Machine
+	SVMDA                               // Indicates support for the SVM decode assists.
+	SVMFBASID                           // SVM, Indicates that TLB flush events, including CR3 writes and CR4.PGE toggles, flush only the current ASID's TLB entries. Also indicates support for the extended VMCBTLB_Control
+	SVML                                // AMD SVM lock. Indicates support for SVM-Lock.
+	SVMNP                               // AMD SVM nested paging
+	SVMPF                               // SVM pause intercept filter. Indicates support for the pause intercept filter
+	SVMPFT                              // SVM PAUSE filter threshold. Indicates support for the PAUSE filter cycle count threshold
 	TBM                                 // AMD Trailing Bit Manipulation
 	TME                                 // Intel Total Memory Encryption. The following MSRs are supported: IA32_TME_CAPABILITY, IA32_TME_ACTIVATE, IA32_TME_EXCLUDE_MASK, and IA32_TME_EXCLUDE_BASE.
+	TSCRATEMSR                          // MSR based TSC rate control. Indicates support for MSR TSC ratio MSRC000_0104
 	TSXLDTRK                            // Intel TSX Suspend Load Address Tracking
-	VAES                                // Vector AES
+	VAES                                // Vector AES. AVX(512) versions requires additional checks.
+	VMCBCLEAN                           // VMCB clean bits. Indicates support for VMCB clean bits.
 	VMPL                                // AMD VM Permission Levels supported
 	VMSA_REGPROT                        // AMD VMSA Register Protection supported
 	VMX                                 // Virtual Machine Extensions
-	VPCLMULQDQ                          // Carry-Less Multiplication Quadword
+	VPCLMULQDQ                          // Carry-Less Multiplication Quadword. Requires AVX for 3 register versions.
 	VTE                                 // AMD Virtual Transparent Encryption supported
 	WAITPKG                             // TPAUSE, UMONITOR, UMWAIT
 	WBNOINVD                            // Write Back and Do Not Invalidate Cache
@@ -219,7 +236,6 @@ const (
 	SM3      // SM3 instructions
 	SM4      // SM4 instructions
 	SVE      // Scalable Vector Extension
-
 	// Keep it last. It automatically defines the size of []flagSet
 	lastID
 
@@ -1021,7 +1037,6 @@ func support() flagSet {
 	// Check AVX2, AVX2 requires OS support, but BMI1/2 don't.
 	if mfi >= 7 {
 		_, ebx, ecx, edx := cpuidex(7, 0)
-		eax1, _, _, _ := cpuidex(7, 1)
 		if fs.inSet(AVX) && (ebx&0x00000020) != 0 {
 			fs.set(AVX2)
 		}
@@ -1038,15 +1053,20 @@ func support() flagSet {
 		fs.setIf(ebx&(1<<18) != 0, RDSEED)
 		fs.setIf(ebx&(1<<19) != 0, ADX)
 		fs.setIf(ebx&(1<<29) != 0, SHA)
+
 		// CPUID.(EAX=7, ECX=0).ECX
 		fs.setIf(ecx&(1<<5) != 0, WAITPKG)
 		fs.setIf(ecx&(1<<7) != 0, CETSS)
+		fs.setIf(ecx&(1<<8) != 0, GFNI)
+		fs.setIf(ecx&(1<<9) != 0, VAES)
+		fs.setIf(ecx&(1<<10) != 0, VPCLMULQDQ)
 		fs.setIf(ecx&(1<<13) != 0, TME)
 		fs.setIf(ecx&(1<<25) != 0, CLDEMOTE)
 		fs.setIf(ecx&(1<<27) != 0, MOVDIRI)
 		fs.setIf(ecx&(1<<28) != 0, MOVDIR64B)
 		fs.setIf(ecx&(1<<29) != 0, ENQCMD)
 		fs.setIf(ecx&(1<<30) != 0, SGXLC)
+
 		// CPUID.(EAX=7, ECX=0).EDX
 		fs.setIf(edx&(1<<11) != 0, RTM_ALWAYS_ABORT)
 		fs.setIf(edx&(1<<14) != 0, SERIALIZE)
@@ -1055,6 +1075,15 @@ func support() flagSet {
 		fs.setIf(edx&(1<<20) != 0, CETIBT)
 		fs.setIf(edx&(1<<26) != 0, IBPB)
 		fs.setIf(edx&(1<<27) != 0, STIBP)
+
+		// CPUID.(EAX=7, ECX=1)
+		eax1, _, _, _ := cpuidex(7, 1)
+		fs.setIf(fs.inSet(AVX) && eax1&(1<<4) != 0, AVXVNNI)
+		fs.setIf(eax1&(1<<10) != 0, MOVSB_ZL)
+		fs.setIf(eax1&(1<<11) != 0, STOSB_SHORT)
+		fs.setIf(eax1&(1<<12) != 0, CMPSB_SCADBS_SHORT)
+		fs.setIf(eax1&(1<<22) != 0, HRESET)
+		fs.setIf(eax1&(1<<26) != 0, LAM)
 
 		// Only detect AVX-512 features if XGETBV is supported
 		if c&((1<<26)|(1<<27)) == (1<<26)|(1<<27) {
@@ -1080,9 +1109,6 @@ func support() flagSet {
 				// ecx
 				fs.setIf(ecx&(1<<1) != 0, AVX512VBMI)
 				fs.setIf(ecx&(1<<6) != 0, AVX512VBMI2)
-				fs.setIf(ecx&(1<<8) != 0, GFNI)
-				fs.setIf(ecx&(1<<9) != 0, VAES)
-				fs.setIf(ecx&(1<<10) != 0, VPCLMULQDQ)
 				fs.setIf(ecx&(1<<11) != 0, AVX512VNNI)
 				fs.setIf(ecx&(1<<12) != 0, AVX512BITALG)
 				fs.setIf(ecx&(1<<14) != 0, AVX512VPOPCNTDQ)
@@ -1125,13 +1151,17 @@ func support() flagSet {
 			fs.set(LZCNT)
 			fs.set(POPCNT)
 		}
+		// ECX
 		fs.setIf((c&(1<<0)) != 0, LAHF)
+		fs.setIf((c&(1<<2)) != 0, SVM)
+		fs.setIf((c&(1<<6)) != 0, SSE4A)
 		fs.setIf((c&(1<<10)) != 0, IBS)
+
+		// EDX
 		fs.setIf((d&(1<<31)) != 0, AMD3DNOW)
 		fs.setIf((d&(1<<30)) != 0, AMD3DNOWEXT)
 		fs.setIf((d&(1<<23)) != 0, MMX)
 		fs.setIf((d&(1<<22)) != 0, MMXEXT)
-		fs.setIf((c&(1<<6)) != 0, SSE4A)
 		fs.setIf(d&(1<<20) != 0, NX)
 		fs.setIf(d&(1<<27) != 0, RDTSCP)
 
@@ -1160,6 +1190,20 @@ func support() flagSet {
 		fs.setIf((b&(1<<3)) != 0, INVLPGB)
 		fs.setIf((b&(1<<1)) != 0, MSRIRC)
 		fs.setIf((b&(1<<0)) != 0, CLZERO)
+	}
+
+	if fs.inSet(SVM) && maxExtendedFunction() >= 0x8000000A {
+		_, _, _, edx := cpuid(0x8000000A)
+		fs.setIf((edx>>0)&1 == 1, SVMNP)
+		fs.setIf((edx>>1)&1 == 1, LBRVIRT)
+		fs.setIf((edx>>2)&1 == 1, SVML)
+		fs.setIf((edx>>3)&1 == 1, NRIPS)
+		fs.setIf((edx>>4)&1 == 1, TSCRATEMSR)
+		fs.setIf((edx>>5)&1 == 1, VMCBCLEAN)
+		fs.setIf((edx>>6)&1 == 1, SVMFBASID)
+		fs.setIf((edx>>7)&1 == 1, SVMDA)
+		fs.setIf((edx>>10)&1 == 1, SVMPF)
+		fs.setIf((edx>>12)&1 == 1, SVMPFT)
 	}
 
 	if maxExtendedFunction() >= 0x8000001b && fs.inSet(IBS) {

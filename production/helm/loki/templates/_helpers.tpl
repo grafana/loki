@@ -240,7 +240,6 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
-  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -307,7 +306,6 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
-  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -558,7 +556,7 @@ http {
   resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
-  {{ . | nindent 2 }}
+  {{- tpl . $ | nindent 2 }}
   {{- end }}
 
   server {
