@@ -348,4 +348,6 @@ Sharding on a per-request basis can still be achieved with Proposal 2, by adding
 actor := []string{"tenant", "user", "request_hash"}
 ```
 
-## Other Notes
+## Consensus
+
+Proposal 2 is going to be implemented.
