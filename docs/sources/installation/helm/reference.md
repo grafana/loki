@@ -2404,9 +2404,9 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.interval</td>
 			<td>string</td>
-			<td>ServiceMonitor scrape interval</td>
+			<td>ServiceMonitor scrape interval Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at least 1/4 rate interval.</td>
 			<td><pre lang="json">
-null
+"15s"
 </pre>
 </td>
 		</tr>

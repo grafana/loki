@@ -3,7 +3,7 @@ title: Configure monitoring and alerting
 menuTitle: Configure monitoring and alerting
 description: setup monitoring and alerts for the Helm Chart
 aliases:
-  - /docs/installation/helm/monitoring
+  - /docs/installation/helm/monitoring/with-local-monitoring
 weight: 100
 keywords:
   - monitoring
@@ -13,9 +13,9 @@ keywords:
 
 # Configure monitoring and alerting
 
-By default this Helm Chart configures meta-monitoring of metrics (service monitoring) and logs (self monitoring).
+By default this Helm Chart configures meta-monitoring of metrics (service monitoring) and logs (self monitoring). This topic will walk you through configuring monitoring using a monitoring solution local to the same cluster where Loki is installed.
 
-The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. Scraping this Loki cluster using the scrape config defined in the `ServiceMonitor` resource is required for the included dashboards to work. A `MetricsInstance` can be configured to write the metrics to a remote Prometheus instance such as Grafana Cloud Metrics.
+The `ServiceMonitor` resource works with either the Prometheus Operator or the Grafana Agent Operator, and defines how Loki's metrics should be scraped. Scraping this Loki cluster using the scrape config defined in the `SerivceMonitor` resource is required for the included dashboards to work. A `MetricsInstance` can be configured to write the metrics to a remote Prometheus instance such as Grafana Cloud Metrics.
 
 _Self monitoring_ is enabled by default. This will deploy a `GrafanaAgent`, `LogsInstance`, and `PodLogs` resource which will instruct the Grafana Agent Operator (installed seperately) on how to scrape this Loki cluster's logs and send them back to itself. Scraping this Loki cluster using the scrape config defined in the `PodLogs` resource is required for the included dashboards to work.
 
@@ -80,25 +80,6 @@ prometheus:
         targetLabel: cluster
 ```
 
-In order to make sure the Prometheus Operator discovers the `ServiceMonitor` resources deployed by the `loki` chart, you will need to make sure those resources have the correct labels the Prometheus Operator is configured to look for. By default this is the key value label pair `release: prometheus`. Make sure the Loki `ServiceMonitor`s have this label by adding the following to the `values.yaml` for your Loki helm chart:
-
-```yaml
-monitoring:
-  serviceMonitor:
-    labels:
-      release: prometheus
-```
-
-This is also true for the `PrometheusRule` resource deployed by the Helm chart, which in addition to a label, need to be in the same namespace as the Prometheus Operator. For example, if you installed the Prometheus Operator in the `monitoring` namespace, you would need to also add the following to the `values.yaml` for you Loki helm chart to ensure recroding rules are properly discoverd:
-
-```yaml
-monitoring:
-  rules:
-    namespace: monitoring
-    labels:
-      release: prometheus
-```
-
 The `kube-prometheus-stack` installs `ServicMonitor` and `PrometheusRule` resources for monitoring Kubernetes, and it depends on the `kube-state-metrics` and `prometheus-node-exporter` helm charts which also install `ServiceMonitor` resources for collecting `kubelet` and `node-exporter` metrics. The above values file adds the necessary additional labels required for these metrics to work with the included dashboards.
 
 If you are using this helm chart in an environment which does not allow for the installation of `kube-prometheus-stack` or custom CRDs, you should run `helm template` on the `kube-prometheus-stack` helm chart with the above values file, and review all generated `ServiceMonitor` and `PrometheusRule` resources. These resources may have to be modified with the correct ports and selectors to find the various services such as `kubelet` and `node-exporter` in your environment.
@@ -131,7 +112,7 @@ If you are using this helm chart in an environment which does not allow for the 
        type: file
    ```
 
-**To add additional Prometheus rules:**
+**To add add additional Prometheus rules:**
 
 1. Modify the configuration file `values.yaml`:
 
@@ -229,4 +210,4 @@ If you are using this helm chart in an environment which does not allow for the 
      enabled: false
    ```
 
-5. Install the `Loki meta-monitoring` connection on Grafana Cloud.
+5. Install the `Loki meta-motoring` connection on Grafana Cloud.
