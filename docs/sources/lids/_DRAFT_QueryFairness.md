@@ -1,9 +1,9 @@
 ---
-title: "XXXX: Query fairness across users within tenants"
+title: "0003: Query fairness across users within tenants"
 description: "Improve the query scheduler to ensure fairness between individual users of individual tenants."
 ---
 
-# XXXX: Query fairness across users within tenants
+# 0003: Query fairness across users within tenants
 
 **Author:** Christian Haudum (<christian.haudum@grafana.com>)
 
@@ -13,7 +13,7 @@ description: "Improve the query scheduler to ensure fairness between individual 
 
 **Type:** Feature
 
-**Status:** Draft
+**Status:** Accepted
 
 **Related issues/PRs:**
 
