@@ -507,6 +507,10 @@ engine:
 # When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
+
+# The maximum number of concurrent remote read queries allowed.
+# CLI flag: -querier.max-remote-read-concurrent
+[max_remote_read_concurrent: <int> | default = 5]
 ```
 
 ### query_scheduler
