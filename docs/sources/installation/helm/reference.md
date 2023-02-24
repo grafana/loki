@@ -803,9 +803,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }}"
+"{{ if .Values.loki.tenants }}\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1016,6 +1016,33 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.customBackendUrl</td>
+			<td>string</td>
+			<td>Override Backend URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customReadUrl</td>
+			<td>string</td>
+			<td>Override Read URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customWriteUrl</td>
+			<td>string</td>
+			<td>Override Write URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
@@ -1027,9 +1054,9 @@ See values.yaml
 		<tr>
 			<td>gateway.nginxConfig.httpSnippet</td>
 			<td>string</td>
-			<td>Allows appending custom configuration to the http block</td>
+			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1854,7 +1881,6 @@ null
     "accountKey": null,
     "accountName": null,
     "requestTimeout": null,
-    "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
   },
@@ -1908,6 +1934,15 @@ null
 			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tenants</td>
+			<td>list</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>

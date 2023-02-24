@@ -4,13 +4,14 @@ import (
 	"container/heap"
 	"context"
 	"io"
-	"sort"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/loser"
 )
 
 // EntryIterator iterates over entries in time-order.
@@ -327,11 +328,9 @@ func (i *mergeEntryIterator) Len() int {
 }
 
 type entrySortIterator struct {
-	is              []EntryIterator
-	prefetched      bool
-	byAscendingTime bool
-	currEntry       entryWithLabels
-	errs            []error
+	tree      *loser.Tree[sortFields, EntryIterator]
+	currEntry entryWithLabels
+	errs      []error
 }
 
 // NewSortEntryIterator returns a new EntryIterator that sorts entries by timestamp (depending on the direction) the input iterators.
@@ -345,120 +344,79 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 	if len(is) == 1 {
 		return is[0]
 	}
-	result := &entrySortIterator{is: is}
-	switch direction {
-	case logproto.BACKWARD:
-		result.byAscendingTime = false
-	case logproto.FORWARD:
-		result.byAscendingTime = true
-	default:
-		panic("bad direction")
-	}
+	maxVal, less := treeLess(direction)
+	result := &entrySortIterator{}
+	result.tree = loser.New(is, maxVal, sortFieldsAt, less, result.closeEntry)
 	return result
 }
 
-func (i *entrySortIterator) lessByIndex(k, j int) bool {
-	t1, t2 := i.is[k].Entry().Timestamp.UnixNano(), i.is[j].Entry().Timestamp.UnixNano()
-	if t1 == t2 {
+func treeLess(direction logproto.Direction) (maxVal sortFields, less func(a, b sortFields) bool) {
+	switch direction {
+	case logproto.BACKWARD:
+		maxVal = sortFields{timeNanos: math.MinInt64}
+		less = lessDescending
+	case logproto.FORWARD:
+		maxVal = sortFields{timeNanos: math.MaxInt64}
+		less = lessAscending
+	default:
+		panic("bad direction")
+	}
+	return
+}
+
+type sortFields struct {
+	labels     string
+	timeNanos  int64
+	streamHash uint64
+}
+
+func sortFieldsAt(i EntryIterator) sortFields {
+	return sortFields{
+		timeNanos:  i.Entry().Timestamp.UnixNano(),
+		labels:     i.Labels(),
+		streamHash: i.StreamHash(),
+	}
+}
+
+func lessAscending(e1, e2 sortFields) bool {
+	if e1.timeNanos == e2.timeNanos {
 		// The underlying stream hash may not be available, such as when merging LokiResponses in the
 		// frontend which were sharded. Prefer to use the underlying stream hash when available,
 		// which is needed in deduping code, but defer to label sorting when it's not present.
-		if i.is[k].StreamHash() == 0 {
-			return i.is[k].Labels() < i.is[j].Labels()
+		if e1.streamHash == 0 {
+			return e1.labels < e2.labels
 		}
-		return i.is[k].StreamHash() < i.is[j].StreamHash()
+		return e1.streamHash < e2.streamHash
 	}
-	if i.byAscendingTime {
-		return t1 < t2
-	}
-	return t1 > t2
+	return e1.timeNanos < e2.timeNanos
 }
 
-func (i *entrySortIterator) lessByValue(t1 int64, l1 uint64, lb string, index int) bool {
-	t2 := i.is[index].Entry().Timestamp.UnixNano()
-	if t1 == t2 {
-		if l1 == 0 {
-			return lb < i.is[index].Labels()
+func lessDescending(e1, e2 sortFields) bool {
+	if e1.timeNanos == e2.timeNanos {
+		if e1.streamHash == 0 {
+			return e1.labels < e2.labels
 		}
-		return l1 < i.is[index].StreamHash()
+		return e1.streamHash < e2.streamHash
 	}
-	if i.byAscendingTime {
-		return t1 < t2
-	}
-	return t1 > t2
+	return e1.timeNanos > e2.timeNanos
 }
 
-// init throws out empty iterators and sorts them.
-func (i *entrySortIterator) init() {
-	if i.prefetched {
-		return
+func (i *entrySortIterator) closeEntry(e EntryIterator) {
+	if err := e.Error(); err != nil {
+		i.errs = append(i.errs, err)
 	}
+	util.LogError("closing iterator", e.Close)
 
-	i.prefetched = true
-	tmp := make([]EntryIterator, 0, len(i.is))
-	for _, it := range i.is {
-		if it.Next() {
-			tmp = append(tmp, it)
-			continue
-		}
-
-		if err := it.Error(); err != nil {
-			i.errs = append(i.errs, err)
-		}
-		util.LogError("closing iterator", it.Close)
-	}
-	i.is = tmp
-	sort.Slice(i.is, i.lessByIndex)
 }
-
-func (i *entrySortIterator) fix() {
-	head := i.is[0]
-	t1 := head.Entry().Timestamp.UnixNano()
-	l1 := head.StreamHash()
-	lb := head.Labels()
-
-	// shortcut
-	if len(i.is) <= 1 || i.lessByValue(t1, l1, lb, 1) {
-		return
-	}
-
-	// First element is out of place. So we reposition it.
-	i.is = i.is[1:] // drop head
-	index := sort.Search(len(i.is), func(in int) bool { return i.lessByValue(t1, l1, lb, in) })
-
-	if index == len(i.is) {
-		i.is = append(i.is, head)
-	} else {
-		i.is = append(i.is[:index+1], i.is[index:]...)
-		i.is[index] = head
-	}
-}
-
 func (i *entrySortIterator) Next() bool {
-	i.init()
-
-	if len(i.is) == 0 {
+	ret := i.tree.Next()
+	if !ret {
 		return false
 	}
-
-	next := i.is[0]
+	next := i.tree.Winner()
 	i.currEntry.Entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
-	// if the top iterator is empty, we remove it.
-	if !next.Next() {
-		i.is = i.is[1:]
-		if err := next.Error(); err != nil {
-			i.errs = append(i.errs, err)
-		}
-		util.LogError("closing iterator", next.Close)
-		return true
-	}
-
-	if len(i.is) > 1 {
-		i.fix()
-	}
-
 	return true
 }
 
@@ -486,12 +444,8 @@ func (i *entrySortIterator) Error() error {
 }
 
 func (i *entrySortIterator) Close() error {
-	for _, entryIterator := range i.is {
-		if err := entryIterator.Close(); err != nil {
-			return err
-		}
-	}
-	return nil
+	i.tree.Close()
+	return i.Error()
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream

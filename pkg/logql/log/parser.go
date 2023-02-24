@@ -341,13 +341,113 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
+type LogfmtExpressionParser struct {
+	expressions map[string][]interface{}
+	dec         *logfmt.Decoder
+	keys        internedStringSet
+}
+
+func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpressionParser, error) {
+	if len(expressions) == 0 {
+		return nil, fmt.Errorf("no logfmt expression provided")
+	}
+	paths := make(map[string][]interface{}, len(expressions))
+
+	for _, exp := range expressions {
+		path, err := logfmt.Parse(exp.Expression, false)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
+		}
+
+		if !model.LabelName(exp.Identifier).IsValid() {
+			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
+		}
+		paths[exp.Identifier] = path
+	}
+	return &LogfmtExpressionParser{
+		expressions: paths,
+		dec:         logfmt.NewDecoder(nil),
+		keys:        internedStringSet{},
+	}, nil
+}
+
+func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	// If there are no expressions, extract common labels
+	// and add the suffix "_extracted"
+	if len(l.expressions) == 0 {
+		return line, false
+	}
+
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+
+	// Create a map of every renamed label and its original name
+	// in order to retrieve it later in the extraction phase
+	keys := make(map[string]string, len(l.expressions))
+	for id, paths := range l.expressions {
+		keys[id] = fmt.Sprintf("%v", paths...)
+		if !lbs.BaseHas(id) {
+			lbs.Set(id, "")
+		}
+	}
+
+	l.dec.Reset(line)
+	var current []byte
+	for l.dec.ScanKeyval() {
+		current = l.dec.Key()
+		key, ok := l.keys.Get(current, func() (string, bool) {
+			sanitized := sanitizeLabelKey(string(current), true)
+			if len(sanitized) == 0 {
+				return "", false
+			}
+
+			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+				return "", false
+			}
+			return sanitized, true
+		})
+		if !ok {
+			continue
+		}
+		val := l.dec.Value()
+
+		for id, orig := range keys {
+			if key == orig {
+				key = id
+				break
+			}
+		}
+
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
+		}
+
+		if _, ok := l.expressions[key]; ok {
+			if lbs.BaseHas(key) {
+				key = key + duplicateSuffix
+			}
+			lbs.Set(key, string(val))
+		}
+	}
+	if l.dec.Err() != nil {
+		lbs.SetErr(errLogfmt)
+		lbs.SetErrorDetails(l.dec.Err().Error())
+		return line, true
+	}
+
+	return line, true
+}
+
+func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
+
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
 
 	keys internedStringSet
 }
 
-func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParser, error) {
+func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
 	paths := make(map[string][]interface{})
 
 	for _, exp := range expressions {
@@ -390,7 +490,6 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		lbs.Set(key, result)
 	}
-
 	return line, true
 }
 

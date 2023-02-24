@@ -36,7 +36,7 @@ func NewQueryShardMiddleware(
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
-	resolver logql.ShardResolver,
+	maxShards int,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -50,7 +50,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics, limits, resolver)
+		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -72,27 +72,27 @@ func newASTMapperware(
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
 	limits Limits,
-	resolver logql.ShardResolver,
+	maxShards int,
 ) *astMapperware {
 	return &astMapperware{
-		confs:         confs,
-		logger:        log.With(logger, "middleware", "QueryShard.astMapperware"),
-		limits:        limits,
-		next:          next,
-		ng:            logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
-		metrics:       metrics,
-		shardResolver: resolver,
+		confs:     confs,
+		logger:    log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:    limits,
+		next:      next,
+		ng:        logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		metrics:   metrics,
+		maxShards: maxShards,
 	}
 }
 
 type astMapperware struct {
-	confs         ShardingConfigs
-	logger        log.Logger
-	limits        Limits
-	next          queryrangebase.Handler
-	ng            *logql.DownstreamEngine
-	metrics       *logql.MapperMetrics
-	shardResolver logql.ShardResolver
+	confs     ShardingConfigs
+	logger    log.Logger
+	limits    Limits
+	next      queryrangebase.Handler
+	ng        *logql.DownstreamEngine
+	metrics   *logql.MapperMetrics
+	maxShards int
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -119,23 +119,18 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	var resolver logql.ShardResolver
-	if ast.shardResolver != nil {
-		resolver = ast.shardResolver
-	} else {
-		var ok bool
-		resolver, ok = shardResolverForConf(
-			ctx,
-			conf,
-			ast.ng.Opts().MaxLookBackPeriod,
-			ast.logger,
-			MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
-			r,
-			ast.next,
-		)
-		if !ok {
-			return ast.next.Do(ctx, r)
-		}
+	resolver, ok := shardResolverForConf(
+		ctx,
+		conf,
+		ast.ng.Opts().MaxLookBackPeriod,
+		ast.logger,
+		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
+		ast.maxShards,
+		r,
+		ast.next,
+	)
+	if !ok {
+		return ast.next.Do(ctx, r)
 	}
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)

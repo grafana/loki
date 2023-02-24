@@ -3622,6 +3622,11 @@ dynamodb:
     # CLI flag: -dynamodb.max-retries
     [max_retries: <int> | default = 20]
 
+  # KMS key used for encrypting DynamoDB items.  DynamoDB will use an Amazon
+  # owned KMS key if not provided.
+  # CLI flag: -dynamodb.kms-key-id
+  [kms_key_id: <string> | default = ""]
+
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
@@ -3685,6 +3690,12 @@ http_config:
 # are: v4, v2.
 # CLI flag: -s3.signature-version
 [signature_version: <string> | default = "v4"]
+
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -s3.storage-class
+[storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
@@ -3949,6 +3960,12 @@ http_config:
 # are: v4, v2.
 # CLI flag: -<prefix>.storage.s3.signature-version
 [signature_version: <string> | default = "v4"]
+
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -<prefix>.storage.s3.storage-class
+[storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
