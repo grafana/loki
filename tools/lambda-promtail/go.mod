@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.16.0
 	github.com/aws/aws-sdk-go-v2/config v1.15.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.22.0
+	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2
@@ -40,7 +41,6 @@ require (
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
-	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/status v1.1.1 // indirect
@@ -101,11 +101,11 @@ require (
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/exp v0.0.0-20221212164502-fae10dda9338 // indirect
 	golang.org/x/mod v0.7.0 // indirect
-	golang.org/x/net v0.5.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.4.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

@@ -273,7 +273,7 @@ type parallelJob struct {
 func newParallelJob(q *Query) *parallelJob {
 	return &parallelJob{
 		q:    q,
-		done: make(chan struct{}),
+		done: make(chan struct{}, 1),
 	}
 }
 

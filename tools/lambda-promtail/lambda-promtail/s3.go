@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 
@@ -38,33 +40,20 @@ const (
 	LB_LOG_TYPE   string = "elasticloadbalancing"
 )
 
-func getS3Object(ctx context.Context, labels map[string]string) (io.ReadCloser, error) {
+func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	var s3Client *s3.Client
 
-	if c, ok := s3Clients[labels["bucket_region"]]; ok {
+	if c, ok := s3Clients[region]; ok {
 		s3Client = c
 	} else {
-		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(labels["bucket_region"]))
+		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 		if err != nil {
 			return nil, err
 		}
 		s3Client = s3.NewFromConfig(cfg)
-		s3Clients[labels["bucket_region"]] = s3Client
+		s3Clients[region] = s3Client
 	}
-
-	obj, err := s3Client.GetObject(ctx,
-		&s3.GetObjectInput{
-			Bucket:              aws.String(labels["bucket"]),
-			Key:                 aws.String(labels["key"]),
-			ExpectedBucketOwner: aws.String(labels["bucketOwner"]),
-		})
-
-	if err != nil {
-		fmt.Printf("Failed to get object %s from bucket %s on account %s\n", labels["key"], labels["bucket"], labels["bucketOwner"])
-		return nil, err
-	}
-
-	return obj.Body, nil
+	return s3Client, nil
 }
 
 func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser) error {
@@ -142,31 +131,37 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	return labels, nil
 }
 
-func processS3Event(ctx context.Context, ev *events.S3Event) error {
-	batch, err := newBatch(ctx)
+func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log.Logger) error {
+	batch, err := newBatch(ctx, pc)
 	if err != nil {
 		return err
 	}
-
 	for _, record := range ev.Records {
 		labels, err := getLabels(record)
 		if err != nil {
 			return err
 		}
-
-		obj, err := getS3Object(ctx, labels)
+		level.Info(*log).Log("msg", fmt.Sprintf("fetching s3 file: %s", labels["key"]))
+		s3Client, err := getS3Client(ctx, labels["bucket_region"])
 		if err != nil {
 			return err
 		}
-
-		err = parseS3Log(ctx, batch, labels, obj)
+		obj, err := s3Client.GetObject(ctx,
+			&s3.GetObjectInput{
+				Bucket:              aws.String(labels["bucket"]),
+				Key:                 aws.String(labels["key"]),
+				ExpectedBucketOwner: aws.String(labels["bucketOwner"]),
+			})
+		if err != nil {
+			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
+		}
+		err = parseS3Log(ctx, batch, labels, obj.Body)
 		if err != nil {
 			return err
 		}
-
 	}
 
-	err = sendToPromtail(ctx, batch)
+	err = pc.sendToPromtail(ctx, batch)
 	if err != nil {
 		return err
 	}

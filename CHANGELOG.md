@@ -12,7 +12,6 @@
 * [7731](https://github.com/grafana/loki/pull/7731) **bitkill**: Add healthchecks to the docker-compose example.
 * [7759](https://github.com/grafana/loki/pull/7759) **kavirajk**: Improve error message for loading config with ENV variables.
 * [7785](https://github.com/grafana/loki/pull/7785) **dannykopping**: Add query blocker for queries and rules.
-* [7804](https://github.com/grafana/loki/pull/7804) **sandeepsukhani**: Use grpc for communicating with compactor for query time filtering of data requested for deletion.
 * [7817](https://github.com/grafana/loki/pull/7817) **kavirajk**: fix(memcached): panic on send on closed channel.
 * [7916](https://github.com/grafana/loki/pull/7916) **ssncferreira**: Add `doc-generator` tool to generate configuration flags documentation.
 * [7964](https://github.com/grafana/loki/pull/7964) **slim-bean**: Add a `since` query parameter to allow querying based on relative time.
@@ -31,6 +30,7 @@
 * [8259](https://github.com/grafana/loki/pull/8259) **mar4uk**: Extract push.proto from the logproto package to the separate module.
 * [7906](https://github.com/grafana/loki/pull/7906) **kavirajk**: Add API endpoint that formats LogQL expressions and support new `fmt` subcommand in `logcli` to format LogQL query.
 * [7324](https://github.com/grafana/loki/pull/7324) **liguozhong**: Add `remote_read` config.
+* [6675](https://github.com/grafana/loki/pull/6675) **btaani**: Add logfmt expression parser for selective extraction of labels from logfmt formatted logs
 
 ##### Fixes
 
@@ -50,10 +50,16 @@
 
 * [8315](https://github.com/grafana/loki/pull/8315) **thepalbi** Relicense and export `pkg/ingester` WAL code to be used in Promtail's WAL.
  
+##### Build
+
+* [8575](https://github.com/grafana/loki/pull/8575) **MichelHollands** Update build image to go 1.20.1 and alpine 3.16.4.
+* [8583](https://github.com/grafana/loki/pull/8583) **MichelHollands** Use 0.28.1 build image and update go and alpine versions.
+
 #### Promtail
 
 ##### Enhancements
 
+* [8231](https://github.com/grafana/loki/pull/8231) **CCOLLOT**: Lambda-promtail: add support for AWS SQS message ingestion.
 * [7619](https://github.com/grafana/loki/pull/7619) **cadrake**: Add ability to pass query params to heroku drain targets for relabelling.
 * [7973](https://github.com/grafana/loki/pull/7973) **chodges15**: Add configuration to drop rate limited batches in Loki client and new metric label for drop reason.
 * [8153](https://github.com/grafana/loki/pull/8153) **kavirajk**: promtail: Add `max-line-size` limit to drop on client side
@@ -61,10 +67,12 @@
 * [8233](https://github.com/grafana/loki/pull/8233) **nicoche**: promtail: Add `max-line-size-truncate` limit to truncate too long lines on client side
 * [7462](https://github.com/grafana/loki/pull/7462) **MarNicGit**: Allow excluding event message from Windows Event Log entries.
 * [7597](https://github.com/grafana/loki/pull/7597) **redbaron**: allow ratelimiting by label
+* [3493](https://github.com/grafana/loki/pull/3493) **adityacs** Support geoip stage.
 * [8382](https://github.com/grafana/loki/pull/8382) **kelnage**: Promtail: Add event log message stage
 
 ##### Fixes
 
+* [8231](https://github.com/grafana/loki/pull/8231) **CCOLLOT**: Lambda-promtail: fix flushing behavior of batches, leading to a significant increase in performance.
 * [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
 * [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
@@ -86,6 +94,7 @@
 * [8024](https://github.com/grafana/loki/pull/8024) **jijotj**: Support passing loki address as environment variable
 
 #### Jsonnet
+
 * [7923](https://github.com/grafana/loki/pull/7923) **manohar-koukuntla**: Add zone aware ingesters in jsonnet deployment
 
 ##### Fixes

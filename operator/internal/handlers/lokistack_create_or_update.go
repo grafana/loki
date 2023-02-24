@@ -190,9 +190,9 @@ func CreateOrUpdateLokiStack(
 		}
 
 		// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-		tenantConfigs, err = gateway.GetTenantConfigMapData(ctx, k, req)
+		tenantConfigs, err = gateway.GetTenantConfigSecretData(ctx, k, req)
 		if err != nil {
-			ll.Error(err, "error in getting tenant config map data")
+			ll.Error(err, "error in getting tenant secret data")
 		}
 	}
 

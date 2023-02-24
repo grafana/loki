@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -23,7 +25,7 @@ const (
 
 	maxErrMsgLen = 1024
 
-	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
+	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
 )
 
 var (
@@ -97,7 +99,6 @@ func setupArguments() {
 	if strings.EqualFold(print, "false") {
 		printLogLine = false
 	}
-
 	s3Clients = make(map[string]*s3.Client)
 }
 
@@ -133,10 +134,12 @@ func applyExtraLabels(labels model.LabelSet) model.LabelSet {
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var s3Event events.S3Event
+	var s3TestEvent events.S3TestEvent
 	var cwEvent events.CloudwatchLogsEvent
 	var kinesisEvent events.KinesisEvent
+	var sqsEvent events.SQSEvent
 
-	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent}
+	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -157,21 +160,42 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 }
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
+	lvl, ok := os.LookupEnv("LOG_LEVEL")
+	if !ok {
+		lvl = "info"
+	}
+	log := NewLogger(lvl)
+	pClient := NewPromtailClient(&promtailClientConfig{
+		backoff: &backoff.Config{
+			MinBackoff: minBackoff,
+			MaxBackoff: maxBackoff,
+			MaxRetries: maxRetries,
+		},
+		http: &httpClientConfig{
+			timeout:       timeout,
+			skipTlsVerify: skipTlsVerify,
+		},
+	}, log)
+
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Printf("invalid event: %s\n", ev)
+		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s\n", ev))
 		return err
 	}
 
 	switch evt := event.(type) {
 	case *events.S3Event:
-		return processS3Event(ctx, evt)
+		return processS3Event(ctx, evt, pClient, pClient.log)
 	case *events.CloudwatchLogsEvent:
-		return processCWEvent(ctx, evt)
+		return processCWEvent(ctx, evt, pClient)
 	case *events.KinesisEvent:
-		return processKinesisEvent(ctx, evt)
+		return processKinesisEvent(ctx, evt, pClient)
+	case *events.SQSEvent:
+		return processSQSEvent(ctx, evt)
+	// When setting up S3 Notification on a bucket, a test event is first sent, see: https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html
+	case *events.S3TestEvent:
+		return nil
 	}
-
 	return err
 }
 
