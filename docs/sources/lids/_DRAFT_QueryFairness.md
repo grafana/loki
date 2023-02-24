@@ -268,7 +268,7 @@ Q2 -->> W2
 
 ![component diagram](../scheduler-proposal-2-component-diagram.png)
 
-The implementation of the `RequestQueue`, which controls what querier workers are connected to which root queues (aka tenant queues), can be kept as is. However, the concept of tenants and users is dropped and replaced by by a concept of hierarchical actors, which can be represented as a slice of identifiers.
+The implementation of the `RequestQueue`, which controls what querier workers are connected to which root queues (aka tenant queues), can be kept as is. However, the concept of tenants and users is dropped and replaced by by a concept of hierarchical actors, which can be represented as a slice of identifiers. Note, this does **not** drop the concept of tenants throughout Loki (represented in the `X-Scope-OrgID` header and/or request context).
 
 **Example of identifiers:**
 
@@ -290,18 +290,28 @@ The L0 queue (root queue) needs to be able to handle worker connections and ther
 The following code snippet is meant to show the simplified recursive structure of the queues.
 
 ```go
+type Request interface{}
+
+type Queue interface {
+    Deqeue(actor []string) Request
+    Enqueue(r Request, actor []string) error
+}
+
+// RequestQueue implements Queue
 type RequestQueue struct {
     queriers   map[string]*querier
     rootQueues map[string]*RootQueue
 }
 
+// RootQueue implements Queue
 type RootQueue struct {
-    queriers map[string]interface{}
+    queriers map[string]*querier
     leafs    map[string]*LeafQueue
     ch       chan Request
 }
 
-type HierarchyQueue struct {
+// LeafQueue implements Queue
+type LeafQueue struct {
     leafs map[string]*LeafQueue
     ch    chan Request
 }
