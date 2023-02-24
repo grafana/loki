@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -64,6 +65,7 @@ func (c *clientWriteTo) SeriesReset(segmentNum int) {
 		// Since segmentNum means all segment with number i <= segmentNum are safe to be reclaimed, evict all cache
 		// entries that were last seen in those
 		if entry.lastSeenInSegment <= segmentNum {
+			level.Debug(c.logger).Log("msg", fmt.Sprintf("reclaiming series under segment %d", segmentNum))
 			delete(c.series, ref)
 		}
 	}
