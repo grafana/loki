@@ -114,7 +114,7 @@ func RecordRangeAndInstantQueryMetrics(
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
-		"query_hash", hashedQuery(p.Query()),
+		"query_hash", HashedQuery(p.Query()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -164,7 +164,7 @@ func RecordRangeAndInstantQueryMetrics(
 	recordUsageStats(queryType, stats)
 }
 
-func hashedQuery(query string) uint32 {
+func HashedQuery(query string) uint32 {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(query))
 	return h.Sum32()
@@ -213,6 +213,11 @@ func RecordLabelQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 
+func PrintMatches(matches []string) string {
+	// not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
+	return strings.Join(matches, ":")
+}
+
 func RecordSeriesQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
@@ -240,7 +245,7 @@ func RecordSeriesQueryMetrics(
 		"length", end.Sub(start),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
-		"match", strings.Join(match, ":"), // not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
+		"match", PrintMatches(match),
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"total_entries", stats.Summary.TotalEntriesReturned,

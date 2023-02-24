@@ -144,14 +144,14 @@ local promtail_win() = pipeline('promtail-windows') {
   steps: [
     {
       name: 'identify-runner',
-      image: 'golang:windowsservercore-1809',
+      image: 'golang:1.19-windowsservercore-1809',
       commands: [
         'Write-Output $env:DRONE_RUNNER_NAME',
       ],
     },
     {
       name: 'test',
-      image: 'golang:windowsservercore-1809',
+      image: 'golang:1.19-windowsservercore-1809',
       commands: [
         'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
       ],
@@ -453,7 +453,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.27.1',
+    local build_image_tag = '0.28.1',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -540,6 +540,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         '> diff.txt',
       ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
       run('report-coverage', commands=[
+        "total_diff=$(sed 's/%//' diff.txt | awk '{sum+=$3;}END{print sum;}')",
+        'if [ $total_diff = 0 ]; then exit 0; fi',
         "pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')",
         "body=$(jq -Rs '{body: . }' diff.txt)",
         'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments -d "$body" > /dev/null',

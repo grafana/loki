@@ -643,7 +643,10 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			time.Unix(60, 0), logproto.FORWARD, 100,
 			nil,
 			nil,
-			promql.Scalar{T: 60 * 1000, V: 2},
+			promql.Vector{promql.Sample{
+				Point:  promql.Point{T: 60 * 1000, V: 2},
+				Metric: labels.Labels{},
+			}},
 		},
 		{
 			// single comparison
@@ -2302,6 +2305,37 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	require.EqualError(t, err, expectEvalSampleErr.Error())
 }
 
+func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	now := time.Now()
+	queueTime := 2 * time.Nanosecond
+	logqlVector := `vector(5)`
+	q := eng.Query(LiteralParams{
+		qs:        logqlVector,
+		start:     now,
+		end:       now,
+		step:      0,
+		interval:  time.Second * 30,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+
+	require.NoError(t, err)
+
+	qry, ok := q.(*query)
+	require.Equal(t, ok, true)
+	vectorExpr := syntax.NewVectorExpr("5")
+
+	data, err := qry.evalSample(ctx, vectorExpr)
+	require.NoError(t, err)
+	result, ok := data.(promql.Vector)
+	require.Equal(t, ok, true)
+	require.Equal(t, result[0].V, float64(5))
+	require.Equal(t, result[0].T, now.UnixNano()/int64(time.Millisecond))
+}
+
 type errorIteratorQuerier struct {
 	samples []iter.SampleIterator
 	entries []iter.EntryIterator
@@ -2358,15 +2392,15 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			tc := tc
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
 				end:   time.Unix(180, 0),
 				step:  1 * time.Second,
+				limit: 1,
 			})
 			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)
@@ -2496,7 +2530,7 @@ func TestHashingStability(t *testing.T) {
 	queryWithEngine := func() string {
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		eng := NewEngine(EngineOpts{}, getLocalQuerier(4), NoLimits, logger)
+		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
 		query := eng.Query(params)
 		_, err := query.Exec(ctx)
 		require.NoError(t, err)
@@ -2526,7 +2560,7 @@ func TestHashingStability(t *testing.T) {
 		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
 	} {
 		params.qs = test.qs
-		expectedQueryHash := hashedQuery(test.qs)
+		expectedQueryHash := HashedQuery(test.qs)
 
 		// check that both places will end up having the same query hash, even though they're emitting different log lines.
 		require.Regexp(t,

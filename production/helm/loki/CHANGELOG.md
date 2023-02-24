@@ -11,7 +11,30 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. Add your changelog bellow this line. This locator is used by CI pipeline to find the place where to put changelog entry.)
+[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
+## 4.6.2
+
+- [BUGFIX] Fix tokengen and provisioner secrets creation on enterprise-logs chart.
+
+## 4.6.1
+
+- [FEATURE] Add `gateway.nginxConfig.customReadUrl`, `gateway.nginxConfig.customWriteUrl` and `gateway.nginxConfig.customBackendUrl` to override read/write/backend paths.
+- [BUGFIX] Remove unreleased setting `useFederatedToken` from Azure configuration block.
+
+## 4.6
+
+- [Change] Bump Loki version to 2.7.3. Revert to 2 target simple scalable mode as default until third target ships in minor release.
+
+## 4.5.1
+
+- [BUGFIX] Fix rendering of namespace in provisioner job.
+- [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
+- [BUGFIX] Correctly set `compactor_address` for 3 target scalable configuration.
+
+## 4.5
+
+- [ENHANCEMENT] Single binary mode is now possible for more than 1 replica, with a gateway and object storage backend.
 
 ## 4.4.2
 

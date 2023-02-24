@@ -3,9 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -24,7 +22,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -36,11 +33,6 @@ var logEntries = []api.Entry{
 	{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
 	{Labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line0123456789"}},
-}
-
-type receivedReq struct {
-	tenantID string
-	pushReq  logproto.PushRequest
 }
 
 func TestClient_Handle(t *testing.T) {
@@ -500,7 +492,7 @@ func TestClient_Handle(t *testing.T) {
 			receivedReqsChan := make(chan receivedReq, 10)
 
 			// Start a local HTTP server
-			server := httptest.NewServer(createServerHandler(receivedReqsChan, testData.serverResponseStatus))
+			server := newTestRemoteWriteServer(receivedReqsChan, testData.serverResponseStatus)
 			require.NotNil(t, server)
 			defer server.Close()
 
@@ -642,7 +634,7 @@ func TestClient_StopNow(t *testing.T) {
 			receivedReqsChan := make(chan receivedReq, 10)
 
 			// Start a local HTTP server
-			server := httptest.NewServer(createServerHandler(receivedReqsChan, c.serverResponseStatus))
+			server := newTestRemoteWriteServer(receivedReqsChan, c.serverResponseStatus)
 			require.NotNil(t, server)
 			defer server.Close()
 
@@ -708,24 +700,6 @@ func TestClient_StopNow(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-}
-
-func createServerHandler(receivedReqsChan chan receivedReq, status int) http.HandlerFunc {
-	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// Parse the request
-		var pushReq logproto.PushRequest
-		if err := util.ParseProtoReader(req.Context(), req.Body, int(req.ContentLength), math.MaxInt32, &pushReq, util.RawSnappy); err != nil {
-			rw.WriteHeader(500)
-			return
-		}
-
-		receivedReqsChan <- receivedReq{
-			tenantID: req.Header.Get("X-Scope-OrgID"),
-			pushReq:  pushReq,
-		}
-
-		rw.WriteHeader(status)
-	})
 }
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)

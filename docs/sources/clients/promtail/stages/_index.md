@@ -16,6 +16,7 @@ Parsing stages:
   - [logfmt]({{<relref "logfmt">}}): Extract data by parsing the log line as logfmt.
   - [replace]({{<relref "replace">}}): Replace data using a regular expression.
   - [multiline]({{<relref "multiline">}}): Merge multiple lines into a multiline block.
+  - [geoip]({{<relref "geoip">}}): Extract geoip data from extracted labels.
 
 Transform stages:
 

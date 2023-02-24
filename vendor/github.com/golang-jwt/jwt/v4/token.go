@@ -99,6 +99,11 @@ func Parse(tokenString string, keyFunc Keyfunc, options ...ParserOption) (*Token
 	return NewParser(options...).Parse(tokenString, keyFunc)
 }
 
+// ParseWithClaims is a shortcut for NewParser().ParseWithClaims().
+//
+// Note: If you provide a custom claim implementation that embeds one of the standard claims (such as RegisteredClaims),
+// make sure that a) you either embed a non-pointer version of the claims or b) if you are using a pointer, allocate the
+// proper memory for it before passing in the overall claims, otherwise you might run into a panic.
 func ParseWithClaims(tokenString string, claims Claims, keyFunc Keyfunc, options ...ParserOption) (*Token, error) {
 	return NewParser(options...).ParseWithClaims(tokenString, claims, keyFunc)
 }

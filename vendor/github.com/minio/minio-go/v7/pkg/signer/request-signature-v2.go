@@ -162,11 +162,12 @@ func SignV2(req http.Request, accessKeyID, secretAccessKey string, virtualHost b
 // From the Amazon docs:
 //
 // StringToSign = HTTP-Verb + "\n" +
-// 	 Content-Md5 + "\n" +
-//	 Content-Type + "\n" +
-//	 Expires + "\n" +
-//	 CanonicalizedProtocolHeaders +
-//	 CanonicalizedResource;
+//
+//	Content-Md5 + "\n" +
+//	Content-Type + "\n" +
+//	Expires + "\n" +
+//	CanonicalizedProtocolHeaders +
+//	CanonicalizedResource;
 func preStringToSignV2(req http.Request, virtualHost bool) string {
 	buf := new(bytes.Buffer)
 	// Write standard headers.
@@ -189,11 +190,12 @@ func writePreSignV2Headers(buf *bytes.Buffer, req http.Request) {
 // From the Amazon docs:
 //
 // StringToSign = HTTP-Verb + "\n" +
-// 	 Content-Md5 + "\n" +
-//	 Content-Type + "\n" +
-//	 Date + "\n" +
-//	 CanonicalizedProtocolHeaders +
-//	 CanonicalizedResource;
+//
+//	Content-Md5 + "\n" +
+//	Content-Type + "\n" +
+//	Date + "\n" +
+//	CanonicalizedProtocolHeaders +
+//	CanonicalizedResource;
 func stringToSignV2(req http.Request, virtualHost bool) string {
 	buf := new(bytes.Buffer)
 	// Write standard headers.
@@ -281,8 +283,9 @@ var resourceList = []string{
 // From the Amazon docs:
 //
 // CanonicalizedResource = [ "/" + Bucket ] +
-// 	  <HTTP-Request-URI, from the protocol name up to the query string> +
-// 	  [ sub-resource, if present. For example "?acl", "?location", "?logging", or "?torrent"];
+//
+//	<HTTP-Request-URI, from the protocol name up to the query string> +
+//	[ sub-resource, if present. For example "?acl", "?location", "?logging", or "?torrent"];
 func writeCanonicalizedResource(buf *bytes.Buffer, req http.Request, virtualHost bool) {
 	// Save request URL.
 	requestURL := req.URL

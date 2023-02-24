@@ -9,5 +9,9 @@ monitoring:
   serviceMonitor:
     labels:
       release: "prometheus"
+  rules:
+    namespace: k3d-helm-cluster
+    labels:
+      release: "prometheus"
 minio:
   enabled: true

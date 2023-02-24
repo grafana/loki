@@ -27,8 +27,9 @@ import (
 
 // AdvancedGetOptions for internal use by MinIO server - not intended for client use.
 type AdvancedGetOptions struct {
-	ReplicationDeleteMarker bool
-	ReplicationProxyRequest string
+	ReplicationDeleteMarker           bool
+	IsReplicationReadyForDeleteMarker bool
+	ReplicationProxyRequest           string
 }
 
 // GetObjectOptions are used to specify additional headers or options
@@ -38,6 +39,12 @@ type GetObjectOptions struct {
 	ServerSideEncryption encrypt.ServerSide
 	VersionID            string
 	PartNumber           int
+
+	// Include any checksums, if object was uploaded with checksum.
+	// For multipart objects this is a checksum of part checksums.
+	// https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+	Checksum bool
+
 	// To be not used by external applications
 	Internal AdvancedGetOptions
 }
@@ -59,6 +66,9 @@ func (o GetObjectOptions) Header() http.Header {
 	// to site A is proxy'd to site B if object/version missing on site A.
 	if o.Internal.ReplicationProxyRequest != "" {
 		headers.Set(minIOBucketReplicationProxyRequest, o.Internal.ReplicationProxyRequest)
+	}
+	if o.Checksum {
+		headers.Set("x-amz-checksum-mode", "ENABLED")
 	}
 	return headers
 }

@@ -190,9 +190,9 @@ func CreateOrUpdateLokiStack(
 		}
 
 		// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-		tenantConfigs, err = gateway.GetTenantConfigMapData(ctx, k, req)
+		tenantConfigs, err = gateway.GetTenantConfigSecretData(ctx, k, req)
 		if err != nil {
-			ll.Error(err, "error in getting tenant config map data")
+			ll.Error(err, "error in getting tenant secret data")
 		}
 	}
 
@@ -248,6 +248,19 @@ func CreateOrUpdateLokiStack(
 		ocpUWAmEnabled, err = openshift.UserWorkloadAlertManagerSVCExists(ctx, stack.Spec, k)
 		if err != nil {
 			ll.Error(err, "failed to check OCP User Workload AlertManager")
+			return err
+		}
+	} else {
+		// Clean up ruler resources
+		err = rules.RemoveRulesConfigMap(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove rules configmap")
+			return err
+		}
+
+		err = rules.RemoveRuler(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove ruler statefulset")
 			return err
 		}
 	}

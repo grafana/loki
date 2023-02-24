@@ -252,15 +252,13 @@ func (c *Client) AddDeleteRequest(params DeleteRequestParams) error {
 
 type DeleteRequests []DeleteRequest
 type DeleteRequest struct {
-	RequestID string  `json:"request_id"`
-	StartTime float64 `json:"start_time"`
-	EndTime   float64 `json:"end_time"`
-	Query     string  `json:"query"`
-	Status    string  `json:"status"`
-	CreatedAt float64 `json:"created_at"`
+	StartTime int64  `json:"start_time"`
+	EndTime   int64  `json:"end_time"`
+	Query     string `json:"query"`
+	Status    string `json:"status"`
 }
 
-// GetDeleteRequest gets a delete request using the request ID
+// GetDeleteRequests returns all delete requests
 func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 	resp, err := c.Get("/loki/api/v1/delete")
 	if err != nil {
