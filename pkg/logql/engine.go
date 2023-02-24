@@ -382,7 +382,10 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 	}
 
 	if GetRangeType(q.params) == InstantType {
-		return s, nil
+		return promql.Vector{promql.Sample{
+			Point:  promql.Point{T: q.params.Start().UnixMilli(), V: value},
+			Metric: labels.Labels{},
+		}}, nil
 	}
 
 	return PopulateMatrixFromScalar(s, q.params), nil

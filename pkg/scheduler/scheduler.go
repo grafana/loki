@@ -762,5 +762,9 @@ func (s *Scheduler) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Des
 }
 
 func (s *Scheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	s.ring.ServeHTTP(w, req)
+	if s.cfg.UseSchedulerRing {
+		s.ring.ServeHTTP(w, req)
+	} else {
+		_, _ = w.Write([]byte("QueryScheduler running with '-query-scheduler.use-scheduler-ring' set to false."))
+	}
 }
