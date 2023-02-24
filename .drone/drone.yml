@@ -110,10 +110,7 @@ steps:
   - clone
   environment: {}
   image: grafana/loki-build-image:0.28.1
-  name: clone-target-branch
-  when:
-    event:
-    - pull_request
+  name: clone-main
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
@@ -129,10 +126,7 @@ steps:
   - clone-main
   environment: {}
   image: grafana/loki-build-image:0.28.1
-  name: test-target-branch
-  when:
-    event:
-    - pull_request
+  name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
     new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
@@ -185,13 +179,6 @@ steps:
   environment: {}
   image: grafana/loki-build-image:0.28.1
   name: loki
-- commands:
-  - make BUILD_IN_CONTAINER=false check-doc
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.28.1
-  name: check-doc
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
@@ -1438,38 +1425,6 @@ volumes:
     path: /var/run/docker.sock
   name: docker
 ---
-kind: pipeline
-name: docker-driver
-steps:
-- commands:
-  - make docker-driver-push
-  depends_on:
-  - clone
-  environment:
-    DOCKER_PASSWORD:
-      from_secret: docker_password
-    DOCKER_USERNAME:
-      from_secret: docker_username
-  image: grafana/loki-build-image:0.28.1
-  name: build and push
-  privileged: true
-  volumes:
-  - name: docker
-    path: /var/run/docker.sock
-trigger:
-  event:
-  - push
-  - tag
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-volumes:
-- host:
-    path: /var/run/docker.sock
-  name: docker
----
 depends_on:
 - check
 kind: pipeline
@@ -1693,6 +1648,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 13b906ad666c4711a677e511e67a8bbfde8def0a73bc23a1dc3799953f986485
+hmac: de666c125b41d3affaa6db91e0ef93c39bdf35b208cccc87bbf1fbd614380544
 
 ...
