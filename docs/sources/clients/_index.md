@@ -79,5 +79,5 @@ when using or writing a third-party client.
 
 # Loki Clients for reading data
 
- - [LogCLI, Grafana Loki’s command-line interface](https://grafana.com/docs/loki/latest/tools/logcli/)
+ - [LogCLI, Grafana Loki’s command-line interface]({{< relref "../tools/logcli.md" >}})
 
