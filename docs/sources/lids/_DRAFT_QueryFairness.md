@@ -326,4 +326,26 @@ type LeafQueue struct {
 * More complex to implement than fixed amount of levels
 * Each queue comes with memory overhead
 
+### Proposal 3: Multiple per-tenant sub-queues 
+
+Another option to keep the concept of users out of Loki and still provide some query fairness guarantees would be to simply shard request across multiple sub-queues within a tenant's queue. The shard size could be a per-tenant setting to account for different tenant sizes.
+
+This is similar to Proposal 1, in the sense of adding another fixed level of sub-queues.
+However, with the difference, that in this case, a single query request is assigned a random identifier that is hashed. When the query is split, the sub-requests maintain the same hashed identifier. The modulor of the hash defines to which sub-queue of a tenant requests will be enqueued.
+
+**Pros:**
+* User agnostic per-request QoS control
+
+**Cons:**
+* Requests of individual users can still effect other users
+* Not extensible
+
+**Alternative:**
+
+Sharding on a per-request basis can still be achieved with Proposal 2, by adding the request hash as an additional level in the hierarchy.
+
+```go
+actor := []string{"tenant", "user", "request_hash"}
+```
+
 ## Other Notes
