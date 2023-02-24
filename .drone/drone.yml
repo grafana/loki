@@ -93,14 +93,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: check-generated-files
 - commands:
   - cd ..
@@ -109,7 +109,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: clone-main
 - commands:
   - make BUILD_IN_CONTAINER=false test
@@ -117,7 +117,7 @@ steps:
   - clone
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: test
 - commands:
   - cd ../loki-main
@@ -125,7 +125,7 @@ steps:
   depends_on:
   - clone-main
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: test-main
 - commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
@@ -135,7 +135,7 @@ steps:
   - test
   - test-main
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: compare-coverage
 - commands:
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
@@ -148,7 +148,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: report-coverage
 - commands:
   - make BUILD_IN_CONTAINER=false lint
@@ -156,7 +156,7 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -165,7 +165,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -177,21 +177,21 @@ steps:
   - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: check-example-config-doc
 trigger:
   ref:
@@ -218,7 +218,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: loki-mixin-check
 trigger:
   ref:
@@ -238,7 +238,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1369,7 +1369,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1377,7 +1377,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1403,7 +1403,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.27.1
+  image: grafana/loki-build-image:0.28.1
   name: publish
   when:
     event:
@@ -1648,6 +1648,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: ec77034ab90d10b2a9f927372d9c4c4472b36f588966e54a26251b58dbabe89e
+hmac: de666c125b41d3affaa6db91e0ef93c39bdf35b208cccc87bbf1fbd614380544
 
 ...

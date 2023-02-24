@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	pserver "github.com/grafana/loki/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
@@ -54,7 +55,7 @@ func TestPromtail(t *testing.T) {
 	logger = level.NewFilter(logger, level.AllowInfo())
 	util_log.Logger = logger
 
-	initRandom()
+	testutils.InitRandom()
 	dirName := "/tmp/promtail_test_" + randName()
 	positionsFileName := dirName + "/positions.yml"
 
@@ -639,10 +640,6 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	cfg.TargetConfig.SyncPeriod = 500 * time.Millisecond
 
 	return cfg
-}
-
-func initRandom() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")

@@ -2352,15 +2352,15 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			tc := tc
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
 				end:   time.Unix(180, 0),
 				step:  1 * time.Second,
+				limit: 1,
 			})
 			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)

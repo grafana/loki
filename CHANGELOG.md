@@ -10,6 +10,8 @@
 
 ##### Changes
 
+##### Build
+
 #### Promtail
 
 ##### Enhancements
@@ -28,7 +30,7 @@
 
 ### Dependencies
 
-## 2.7.4 (2023-02-23)
+## 2.7.4 (2023-02-24)
 
 #### Loki
 
@@ -38,6 +40,11 @@
 * [8120](https://github.com/grafana/loki/pull/8120) **ashwanthgoli**: fix panic on hitting /scheduler/ring when ring is disabled.
 * [7988](https://github.com/grafana/loki/pull/7988) **ashwanthgoli**: store: write overlapping chunks to multiple stores.
 * [7925](https://github.com/grafana/loki/pull/7925) **sandeepsukhani**: Fix bugs in logs results caching causing query-frontend to return logs outside of query window.
+
+##### Build
+
+* [8575](https://github.com/grafana/loki/pull/8575) **MichelHollands**: Update build image to go 1.20.1 and alpine 3.16.4.
+* [8583](https://github.com/grafana/loki/pull/8583) **MichelHollands**: Use 0.28.1 build image and update go and alpine versions.
 
 #### Promtail
 
