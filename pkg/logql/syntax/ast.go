@@ -857,9 +857,9 @@ type Grouping struct {
 func (g Grouping) String() string {
 	var sb strings.Builder
 	if g.Without {
-		sb.WriteString(" without")
+		sb.WriteString(" without ")
 	} else if len(g.Groups) > 0 {
-		sb.WriteString(" by")
+		sb.WriteString(" by ")
 	}
 
 	if len(g.Groups) > 0 {
