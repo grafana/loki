@@ -13,15 +13,14 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
-const readConcurrency = 5
-
-func NewQuerier(primary querier.Querier, secondaries ...querier.Querier) querier.Querier {
-	return &Querier{Querier: primary, secondaries: secondaries}
+func NewQuerier(primary querier.Querier, readConcurrency int, secondaries ...querier.Querier) querier.Querier {
+	return &Querier{Querier: primary, readConcurrency: readConcurrency, secondaries: secondaries}
 }
 
 type Querier struct {
 	querier.Querier
-	secondaries []querier.Querier
+	secondaries     []querier.Querier
+	readConcurrency int
 }
 
 func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
@@ -36,7 +35,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	iters = append(iters, localIter)
 
 	resps := make([]iter.EntryIterator, len(q.secondaries))
-	err = concurrency.ForEachJob(ctx, len(q.secondaries), readConcurrency, func(ctx context.Context, idx int) error {
+	err = concurrency.ForEachJob(ctx, len(q.secondaries), q.readConcurrency, func(ctx context.Context, idx int) error {
 		remoteStore := q.secondaries[idx]
 		iter, err := remoteStore.SelectLogs(ctx, params)
 		if err != nil {
@@ -64,7 +63,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	iters = append(iters, localIter)
 
 	resps := make([]iter.SampleIterator, len(q.secondaries))
-	err = concurrency.ForEachJob(ctx, len(q.secondaries), readConcurrency, func(ctx context.Context, idx int) error {
+	err = concurrency.ForEachJob(ctx, len(q.secondaries), q.readConcurrency, func(ctx context.Context, idx int) error {
 		remoteStore := q.secondaries[idx]
 		iter, err := remoteStore.SelectSamples(ctx, params)
 		if err != nil {

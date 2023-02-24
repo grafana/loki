@@ -286,6 +286,10 @@ func (c *DefaultClient) getHTTPRequestHeader(ctx context.Context) (http.Header, 
 		h.Set("X-Scope-OrgID", c.OrgID)
 	}
 	//do not check error here
+	//       If err !=nil, len(tenantIDs) == 0
+	// this case has been processed below
+	//       fakeTenant := len(tenantIDs) == 1 And len(tenantIDs) > 0
+	//So there is no need to handle this err
 	tenantIDs, _ := tenant.TenantIDs(ctx)
 	fakeTenant := len(tenantIDs) == 1 && tenantIDs[0] == "fake"
 	if len(tenantIDs) > 0 && !fakeTenant {

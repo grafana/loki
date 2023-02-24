@@ -60,7 +60,7 @@ func TestQuerier_Read(t *testing.T) {
 	querier2, err := remote.NewQuerier("test", remoteConf2)
 	require.NoError(t, err)
 
-	fanoutQuerier := NewQuerier(querier, querier2)
+	fanoutQuerier := NewQuerier(querier, 5, querier2)
 
 	request := logproto.QueryRequest{
 		Selector:  `{app="distributor"}`,
