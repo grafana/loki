@@ -1211,7 +1211,7 @@ steps:
       from_secret: updater_config_template
 - depends_on:
   - prepare-updater-config
-  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b
   name: trigger
   settings:
     config_file: updater-config.json
@@ -1226,6 +1226,50 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+---
+depends_on:
+- manifest
+image_pull_secrets:
+- dockerconfigjson
+kind: pipeline
+name: update-loki-helm-chart-on-loki-release
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch --tags
+  - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
+    's/v//g')
+  - RELEASE_TAG=$(./tools/image-tag)
+  - if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG
+    is not the latest version of Loki. The latest version is $latest_version" && exit
+    78; fi
+  image: alpine
+  name: check-version-is-latest
+  when:
+    event:
+    - tag
+- commands:
+  - RELEASE_TAG=$(./tools/image-tag)
+  - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
+  - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
+  depends_on:
+  - check-version-is-latest
+  image: alpine
+  name: prepare-helm-chart-update-config
+  settings:
+    config_template:
+      from_secret: helm-chart-update-config-template
+- depends_on:
+  - prepare-helm-chart-update-config
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b
+  name: trigger-helm-chart-update
+  settings:
+    config_file: updater-config.json
+    github_token:
+      from_secret: github_token
+trigger:
+  ref:
+  - refs/tags/v*
 ---
 kind: pipeline
 name: promtail-windows
@@ -1584,6 +1628,12 @@ get:
   path: secret/data/common/loki_ci_autodeploy
 kind: secret
 name: updater_config_template
+---
+get:
+  name: on-loki-release-config.json
+  path: secret/data/common/loki-helm-chart-auto-update
+kind: secret
+name: helm-chart-update-config-template
 ---
 get:
   name: passphrase
