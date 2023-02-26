@@ -17,6 +17,7 @@ func New[E any, S Sequence](sequences []S, maxVal E, at func(S) E, less func(E, 
 	}
 	for i, s := range sequences {
 		t.nodes[i+nSequences].items = s
+		t.moveNext(i + nSequences) // Must call Next on each item so that At() has a value.
 	}
 	if nSequences > 0 {
 		t.nodes[0].index = -1 // flag to be initialized on first call to Next().
@@ -85,7 +86,6 @@ func (t *Tree[E, S]) initialize() {
 	// Initialize leaf nodes as winners to start.
 	for i := len(t.nodes) / 2; i < len(t.nodes); i++ {
 		winners[i] = i
-		t.moveNext(i) // Must call Next on each item so that At() has a value.
 	}
 	for i := len(t.nodes) - 2; i > 0; i -= 2 {
 		// At each stage the winners play each other, and we record the loser in the node.
