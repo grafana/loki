@@ -76,6 +76,9 @@ func (t *Tree[E, S]) Next() bool {
 		t.initialize()
 		return t.nodes[t.nodes[0].index].index != -1
 	}
+	if t.nodes[t.nodes[0].index].index == -1 { // already exhausted
+		return false
+	}
 	t.moveNext(t.nodes[0].index)
 	t.replayGames(t.nodes[0].index)
 	return t.nodes[t.nodes[0].index].index != -1
