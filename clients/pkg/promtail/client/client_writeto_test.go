@@ -141,6 +141,7 @@ func BenchmarkClientWriteTo(b *testing.B) {
 		{numWriters: 10, totalLines: 10_000},
 		{numWriters: 5, totalLines: 100_000},
 		{numWriters: 10, totalLines: 100_000},
+		{numWriters: 10, totalLines: 1_000_000},
 	} {
 		b.Run(fmt.Sprintf("num writers %d, with %d lines written in total", tc.numWriters, tc.totalLines),
 			func(b *testing.B) {
