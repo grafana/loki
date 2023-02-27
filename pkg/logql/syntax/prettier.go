@@ -139,6 +139,11 @@ func (e *JSONExpressionParser) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
+// e.g: |timestamp_format "{{.event_timestemp}}"
+func (e *TimestampFmtExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g: | logfmt label="expression", another="expression"
 func (e *LogfmtExpressionParser) Pretty(level int) string {
 	return commonPrefixIndent(level, e)

@@ -371,15 +371,15 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpres
 	}, nil
 }
 
-func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *LogfmtExpressionParser) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, int64, bool) {
 	// If there are no expressions, extract common labels
 	// and add the suffix "_extracted"
 	if len(l.expressions) == 0 {
-		return line, false
+		return line, ts, false
 	}
 
 	if lbs.ParserLabelHints().NoLabels() {
-		return line, true
+		return line, ts, true
 	}
 
 	// Create a map of every renamed label and its original name
@@ -433,10 +433,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
 		lbs.SetErrorDetails(l.dec.Err().Error())
-		return line, true
+		return line, ts, true
 	}
 
-	return line, true
+	return line, ts, true
 }
 
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
