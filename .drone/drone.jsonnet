@@ -689,6 +689,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         image: 'alpine',
         depends_on: ['check-version-is-latest'],
         commands: [
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
           'RELEASE_TAG=$(./tools/image-tag)',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE TAG
