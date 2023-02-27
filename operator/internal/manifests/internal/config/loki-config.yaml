@@ -175,7 +175,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   query_ingesters_within: 3h
   tail_max_duration: 1h

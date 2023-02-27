@@ -556,7 +556,7 @@ http {
   resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
-  {{ . | nindent 2 }}
+  {{- tpl . $ | nindent 2 }}
   {{- end }}
 
   server {

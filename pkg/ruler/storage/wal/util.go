@@ -132,6 +132,11 @@ func (c *walDataCollector) AppendHistograms(histograms []record.RefHistogramSamp
 	return true
 }
 
+func (c *walDataCollector) AppendFloatHistograms(histograms []record.RefFloatHistogramSample) bool {
+	// TODO: support native histograms
+	return true
+}
+
 func (c *walDataCollector) UpdateSeriesSegment(series []record.RefSeries, index int) {}
 
 func (c *walDataCollector) SeriesReset(_ int) {}

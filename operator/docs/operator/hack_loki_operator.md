@@ -30,10 +30,10 @@ Loki Operator is the Kubernetes Operator for [Loki](https://grafana.com/docs/lok
 * Build and push the container image and then deploy the operator with:
 
   ```console
-  make oci-build oci-push deploy REGISTRY_ORG=$YOUR_QUAY_ORG VERSION=latest
+  make oci-build oci-push deploy REGISTRY_BASE=$YOUR_REPO_ORG VERSION=latest
   ```
 
-  where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images.
+  where `$YOUR_REPO_ORG` is your personal registry location, for example a [quay.io](http://quay.io/) account where you can push container images.
 
   The above command will deploy the operator to your active Kubernetes cluster defined by your local [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/). The operator will be running in the `default` namespace.
 
@@ -108,10 +108,10 @@ It will undeploy controller from the configured Kubernetes cluster in [~/.kube/c
 * Build and push the container image [2] and then deploy the operator with:
 
   ```console
-  make olm-deploy REGISTRY_ORG=$YOUR_QUAY_ORG VERSION=$VERSION
+  make olm-deploy REGISTRY_BASE=$YOUR_REPO_ORG VERSION=$VERSION
   ```
 
-  where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images and `$VERSION` can be any random version number such as `v0.0.1`.
+  where `$YOUR_REPO_ORG` is your personal registry location, for example a [quay.io](http://quay.io/) account where you can push container images and `$VERSION` can be any random version number such as `v0.0.1`.
 
   The above command will deploy the operator to your active Openshift cluster defined by your local [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/). The operator will be running in the `openshift-operators-redhat` namespace.
 
