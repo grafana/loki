@@ -357,7 +357,7 @@ func TestStringLabelFilter(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		filter      *StringLabelFilter
+		filter      LabelFilterer
 		labels      labels.Labels
 		shouldMatch bool
 	}{
@@ -419,4 +419,18 @@ func TestStringLabelFilter(t *testing.T) {
 			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}
+}
+
+func TestCreateStringFilterSimplifications(t *testing.T) {
+	t.Run("it returns a no-op filter for empty and .* regex matches", func(t *testing.T) {
+		for _, re := range []string{".*", ""} {
+			f := NewStringLabelFilter(&labels.Matcher{
+				Type:  labels.MatchRegexp,
+				Name:  "label-name",
+				Value: re,
+			})
+
+			require.Equal(t, NoopLabelFilter, f)
+		}
+	})
 }

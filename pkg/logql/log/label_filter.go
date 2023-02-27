@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"github.com/grafana/regexp/syntax"
 	"strconv"
 	"strings"
 	"time"
@@ -333,10 +334,14 @@ type StringLabelFilter struct {
 // NewStringLabelFilter creates a new label filterer which compares string label.
 // This is the only LabelFilterer that can filter out the __error__ label.
 // Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
-func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
-	return &StringLabelFilter{
-		Matcher: m,
+func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
+	switch m.Type {
+	case labels.MatchRegexp:
+		if f, ok := parseRegexpLabelFilter(m); ok {
+			return f
+		}
 	}
+	return &StringLabelFilter{m}
 }
 
 func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -350,4 +355,34 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
+}
+
+// parseRegexpLabelFilter parses a regexp and attempt to simplify it with only literal filters.
+// If not possible it will return the original regexp label filter.
+func parseRegexpLabelFilter(m *labels.Matcher) (LabelFilterer, bool) {
+	reg, err := syntax.Parse(m.Value, syntax.Perl)
+	if err != nil {
+		return nil, false
+	}
+	reg = reg.Simplify()
+
+	// attempt to improve regex with tricks
+	return simplifyLabelFilterRegex(reg)
+	//if !ok {
+	//	allNonGreedy(reg)
+	//	m.Value = reg.String()
+	//	return NewStringLabelFilter(m), nil
+	//}
+}
+
+func simplifyLabelFilterRegex(reg *syntax.Regexp) (LabelFilterer, bool) {
+	switch reg.Op {
+	case syntax.OpStar:
+		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
+			return NoopLabelFilter, true
+		}
+	case syntax.OpEmptyMatch:
+		return NoopLabelFilter, true
+	}
+	return nil, false
 }
