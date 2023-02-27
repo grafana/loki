@@ -1249,6 +1249,8 @@ steps:
     event:
     - tag
 - commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
   - RELEASE_TAG=$(./tools/image-tag)
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
@@ -1648,6 +1650,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: de666c125b41d3affaa6db91e0ef93c39bdf35b208cccc87bbf1fbd614380544
+hmac: 06ac36350b73d572bde514274c89c07dfe1a5033aa1df817072fbd4f24948f0e
 
 ...
