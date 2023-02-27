@@ -367,7 +367,7 @@ func parseRegexpLabelFilter(m *labels.Matcher) (LabelFilterer, bool) {
 	reg = reg.Simplify()
 
 	// attempt to improve regex with tricks
-	return simplifyLabelFilterRegex(reg)
+	return simplifyLabelFilterRegex(reg, m)
 	//if !ok {
 	//	allNonGreedy(reg)
 	//	m.Value = reg.String()
@@ -375,7 +375,7 @@ func parseRegexpLabelFilter(m *labels.Matcher) (LabelFilterer, bool) {
 	//}
 }
 
-func simplifyLabelFilterRegex(reg *syntax.Regexp) (LabelFilterer, bool) {
+func simplifyLabelFilterRegex(reg *syntax.Regexp, m *labels.Matcher) (LabelFilterer, bool) {
 	switch reg.Op {
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
@@ -383,6 +383,12 @@ func simplifyLabelFilterRegex(reg *syntax.Regexp) (LabelFilterer, bool) {
 		}
 	case syntax.OpEmptyMatch:
 		return NoopLabelFilter, true
+	case syntax.OpLiteral:
+		concatMatcher, err := labels.NewMatcher(m.Type, m.Name, fmt.Sprintf(".*%s.*", reg.String()))
+		if err != nil {
+			return nil, false
+		}
+		return &StringLabelFilter{concatMatcher}, true
 	}
 	return nil, false
 }
