@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -200,40 +199,19 @@ func NewQuerySizeLimiterMiddleware(codec queryrangebase.Codec, l Limits) (*query
 	})
 }
 
+// SetStatsRoundTripper sets the RoundTripper to use for index stats queries.
+// We cannot forward the request to `next` since it may perform operations
+// such as sharding and splitting that cannot be applied to IndexStats requests.
 func (q *querySizeLimiter) SetStatsRoundTripper(rt http.RoundTripper) {
 	q.statsRT = rt
 }
 
-func (q *querySizeLimiter) extractMatchersForQuery(query string) (string, error) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return "", err
-	}
-
-	var matchersStr string
-	expr.Walk(func(e interface{}) {
-		switch concrete := e.(type) {
-		case *syntax.MatchersExpr:
-			matchersStr = concrete.String()
-		}
-	})
-
-	if matchersStr == "" {
-		return "", errors.New("failed to extract matchers from query")
-	}
-
-	return matchersStr, nil
-}
-
-func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log, ctx := spanlogger.New(ctx, "query_size_limits")
-	defer log.Finish()
-
+func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryrangebase.Request) (*logproto.IndexStatsResponse, error) {
 	if q.statsRT == nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Handler for query stats is not configured")
 	}
 
-	matchers, err := q.extractMatchersForQuery(r.GetQuery())
+	matchers, err := syntax.ExtractMatchersFromQuery(r.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +240,20 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		return nil, err
 	}
 
-	_ = indexStatsRes
+	return indexStatsRes.(*IndexStatsResponse).Response, nil
+}
+
+func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	log, ctx := spanlogger.New(ctx, "query_size_limits")
+	defer log.Finish()
+
+	stats, err := q.getIndexStatsForRequest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = stats
+
 	// TODO: Enforce limit here
 
 	return q.next.Do(ctx, r)

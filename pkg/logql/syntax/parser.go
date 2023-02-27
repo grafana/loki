@@ -134,6 +134,28 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	return matcherExpr.Mts, nil
 }
 
+// ParseMatchersFromQuery
+func ExtractMatchersFromQuery(input string) (string, error) {
+	expr, err := ParseExpr(query)
+	if err != nil {
+		return "", err
+	}
+
+	var matchersStr string
+	expr.Walk(func(e interface{}) {
+		switch concrete := e.(type) {
+		case *MatchersExpr:
+			matchersStr = concrete.String()
+		}
+	})
+
+	if matchersStr == "" {
+		return "", errors.New("failed to extract matchers from query")
+	}
+
+	return matchersStr, nil
+}
+
 func MatchersString(xs []*labels.Matcher) string {
 	return newMatcherExpr(xs).String()
 }
