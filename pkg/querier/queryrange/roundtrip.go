@@ -506,7 +506,17 @@ func NewMetricTripperware(
 	metrics *Metrics,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, error) {
-	queryRangeMiddleware := []queryrangebase.Middleware{StatsCollectorMiddleware(), NewLimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrangebase.Middleware{
+		StatsCollectorMiddleware(),
+		NewLimitsMiddleware(limits),
+	}
+
+	querySizeLimiter, querySizeLimiterMiddleware := NewQuerySizeLimiterMiddleware(codec, limits)
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		querySizeLimiterMiddleware,
+	)
+
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
@@ -581,6 +591,7 @@ func NewMetricTripperware(
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
+			querySizeLimiter.SetStatsRoundTripper(next)
 			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 			return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {

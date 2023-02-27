@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -176,6 +179,93 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	return l.next.Do(ctx, r)
+}
+
+type querySizeLimiter struct {
+	Limits
+	next    queryrangebase.Handler
+	codec   queryrangebase.Codec
+	statsRT http.RoundTripper
+}
+
+// NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
+func NewQuerySizeLimiterMiddleware(codec queryrangebase.Codec, l Limits) (*querySizeLimiter, queryrangebase.Middleware) {
+	q := &querySizeLimiter{
+		codec:  codec,
+		Limits: l,
+	}
+	return q, queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		q.next = next
+		return q
+	})
+}
+
+func (q *querySizeLimiter) SetStatsRoundTripper(rt http.RoundTripper) {
+	q.statsRT = rt
+}
+
+func (q *querySizeLimiter) extractMatchersForQuery(query string) (string, error) {
+	expr, err := syntax.ParseExpr(query)
+	if err != nil {
+		return "", err
+	}
+
+	var matchersStr string
+	expr.Walk(func(e interface{}) {
+		switch concrete := e.(type) {
+		case *syntax.MatchersExpr:
+			matchersStr = concrete.String()
+		}
+	})
+
+	if matchersStr == "" {
+		return "", errors.New("failed to extract matchers from query")
+	}
+
+	return matchersStr, nil
+}
+
+func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	log, ctx := spanlogger.New(ctx, "query_size_limits")
+	defer log.Finish()
+
+	if q.statsRT == nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Handler for query stats is not configured")
+	}
+
+	matchers, err := q.extractMatchersForQuery(r.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+
+	// Get Stats for this query
+	var indexStatsReq definitions.Request = &logproto.IndexStatsRequest{}
+	indexStatsReq = indexStatsReq.WithStartEnd(r.GetStart(), r.GetEnd())
+	indexStatsReq = indexStatsReq.WithQuery(matchers)
+
+	reqHttp, err := q.codec.EncodeRequest(ctx, indexStatsReq)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, reqHttp); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	resHttp, err := q.statsRT.RoundTrip(reqHttp)
+	if err != nil {
+		return nil, err
+	}
+
+	indexStatsRes, err := q.codec.DecodeResponse(ctx, resHttp, indexStatsReq)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = indexStatsRes
+	// TODO: Enforce limit here
+
+	return q.next.Do(ctx, r)
 }
 
 type seriesLimiter struct {
