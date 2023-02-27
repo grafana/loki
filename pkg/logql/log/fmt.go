@@ -380,12 +380,7 @@ type TimestampFormatter struct {
 	currentTs   int64
 }
 
-// NewTimestampFormatter creates a new formatter that Extract the timestamp in the log through logql.
-// for example:
-// {log_type="system_log"}|="1ac5d591-43a9-4349-a678-c91f7cc0b48d"
-// |regexp `(?P<event_time>.*?) \[`
-// |label_format event_timestemp=`{{ toDate "2006-01-02 15:04:05" .event_time }}`
-// |timestamp_format `{{.event_timestemp}}
+// NewTimestampFormatter creates a new formatter that extract the timestamp in the log through LogQL.
 func NewTimestampFormatter(tmpl string) (*TimestampFormatter, error) {
 	lf := &TimestampFormatter{
 		buf: bytes.NewBuffer(make([]byte, 4096)),
