@@ -56,6 +56,7 @@ type Config struct {
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	QueryTimeout                  time.Duration    `yaml:"query_timeout" doc:"hidden"`
 	MaxRemoteReadConcurrent       int              `yaml:"max_remote_read_concurrent"`
+	RemoteReadBatch               int              `yaml:"remote_read_batch"`
 }
 
 // RegisterFlags register flags.
@@ -66,6 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries allowed.")
 	f.IntVar(&cfg.MaxRemoteReadConcurrent, "querier.max-remote-read-concurrent", 5, "The maximum number of concurrent remote read queries allowed.")
+	f.IntVar(&cfg.RemoteReadBatch, "querier.remote-read-batch", 0, "remote read query batch size to use until 'limit' is reached.If equal to 0, the batch feature will be disable.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")

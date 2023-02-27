@@ -2,8 +2,11 @@ package fanout
 
 import (
 	"context"
+	"github.com/google/uuid"
+	"github.com/grafana/loki/pkg/loghttp"
 	"net/http"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,6 +26,94 @@ const (
 	// Custom query timeout used in tests
 	queryTimeout = 13 * time.Second
 )
+
+func TestQuerier_ReadBatch(t *testing.T) {
+	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
+	from := time.Now().Add(time.Minute * -5)
+	server.Run(t, from)
+	time.Sleep(time.Second)
+	defer server.Stop(t)
+	remoteConf := remote.ReadConfig{
+		Name:          "remote-read-1",
+		RemoteTimeout: queryTimeout,
+		URL: &config_util.URL{
+			URL: &url.URL{
+				Scheme: "http",
+				Host:   "localhost:3100",
+			},
+		},
+		OrgID: "team1",
+	}
+
+	querier, err := remote.NewQuerier("test", remoteConf)
+	require.NoError(t, err)
+
+	remoteConf2 := remote.ReadConfig{
+		Name:          "remote-read-2",
+		RemoteTimeout: queryTimeout,
+		URL: &config_util.URL{
+			URL: &url.URL{
+				Scheme: "http",
+				Host:   "localhost:3100",
+			},
+		},
+		OrgID: "team2",
+	}
+
+	querier2, err := remote.NewQuerier("test", remoteConf2)
+	require.NoError(t, err)
+
+	fanoutQuerier := NewQuerier(querier, 5, 2, querier2)
+
+	request := logproto.QueryRequest{
+		Selector:  `{app="distributor"}`,
+		Limit:     10,
+		Start:     time.Now().Add(time.Minute * -5),
+		End:       time.Now(),
+		Direction: logproto.FORWARD,
+	}
+
+	iter, err := fanoutQuerier.SelectLogs(
+		context.Background(),
+		logql.SelectLogParams{QueryRequest: &request},
+	)
+	require.NoError(t, err)
+	count := 0
+	for iter.Next() {
+		require.Equal(t, true, len(iter.Labels()) > 10)
+		require.Equal(t, true, len(iter.Entry().Line) > 0)
+		count++
+	}
+	require.Equal(t, 20, count)
+
+	end := time.Now()
+	mockLabelRequest := func(name string) *logproto.LabelRequest {
+		return &logproto.LabelRequest{
+			Name:  name,
+			Start: &from,
+			End:   &end,
+		}
+	}
+	require.NoError(t, err)
+
+	_, err = fanoutQuerier.Label(
+		context.Background(),
+		mockLabelRequest("app"),
+	)
+	require.NoError(t, err)
+
+	req := &logproto.SeriesRequest{
+		Start: time.Unix(0, 0),
+		End:   time.Unix(10, 0),
+	}
+	_, err = fanoutQuerier.Series(
+		context.Background(),
+		req,
+	)
+
+	require.NoError(t, err)
+
+}
 
 func TestQuerier_Read(t *testing.T) {
 	server := &mockLokiHTTPServer{server: &http.Server{Addr: ":3100", Handler: nil}}
@@ -60,7 +151,7 @@ func TestQuerier_Read(t *testing.T) {
 	querier2, err := remote.NewQuerier("test", remoteConf2)
 	require.NoError(t, err)
 
-	fanoutQuerier := NewQuerier(querier, 5, querier2)
+	fanoutQuerier := NewQuerier(querier, 5, 0, querier2)
 
 	request := logproto.QueryRequest{
 		Selector:  `{app="distributor"}`,
@@ -81,7 +172,7 @@ func TestQuerier_Read(t *testing.T) {
 		require.Equal(t, true, len(iter.Entry().Line) > 0)
 		count++
 	}
-	require.Equal(t, 12, count)
+	require.Equal(t, 20, count)
 
 	end := time.Now()
 	mockLabelRequest := func(name string) *logproto.LabelRequest {
@@ -118,39 +209,36 @@ type mockLokiHTTPServer struct {
 
 func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 	var mux http.ServeMux
-	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, r *http.Request) {
+
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, "recording rule r.ParseForm(),err:"+err.Error(), http.StatusBadRequest)
+		}
+		request, err := loghttp.ParseRangeQuery(r)
+
+		limit := request.Limit
+		data := make([]logproto.Entry, 0)
+		for i := 0; i < int(limit); i++ {
+			dur := time.Duration(i) * time.Millisecond
+			newUUID, err := uuid.NewUUID()
+			if err != nil {
+				panic(err)
+			}
+			data = append(data, logproto.Entry{
+				Timestamp: from.Add(dur),
+				Line:      "log+" + strconv.Itoa(i) + newUUID.String(),
+			})
+		}
+
 		mockData := logqlmodel.Result{
 			Statistics: stats.Result{
 				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 			},
+
 			Data: logqlmodel.Streams{{
-				Labels: `{foo="bar"}`,
-				Entries: []logproto.Entry{
-					{
-						Timestamp: from,
-						Line:      "1",
-					},
-					{
-						Timestamp: from.Add(time.Millisecond),
-						Line:      "2",
-					},
-					{
-						Timestamp: from.Add(2 * time.Millisecond),
-						Line:      "3",
-					},
-					{
-						Timestamp: from.Add(3 * time.Millisecond),
-						Line:      "4",
-					},
-					{
-						Timestamp: from.Add(4 * time.Millisecond),
-						Line:      "5",
-					},
-					{
-						Timestamp: from.Add(5 * time.Millisecond),
-						Line:      "6",
-					},
-				},
+				Labels:  `{foo="bar"}`,
+				Entries: data,
 			}},
 		}
 		if err := marshal.WriteQueryResponseJSON(mockData, w); err != nil {

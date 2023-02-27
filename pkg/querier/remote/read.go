@@ -35,7 +35,7 @@ type ReadConfig struct {
 	RemoteTimeout time.Duration `yaml:"remote_timeout,omitempty"`
 }
 
-func NewQuerier(name string, remoteReadConfig ReadConfig) (querier.Querier, error) {
+func NewQuerier(name string, remoteReadConfig ReadConfig) (DetailQuerier, error) {
 	client := &client.DefaultClient{
 		OrgID:   remoteReadConfig.OrgID,
 		Address: remoteReadConfig.URL.String(),
@@ -60,20 +60,25 @@ type Querier struct {
 	name   string
 }
 
-func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+func (q Querier) SelectLogDetails(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, loghttp.Streams, error) {
 	response, err := q.client.QueryRange(ctx, params.Selector, int(params.Limit), params.Start, params.End, params.Direction, 0, 0, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if response.Status != loghttp.QueryStatusSuccess {
-		return nil, errors.Errorf("remote read Querier selectLogs fail,response.Status %v", response.Status)
+		return nil, nil, errors.Errorf("remote read Querier selectLogs fail,response.Status %v", response.Status)
 	}
 
 	streams, ok := response.Data.Result.(loghttp.Streams)
 	if !ok {
-		return nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail")
+		return nil, nil, errors.New("remote read Querier selectLogs fail,value cast (loghttp.Streams) fail")
 	}
-	return iter.NewStreamsIterator(streams.ToProto(), params.Direction), nil
+	return iter.NewStreamsIterator(streams.ToProto(), params.Direction), streams, nil
+}
+
+func (q Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	iter, _, err := q.SelectLogDetails(ctx, params)
+	return iter, err
 }
 
 func (q Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {

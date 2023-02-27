@@ -14,25 +14,34 @@
 package remote
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-
+	 
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
 )
 
 type Storage struct {
-	queriers []querier.Querier
+	queriers []DetailQuerier
 }
 
-func (s *Storage) Queriers() []querier.Querier {
+type DetailQuerier interface {
+	querier.Querier
+	SelectLogDetails(context.Context, logql.SelectLogParams) (iter.EntryIterator, loghttp.Streams, error)
+}
+
+func (s *Storage) Queriers() []DetailQuerier {
 	return s.queriers
 }
 func (s *Storage) ApplyConf(remoteReadConfigs []ReadConfig) error {
 	readHashes := make(map[string]struct{})
-	queriers := make([]querier.Querier, 0, len(remoteReadConfigs))
+	queriers := make([]DetailQuerier, 0, len(remoteReadConfigs))
 	for _, rrConf := range remoteReadConfigs {
 		hash, err := toHash(rrConf)
 		if err != nil {
