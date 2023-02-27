@@ -231,7 +231,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		p := NewPipeline(tt.stages)
 		sp := p.ForStream(labels.Labels{})
 		for i, line := range tt.lines {
-			_, finalLbs, _ := sp.Process(0, line)
+			_, finalLbs, _, _ := sp.Process(0, line)
 			sort.Sort(tt.wantLabels[i])
 			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
 		}
@@ -426,7 +426,7 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resMatches = sp.Process(0, line)
+		resLine, resLbs, _, resMatches = sp.Process(0, line)
 
 		if !resMatches {
 			b.Fatalf("resulting line not ok: %s\n", line)

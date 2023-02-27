@@ -393,7 +393,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			builder.Reset()
 			outLine, _, _ := tt.fmter.Process(tt.ts, tt.in, builder)
-			require.Equal(t, tt.want, outLine)
+			require.Equal(t, string(tt.want), string(outLine))
 			require.Equal(t, tt.wantLbs, builder.LabelsResult().Labels())
 		})
 	}

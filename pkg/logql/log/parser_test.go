@@ -856,7 +856,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			}
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			_, _ = l.Process(0, tt.line, b)
+			_, _, _ = l.Process(0, tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
