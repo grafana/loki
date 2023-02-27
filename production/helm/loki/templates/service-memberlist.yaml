@@ -13,6 +13,9 @@ spec:
       port: 7946
       targetPort: http-memberlist
       protocol: TCP
+  {{- with .Values.memberlist.service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ . }}
+  {{- end }}
   selector:
     {{- include "loki.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist

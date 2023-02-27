@@ -11,7 +11,7 @@ import (
 )
 
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
-	require.Equal(t, true, math.IsNaN(syntax.MergeBinOp(syntax.OpTypeDiv,
+	op, err := syntax.MergeBinOp(syntax.OpTypeDiv,
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 1},
 		},
@@ -20,9 +20,11 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		},
 		false,
 		false,
-	).Point.V))
+	)
+	require.NoError(t, err)
 
-	require.Equal(t, true, math.IsNaN(syntax.MergeBinOp(syntax.OpTypeMod,
+	require.Equal(t, true, math.IsNaN(op.Point.V))
+	binOp, err := syntax.MergeBinOp(syntax.OpTypeMod,
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 1},
 		},
@@ -31,9 +33,26 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		},
 		false,
 		false,
-	).Point.V))
+	)
+	require.NoError(t, err)
+	require.Equal(t, true, math.IsNaN(binOp.Point.V))
 }
+func TestDefaultEvaluator_Sortable(t *testing.T) {
+	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
+	sortable, err := Sortable(LiteralParams{qs: logqlSort})
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, true, sortable)
 
+	logqlSum := `sum(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
+	sortableSum, err := Sortable(LiteralParams{qs: logqlSum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, false, sortableSum)
+
+}
 func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
@@ -201,20 +220,33 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			// comparing a binop should yield the unfiltered (non-nil variant) regardless
 			// of whether this is a vector-vector comparison or not.
-			require.Equal(t, tc.expected, syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false))
-			require.Equal(t, tc.expected, syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true))
+			op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, op)
+			op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, op2)
 
-			require.Nil(t, syntax.MergeBinOp(tc.op, tc.lhs, nil, false, true))
+			op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, true)
+			require.NoError(t, err)
+			require.Nil(t, op3)
 
 			//  test filtered variants
 			if tc.expected.V == 0 {
 				//  ensure zeroed predicates are filtered out
-				require.Nil(t, syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, false))
-				require.Nil(t, syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, true))
+
+				op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, false)
+				require.NoError(t, err)
+				require.Nil(t, op)
+				op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, true)
+				require.NoError(t, err)
+				require.Nil(t, op2)
 
 				// for vector-vector comparisons, ensure that nil right hand sides
 				// translate into nil results
-				require.Nil(t, syntax.MergeBinOp(tc.op, tc.lhs, nil, true, true))
+				op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, true, true)
+				require.NoError(t, err)
+				require.Nil(t, op3)
 
 			}
 		})

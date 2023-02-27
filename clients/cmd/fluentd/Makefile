@@ -4,7 +4,7 @@ SHELL    = /usr/bin/env bash -o pipefail
 # needs to match the name in fluent-plugin-grafana-loki.gemspec
 NAME    := fluent-plugin-grafana-loki
 # needs to match the version in fluent-plugin-grafana-loki.gemspec
-VERSION := 1.2.19
+VERSION := 1.2.20
 
 clean:
 	rm -f $(NAME)-*.gem

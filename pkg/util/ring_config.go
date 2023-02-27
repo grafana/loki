@@ -29,7 +29,7 @@ type RingConfig struct {
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 
 	// Instance details
-	InstanceID             string   `yaml:"instance_id"`
+	InstanceID             string   `yaml:"instance_id" doc:"default=<hostname>"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"default=[<private network interfaces>]"`
 	InstancePort           int      `yaml:"instance_port"`
 	InstanceAddr           string   `yaml:"instance_addr"`

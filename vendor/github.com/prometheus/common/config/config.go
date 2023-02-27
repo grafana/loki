@@ -18,6 +18,7 @@ package config
 
 import (
 	"encoding/json"
+	"net/http"
 	"path/filepath"
 )
 
@@ -34,7 +35,7 @@ func (s Secret) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
-//UnmarshalYAML implements the yaml.Unmarshaler interface for Secrets.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for Secrets.
 func (s *Secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain Secret
 	return unmarshal((*plain)(s))
@@ -46,6 +47,29 @@ func (s Secret) MarshalJSON() ([]byte, error) {
 		return json.Marshal("")
 	}
 	return json.Marshal(secretToken)
+}
+
+type Header map[string][]Secret
+
+func (h *Header) HTTPHeader() http.Header {
+	if h == nil || *h == nil {
+		return nil
+	}
+
+	header := make(http.Header)
+
+	for name, values := range *h {
+		var s []string
+		if values != nil {
+			s = make([]string, 0, len(values))
+			for _, value := range values {
+				s = append(s, string(value))
+			}
+		}
+		header[name] = s
+	}
+
+	return header
 }
 
 // DirectorySetter is a config type that contains file paths that may

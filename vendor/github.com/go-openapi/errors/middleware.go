@@ -28,7 +28,6 @@ type APIVerificationFailed struct {
 	MissingRegistration  []string `json:"missingRegistration,omitempty"`
 }
 
-//
 func (v *APIVerificationFailed) Error() string {
 	buf := bytes.NewBuffer(nil)
 

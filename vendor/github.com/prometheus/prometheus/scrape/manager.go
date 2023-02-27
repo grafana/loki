@@ -132,6 +132,9 @@ type Options struct {
 	// Option to enable the experimental in-memory metadata storage and append
 	// metadata to the WAL.
 	EnableMetadataStorage bool
+	// Option to enable protobuf negotiation with the client. Note that the client can already
+	// send protobuf without needing to enable this.
+	EnableProtobufNegotiation bool
 	// Option to increase the interval used by scrape manager to throttle target groups updates.
 	DiscoveryReloadInterval model.Duration
 
@@ -308,6 +311,18 @@ func (m *Manager) TargetsAll() map[string][]*Target {
 		targets[tset] = append(sp.ActiveTargets(), sp.DroppedTargets()...)
 	}
 	return targets
+}
+
+// ScrapePools returns the list of all scrape pool names.
+func (m *Manager) ScrapePools() []string {
+	m.mtxScrape.Lock()
+	defer m.mtxScrape.Unlock()
+
+	names := make([]string, 0, len(m.scrapePools))
+	for name := range m.scrapePools {
+		names = append(names, name)
+	}
+	return names
 }
 
 // TargetsActive returns the active targets currently being scraped.

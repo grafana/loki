@@ -396,6 +396,9 @@ prefixexp:
             $$ = $1
         } |
         '(' expr ')' {
+            if ex, ok := $2.(*ast.Comma3Expr); ok {
+                ex.AdjustRet = true
+            }
             $$ = $2
             $$.SetLine($1.Pos.Line)
         }

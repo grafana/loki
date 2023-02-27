@@ -2,10 +2,11 @@
 aliases:
   - /alerting/
 title: Alerting and Recording Rules
+description: Alerting and Recording Rules
 weight: 700
 ---
 
-# Rules and the Ruler
+# Alerting and Recording Rules
 
 Grafana Loki includes a component called the ruler. The ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
@@ -76,7 +77,7 @@ We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/
 
 > Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
 
-Loki allows you to run [metric queries](../logql/metric_queries) over your logs, which means
+Loki allows you to run [metric queries]({{<relref "../logql/metric_queries">}}) over your logs, which means
 that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your NGINX access log.
 
 ### Example
@@ -107,7 +108,7 @@ At the time of writing, these are the compatible backends that support this:
 
 - [Prometheus](https://prometheus.io/docs/prometheus/latest/disabled_features/#remote-write-receiver) (`>=v2.25.0`):
   Prometheus is generally a pull-based system, but since `v2.25.0` has allowed for metrics to be written directly to it as well.
-- [Grafana Mimir](https://grafana.com/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
+- [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
 Here is an example remote-write configuration for sending to a local Prometheus instance:
@@ -122,11 +123,11 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler](../configuration#ruler).
+Further configuration options can be found under [ruler]({{<relref "../configuration#ruler">}}).
 
 ### Operations
 
-Please refer to the [Recording Rules](../operations/recording-rules/) page.
+Please refer to the [Recording Rules]({{<relref "../operations/recording-rules">}}) page.
 
 ## Use cases
 
@@ -230,7 +231,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation](../configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation]({{<relref "../configuration">}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 
@@ -255,7 +256,7 @@ ruler:
 
 The Ruler supports five kinds of storage: azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded Ruler configuration in an obvious way, i.e. configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](../api/#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{<relref "../api/#ruler">}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```
@@ -268,7 +269,7 @@ With the above configuration, the Ruler would expect the following layout:
 /tmp/loki/rules/<tenant id>/rules1.yaml
                            /rules2.yaml
 ```
-Yaml files are expected to be [Prometheus compatible](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
+Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) but include LogQL expressions as specified in the beginning of this doc.
 
 ## Future improvements
 

@@ -335,14 +335,15 @@ type RuleGroup struct {
 // that rules are returned in by the API.
 //
 // Rule types can be determined using a type switch:
-//   switch v := rule.(type) {
-//   case RecordingRule:
-//   	fmt.Print("got a recording rule")
-//   case AlertingRule:
-//   	fmt.Print("got a alerting rule")
-//   default:
-//   	fmt.Printf("unknown rule type %s", v)
-//   }
+//
+//	switch v := rule.(type) {
+//	case RecordingRule:
+//		fmt.Print("got a recording rule")
+//	case AlertingRule:
+//		fmt.Print("got a alerting rule")
+//	default:
+//		fmt.Printf("unknown rule type %s", v)
+//	}
 type Rules []interface{}
 
 // AlertingRule models a alerting rule.

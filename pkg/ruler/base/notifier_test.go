@@ -411,3 +411,63 @@ func TestBuildNotifierConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyAlertmanagerDefaults(t *testing.T) {
+	tests := []struct {
+		name     string
+		amConfig ruler_config.AlertManagerConfig
+		want     ruler_config.AlertManagerConfig
+	}{
+		{
+			name:     "with an empty config, returns the default values",
+			amConfig: ruler_config.AlertManagerConfig{},
+			want: ruler_config.AlertManagerConfig{
+				AlertmanagerRefreshInterval: 1 * time.Minute,
+				NotificationQueueCapacity:   10000,
+				NotificationTimeout:         10 * time.Second,
+			},
+		},
+		{
+			name: "apply default values for the values that are undefined",
+			amConfig: ruler_config.AlertManagerConfig{
+				AlertmanagerURL:          "url",
+				AlertmanangerEnableV2API: true,
+				AlertmanagerDiscovery:    true,
+			},
+			want: ruler_config.AlertManagerConfig{
+				AlertmanagerURL:             "url",
+				AlertmanangerEnableV2API:    true,
+				AlertmanagerDiscovery:       true,
+				AlertmanagerRefreshInterval: 1 * time.Minute,
+				NotificationQueueCapacity:   10000,
+				NotificationTimeout:         10 * time.Second,
+			},
+		},
+		{
+			name: "do not apply default values for the values that are defined",
+			amConfig: ruler_config.AlertManagerConfig{
+				AlertmanagerURL:             "url",
+				AlertmanangerEnableV2API:    true,
+				AlertmanagerDiscovery:       true,
+				AlertmanagerRefreshInterval: 2 * time.Minute,
+				NotificationQueueCapacity:   20000,
+				NotificationTimeout:         20 * time.Second,
+			},
+			want: ruler_config.AlertManagerConfig{
+				AlertmanagerURL:             "url",
+				AlertmanangerEnableV2API:    true,
+				AlertmanagerDiscovery:       true,
+				AlertmanagerRefreshInterval: 2 * time.Minute,
+				NotificationQueueCapacity:   20000,
+				NotificationTimeout:         20 * time.Second,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := applyAlertmanagerDefaults(tt.amConfig)
+			require.Equal(t, tt.want, result)
+		})
+	}
+}

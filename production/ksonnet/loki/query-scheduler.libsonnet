@@ -20,7 +20,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         max_outstanding_per_tenant: max_outstanding,
       },
       frontend_worker+: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local.:9095' % $._config.namespace,
+        frontend_address: 'query-frontend-headless.%s.svc.cluster.local.:9095' % $._config.namespace,
       },
     },
   },

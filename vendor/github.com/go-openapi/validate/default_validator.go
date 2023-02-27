@@ -92,7 +92,7 @@ func (d *defaultValidator) validateDefaultValueValidAgainstSchema() *Result {
 	res := new(Result)
 	s := d.SpecValidator
 
-	for method, pathItem := range s.analyzer.Operations() {
+	for method, pathItem := range s.expandedAnalyzer().Operations() {
 		for path, op := range pathItem {
 			// parameters
 			for _, param := range paramHelp.safeExpandedParamsFor(path, method, op.ID, res, s) {

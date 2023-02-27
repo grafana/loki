@@ -2,6 +2,8 @@ package distributor
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -185,6 +187,31 @@ func TestRateStore(t *testing.T) {
 	})
 }
 
+var benchErr error
+
+func BenchmarkRateStore(b *testing.B) {
+	tc := setup(true)
+	tc.ring.replicationSet = ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Addr: "ingester0"},
+		},
+	}
+
+	rates := make([]*logproto.StreamRate, 200000)
+	for i := 0; i < 200000; i++ {
+		rates[i] = &logproto.StreamRate{Tenant: fmt.Sprintf("tenant %d", i%2), StreamHash: uint64(i % 3), StreamHashNoShard: uint64(i % 4), Rate: rand.Int63()}
+	}
+
+	tc.clientPool.clients = map[string]client.PoolClient{
+		"ingester0": newRateClient(rates),
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		benchErr = tc.rateStore.updateAllRates(context.Background())
+	}
+}
+
 func newFakeRing() *fakeRing {
 	return &fakeRing{}
 }
@@ -268,7 +295,7 @@ type testContext struct {
 	rateStore  *rateStore
 }
 
-func setup(enabled bool) *testContext {
+func setup(shardingEnabled bool) *testContext {
 	ring := newFakeRing()
 	cp := newFakeClientPool()
 	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
@@ -276,6 +303,6 @@ func setup(enabled bool) *testContext {
 	return &testContext{
 		ring:       ring,
 		clientPool: cp,
-		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled: enabled}, nil),
+		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled: shardingEnabled}, nil),
 	}
 }

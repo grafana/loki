@@ -70,11 +70,24 @@ type ClusterAdmin interface {
 	// for some resources while fail for others. The configs for a particular resource are updated automatically.
 	AlterConfig(resourceType ConfigResourceType, name string, entries map[string]*string, validateOnly bool) error
 
+	// IncrementalAlterConfig Incrementally Update the configuration for the specified resources with the default options.
+	// This operation is supported by brokers with version 2.3.0.0 or higher.
+	// Updates are not transactional so they may succeed for some resources while fail for others.
+	// The configs for a particular resource are updated automatically.
+	IncrementalAlterConfig(resourceType ConfigResourceType, name string, entries map[string]IncrementalAlterConfigsEntry, validateOnly bool) error
+
+	// Creates an access control list (ACL) which is bound to a specific resource.
+	// This operation is not transactional so it may succeed or fail.
+	// If you attempt to add an ACL that duplicates an existing ACL, no error will be raised, but
+	// no changes will be made. This operation is supported by brokers with version 0.11.0.0 or higher.
+	// Deprecated: Use CreateACLs instead.
+	CreateACL(resource Resource, acl Acl) error
+
 	// Creates access control lists (ACLs) which are bound to specific resources.
 	// This operation is not transactional so it may succeed for some ACLs while fail for others.
 	// If you attempt to add an ACL that duplicates an existing ACL, no error will be raised, but
 	// no changes will be made. This operation is supported by brokers with version 0.11.0.0 or higher.
-	CreateACL(resource Resource, acl Acl) error
+	CreateACLs([]*ResourceAcls) error
 
 	// Lists access control lists (ACLs) according to the supplied filter.
 	// it may take some time for changes made by createAcls or deleteAcls to be reflected in the output of ListAcls
@@ -128,6 +141,11 @@ type ClusterAdmin interface {
 	// locally cached value if it's available.
 	Controller() (*Broker, error)
 
+	// Remove members from the consumer group by given member identities.
+	// This operation is supported by brokers with version 2.3 or higher
+	// This is for static membership feature. KIP-345
+	RemoveMemberFromConsumerGroup(groupId string, groupInstanceIds []string) (*LeaveGroupResponse, error)
+
 	// Close shuts down the admin and closes underlying client.
 	Close() error
 }
@@ -143,7 +161,11 @@ func NewClusterAdmin(addrs []string, conf *Config) (ClusterAdmin, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewClusterAdminFromClient(client)
+	admin, err := NewClusterAdminFromClient(client)
+	if err != nil {
+		client.Close()
+	}
+	return admin, err
 }
 
 // NewClusterAdminFromClient creates a new ClusterAdmin using the given client.
@@ -177,15 +199,7 @@ func (ca *clusterAdmin) refreshController() (*Broker, error) {
 // isErrNoController returns `true` if the given error type unwraps to an
 // `ErrNotController` response from Kafka
 func isErrNoController(err error) bool {
-	switch e := err.(type) {
-	case *TopicError:
-		return e.Err == ErrNotController
-	case *TopicPartitionError:
-		return e.Err == ErrNotController
-	case KError:
-		return e == ErrNotController
-	}
-	return false
+	return errors.Is(err, ErrNotController)
 }
 
 // retryOnError will repeatedly call the given (error-returning) func in the
@@ -249,8 +263,8 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 			return ErrIncompleteResponse
 		}
 
-		if topicErr.Err != ErrNoError {
-			if topicErr.Err == ErrNotController {
+		if !errors.Is(topicErr.Err, ErrNoError) {
+			if errors.Is(topicErr.Err, ErrNotController) {
 				_, _ = ca.refreshController()
 			}
 			return topicErr
@@ -266,17 +280,7 @@ func (ca *clusterAdmin) DescribeTopics(topics []string) (metadata []*TopicMetada
 		return nil, err
 	}
 
-	request := &MetadataRequest{
-		Topics:                 topics,
-		AllowAutoTopicCreation: false,
-	}
-
-	if ca.conf.Version.IsAtLeast(V1_0_0_0) {
-		request.Version = 5
-	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
-		request.Version = 4
-	}
-
+	request := NewMetadataRequest(ca.conf.Version, topics)
 	response, err := controller.GetMetadata(request)
 	if err != nil {
 		return nil, err
@@ -290,14 +294,7 @@ func (ca *clusterAdmin) DescribeCluster() (brokers []*Broker, controllerID int32
 		return nil, int32(0), err
 	}
 
-	request := &MetadataRequest{
-		Topics: []string{},
-	}
-
-	if ca.conf.Version.IsAtLeast(V0_10_0_0) {
-		request.Version = 1
-	}
-
+	request := NewMetadataRequest(ca.conf.Version, nil)
 	response, err := controller.GetMetadata(request)
 	if err != nil {
 		return nil, int32(0), err
@@ -338,7 +335,7 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 	}
 	_ = b.Open(ca.client.Config())
 
-	metadataReq := &MetadataRequest{}
+	metadataReq := NewMetadataRequest(ca.conf.Version, nil)
 	metadataResp, err := b.GetMetadata(metadataReq)
 	if err != nil {
 		return nil, err
@@ -436,8 +433,8 @@ func (ca *clusterAdmin) DeleteTopic(topic string) error {
 			return ErrIncompleteResponse
 		}
 
-		if topicErr != ErrNoError {
-			if topicErr == ErrNotController {
+		if !errors.Is(topicErr, ErrNoError) {
+			if errors.Is(topicErr, ErrNotController) {
 				_, _ = ca.refreshController()
 			}
 			return topicErr
@@ -477,8 +474,8 @@ func (ca *clusterAdmin) CreatePartitions(topic string, count int32, assignment [
 			return ErrIncompleteResponse
 		}
 
-		if topicErr.Err != ErrNoError {
-			if topicErr.Err == ErrNotController {
+		if !errors.Is(topicErr.Err, ErrNoError) {
+			if errors.Is(topicErr.Err, ErrNotController) {
 				_, _ = ca.refreshController()
 			}
 			return topicErr
@@ -516,21 +513,20 @@ func (ca *clusterAdmin) AlterPartitionReassignments(topic string, assignment [][
 			errs = append(errs, err)
 		} else {
 			if rsp.ErrorCode > 0 {
-				errs = append(errs, errors.New(rsp.ErrorCode.Error()))
+				errs = append(errs, rsp.ErrorCode)
 			}
 
 			for topic, topicErrors := range rsp.Errors {
 				for partition, partitionError := range topicErrors {
-					if partitionError.errorCode != ErrNoError {
-						errStr := fmt.Sprintf("[%s-%d]: %s", topic, partition, partitionError.errorCode.Error())
-						errs = append(errs, errors.New(errStr))
+					if !errors.Is(partitionError.errorCode, ErrNoError) {
+						errs = append(errs, fmt.Errorf("[%s-%d]: %w", topic, partition, partitionError.errorCode))
 					}
 				}
 			}
 		}
 
 		if len(errs) > 0 {
-			return ErrReassignPartitions{MultiError{&errs}}
+			return Wrap(ErrReassignPartitions, errs...)
 		}
 
 		return nil
@@ -568,45 +564,50 @@ func (ca *clusterAdmin) DeleteRecords(topic string, partitionOffsets map[int32]i
 	if topic == "" {
 		return ErrInvalidTopic
 	}
+	errs := make([]error, 0)
 	partitionPerBroker := make(map[*Broker][]int32)
 	for partition := range partitionOffsets {
 		broker, err := ca.client.Leader(topic, partition)
 		if err != nil {
-			return err
+			errs = append(errs, err)
+			continue
 		}
 		partitionPerBroker[broker] = append(partitionPerBroker[broker], partition)
 	}
-	errs := make([]error, 0)
 	for broker, partitions := range partitionPerBroker {
 		topics := make(map[string]*DeleteRecordsRequestTopic)
 		recordsToDelete := make(map[int32]int64)
 		for _, p := range partitions {
 			recordsToDelete[p] = partitionOffsets[p]
 		}
-		topics[topic] = &DeleteRecordsRequestTopic{PartitionOffsets: recordsToDelete}
+		topics[topic] = &DeleteRecordsRequestTopic{
+			PartitionOffsets: recordsToDelete,
+		}
 		request := &DeleteRecordsRequest{
 			Topics:  topics,
 			Timeout: ca.conf.Admin.Timeout,
 		}
-
 		rsp, err := broker.DeleteRecords(request)
 		if err != nil {
 			errs = append(errs, err)
-		} else {
-			deleteRecordsResponseTopic, ok := rsp.Topics[topic]
-			if !ok {
-				errs = append(errs, ErrIncompleteResponse)
-			} else {
-				for _, deleteRecordsResponsePartition := range deleteRecordsResponseTopic.Partitions {
-					if deleteRecordsResponsePartition.Err != ErrNoError {
-						errs = append(errs, errors.New(deleteRecordsResponsePartition.Err.Error()))
-					}
-				}
+			continue
+		}
+
+		deleteRecordsResponseTopic, ok := rsp.Topics[topic]
+		if !ok {
+			errs = append(errs, ErrIncompleteResponse)
+			continue
+		}
+
+		for _, deleteRecordsResponsePartition := range deleteRecordsResponseTopic.Partitions {
+			if !errors.Is(deleteRecordsResponsePartition.Err, ErrNoError) {
+				errs = append(errs, deleteRecordsResponsePartition.Err)
+				continue
 			}
 		}
 	}
 	if len(errs) > 0 {
-		return ErrDeleteRecords{MultiError{&errs}}
+		return Wrap(ErrDeleteRecords, errs...)
 	}
 	// todo since we are dealing with couple of partitions it would be good if we return slice of errors
 	// for each partition instead of one error
@@ -731,9 +732,83 @@ func (ca *clusterAdmin) AlterConfig(resourceType ConfigResourceType, name string
 	return nil
 }
 
+func (ca *clusterAdmin) IncrementalAlterConfig(resourceType ConfigResourceType, name string, entries map[string]IncrementalAlterConfigsEntry, validateOnly bool) error {
+	var resources []*IncrementalAlterConfigsResource
+	resources = append(resources, &IncrementalAlterConfigsResource{
+		Type:          resourceType,
+		Name:          name,
+		ConfigEntries: entries,
+	})
+
+	request := &IncrementalAlterConfigsRequest{
+		Resources:    resources,
+		ValidateOnly: validateOnly,
+	}
+
+	var (
+		b   *Broker
+		err error
+	)
+
+	// AlterConfig of broker/broker logger must be sent to the broker in question
+	if dependsOnSpecificNode(ConfigResource{Name: name, Type: resourceType}) {
+		var id int64
+		id, err = strconv.ParseInt(name, 10, 32)
+		if err != nil {
+			return err
+		}
+		b, err = ca.findBroker(int32(id))
+	} else {
+		b, err = ca.findAnyBroker()
+	}
+	if err != nil {
+		return err
+	}
+
+	_ = b.Open(ca.client.Config())
+	rsp, err := b.IncrementalAlterConfigs(request)
+	if err != nil {
+		return err
+	}
+
+	for _, rspResource := range rsp.Resources {
+		if rspResource.Name == name {
+			if rspResource.ErrorMsg != "" {
+				return errors.New(rspResource.ErrorMsg)
+			}
+			if rspResource.ErrorCode != 0 {
+				return KError(rspResource.ErrorCode)
+			}
+		}
+	}
+	return nil
+}
+
 func (ca *clusterAdmin) CreateACL(resource Resource, acl Acl) error {
 	var acls []*AclCreation
 	acls = append(acls, &AclCreation{resource, acl})
+	request := &CreateAclsRequest{AclCreations: acls}
+
+	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		request.Version = 1
+	}
+
+	b, err := ca.Controller()
+	if err != nil {
+		return err
+	}
+
+	_, err = b.CreateAcls(request)
+	return err
+}
+
+func (ca *clusterAdmin) CreateACLs(resourceACLs []*ResourceAcls) error {
+	var acls []*AclCreation
+	for _, resourceACL := range resourceACLs {
+		for _, acl := range resourceACL.Acls {
+			acls = append(acls, &AclCreation{resourceACL.Resource, *acl})
+		}
+	}
 	request := &CreateAclsRequest{AclCreations: acls}
 
 	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
@@ -813,9 +888,13 @@ func (ca *clusterAdmin) DescribeConsumerGroups(groups []string) (result []*Group
 	}
 
 	for broker, brokerGroups := range groupsPerBroker {
-		response, err := broker.DescribeGroups(&DescribeGroupsRequest{
+		describeReq := &DescribeGroupsRequest{
 			Groups: brokerGroups,
-		})
+		}
+		if ca.conf.Version.IsAtLeast(V2_3_0_0) {
+			describeReq.Version = 4
+		}
+		response, err := broker.DescribeGroups(describeReq)
 		if err != nil {
 			return nil, err
 		}
@@ -908,11 +987,11 @@ func (ca *clusterAdmin) DeleteConsumerGroupOffset(group string, topic string, pa
 		return err
 	}
 
-	if resp.ErrorCode != ErrNoError {
+	if !errors.Is(resp.ErrorCode, ErrNoError) {
 		return resp.ErrorCode
 	}
 
-	if resp.Errors[topic][partition] != ErrNoError {
+	if !errors.Is(resp.Errors[topic][partition], ErrNoError) {
 		return resp.Errors[topic][partition]
 	}
 	return nil
@@ -938,7 +1017,7 @@ func (ca *clusterAdmin) DeleteConsumerGroup(group string) error {
 		return ErrIncompleteResponse
 	}
 
-	if groupErr != ErrNoError {
+	if !errors.Is(groupErr, ErrNoError) {
 		return groupErr
 	}
 
@@ -954,12 +1033,12 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 	wg := sync.WaitGroup{}
 
 	for _, b := range brokerIds {
-		wg.Add(1)
 		broker, err := ca.findBroker(b)
 		if err != nil {
 			Logger.Printf("Unable to find broker with ID = %v\n", b)
 			continue
 		}
+		wg.Add(1)
 		go func(b *Broker, conf *Config) {
 			defer wg.Done()
 			_ = b.Open(conf) // Ensure that broker is opened
@@ -1067,10 +1146,10 @@ func (ca *clusterAdmin) DescribeClientQuotas(components []QuotaFilterComponent, 
 		return nil, err
 	}
 
-	if rsp.ErrorMsg != nil {
+	if rsp.ErrorMsg != nil && len(*rsp.ErrorMsg) > 0 {
 		return nil, errors.New(*rsp.ErrorMsg)
 	}
-	if rsp.ErrorCode != ErrNoError {
+	if !errors.Is(rsp.ErrorCode, ErrNoError) {
 		return nil, rsp.ErrorCode
 	}
 
@@ -1099,10 +1178,31 @@ func (ca *clusterAdmin) AlterClientQuotas(entity []QuotaEntityComponent, op Clie
 	}
 
 	for _, entry := range rsp.Entries {
-		if entry.ErrorCode != ErrNoError {
+		if entry.ErrorMsg != nil && len(*entry.ErrorMsg) > 0 {
+			return errors.New(*entry.ErrorMsg)
+		}
+		if !errors.Is(entry.ErrorCode, ErrNoError) {
 			return entry.ErrorCode
 		}
 	}
 
 	return nil
+}
+
+func (ca *clusterAdmin) RemoveMemberFromConsumerGroup(groupId string, groupInstanceIds []string) (*LeaveGroupResponse, error) {
+	controller, err := ca.client.Coordinator(groupId)
+	if err != nil {
+		return nil, err
+	}
+	request := &LeaveGroupRequest{
+		Version: 3,
+		GroupId: groupId,
+	}
+	for _, instanceId := range groupInstanceIds {
+		groupInstanceId := instanceId
+		request.Members = append(request.Members, MemberIdentity{
+			GroupInstanceId: &groupInstanceId,
+		})
+	}
+	return controller.LeaveGroup(request)
 }

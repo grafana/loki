@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,8 +39,9 @@ type ConfigWrapper struct {
 }
 
 func PrintVersion(args []string) bool {
+	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
 	for _, a := range args {
-		if a == "-"+versionFlag {
+		if pattern.MatchString(a) {
 			return true
 		}
 	}

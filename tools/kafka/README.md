@@ -98,7 +98,6 @@ backoff_config:
   max_retries: 10
 timeout: 10s
 tenant_id: ""
-stream_lag_labels: filename
 
 level=info ts=2021-11-02T10:44:14.137894Z caller=server.go:260 http=[::]:9080 grpc=[::]:59237 msg="server listening on addresses"
 level=info ts=2021-11-02T10:44:14.138059Z caller=main.go:119 msg="Starting Promtail" version="(version=, branch=, revision=)"

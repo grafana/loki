@@ -7,15 +7,13 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar"
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
@@ -361,9 +359,6 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			reader.Stop()
 			t.positions.Remove(reader.Path())
 			delete(t.readers, p)
-		}
-		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
-			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
 		}
 	}
 }

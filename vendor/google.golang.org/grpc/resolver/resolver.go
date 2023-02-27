@@ -27,6 +27,7 @@ import (
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/serviceconfig"
 )
 
@@ -95,7 +96,7 @@ const (
 
 // Address represents a server the client connects to.
 //
-// Experimental
+// # Experimental
 //
 // Notice: This type is EXPERIMENTAL and may be changed or removed in a
 // later release.
@@ -139,11 +140,16 @@ type Address struct {
 
 // Equal returns whether a and o are identical.  Metadata is compared directly,
 // not with any recursive introspection.
-func (a *Address) Equal(o Address) bool {
+func (a Address) Equal(o Address) bool {
 	return a.Addr == o.Addr && a.ServerName == o.ServerName &&
 		a.Attributes.Equal(o.Attributes) &&
 		a.BalancerAttributes.Equal(o.BalancerAttributes) &&
 		a.Type == o.Type && a.Metadata == o.Metadata
+}
+
+// String returns JSON formatted string representation of the address.
+func (a Address) String() string {
+	return pretty.ToJSON(a)
 }
 
 // BuildOptions includes additional information for the builder to create
@@ -230,12 +236,12 @@ type ClientConn interface {
 //
 // Examples:
 //
-// - "dns://some_authority/foo.bar"
-//   Target{Scheme: "dns", Authority: "some_authority", Endpoint: "foo.bar"}
-// - "foo.bar"
-//   Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "foo.bar"}
-// - "unknown_scheme://authority/endpoint"
-//   Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "unknown_scheme://authority/endpoint"}
+//   - "dns://some_authority/foo.bar"
+//     Target{Scheme: "dns", Authority: "some_authority", Endpoint: "foo.bar"}
+//   - "foo.bar"
+//     Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "foo.bar"}
+//   - "unknown_scheme://authority/endpoint"
+//     Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "unknown_scheme://authority/endpoint"}
 type Target struct {
 	// Deprecated: use URL.Scheme instead.
 	Scheme string

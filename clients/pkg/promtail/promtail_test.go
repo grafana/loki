@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,13 +38,14 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	pserver "github.com/grafana/loki/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
 
 func TestPromtail(t *testing.T) {
 	// Setup.
@@ -54,8 +54,8 @@ func TestPromtail(t *testing.T) {
 	logger = level.NewFilter(logger, level.AllowInfo())
 	util_log.Logger = logger
 
-	initRandom()
-	dirName := "/tmp/promtail_test_" + randName()
+	testutils.InitRandom()
+	dirName := filepath.Join(os.TempDir(), "/promtail_test_"+testutils.RandName())
 	positionsFileName := dirName + "/positions.yml"
 
 	err := os.MkdirAll(dirName, 0o750)
@@ -89,7 +89,7 @@ func TestPromtail(t *testing.T) {
 		if t.Failed() {
 			return // Test has already failed; don't wait for everything to shut down.
 		}
-		fmt.Fprintf(os.Stdout, "wait close")
+		fmt.Fprintf(os.Stdout, "wait close\n")
 		wg.Wait()
 		if err != nil {
 			t.Fatal(err)
@@ -641,22 +641,8 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	return cfg
 }
 
-func initRandom() {
-	rand.Seed(time.Now().UnixNano())
-}
-
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randName() string {
-	b := make([]rune, 10)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
-}
-
 func Test_DryRun(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_DryRun")
+	f, err := os.CreateTemp("", "Test_DryRun")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
@@ -701,7 +687,7 @@ func Test_DryRun(t *testing.T) {
 }
 
 func Test_Reload(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_Reload")
+	f, err := os.CreateTemp("", "Test_Reload")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
@@ -770,7 +756,7 @@ func Test_Reload(t *testing.T) {
 }
 
 func Test_ReloadFail_NotPanic(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_Reload")
+	f, err := os.CreateTemp("", "Test_Reload")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 

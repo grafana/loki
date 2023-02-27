@@ -74,6 +74,8 @@ func Test_SampleExpr_String(t *testing.T) {
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
 		`vector(123)`,
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) ))`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -171,6 +173,13 @@ func Test_SampleExpr_String(t *testing.T) {
 			"(.*):.*"
 		)
 		`,
+		`(((
+			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) 
+				or on ()  
+				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60)) 
+				or on ()  
+				((sum by(typename,pool,commandname,colo) (sum_over_time({_namespace_="appspace", _schema_="appspace-1h", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) / 60))`,
+		`{app="foo"} | logfmt code="response.code", IPAddress="host"`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -194,6 +203,19 @@ func Test_SampleExpr_String_Fail(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			_, err := ParseExpr(tc)
 			require.ErrorContains(t, err, "parse error : invalid parameter (must be greater than 0)")
+		})
+	}
+}
+
+func Test_SampleExpr_Sort_Fail(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`sort(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+		`sort_desc(sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )) by (app)`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			_, err := ParseExpr(tc)
+			require.ErrorContains(t, err, "sort and sort_desc doesn't allow grouping by")
 		})
 	}
 }
@@ -235,7 +257,8 @@ func TestMatcherGroups(t *testing.T) {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			expr, err := ParseExpr(tc.query)
 			require.Nil(t, err)
-			out := MatcherGroups(expr)
+			out, err := MatcherGroups(expr)
+			require.Nil(t, err)
 			require.Equal(t, tc.exp, out)
 		})
 	}
@@ -464,26 +487,30 @@ func BenchmarkContainsFilter(b *testing.B) {
 
 func Test_parserExpr_Parser(t *testing.T) {
 	tests := []struct {
-		name    string
-		op      string
-		param   string
-		want    log.Stage
-		wantErr bool
+		name      string
+		op        string
+		param     string
+		want      log.Stage
+		wantErr   bool
+		wantPanic bool
 	}{
-		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
-		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false},
-		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
-		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false},
-		{"pattern err", OpParserTypePattern, "bar", nil, true},
-		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
-		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},
+		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
+		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
+		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false, false},
+		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
+		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
+		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false, false},
+		{"regexp err ", OpParserTypeRegexp, "foo", nil, true, true},
+		{"unknown op", "DummyOp", "", nil, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := &LabelParserExpr{
-				Op:    tt.op,
-				Param: tt.param,
+			var e *LabelParserExpr
+			if tt.wantPanic {
+				require.Panics(t, func() { e = newLabelParserExpr(tt.op, tt.param) })
+				return
 			}
+			e = newLabelParserExpr(tt.op, tt.param)
 			got, err := e.Stage()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parserExpr.Parser() error = %v, wantErr %v", err, tt.wantErr)
@@ -494,6 +521,32 @@ func Test_parserExpr_Parser(t *testing.T) {
 			} else {
 				require.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+func Test_parserExpr_String(t *testing.T) {
+	tests := []struct {
+		name  string
+		op    string
+		param string
+		want  string
+	}{
+		{"valid regexp", OpParserTypeRegexp, "foo", `| regexp "foo"`},
+		{"empty regexp", OpParserTypeRegexp, "", `| regexp ""`},
+		{"valid pattern", OpParserTypePattern, "buzz", `| pattern "buzz"`},
+		{"empty pattern", OpParserTypePattern, "", `| pattern ""`},
+		{"valid logfmt", OpParserTypeLogfmt, "", `| logfmt`},
+		{"valid json", OpParserTypeJSON, "", `| json`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := LabelParserExpr{
+				Op:    tt.op,
+				Param: tt.param,
+			}
+			require.Equal(t, tt.want, l.String())
 		})
 	}
 }
@@ -551,7 +604,7 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 }
 
 func Test_MergeBinOpVectors_Filter(t *testing.T) {
-	res := MergeBinOp(
+	res, err := MergeBinOp(
 		OpTypeGT,
 		&promql.Sample{
 			Point: promql.Point{V: 2},
@@ -562,6 +615,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		true,
 		true,
 	)
+	require.NoError(t, err)
 
 	// ensure we return the left hand side's value (2) instead of the
 	// comparison operator's result (1: the truthy answer)
