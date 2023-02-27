@@ -94,7 +94,7 @@ func TestSelectRestores(t *testing.T) {
 
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
-	iter := sset.At().Iterator()
+	iter := sset.At().Iterator(nil)
 	require.Equal(t, chunkenc.ValFloat, iter.Next())
 	ts, v := iter.At()
 	require.Equal(t, now, ts)
@@ -111,7 +111,7 @@ func TestSelectRestores(t *testing.T) {
 	sset = q.Select(false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
-	iter = sset.At().Iterator()
+	iter = sset.At().Iterator(iter)
 	require.Equal(t, chunkenc.ValFloat, iter.Next())
 	ts, v = iter.At()
 	require.Equal(t, now, ts)

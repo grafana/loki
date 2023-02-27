@@ -144,7 +144,7 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 		}
 	}
 
-	processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
+	processed, _ := relabel.Process(lb.Labels(nil), t.relabelConfig...)
 
 	filtered := make(model.LabelSet)
 	for _, lbl := range processed {

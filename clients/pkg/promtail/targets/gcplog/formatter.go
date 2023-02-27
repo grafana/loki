@@ -60,7 +60,7 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 
 	// apply relabeling
 	if len(relabelConfig) > 0 {
-		processed = relabel.Process(lbs.Labels(nil), relabelConfig...)
+		processed, _ = relabel.Process(lbs.Labels(nil), relabelConfig...)
 	} else {
 		processed = lbs.Labels(nil)
 	}

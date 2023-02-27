@@ -550,7 +550,9 @@ monitoring:
     # -- Additional ServiceMonitor labels
     labels: {}
     # -- ServiceMonitor scrape interval
-    interval: null
+    # Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at
+    # least 1/4 rate interval.
+    interval: 15s
     # -- ServiceMonitor scrape timeout in Go duration format (e.g. 15s)
     scrapeTimeout: null
     # -- ServiceMonitor relabel configs to apply to samples before scraping
