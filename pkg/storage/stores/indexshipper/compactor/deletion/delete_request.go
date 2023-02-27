@@ -80,17 +80,12 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 	}
 
 	f := p.ForStream(labels).ProcessString
-<<<<<<< HEAD
-	return func(s string) bool {
-		result, _, _, skip := f(0, s)
-=======
+
 	return func(ts time.Time, s string) bool {
 		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 			return false
 		}
-
-		result, _, skip := f(0, s)
->>>>>>> main
+		result, _, _, skip := f(0, s)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++
