@@ -101,14 +101,14 @@ In releases prior to 2.7.4, setting `-boltdb.shipper.compactor.shared-store` con
 - store used for managing delete requests.
 - store on which index compaction should be performed.
 
-If `-boltdb.shipper.compactor.shared-store` not set, it defaults to the `object_store` configured in the latest `period_config` that uses either tsdb or boltdb-shipper index.
+If `-boltdb.shipper.compactor.shared-store` is not set, it defaults to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
 
-In releases 2.7.4 and later, compactor supports index compaction on multiple stores.
-If `-boltdb.shipper.compactor.shared-store` is set, the two points mentioned above would still hold true to ensure backward compatibility. But loki will not set any defaults on this config, if not set compaction would be performed on all the object stores that contain either boltdb-shipper or tsdb index.
+In releases 2.7.4 and later, the Compactor supports index compaction on multiple stores.
+If `-boltdb.shipper.compactor.shared-store` is set, the two points mentioned above would still hold true to ensure backward compatibility. But Loki will not set any defaults for this setting. If no configuration is specified, compaction would be performed on all the object stores that contain either a boltdb-shipper or tsdb index.
 
-A new config option `-boltdb.shipper.compactor.delete-request-store` is added that decides where delete requests should be stored. If `-boltdb.shipper.compactor.shared-store` is set, it takes precedence over `-boltdb.shipper.compactor.delete-request-store` to decide the store for delete requests.
+A new config option `-boltdb.shipper.compactor.delete-request-store` decides where delete requests should be stored. If `-boltdb.shipper.compactor.shared-store` is set, it takes precedence over `-boltdb.shipper.compactor.delete-request-store` to decide the store for delete requests.
 
-`-boltdb.shipper.compactor.delete-request-store` defaults to the `object_store` configured in the latest `period_config` that uses either tsdb or boltdb-shipper index. This is to ensure any pending delete requests in the latest period are handled - useful for the case where `-boltdb.shipper.compactor.shared-store` was not previously set.
+`-boltdb.shipper.compactor.delete-request-store` defaults to the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index. This is to ensure any pending delete requests in the latest period are handled in case `-boltdb.shipper.compactor.shared-store` was not previously set.
 
 ## 2.7.0
 
