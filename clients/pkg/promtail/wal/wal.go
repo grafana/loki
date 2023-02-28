@@ -70,9 +70,8 @@ func (w *wrapper) Log(record *wal.Record) error {
 	// The code below extracts the wal write operations to when possible, batch both series and records writes
 	if len(record.Series) > 0 && len(record.RefEntries) > 0 {
 		return w.logBatched(record)
-	} else {
-		return w.logSingle(record)
 	}
+	return w.logSingle(record)
 }
 
 // logBatched logs to the WAL both series and records, batching the operation to prevent unnecessary page flushes.
