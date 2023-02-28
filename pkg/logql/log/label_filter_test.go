@@ -433,4 +433,30 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 			require.Equal(t, NoopLabelFilter, f)
 		}
 	})
+
+	t.Run("it returns a no-op filter for empty and .* regex matches", func(t *testing.T) {
+		lbls := NewBaseLabelsBuilder().ForLabels(
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			}, 0)
+
+		f := NewStringLabelFilter(&labels.Matcher{
+			Type:  labels.MatchRegexp,
+			Name:  "foo",
+			Value: ".+",
+		}).(*StringLabelFilter)
+		require.True(t, f.checkExists)
+
+		_, res := f.Process(0, []byte("line"), lbls)
+		require.True(t, res)
+
+		f = NewStringLabelFilter(&labels.Matcher{
+			Type:  labels.MatchRegexp,
+			Name:  "bar",
+			Value: ".+",
+		}).(*StringLabelFilter)
+
+		_, res = f.Process(0, []byte("line"), lbls)
+		require.False(t, res)
+	})
 }

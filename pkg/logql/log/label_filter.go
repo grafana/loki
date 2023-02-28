@@ -329,6 +329,7 @@ func (n *NumericLabelFilter) String() string {
 
 type StringLabelFilter struct {
 	*labels.Matcher
+	checkExists bool
 }
 
 // NewStringLabelFilter creates a new label filterer which compares string label.
@@ -341,7 +342,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 			return f
 		}
 	}
-	return &StringLabelFilter{m}
+	return &StringLabelFilter{Matcher: m}
 }
 
 func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -350,6 +351,10 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 	}
 
 	v, _ := lbs.Get(s.Name)
+	if s.checkExists {
+		return line, len(v) > 0
+	}
+
 	return line, s.Matches(v)
 }
 
@@ -367,15 +372,10 @@ func parseRegexpLabelFilter(m *labels.Matcher) (LabelFilterer, bool) {
 	reg = reg.Simplify()
 
 	// attempt to improve regex with tricks
-	return simplifyLabelFilterRegex(reg)
-	//if !ok {
-	//	allNonGreedy(reg)
-	//	m.Value = reg.String()
-	//	return NewStringLabelFilter(m), nil
-	//}
+	return simplifyLabelFilterRegex(reg, m)
 }
 
-func simplifyLabelFilterRegex(reg *syntax.Regexp) (LabelFilterer, bool) {
+func simplifyLabelFilterRegex(reg *syntax.Regexp, m *labels.Matcher) (LabelFilterer, bool) {
 	switch reg.Op {
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
@@ -383,6 +383,10 @@ func simplifyLabelFilterRegex(reg *syntax.Regexp) (LabelFilterer, bool) {
 		}
 	case syntax.OpEmptyMatch:
 		return NoopLabelFilter, true
+	case syntax.OpPlus:
+		if len(reg.Sub) == 1 && reg.Sub[0].Op == syntax.OpAnyCharNotNL { // simplify ".+"
+			return &StringLabelFilter{m, true}, true
+		}
 	}
 	return nil, false
 }
