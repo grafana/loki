@@ -1,4 +1,3 @@
----
 global:
   image:
     # -- Overrides the Docker registry globally for all images
@@ -11,16 +10,12 @@ global:
   dnsService: "kube-dns"
   # -- configures DNS service namespace
   dnsNamespace: "kube-system"
-
 # -- Overrides the chart's name
 nameOverride: null
-
 # -- Overrides the chart's computed fullname
 fullnameOverride: null
-
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
-
 kubectlImage:
   # -- The Docker registry
   registry: docker.io
@@ -30,7 +25,6 @@ kubectlImage:
   tag: null
   # -- Docker image pull policy
   pullPolicy: IfNotPresent
-
 loki:
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
@@ -199,17 +193,14 @@ loki:
     querier:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
-
   # Should authentication be enabled
   auth_enabled: true
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
   tenants: []
-
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
   server:
     http_listen_port: 3100
     grpc_listen_port: 9095
-
   # -- Limits config
   limits_config:
     enforce_metric_name: false
@@ -217,16 +208,13 @@ loki:
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
-
   # -- Provides a reloadable runtime configuration file for some specific configuration
   runtimeConfig: {}
-
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
     compactor_address: '{{ include "loki.compactorAddress" . }}'
-
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   storage:
     bucketNames:
@@ -256,7 +244,6 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
-
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -272,49 +259,36 @@ loki:
       service: "memcached-client"
       timeout: "500ms"
       default_validity: "12h"
-
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
-
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
   rulerConfig: {}
-
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
-
   # -- Additional query scheduler config
   query_scheduler: {}
-
   # -- Additional storage config
   storage_config:
     hedging:
       at: "250ms"
       max_per_second: 20
       up_to: 3
-
   # --  Optional compactor configuration
   compactor: {}
-
   # --  Optional analytics configuration
   analytics: {}
-
   # --  Optional querier configuration
   querier: {}
-
   # --  Optional ingester configuration
   ingester: {}
-
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
-
   # Default verion of GEL to deploy
-  version: v1.6.1
-
+  version: v1.6.2
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
-
   # -- Grafana Enterprise Logs license
   # In order to use Grafana Enterprise Logs features, you will need to provide
   # the contents of your Grafana Enterprise Logs license, either by providing the
@@ -323,21 +297,16 @@ enterprise:
   # To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`
   license:
     contents: "NOTAVALIDLICENSE"
-
   # -- Set to true when providing an external license
   useExternalLicense: false
-
   # -- Name of external license secret to use
   externalLicenseName: null
-
   # -- Name of the external config secret to use
   externalConfigName: ""
-
   # -- If enabled, the correct admin_client storage will be configured. If disabled while running enterprise,
   # make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.
   adminApi:
     enabled: true
-
   # enterprise specific sections of the config.yaml file
   config: |
     {{- if .Values.enterprise.adminApi.enabled }}
@@ -354,7 +323,6 @@ enterprise:
     cluster_name: {{ include "loki.clusterName" . }}
     license:
       path: /etc/loki/license/license.jwt
-
   image:
     # -- The Docker registry
     registry: docker.io
@@ -366,17 +334,14 @@ enterprise:
     tag: main-96f32b9f
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
-
   adminToken:
     # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
     secret: null
     # -- Additional namespace to also create the token in. Useful if your Grafana instance
     # is in a different namespace
     additionalNamespaces: []
-
   # -- Alternative name of the secret to store token for the canary
   canarySecret: null
-
   # -- Configuration for `tokengen` target
   tokengen:
     # -- Whether the job should be part of the deployment
@@ -407,7 +372,6 @@ enterprise:
     extraEnvFrom: []
     # -- The name of the PriorityClass for tokengen Pods
     priorityClassName: ""
-
   # -- Configuration for `provisioner` target
   provisioner:
     # -- Whether the job should be part of the deployment
@@ -447,7 +411,6 @@ enterprise:
       pullPolicy: IfNotPresent
     # -- Volume mounts to add to the provisioner pods
     extraVolumeMounts: []
-
 # -- Options that may be necessary when performing a migration from another helm chart
 migrate:
   # -- When migrating from a distributed chart like loki-distributed or enterprise-logs
@@ -457,7 +420,6 @@ migrate:
     # -- If migrating from a distributed service, provide the distributed deployment's
     # memberlist service DNS so the new deployment can join it's ring.
     memberlistService: ""
-
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
   create: true
@@ -472,14 +434,12 @@ serviceAccount:
   labels: {}
   # -- Set this toggle to false to opt out of automounting API credentials for the service account
   automountServiceAccountToken: true
-
 # RBAC configuration
 rbac:
   # -- If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
-
 # -- Section for configuring optional Helm test
 test:
   enabled: true
@@ -501,7 +461,6 @@ test:
     tag: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
-
 # Monitoring section determines which monitoring features to enable
 monitoring:
   # Dashboards for monitoring Loki
@@ -515,7 +474,6 @@ monitoring:
     # -- Labels for the dashboards ConfigMap
     labels:
       grafana_dashboard: "1"
-
   # Recording rules for monitoring Loki, required for some dashboards
   rules:
     # -- If enabled, create PrometheusRule resource with Loki recording rules
@@ -538,7 +496,6 @@ monitoring:
     #       expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
     #     - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
     #       expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-
   # ServiceMonitor configuration
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
@@ -572,7 +529,6 @@ monitoring:
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
-
   # Self monitoring determines whether Loki should scrape it's own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
   # which is installed by default using the grafana-agent-operator sub-chart.
@@ -580,7 +536,6 @@ monitoring:
   # scrape configs to scrape it's own logs with the labels expected by the included dashboards.
   selfMonitoring:
     enabled: true
-
     # -- Tenant to use for self monitoring
     tenant:
       # -- Name of the tenant
@@ -588,7 +543,6 @@ monitoring:
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
-
     # Grafana Agent configuration
     grafanaAgent:
       # -- Controls whether to install the Grafana Agent Operator and its CRDs.
@@ -601,7 +555,6 @@ monitoring:
       labels: {}
       # -- Enable the config read api on port 8080 of the agent
       enableConfigReadAPI: false
-
     # PodLogs configuration
     podLogs:
       # -- PodLogs annotations
@@ -611,7 +564,6 @@ monitoring:
       # -- PodLogs relabel configs to apply to samples before scraping
       # https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig
       relabelings: []
-
     # LogsInstance configuration
     logsInstance:
       # -- LogsInstance annotations
@@ -620,7 +572,6 @@ monitoring:
       labels: {}
       # -- Additional clients for remote write
       clients: null
-
   # The Loki canary pushes logs to and queries from this loki installation to test
   # that it's working correctly
   lokiCanary:
@@ -649,7 +600,6 @@ monitoring:
       tag: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
-
 # Configuration for the write pod(s)
 write:
   # -- Number of replicas for the write
@@ -719,7 +669,6 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 # Configuration for the table-manager
 tableManager:
   # -- Specifies whether the table-manager should be enabled
@@ -777,7 +726,6 @@ tableManager:
   nodeSelector: {}
   # -- Tolerations for table-manager pods
   tolerations: []
-
 # Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -858,7 +806,6 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 # Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -926,7 +873,6 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 # Configuration for the single binary node(s)
 singleBinary:
   # -- Number of replicas for the single binary
@@ -1003,7 +949,6 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.
@@ -1038,7 +983,6 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
-
   hosts:
     - loki.example.com
   tls: []
@@ -1050,7 +994,6 @@ ingress:
 memberlist:
   service:
     publishNotReadyAddresses: false
-
 # Configuration for the gateway
 gateway:
   # -- Specifies whether the gateway should be enabled
@@ -1181,12 +1124,12 @@ gateway:
     # high CPU load.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
+
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
+
         {{- end }}
-      {{ else }}
-      {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }}
-      {{ end }}
+      {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
   # Configures the readiness probe for the gateway
@@ -1257,10 +1200,8 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
-
 tracing:
   jaegerAgentHost: ""
-
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------
@@ -1289,7 +1230,6 @@ minio:
     requests:
       cpu: 100m
       memory: 128Mi
-
 # Create extra manifests via values. Would be passed through `tpl` for templating
 extraObjects: []
 # - apiVersion: v1
