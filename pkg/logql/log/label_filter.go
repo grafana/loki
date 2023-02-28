@@ -2,13 +2,12 @@ package log
 
 import (
 	"fmt"
+	"github.com/dustin/go-humanize"
+	"github.com/prometheus/prometheus/model/labels"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
-
-	"github.com/dustin/go-humanize"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
@@ -333,21 +332,49 @@ type StringLabelFilter struct {
 // NewStringLabelFilter creates a new label filterer which compares string label.
 // This is the only LabelFilterer that can filter out the __error__ label.
 // Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
-func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
-	return &StringLabelFilter{
+func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
+	f, err := NewFilter(m.Value, m.Type)
+	if err != nil {
+		return &StringLabelFilter{Matcher: m}
+	}
+
+	if f == TrueFilter {
+		return NoopLabelFilter
+	}
+
+	return &lineFilterLabelFilter{
 		Matcher: m,
+		filter:  f,
 	}
 }
 
 func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if s.Name == logqlmodel.ErrorLabel {
-		return line, s.Matches(lbs.GetErr())
-	}
-
-	v, _ := lbs.Get(s.Name)
-	return line, s.Matches(v)
+	return line, s.Matches(labelValue(s.Name, lbs))
 }
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
+}
+
+// lineFilterLabelFilter filters the desired label using an optimized line filter
+type lineFilterLabelFilter struct {
+	*labels.Matcher
+	filter Filterer
+}
+
+func (s *lineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	v := labelValue(s.Name, lbs)
+	return line, s.filter.Filter(unsafeGetBytes(v))
+}
+
+func (s *lineFilterLabelFilter) RequiredLabelNames() []string {
+	return []string{s.Name}
+}
+
+func labelValue(name string, lbs *LabelsBuilder) string {
+	if name == logqlmodel.ErrorLabel {
+		return lbs.GetErr()
+	}
+	v, _ := lbs.Get(name)
+	return v
 }
