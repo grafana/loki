@@ -447,7 +447,7 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 			Name:  "foo",
 			Value: ".+",
 		}).(*StringLabelFilter)
-		require.True(t, f.checkExists)
+		require.True(t, f.onlyCheckExists)
 
 		_, res := f.Process(0, []byte("line"), lbls)
 		require.True(t, res)
@@ -461,4 +461,38 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 		_, res = f.Process(0, []byte("line"), lbls)
 		require.False(t, res)
 	})
+}
+
+var result bool
+
+func BenchmarkEmptyFilters(b *testing.B) {
+	lbls := NewBaseLabelsBuilder().ForLabels(
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		0,
+	)
+
+	f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "label-name", ".*"))
+
+	line := []byte("line")
+	for n := 0; n < b.N; n++ {
+		_, result = f.Process(0, line, lbls)
+	}
+}
+
+func BenchmarkExistsFilters(b *testing.B) {
+	lbls := NewBaseLabelsBuilder().ForLabels(
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		0,
+	)
+
+	f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "label-name", ".+"))
+
+	line := []byte("line")
+	for n := 0; n < b.N; n++ {
+		_, result = f.Process(0, line, lbls)
+	}
 }

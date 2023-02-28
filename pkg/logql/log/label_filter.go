@@ -329,7 +329,7 @@ func (n *NumericLabelFilter) String() string {
 
 type StringLabelFilter struct {
 	*labels.Matcher
-	checkExists bool
+	onlyCheckExists bool
 }
 
 // NewStringLabelFilter creates a new label filterer which compares string label.
@@ -353,7 +353,7 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 		value, _ = lbs.Get(s.Name)
 	}
 
-	if s.checkExists {
+	if s.onlyCheckExists {
 		return line, len(value) > 0
 	}
 	return line, s.Matches(value)
