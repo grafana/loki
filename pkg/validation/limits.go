@@ -96,8 +96,9 @@ type Limits struct {
 	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -222,6 +223,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MinShardingLookback.Set("0s")
 	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit queries that can be sharded. Queries within the time range of now and now minus this sharding lookback are not sharded. The default value of 0s disables the lookback, causing sharding of all queries at all times.")
+
+	_ = l.MaxQueryBytesRead.Set("0B")
+	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "TODO")
 
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -472,6 +476,11 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
+}
+
+// MaxQueryBytesRead returns the maximum bytes a query can read.
+func (o *Overrides) MaxQueryBytesRead(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.

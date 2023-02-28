@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -47,6 +48,7 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(string) int
+	MaxQueryBytesRead(u string) int
 }
 
 type limits struct {
@@ -54,6 +56,7 @@ type limits struct {
 	// Use pointers so nil value can indicate if the value was set.
 	splitDuration       *time.Duration
 	maxQueryParallelism *int
+	maxQueryBytesRead   *int
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
@@ -200,17 +203,13 @@ func NewQuerySizeLimiterMiddleware(codec queryrangebase.Codec, l Limits) (*query
 }
 
 // SetStatsRoundTripper sets the RoundTripper to use for index stats queries.
-// We cannot forward the request to `next` since it may perform operations
-// such as sharding and splitting that cannot be applied to IndexStats requests.
+// We may not forward the request to `next` if it performs operations
+// such as sharding and splitting which cannot be applied to IndexStats requests.
 func (q *querySizeLimiter) SetStatsRoundTripper(rt http.RoundTripper) {
 	q.statsRT = rt
 }
 
 func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryrangebase.Request) (*logproto.IndexStatsResponse, error) {
-	if q.statsRT == nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Handler for query stats is not configured")
-	}
-
 	matchers, err := syntax.ExtractMatchersFromQuery(r.GetQuery())
 	if err != nil {
 		return nil, err
@@ -221,6 +220,18 @@ func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryr
 	indexStatsReq = indexStatsReq.WithStartEnd(r.GetStart(), r.GetEnd())
 	indexStatsReq = indexStatsReq.WithQuery(matchers)
 
+	// If the roundtripper for getting the stats is not overriden,
+	// follow the request to downstream handlers
+	if q.statsRT == nil {
+		resp, err := q.next.Do(ctx, indexStatsReq)
+		if err != nil {
+			return nil, err
+		}
+
+		return resp.(*IndexStatsResponse).Response, nil
+	}
+
+	// Otherwise follow the stats request to the overriden roundtripper as a http request
 	reqHttp, err := q.codec.EncodeRequest(ctx, indexStatsReq)
 	if err != nil {
 		return nil, err
@@ -243,18 +254,39 @@ func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryr
 	return indexStatsRes.(*IndexStatsResponse).Response, nil
 }
 
+func (q *querySizeLimiter) skipRequestType(r queryrangebase.Request) bool {
+	if _, ok := r.(*logproto.IndexStatsRequest); ok {
+		return true
+	}
+
+	return false
+}
+
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log, ctx := spanlogger.New(ctx, "query_size_limits")
 	defer log.Finish()
 
-	stats, err := q.getIndexStatsForRequest(ctx, r)
-	if err != nil {
-		return nil, err
+	if q.skipRequestType(r) {
+		return q.next.Do(ctx, r)
 	}
 
-	_ = stats
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
 
-	// TODO: Enforce limit here
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.Limits.MaxQueryBytesRead); maxBytesRead > 0 {
+		stats, err := q.getIndexStatsForRequest(ctx, r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get index stats for query", err.Error())
+		}
+
+		if int(stats.Bytes) > maxBytesRead {
+			statsBytesStr := flagext.ByteSize(stats.Bytes).String()
+			maxBytesReadStr := flagext.ByteSize(maxBytesRead).String()
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooManyBytes, statsBytesStr, maxBytesReadStr)
+		}
+	}
 
 	return q.next.Do(ctx, r)
 }

@@ -136,7 +136,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 
 // ParseMatchersFromQuery
 func ExtractMatchersFromQuery(input string) (string, error) {
-	expr, err := ParseExpr(query)
+	expr, err := ParseExpr(input)
 	if err != nil {
 		return "", err
 	}

@@ -511,12 +511,6 @@ func NewMetricTripperware(
 		NewLimitsMiddleware(limits),
 	}
 
-	querySizeLimiter, querySizeLimiterMiddleware := NewQuerySizeLimiterMiddleware(codec, limits)
-	queryRangeMiddleware = append(
-		queryRangeMiddleware,
-		querySizeLimiterMiddleware,
-	)
-
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
@@ -524,6 +518,12 @@ func NewMetricTripperware(
 			queryrangebase.StepAlignMiddleware,
 		)
 	}
+
+	_, querySizeLimiterMiddleware := NewQuerySizeLimiterMiddleware(codec, limits)
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		querySizeLimiterMiddleware,
+	)
 
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
@@ -580,6 +580,12 @@ func NewMetricTripperware(
 		)
 	}
 
+	_, querySizeLimiterMiddlewareQuerier := NewQuerySizeLimiterMiddleware(codec, limits)
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		querySizeLimiterMiddlewareQuerier,
+	)
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
@@ -589,9 +595,12 @@ func NewMetricTripperware(
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
+		// Configure query size limiter to skip all middlewares to get index stats
+		// querySizeLimiter.SetStatsRoundTripper(next)
+		// querySizeLimiterQuerier.SetStatsRoundTripper(next)
+
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			querySizeLimiter.SetStatsRoundTripper(next)
 			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 			return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {
