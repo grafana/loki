@@ -1919,8 +1919,8 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. If not set,
-# -boltdb.shipper.compactor.shared-store is used as fallback.
+# Store used for managing delete requests. Defaults to
+# -boltdb.shipper.compactor.shared-store.
 # CLI flag: -boltdb.shipper.compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
 
