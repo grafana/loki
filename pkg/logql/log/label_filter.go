@@ -329,7 +329,6 @@ func (n *NumericLabelFilter) String() string {
 
 type StringLabelFilter struct {
 	*labels.Matcher
-	onlyCheckExists bool
 }
 
 // NewStringLabelFilter creates a new label filterer which compares string label.
@@ -346,21 +345,52 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 }
 
 func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	var value string
-	if s.Name == logqlmodel.ErrorLabel {
-		value = lbs.GetErr()
-	} else {
-		value, _ = lbs.Get(s.Name)
-	}
-
-	if s.onlyCheckExists {
-		return line, len(value) > 0
-	}
-	return line, s.Matches(value)
+	return line, s.Matches(labelValue(s.Name, lbs))
 }
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
+}
+
+type existsLabelFilter struct {
+	Name string
+}
+
+func (s *existsLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	return line, len(labelValue(s.Name, lbs)) > 0
+}
+
+func (s *existsLabelFilter) RequiredLabelNames() []string {
+	return []string{s.Name}
+}
+
+func (s *existsLabelFilter) String() string {
+	return fmt.Sprintf("%s exists", s.Name)
+}
+
+type containsLabelFilter struct {
+	Name  string
+	Value string
+}
+
+func (s *containsLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	return line, strings.Contains(labelValue(s.Name, lbs), s.Value)
+}
+
+func (s *containsLabelFilter) RequiredLabelNames() []string {
+	return []string{s.Name}
+}
+
+func (s *containsLabelFilter) String() string {
+	return fmt.Sprintf("%s exists", s.Name)
+}
+
+func labelValue(name string, lbs *LabelsBuilder) string {
+	if name == logqlmodel.ErrorLabel {
+		return lbs.GetErr()
+	}
+	value, _ := lbs.Get(name)
+	return value
 }
 
 // parseRegexpLabelFilter parses a regexp and attempt to simplify it with only literal filters.
@@ -394,8 +424,10 @@ func simplifyLabelFilterRegex(reg *syntax.Regexp, m *labels.Matcher) (LabelFilte
 		return NoopLabelFilter, true
 	case syntax.OpPlus:
 		if len(reg.Sub) == 1 && reg.Sub[0].Op == syntax.OpAnyCharNotNL { // simplify ".+"
-			return &StringLabelFilter{m, true}, true
+			return &existsLabelFilter{m.Name}, true
 		}
+	case syntax.OpLiteral:
+		return &containsLabelFilter{m.Name, m.Value}, true
 	}
 	return nil, false
 }

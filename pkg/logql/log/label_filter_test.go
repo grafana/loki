@@ -446,8 +446,7 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 			Type:  labels.MatchRegexp,
 			Name:  "foo",
 			Value: ".+",
-		}).(*StringLabelFilter)
-		require.True(t, f.onlyCheckExists)
+		}).(*existsLabelFilter)
 
 		_, res := f.Process(0, []byte("line"), lbls)
 		require.True(t, res)
@@ -456,7 +455,7 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 			Type:  labels.MatchRegexp,
 			Name:  "bar",
 			Value: ".+",
-		}).(*StringLabelFilter)
+		}).(*existsLabelFilter)
 
 		_, res = f.Process(0, []byte("line"), lbls)
 		require.False(t, res)
@@ -490,6 +489,22 @@ func BenchmarkExistsFilters(b *testing.B) {
 	)
 
 	f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "label-name", ".+"))
+
+	line := []byte("line")
+	for n := 0; n < b.N; n++ {
+		_, result = f.Process(0, line, lbls)
+	}
+}
+
+func BenchmarkLiteralFilters(b *testing.B) {
+	lbls := NewBaseLabelsBuilder().ForLabels(
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		0,
+	)
+
+	f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "label-name", "in"))
 
 	line := []byte("line")
 	for n := 0; n < b.N; n++ {
