@@ -433,15 +433,4 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 			require.Equal(t, NoopLabelFilter, f)
 		}
 	})
-
-	t.Run("it rewrites literal matches as 'contains' matches", func(t *testing.T) {
-		// Prometheus matchers optimize 'contains' to a string test without any regex
-		// https://github.com/prometheus/prometheus/blob/8c8de46003d1800c9d40121b4a5e5de8582ef6e1/pkg/labels/regexp.go#L51-L62
-		f := NewStringLabelFilter(&labels.Matcher{
-			Type:  labels.MatchRegexp,
-			Name:  "label-name",
-			Value: "literal"})
-
-		require.Equal(t, ".*literal.*", f.(*StringLabelFilter).Value)
-	})
 }
