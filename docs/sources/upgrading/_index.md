@@ -97,13 +97,13 @@ These statistics are also displayed when using `--stats` with LogCLI.
 
 #### Multi-store support for compactor
 
-In releases prior to 2.7.4, setting `-boltdb.shipper.compactor.shared-store` configured the following:
+In releases prior to 2.7.5, setting `-boltdb.shipper.compactor.shared-store` configured the following:
 - store used for managing delete requests.
 - store on which index compaction should be performed.
 
 If `-boltdb.shipper.compactor.shared-store` is not set, it defaults to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
 
-In releases 2.7.4 and later, the Compactor supports index compaction on multiple stores.
+In releases 2.7.5 and later, the Compactor supports index compaction on multiple stores.
 If `-boltdb.shipper.compactor.shared-store` is set, the two points mentioned above would still hold true to ensure backward compatibility. But Loki will not set any defaults for this setting. If no configuration is specified, compaction would be performed on all the object stores that contain either a boltdb-shipper or tsdb index.
 
 A new config option `-boltdb.shipper.compactor.delete-request-store` decides where delete requests should be stored. If `-boltdb.shipper.compactor.shared-store` is set, it takes precedence over `-boltdb.shipper.compactor.delete-request-store` to decide the store for delete requests.
