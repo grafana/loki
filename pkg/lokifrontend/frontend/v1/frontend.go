@@ -198,14 +198,14 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	f.requestQueue.RegisterQuerierConnection(querierID)
 	defer f.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastUserIndex := queue.StartIndex
+	lastIndex := queue.StartIndex
 
 	for {
-		reqWrapper, idx, err := f.requestQueue.Dequeue(server.Context(), lastUserIndex, querierID)
+		reqWrapper, idx, err := f.requestQueue.Dequeue(server.Context(), lastIndex, querierID)
 		if err != nil {
 			return err
 		}
-		lastUserIndex = idx
+		lastIndex = idx
 
 		req := reqWrapper.(*request)
 
@@ -224,7 +224,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		  it's possible that it's own queue would perpetually contain only expired requests.
 		*/
 		if req.originalCtx.Err() != nil {
-			lastUserIndex = lastUserIndex.ReuseLastIndex()
+			lastIndex = lastIndex.ReuseLastIndex()
 			continue
 		}
 
