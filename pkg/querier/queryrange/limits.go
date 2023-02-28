@@ -184,29 +184,18 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 }
 
 type querySizeLimiter struct {
-	Limits
-	next    queryrangebase.Handler
-	codec   queryrangebase.Codec
-	statsRT http.RoundTripper
+	next              queryrangebase.Handler
+	maxQueryBytesRead func(string) int
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
-func NewQuerySizeLimiterMiddleware(codec queryrangebase.Codec, l Limits) (*querySizeLimiter, queryrangebase.Middleware) {
-	q := &querySizeLimiter{
-		codec:  codec,
-		Limits: l,
-	}
-	return q, queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		q.next = next
-		return q
+func NewQuerySizeLimiterMiddleware(maxQueryBytesRead func(string) int) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return &querySizeLimiter{
+			next:              next,
+			maxQueryBytesRead: maxQueryBytesRead,
+		}
 	})
-}
-
-// SetStatsRoundTripper sets the RoundTripper to use for index stats queries.
-// We may not forward the request to `next` if it performs operations
-// such as sharding and splitting which cannot be applied to IndexStats requests.
-func (q *querySizeLimiter) SetStatsRoundTripper(rt http.RoundTripper) {
-	q.statsRT = rt
 }
 
 func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryrangebase.Request) (*logproto.IndexStatsResponse, error) {
@@ -220,62 +209,34 @@ func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryr
 	indexStatsReq = indexStatsReq.WithStartEnd(r.GetStart(), r.GetEnd())
 	indexStatsReq = indexStatsReq.WithQuery(matchers)
 
-	// If the roundtripper for getting the stats is not overriden,
-	// follow the request to downstream handlers
-	if q.statsRT == nil {
-		resp, err := q.next.Do(ctx, indexStatsReq)
-		if err != nil {
-			return nil, err
-		}
-
-		return resp.(*IndexStatsResponse).Response, nil
-	}
-
-	// Otherwise follow the stats request to the overriden roundtripper as a http request
-	reqHttp, err := q.codec.EncodeRequest(ctx, indexStatsReq)
+	resp, err := q.next.Do(ctx, indexStatsReq)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, reqHttp); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
+	return resp.(*IndexStatsResponse).Response, nil
 
-	resHttp, err := q.statsRT.RoundTrip(reqHttp)
-	if err != nil {
-		return nil, err
-	}
-
-	indexStatsRes, err := q.codec.DecodeResponse(ctx, resHttp, indexStatsReq)
-	if err != nil {
-		return nil, err
-	}
-
-	return indexStatsRes.(*IndexStatsResponse).Response, nil
 }
 
 func (q *querySizeLimiter) skipRequestType(r queryrangebase.Request) bool {
-	if _, ok := r.(*logproto.IndexStatsRequest); ok {
-		return true
-	}
-
-	return false
+	_, ok := r.(*logproto.IndexStatsRequest)
+	return ok
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log, ctx := spanlogger.New(ctx, "query_size_limits")
-	defer log.Finish()
-
 	if q.skipRequestType(r) {
 		return q.next.Do(ctx, r)
 	}
+
+	log, ctx := spanlogger.New(ctx, "query_size_limits")
+	defer log.Finish()
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.Limits.MaxQueryBytesRead); maxBytesRead > 0 {
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.maxQueryBytesRead); maxBytesRead > 0 {
 		stats, err := q.getIndexStatsForRequest(ctx, r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get index stats for query", err.Error())
