@@ -369,9 +369,9 @@ null
 		<tr>
 			<td>enterprise.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-"main-96f32b9f"
+"nil"
 </pre>
 </td>
 		</tr>
@@ -1683,7 +1683,7 @@ true
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
 </pre>
