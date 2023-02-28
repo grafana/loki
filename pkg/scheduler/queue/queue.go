@@ -42,11 +42,6 @@ type Request any
 // RequestChannel is a channel that queues Requests
 type RequestChannel chan Request
 
-type Queue interface {
-	EnqueueRequest(tenant string, req Request, maxQueriers int, successFn func()) error
-	Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error)
-}
-
 // RequestQueue holds incoming requests in per-tenant queues. It also assigns each tenant specified number of queriers,
 // and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
 // in a fair fashion.
