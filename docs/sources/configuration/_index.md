@@ -511,6 +511,11 @@ engine:
 # The maximum number of concurrent remote read queries allowed.
 # CLI flag: -querier.max-remote-read-concurrent
 [max_remote_read_concurrent: <int> | default = 5]
+
+# remote read query batch size to use until 'limit' is reached.If equal to 0,
+# the batch feature will be disable.
+# CLI flag: -querier.remote-read-batch
+[remote_read_batch: <int> | default = 0]
 ```
 
 ### query_scheduler

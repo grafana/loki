@@ -213,10 +213,12 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 
 		err := r.ParseForm()
 		if err != nil {
-			http.Error(w, "recording rule r.ParseForm(),err:"+err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 		request, err := loghttp.ParseRangeQuery(r)
-
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		limit := request.Limit
 		data := make([]logproto.Entry, 0)
 		for i := 0; i < int(limit); i++ {

@@ -18,7 +18,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	 
+
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/iter"
