@@ -62,23 +62,6 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 
 }
 
-func (q *Querier) queryLog(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
-	resps := make([]iter.EntryIterator, len(q.secondaries))
-	err := concurrency.ForEachJob(ctx, len(q.secondaries), q.readConcurrency, func(ctx context.Context, idx int) error {
-		remoteStore := q.secondaries[idx]
-		iter, _, err := remoteStore.SelectLogDetails(ctx, params)
-		if err != nil {
-			return err
-		}
-		resps[idx] = iter
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return resps, nil
-}
-
 // queryBatchLog Fetch the results from the remote in batches.
 func (q *Querier) queryBatchLog(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	allTotal := int(params.Limit)
