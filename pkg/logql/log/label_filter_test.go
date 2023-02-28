@@ -438,7 +438,9 @@ func TestCreateStringFilterSimplifications(t *testing.T) {
 		lbls := NewBaseLabelsBuilder().ForLabels(
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-			}, 0)
+			},
+			0,
+		)
 
 		f := NewStringLabelFilter(&labels.Matcher{
 			Type:  labels.MatchRegexp,

@@ -346,16 +346,17 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 }
 
 func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	var value string
 	if s.Name == logqlmodel.ErrorLabel {
-		return line, s.Matches(lbs.GetErr())
+		value = lbs.GetErr()
+	} else {
+		value, _ = lbs.Get(s.Name)
 	}
 
-	v, _ := lbs.Get(s.Name)
 	if s.checkExists {
-		return line, len(v) > 0
+		return line, len(value) > 0
 	}
-
-	return line, s.Matches(v)
+	return line, s.Matches(value)
 }
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
@@ -372,7 +373,15 @@ func parseRegexpLabelFilter(m *labels.Matcher) (LabelFilterer, bool) {
 	reg = reg.Simplify()
 
 	// attempt to improve regex with tricks
-	return simplifyLabelFilterRegex(reg, m)
+	f, ok := simplifyLabelFilterRegex(reg, m)
+	if !ok {
+		allNonGreedy(reg)
+		return &StringLabelFilter{
+			Matcher: labels.MustNewMatcher(m.Type, m.Name, reg.String()),
+		}, true
+	}
+
+	return f, true
 }
 
 func simplifyLabelFilterRegex(reg *syntax.Regexp, m *labels.Matcher) (LabelFilterer, bool) {
