@@ -115,7 +115,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -194,8 +193,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -351,7 +350,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -461,8 +459,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -535,8 +533,8 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -691,7 +689,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -824,8 +821,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1028,7 +1025,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -1161,8 +1157,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1366,7 +1362,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -1512,8 +1507,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -1742,7 +1737,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -1904,8 +1898,8 @@ overrides:
 			Port: 9095,
 		},
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		StorageDirectory: "/tmp/loki",
 		MaxConcurrent: MaxConcurrent{
@@ -2047,7 +2041,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -2206,8 +2199,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -2466,7 +2459,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -2613,8 +2605,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",
@@ -2770,7 +2762,6 @@ memberlist:
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   max_concurrent: 2
   query_ingesters_within: 3h
@@ -2957,8 +2948,8 @@ overrides:
 		Namespace: "test-ns",
 		Name:      "test",
 		Compactor: Address{
-			FQDN:     "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
-			Port:     9095,
+			FQDN: "loki-compactor-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
 		},
 		FrontendWorker: Address{
 			FQDN: "loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local",

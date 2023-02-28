@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -536,12 +537,12 @@ func (e *LabelFmtExpr) String() string {
 }
 
 type JSONExpressionParser struct {
-	Expressions []log.JSONExpression
+	Expressions []log.LabelExtractionExpr
 
 	implicit
 }
 
-func newJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
+func newJSONExpressionParser(expressions []log.LabelExtractionExpr) *JSONExpressionParser {
 	return &JSONExpressionParser{
 		Expressions: expressions,
 	}
@@ -564,6 +565,48 @@ func (j *JSONExpressionParser) String() string {
 		sb.WriteString(strconv.Quote(exp.Expression))
 
 		if i+1 != len(j.Expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
+type internedStringSet map[string]struct {
+	s  string
+	ok bool
+}
+
+type LogfmtExpressionParser struct {
+	Expressions []log.LabelExtractionExpr
+	dec         *logfmt.Decoder
+	keys        internedStringSet
+
+	implicit
+}
+
+func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr) *LogfmtExpressionParser {
+	return &LogfmtExpressionParser{
+		Expressions: expressions,
+	}
+}
+
+func (l *LogfmtExpressionParser) Shardable() bool { return true }
+
+func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
+
+func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
+	return log.NewLogfmtExpressionParser(l.Expressions)
+}
+
+func (l *LogfmtExpressionParser) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	for i, exp := range l.Expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(l.Expressions) {
 			sb.WriteString(",")
 		}
 	}
@@ -930,9 +973,9 @@ type Grouping struct {
 func (g Grouping) String() string {
 	var sb strings.Builder
 	if g.Without {
-		sb.WriteString(" without")
+		sb.WriteString(" without ")
 	} else if len(g.Groups) > 0 {
-		sb.WriteString(" by")
+		sb.WriteString(" by ")
 	}
 
 	if len(g.Groups) > 0 {
@@ -1174,8 +1217,15 @@ func (e *BinOpExpr) String() string {
 // impl SampleExpr
 func (e *BinOpExpr) Shardable() bool {
 	if e.Opts != nil && e.Opts.VectorMatching != nil {
-		// prohibit sharding when we're changing the label groupings, such as on or ignoring
-		return false
+		matching := e.Opts.VectorMatching
+		// prohibit sharding when we're changing the label groupings,
+		// such as when using `on` grouping or when using
+		// `ignoring` with a non-zero set of labels to ignore.
+		// `ignoring ()` is effectively the zero value
+		// that doesn't mutate labels and is shardable.
+		if matching.On || len(matching.MatchingLabels) > 0 {
+			return false
+		}
 	}
 	return shardableOps[e.Op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
 }
@@ -1755,7 +1805,7 @@ func (e *VectorExpr) Value() (float64, error) {
 
 func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Shardable() bool                         { return false }
 func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }

@@ -232,7 +232,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newVectorIterator(val, q.Step().Nanoseconds(), q.Start().UnixNano(), q.End().UnixNano()), nil
+		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -944,34 +944,34 @@ func literalStepEvaluator(
 
 // vectorIterator return simple vector like (1).
 type vectorIterator struct {
-	step, end, current int64
-	val                float64
+	stepMs, endMs, currentMs int64
+	val                      float64
 }
 
 func newVectorIterator(val float64,
-	step, start, end int64) *vectorIterator {
-	if step == 0 {
-		step = 1
+	stepMs, startMs, endMs int64) *vectorIterator {
+	if stepMs == 0 {
+		stepMs = 1
 	}
 	return &vectorIterator{
-		val:     val,
-		step:    step,
-		end:     end,
-		current: start - step,
+		val:       val,
+		stepMs:    stepMs,
+		endMs:     endMs,
+		currentMs: startMs - stepMs,
 	}
 }
 
 func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
-	r.current = r.current + r.step
-	if r.current > r.end {
+	r.currentMs = r.currentMs + r.stepMs
+	if r.currentMs > r.endMs {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
 	vectorPoint := promql.Sample{
-		Point: promql.Point{T: r.current, V: r.val},
+		Point: promql.Point{T: r.currentMs, V: r.val},
 	}
 	results = append(results, vectorPoint)
-	return true, r.current, results
+	return true, r.currentMs, results
 }
 
 func (r *vectorIterator) Close() error {

@@ -27,6 +27,9 @@
 // Index Gateway support
 (import 'index-gateway.libsonnet') +
 
+// BoltDB Shipper support. Anything that modifies the compactor must be imported after this.
+(import 'boltdb_shipper.libsonnet') +
+
 // Multi-zone ingester related config
 (import 'multi-zone.libsonnet') +
 
@@ -34,7 +37,4 @@
 (import 'memberlist.libsonnet') +
 
 // Prometheus ServiceMonitor
-(import 'servicemonitor.libsonnet') +
-
-// BoltDB Shipper support. This should be the last one to get imported.
-(import 'boltdb_shipper.libsonnet')
+(import 'servicemonitor.libsonnet')

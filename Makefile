@@ -29,7 +29,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.27.1
+BUILD_IMAGE_VERSION := 0.28.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -760,11 +760,18 @@ validate-example-configs: loki
 # Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
+	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configuration)
+	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
+	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > ./docs/sources/configuration/examples.md
+	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
 	# Append each configuration and its file name to examples.md
-	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
+	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
+		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+		cat $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
+		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+	done
+
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc

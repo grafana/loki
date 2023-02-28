@@ -1,5 +1,7 @@
 ## Main
 
+- [8578](https://github.com/grafana/loki/pull/8578) **xperimental**: Refactor status update to reduce API calls
+- [8577](https://github.com/grafana/loki/pull/8577) **Red-GV**: Store gateway tenant information in secret instead of configmap
 - [8397](https://github.com/grafana/loki/pull/8397) **periklis**: Update Loki operand to v2.7.3
 - [8308](https://github.com/grafana/loki/pull/8308) **aminesnow**: operator: Cleanup ruler resources when disabled
 - [8336](https://github.com/grafana/loki/pull/8336) **periklis**: Update Loki operand to v2.7.2
@@ -9,6 +11,9 @@
 - [8173](https://github.com/grafana/loki/pull/8173) **periklis**: Remove custom webhook cert mounts for OLM-based deployment (OpenShift)
 - [8001](https://github.com/grafana/loki/pull/8001) **aminesnow**: Add API validation to Alertmanager header auth config
 - [8087](https://github.com/grafana/loki/pull/8087) **xperimental**: Fix status not updating when state of pods changes
+
+## 0.1.0 (2023-01-10)
+
 - [8068](https://github.com/grafana/loki/pull/8068) **periklis**: Use lokistack-gateway replicas from size table
 - [8068](https://github.com/grafana/loki/pull/8068) **periklis**: Use lokistack-gateway replicas from size table
 - [7839](https://github.com/grafana/loki/pull/7839) **aminesnow**: Configure Alertmanager per-tenant
