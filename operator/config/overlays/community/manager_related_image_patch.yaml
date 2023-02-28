@@ -12,3 +12,5 @@ spec:
             value: docker.io/grafana/loki:2.7.4
           - name: RELATED_IMAGE_GATEWAY
             value: quay.io/observatorium/api:latest
+          - name: RELATED_IMAGE_OPA
+            value: quay.io/observatorium/opa-openshift:latest

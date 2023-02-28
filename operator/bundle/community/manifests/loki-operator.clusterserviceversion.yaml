@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-39f2856
-    createdAt: "2023-03-23T18:39:42Z"
+    containerImage: docker.io/grafana/loki-operator:main-ee371a8
+    createdAt: "2023-03-24T05:22:30Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -160,7 +160,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.1.0
+  name: loki-operator.v0.2.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -1450,11 +1450,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.1.0
+          app.kubernetes.io/instance: loki-operator-v0.2.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.1.0
+          app.kubernetes.io/version: 0.2.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1486,7 +1486,9 @@ spec:
                   value: docker.io/grafana/loki:2.7.4
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
-                image: docker.io/grafana/loki-operator:main-39f2856
+                - name: RELATED_IMAGE_OPA
+                  value: quay.io/observatorium/opa-openshift:latest
+                image: docker.io/grafana/loki-operator:main-ee371a8
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1601,7 +1603,9 @@ spec:
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
-  version: 0.1.0
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
+  version: 0.2.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1
