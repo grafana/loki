@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -290,14 +289,12 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common s3 storage config is provided (with session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -351,14 +348,12 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common gcs storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -389,14 +384,12 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common azure storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -443,7 +436,6 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
@@ -451,7 +443,6 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common bos storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -483,7 +474,6 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
@@ -491,7 +481,6 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common swift storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -552,53 +541,12 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
-		})
-
-		t.Run("when common alibabacloud storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
-			alibabaCloudConfig := `common:
-  storage:
-    alibabacloud:
-      bucket: test-bucket
-      endpoint: https://test.endpoint
-      access_key_id: test_access_key_id
-      secret_access_key: test_secret_access_key`
-
-			config, defaults := testContext(alibabaCloudConfig, nil)
-
-			assert.Equal(t, "alibabacloud", config.Ruler.StoreConfig.Type)
-
-			for _, actual := range []alibaba.OssConfig{
-				config.Ruler.StoreConfig.AlibabaCloud,
-				config.StorageConfig.AlibabaStorageConfig,
-			} {
-				assert.Equal(t, "test-bucket", actual.Bucket)
-				assert.Equal(t, "https://test.endpoint", actual.Endpoint)
-				assert.Equal(t, "test_access_key_id", actual.AccessKeyID)
-				assert.Equal(t, "test_secret_access_key", actual.SecretAccessKey)
-			}
-
-			// should remain empty
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
-			// should remain empty
-			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
-			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 		})
 
 		t.Run("when common filesystem/local config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -621,14 +569,12 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("explicit ruler storage object storage configuration provided via config file is preserved", func(t *testing.T) {
