@@ -571,6 +571,29 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
+type DistinctFilterExpr struct {
+	label string
+	implicit
+}
+
+func newDistinctFilterExpr(label string) *DistinctFilterExpr {
+	return &DistinctFilterExpr{
+		label: label,
+	}
+}
+
+func (e *DistinctFilterExpr) Shardable() bool { return false }
+
+func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
+
+func (e *DistinctFilterExpr) Stage() (log.Stage, error) {
+	return log.NewDistinctFilter(e.label)
+}
+
+func (e *DistinctFilterExpr) String() string {
+	return fmt.Sprintf("%s %s %s ", OpPipe, OpFilterDistinct, e.label)
+}
+
 type internedStringSet map[string]struct {
 	s  string
 	ok bool
@@ -807,6 +830,8 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
+
+	OpFilterDistinct = "distinct"
 
 	// drop labels
 	OpDrop = "drop"

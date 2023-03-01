@@ -211,6 +211,33 @@ func (a orFilter) ToStage() Stage {
 	}
 }
 
+type distinctFilter struct {
+	data  map[string]int
+	label string
+}
+
+func NewDistinctFilter(label string) (Stage, error) {
+	return &distinctFilter{
+		label: label,
+		data:  make(map[string]int, 0),
+	}, nil
+}
+func (r *distinctFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if val, ok := lbs.Get(r.label); ok {
+		_, ok := r.data[val]
+		if ok {
+			return line, false
+		}
+		r.data[val] = 1
+		return line, true
+	}
+	return line, false
+}
+
+func (r *distinctFilter) RequiredLabelNames() []string {
+	return []string{}
+}
+
 type regexpFilter struct {
 	*regexp.Regexp
 }
