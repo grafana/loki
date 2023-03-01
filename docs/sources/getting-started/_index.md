@@ -74,27 +74,27 @@ Enter your query into the **Log browser** box, and click on the blue **Run query
 
 To see all the log lines that flog has generated:
 ```
-{container="evaluate-loki_flog_1"}
+{container="evaluate-loki-flog-1"}
 ```
 
 The flog app will generate log lines for invented HTTP requests.
 To see all `GET` log lines, enter the query:
 
 ```
-{container="evaluate-loki_flog_1"} |= "GET"
+{container="evaluate-loki-flog-1"} |= "GET"
 ```
 For `POST` methods:
 ```
-{container="evaluate-loki_flog_1"} |= "POST"
+{container="evaluate-loki-flog-1"} |= "POST"
 ```
 
 To see every log line with a 401 status (unauthorized error): 
 ```
-{container="evaluate-loki_flog_1"} | json | status="401"
+{container="evaluate-loki-flog-1"} | json | status="401"
 ```
 To see every log line other than those that contain the value 401: 
 ```
-{container="evaluate-loki_flog_1"} != "401"
+{container="evaluate-loki-flog-1"} != "401"
 ```
 
 Refer to [query examples]({{<relref "../logql/query_examples">}}) for more examples.
