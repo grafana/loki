@@ -1,5 +1,6 @@
 ## Main
 
+- [8666](https://github.com/grafana/loki/pull/8666) **xperimental**: Fix version inconsistency in generated OpenShift bundle
 - [8578](https://github.com/grafana/loki/pull/8578) **xperimental**: Refactor status update to reduce API calls
 - [8577](https://github.com/grafana/loki/pull/8577) **Red-GV**: Store gateway tenant information in secret instead of configmap
 - [8397](https://github.com/grafana/loki/pull/8397) **periklis**: Update Loki operand to v2.7.3
