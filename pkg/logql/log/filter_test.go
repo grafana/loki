@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_SimplifiedRegex(t *testing.T) {
@@ -204,4 +207,55 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 
 func Test_rune(t *testing.T) {
 	require.True(t, newContainsFilter([]byte("foo"), true).Filter([]byte("foo")))
+}
+
+func Test_DistinctFilter(t *testing.T) {
+
+	c := struct {
+		name          string
+		label         string
+		lbs           labels.Labels
+		input         []string
+		expectedCount int
+		expectedLines []string
+	}{
+		name:  "distinct test",
+		label: "id",
+		lbs: labels.Labels{
+			{Name: logqlmodel.ErrorLabel, Value: errJSON},
+			{Name: "status", Value: "200"},
+			{Name: "method", Value: "POST"},
+		},
+		input: []string{
+			`{"event": "access", "id": "1", "msg": "1"}`,
+			`{"event": "access", "id": "1", "time": "2"}`,
+			`{"event": "access", "id": "2", "time": "3"}`,
+			`{"event": "access", "id": "2", "time": "4"}`,
+			`{"event": "access", "id": "1", "time": "2023-02-28 15:12:11"}`,
+		},
+		expectedCount: 2,
+		expectedLines: []string{
+			`{"event": "access", "id": "1", "msg": "1"}`,
+			`{"event": "access", "id": "2", "time": "3"}`,
+		},
+	}
+
+	distinctFilter, err := NewDistinctFilter(c.label)
+	require.NoError(t, err)
+
+	total := 0
+	passLines := make([]string, 0)
+	for _, line := range c.input {
+		b := NewBaseLabelsBuilder().ForLabels(c.lbs, c.lbs.Hash())
+		NewJSONParser().Process(1, []byte(line), b)
+		_, pass := distinctFilter.Process(1, []byte(line), b)
+		if pass {
+			total++
+			passLines = append(passLines, line)
+		}
+	}
+
+	require.Equal(t, c.expectedCount, total)
+	require.Equal(t, c.expectedLines, passLines)
+
 }
