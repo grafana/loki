@@ -431,7 +431,7 @@ func BenchmarkLineLabelFilters(b *testing.B) {
 		"foo, 世界", allunicode(), "fooÏbar",
 	}, ",")
 	lbl := NewBaseLabelsBuilder().ForLabels(labels.Labels{
-		{"foo", fixture},
+		{Name: "foo", Value: fixture},
 	}, 0)
 
 	for _, test := range []struct {
