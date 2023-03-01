@@ -33,6 +33,20 @@ func (trueFilter) ToStage() Stage       { return NoopStage }
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
 var TrueFilter = trueFilter{}
 
+type existsFilter struct{}
+
+func (existsFilter) Filter(_ []byte) bool { return true }
+func (existsFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, len(line) > 0
+		},
+	}
+}
+
+// ExistsFilter is a filter that returns and matches when a line has any characters.
+var ExistsFilter = existsFilter{}
+
 type notFilter struct {
 	Filterer
 }
@@ -424,6 +438,10 @@ func simplify(reg *syntax.Regexp) (Filterer, bool) {
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
+		}
+	case syntax.OpPlus:
+		if len(reg.Sub) == 1 && reg.Sub[0].Op == syntax.OpAnyCharNotNL { // simplify ".+"
+			return ExistsFilter, true
 		}
 	case syntax.OpEmptyMatch:
 		return TrueFilter, true
