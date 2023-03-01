@@ -48,6 +48,10 @@ type tenantQueues struct {
 	sortedQueriers []string
 }
 
+type Queue interface {
+	Chan() RequestChannel
+}
+
 type tenantQueue struct {
 	ch RequestChannel
 
@@ -62,6 +66,10 @@ type tenantQueue struct {
 
 	// Points back to 'users' field in queues. Enables quick cleanup.
 	index int
+}
+
+func (q *tenantQueue) Chan() RequestChannel {
+	return q.ch
 }
 
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
@@ -145,7 +153,7 @@ func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) RequestChan
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierID string) (RequestChannel, string, QueueIndex) {
+func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierID string) (Queue, string, QueueIndex) {
 	uid := lastUserIndex
 
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
@@ -177,7 +185,7 @@ func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierI
 			}
 		}
 
-		return q.ch, u, uid
+		return q, u, uid
 	}
 	return nil, "", uid
 }
