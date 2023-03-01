@@ -427,7 +427,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
 
 // applyStorageConfig will attempt to apply a common storage config for either
-// s3, gcs, azure, or swift to all the places we create a storage client.
+// s3, gcs, azure, swift, or alibabacloud to all the places we create a storage client.
 // If any specific configs for an object storage client have been provided elsewhere in the
 // configuration file, applyStorageConfig will not override them.
 // If multiple storage configurations are provided, applyStorageConfig will return an error
@@ -506,6 +506,18 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
 			r.StorageConfig.Swift = r.Common.Storage.Swift
 			r.CompactorConfig.SharedStoreType = config.StorageTypeSwift
+			r.StorageConfig.Hedging = r.Common.Storage.Hedging
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.AlibabaCloud, defaults.StorageConfig.AlibabaStorageConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "alibabacloud"
+			r.Ruler.StoreConfig.AlibabaCloud = r.Common.Storage.AlibabaCloud
+			r.StorageConfig.AlibabaStorageConfig = r.Common.Storage.AlibabaCloud
+			r.CompactorConfig.SharedStoreType = config.StorageTypeAlibabaCloud
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
