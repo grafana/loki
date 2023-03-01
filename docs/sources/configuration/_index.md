@@ -2222,7 +2222,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # a query request. If a specific per-tenant timeout is used, this timeout is
 # ignored.
 # CLI flag: -querier.query-timeout
-[query_timeout: <duration> | default = 1m]
+[query_timeout: <duration> | default = 0s]
 
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
