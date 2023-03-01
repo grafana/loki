@@ -207,7 +207,7 @@ func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryr
 	// Get Stats for this query
 	var indexStatsReq definitions.Request = &logproto.IndexStatsRequest{}
 	indexStatsReq = indexStatsReq.WithStartEnd(r.GetStart(), r.GetEnd())
-	indexStatsReq = indexStatsReq.WithQuery(matchers)
+	indexStatsReq = indexStatsReq.WithQuery(syntax.MatchersString(matchers))
 
 	resp, err := q.next.Do(ctx, indexStatsReq)
 	if err != nil {

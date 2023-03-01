@@ -134,26 +134,27 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	return matcherExpr.Mts, nil
 }
 
-// ParseMatchersFromQuery
-func ExtractMatchersFromQuery(input string) (string, error) {
+// ExtractMatchersFromQuery extracts the matchers from a query.
+// compared to ParseMatchers, it will not fail if the query contains anything else.
+func ExtractMatchersFromQuery(input string) ([]*labels.Matcher, error) {
 	expr, err := ParseExpr(input)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	var matchersStr string
+	var matchers []*labels.Matcher
 	expr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
 		case *MatchersExpr:
-			matchersStr = concrete.String()
+			matchers = concrete.Matchers()
 		}
 	})
 
-	if matchersStr == "" {
-		return "", errors.New("failed to extract matchers from query")
+	if len(matchers) == 0 {
+		return nil, errors.New("failed to extract matchers from query")
 	}
 
-	return matchersStr, nil
+	return matchers, nil
 }
 
 func MatchersString(xs []*labels.Matcher) string {
