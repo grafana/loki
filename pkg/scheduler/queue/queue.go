@@ -142,8 +142,8 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			request := <-queue
-			if len(queue) == 0 {
+			request := <-queue.Chan()
+			if len(queue.Chan()) == 0 {
 				q.queues.deleteQueue(tenant)
 			}
 
