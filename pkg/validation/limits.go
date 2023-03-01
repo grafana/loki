@@ -96,10 +96,10 @@ type Limits struct {
 	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	QuerySplitDuration   model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MinShardingLookback  model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead    flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxSubqueryBytesRead flagext.ByteSize `yaml:"max_subquery_bytes_read" json:"max_subquery_bytes_read"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -227,8 +227,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MaxQueryBytesRead.Set("0B")
 	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "TODO: Max number of bytes a query would fetch")
-	_ = l.MaxQuerierBytesRead.Set("0B")
-	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "TODO: Max number of bytes a sub query would fetch after splitting and sharding")
+	_ = l.MaxSubqueryBytesRead.Set("0B")
+	f.Var(&l.MaxSubqueryBytesRead, "frontend.max-subquery-bytes-read", "TODO: Max number of bytes a sub query would fetch after splitting and sharding")
 
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -486,9 +486,9 @@ func (o *Overrides) MaxQueryBytesRead(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
 }
 
-// MaxQuerierBytesRead returns the maximum bytes a sub query can read after splitting and sharding.
-func (o *Overrides) MaxQuerierBytesRead(userID string) int {
-	return o.getOverridesForUser(userID).MaxQuerierBytesRead.Val()
+// MaxSubqueryBytesRead returns the maximum bytes a sub query can read after splitting and sharding.
+func (o *Overrides) MaxSubqueryBytesRead(userID string) int {
+	return o.getOverridesForUser(userID).MaxSubqueryBytesRead.Val()
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
