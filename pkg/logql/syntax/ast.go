@@ -202,7 +202,7 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
 		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		case *LineFilterExpr, *LabelFilterExpr, *DistinctFilterExpr:
 			return true
 		default:
 			continue
@@ -582,7 +582,7 @@ func newDistinctFilterExpr(label string) *DistinctFilterExpr {
 	}
 }
 
-func (e *DistinctFilterExpr) Shardable() bool { return false }
+func (e *DistinctFilterExpr) Shardable() bool { return true }
 
 func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
 
