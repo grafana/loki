@@ -339,7 +339,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 		return &StringLabelFilter{Matcher: m}
 	}
 
-	f, err := NewFilter(m.Value, m.Type)
+	f, err := NewLabelFilter(m.Value, m.Type)
 	if err != nil {
 		return &StringLabelFilter{Matcher: m}
 	}
