@@ -300,18 +300,18 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				labelMap[string(k)] = string(v)
 			}
 
-			processedLabels := relabel.Process(labels.FromMap(labelMap), s.relabelConfig...)
+			processedLabels, keep := relabel.Process(labels.FromMap(labelMap), s.relabelConfig...)
 
 			var labels = make(model.LabelSet)
 			for k, v := range processedLabels.Map() {
 				labels[model.LabelName(k)] = model.LabelValue(v)
 			}
 
-			// Drop empty targets (drop in relabeling).
-			if processedLabels == nil {
-				dropped = append(dropped, target.NewDroppedTarget("dropping target, no labels", discoveredLabels))
-				level.Debug(s.log).Log("msg", "dropping target, no labels")
-				s.metrics.failedTargets.WithLabelValues("empty_labels").Inc()
+			// Drop targets if instructed to drop in relabeling.
+			if !keep {
+				dropped = append(dropped, target.NewDroppedTarget("dropped target", discoveredLabels))
+				level.Debug(s.log).Log("msg", "dropped target")
+				s.metrics.failedTargets.WithLabelValues("dropped").Inc()
 				continue
 			}
 

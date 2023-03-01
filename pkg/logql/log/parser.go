@@ -347,7 +347,7 @@ type LogfmtExpressionParser struct {
 	keys        internedStringSet
 }
 
-func NewLogfmtExpressionParser(expressions []XExpression) (*LogfmtExpressionParser, error) {
+func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpressionParser, error) {
 	if len(expressions) == 0 {
 		return nil, fmt.Errorf("no logfmt expression provided")
 	}
@@ -447,7 +447,7 @@ type JSONExpressionParser struct {
 	keys internedStringSet
 }
 
-func NewJSONExpressionParser(expressions []XExpression) (*JSONExpressionParser, error) {
+func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
 	paths := make(map[string][]interface{})
 
 	for _, exp := range expressions {

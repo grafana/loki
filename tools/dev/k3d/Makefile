@@ -57,6 +57,9 @@ apply-enterprise-helm-cluster:
 apply-loki-helm-cluster:
 	tk apply --ext-code enterprise=false environments/helm-cluster
 
+apply-empty-helm-cluster:
+	tk apply --ext-code enterprise=false environments/helm-cluster/empty.jsonnet
+
 down:
 	k3d cluster delete helm-cluster
 
@@ -151,3 +154,12 @@ helm-upgrade-loki-ha-single-binary:
 
 helm-uninstall-loki-binary:
 	$(HELM) uninstall loki-single-binary -n loki
+
+helm-install-kube-state-metrics:
+	helm install kube-state-metrics --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/kube-state-metrics.yaml
+
+helm-install-enterprise-logs-cloud-monitoring:
+	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"
+
+helm-upgrade-enterprise-logs-cloud-monitoring:
+	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"
