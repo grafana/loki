@@ -283,6 +283,38 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "missing hash ring spec configuration - memberlist",
+		spec: v1.LokiStack{
+			Spec: v1.LokiStackSpec{
+				HashRing: &v1.HashRingSpec{
+					Type: v1.HashRingMemberList,
+				},
+				Storage: v1.ObjectStorageSpec{
+					Schemas: []v1.ObjectStorageSchema{
+						{
+							Version:       v1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       v1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.NotFound(
+					field.NewPath("Spec").Child("HashRing").Child("Memberlist"),
+					nil,
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {

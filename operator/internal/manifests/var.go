@@ -19,6 +19,8 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
+	gossipBindAddrEnvVarName = "POD_IP"
+
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
 	lokiGRPCPortName         = "grpclb"

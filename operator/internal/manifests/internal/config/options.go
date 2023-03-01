@@ -20,7 +20,7 @@ type Options struct {
 	Name                  string
 	Compactor             Address
 	FrontendWorker        Address
-	GossipRing            Address
+	GossipRing            GossipRing
 	Querier               Address
 	IndexGateway          Address
 	Ruler                 Ruler
@@ -53,6 +53,16 @@ type Address struct {
 	FQDN string
 	// Port is required
 	Port int
+}
+
+// GossipRing defines the memberlist configuration
+type GossipRing struct {
+	// BindAddress is optional, defaults to private networks
+	BindAddrs []string
+	// BindPort is required
+	BindPort int
+	// MembersDiscoveryAddr is required
+	MembersDiscoveryAddr string
 }
 
 // Ruler configuration

@@ -345,6 +345,58 @@ type ClusterProxy struct {
 	NoProxy string `json:"noProxy,omitempty"`
 }
 
+// HashRingType defines the type of hash ring which can be used with the Loki cluster.
+//
+// +kubebuilder:validation:Enum=memberlist
+type HashRingType string
+
+const (
+	// HashRingMemberList when using memberlist for the distributed hash ring.
+	HashRingMemberList HashRingType = "memberlist"
+)
+
+// MemberListNetworkType defines the type of pod network to use for advertising IPs to the ring.
+type MemberListNetworkType string
+
+const (
+	// MemberListPrivateNetwork when using the private pod networks (RFC 1918 and RFC 6598)
+	MemberListPrivateNetwork MemberListNetworkType = "private"
+	// MemberListPublicNetwork when using the public pod networks, i.e will use status.podIP
+	MemberListPublicNetwork MemberListNetworkType = "public"
+)
+
+// MemberListSpec defines the configuration for the memberlist based hash ring.
+type MemberListSpec struct {
+	// BindNetworkType defines the type of network to use to advertise IPs to the ring.
+	// Defaults to the private network available to the current pod. Alternatively the
+	// pod public network can be used in case private networks (RFC 1918 and RFC 6598)
+	// are not available.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:private","urn:alm:descriptor:com.tectonic.ui:select:public"},displayName="Hash Ring Type"
+	// +kubebuilder:default:=private
+	BindNetworkType MemberListNetworkType `json:"bindNetworkType"`
+}
+
+// HashRingSpec defines the hash ring configuration
+type HashRingSpec struct {
+	// Type of hash ring implementation that should be used
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:memberlist"},displayName="Type"
+	// +kubebuilder:default:=memberlist
+	Type HashRingType `json:"type"`
+
+	// MemberList configuration spec
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Memberlist Config"
+	MemberList *MemberListSpec `json:"memberlist,omitempty"`
+}
+
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
 type ObjectStorageTLSSpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
@@ -673,6 +725,13 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small","urn:alm:descriptor:com.tectonic.ui:select:1x.small","urn:alm:descriptor:com.tectonic.ui:select:1x.medium"},displayName="LokiStack Size"
 	Size LokiStackSizeType `json:"size"`
+
+	// HashRing defines the spec for the distributed hash ring configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Hash Ring"
+	HashRing *HashRingSpec `json:"hashRing,omitempty"`
 
 	// Storage defines the spec for the object storage endpoint to store logs.
 	//

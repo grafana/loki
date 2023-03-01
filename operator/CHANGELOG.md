@@ -1,5 +1,6 @@
 ## Main
 
+- [8672](https://github.com/grafana/loki/pull/8672) **periklis**: Add support for memberlist bind network configuration
 - [8800](https://github.com/grafana/loki/pull/8800) **aminesnow**: Promote AlertingRules, RecordingRules and RulerConfig from v1beta1 to v1
 - [8792](https://github.com/grafana/loki/pull/8792) **orenc1**: Improve documentation for LokiStack installation with ODF Object Storage
 - [8791](https://github.com/grafana/loki/pull/8791) **periklis**: Expand OLM skip range for OpenShift Logging 5.7 release (OpenShift)

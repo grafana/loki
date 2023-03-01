@@ -182,6 +182,68 @@ func randomConfigOptions() manifests.Options {
 	}
 }
 
+func TestConfigOptions_GossipRingConfig(t *testing.T) {
+	tt := []struct {
+		desc        string
+		spec        lokiv1.LokiStackSpec
+		wantOptions config.GossipRing
+	}{
+		{
+			desc: "default bind private network addr",
+			spec: lokiv1.LokiStackSpec{},
+			wantOptions: config.GossipRing{
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected bind private network addr",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						BindNetworkType: lokiv1.MemberListPrivateNetwork,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected bind public network addr",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						BindNetworkType: lokiv1.MemberListPublicNetwork,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				BindAddrs:            []string{"${POD_IP}"},
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			inOpt := manifests.Options{
+				Name:      "my-stack",
+				Namespace: "my-ns",
+				Stack:     tc.spec,
+			}
+			options := manifests.ConfigOptions(inOpt)
+			require.Equal(t, tc.wantOptions, options.GossipRing)
+		})
+	}
+}
+
 func TestConfigOptions_RetentionConfig(t *testing.T) {
 	tt := []struct {
 		desc        string
