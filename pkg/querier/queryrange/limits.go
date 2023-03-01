@@ -227,6 +227,8 @@ func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryr
 
 // skipRequestType returns whether we should enforce the q.maxQueryBytesRead limit
 // on the r request type.
+// This is needed when we have two instances of this querySizeLimiter in the same middleware pipeline
+// since we don't want to compute the stats for the stats request from the upper querySizeLimiter.
 func (q *querySizeLimiter) skipRequestType(r queryrangebase.Request) bool {
 	_, ok := r.(*logproto.IndexStatsRequest)
 	return ok

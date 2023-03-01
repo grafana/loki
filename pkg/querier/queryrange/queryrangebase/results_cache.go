@@ -211,6 +211,9 @@ func NewResultsCacheMiddleware(
 	}), nil
 }
 
+// skipRequestType returns whether we should cache the r request type.
+// This is needed when we have middlewares that send different requests types down
+// in the pipeline that do not support caching.
 func (s *resultsCache) skipRequestType(r Request) bool {
 	_, ok := r.(*logproto.IndexStatsRequest)
 	return ok
