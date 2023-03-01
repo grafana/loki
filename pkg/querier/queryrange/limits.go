@@ -49,6 +49,7 @@ type Limits interface {
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(string) int
 	MaxQueryBytesRead(u string) int
+	MaxQuerierBytesRead(u string) int
 }
 
 type limits struct {
