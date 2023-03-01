@@ -30,7 +30,9 @@ import (
 )
 
 const (
-	limitErrTmpl = "maximum of series (%d) reached for a single query"
+	limitErrTmpl                   = "maximum of series (%d) reached for a single query"
+	limErrQueryTooManyBytesTmpl    = "the query would read too many bytes (query: %s, limit: %s)"
+	limErrSubqueryTooManyBytesTmpl = "after splitting and sharding, at least one sub-query would read too many bytes (query: %s, limit: %s)"
 )
 
 var (
@@ -187,18 +189,22 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 type querySizeLimiter struct {
 	next              queryrangebase.Handler
 	maxQueryBytesRead func(string) int
+	errorTemplate     string
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
-func NewQuerySizeLimiterMiddleware(maxQueryBytesRead func(string) int) queryrangebase.Middleware {
+// The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
+func NewQuerySizeLimiterMiddleware(maxQueryBytesRead func(string) int, errorTemplate string) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &querySizeLimiter{
 			next:              next,
 			maxQueryBytesRead: maxQueryBytesRead,
+			errorTemplate:     errorTemplate,
 		}
 	})
 }
 
+// getIndexStatsForRequest return the index stats for the matchers in r's query
 func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryrangebase.Request) (*logproto.IndexStatsResponse, error) {
 	matchers, err := syntax.ExtractMatchersFromQuery(r.GetQuery())
 	if err != nil {
@@ -219,6 +225,8 @@ func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryr
 
 }
 
+// skipRequestType returns whether we should enforce the q.maxQueryBytesRead limit
+// on the r request type.
 func (q *querySizeLimiter) skipRequestType(r queryrangebase.Request) bool {
 	_, ok := r.(*logproto.IndexStatsRequest)
 	return ok
@@ -246,7 +254,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		if int(stats.Bytes) > maxBytesRead {
 			statsBytesStr := flagext.ByteSize(stats.Bytes).String()
 			maxBytesReadStr := flagext.ByteSize(maxBytesRead).String()
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooManyBytes, statsBytesStr, maxBytesReadStr)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.errorTemplate, statsBytesStr, maxBytesReadStr)
 		}
 	}
 

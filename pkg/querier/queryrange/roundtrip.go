@@ -522,7 +522,7 @@ func NewMetricTripperware(
 	// Limit the bytes the query would fetch regardless of splitting and sharding.
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead),
+		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
 	)
 
 	queryRangeMiddleware = append(
@@ -583,7 +583,7 @@ func NewMetricTripperware(
 	// Limit the bytes the sub-queries would fetch after splitting and sharding
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQuerierBytesRead),
+		NewQuerySizeLimiterMiddleware(limits.MaxQuerierBytesRead, limErrSubqueryTooManyBytesTmpl),
 	)
 
 	if cfg.MaxRetries > 0 {
