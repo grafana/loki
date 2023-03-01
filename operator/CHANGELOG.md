@@ -27,6 +27,7 @@
 - [8776](https://github.com/grafana/loki/pull/8776) **Red-GV**: Update go to v1.20, k8s libraries to v1.26.2, and OpenShift libraries to v4.13
 - [8707](https://github.com/grafana/loki/pull/8707) **aminesnow**: Fix gateway's nodeSelector and tolerations
 - [8666](https://github.com/grafana/loki/pull/8666) **xperimental**: Fix version inconsistency in generated OpenShift bundle
+- [8661](https://github.com/grafana/loki/pull/8661) **xuanyunhui**: Add a new Object Storage Type for AlibabaCloud OSS
 - [8578](https://github.com/grafana/loki/pull/8578) **xperimental**: Refactor status update to reduce API calls
 - [8577](https://github.com/grafana/loki/pull/8577) **Red-GV**: Store gateway tenant information in secret instead of configmap
 - [8397](https://github.com/grafana/loki/pull/8397) **periklis**: Update Loki operand to v2.7.3
