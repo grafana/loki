@@ -292,6 +292,7 @@ func NewLogFilterTripperware(
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 	}
 
@@ -326,6 +327,12 @@ func NewLogFilterTripperware(
 		)
 	}
 
+	// Limit the bytes the sub-queries would fetch after splitting and sharding
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrSubqueryTooManyBytesTmpl),
+	)
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware, queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
@@ -354,6 +361,7 @@ func NewLimitedTripperware(
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
+		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Limited queries only need to fetch up to the requested line limit worth of logs,
 		// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
@@ -395,6 +403,12 @@ func NewLimitedTripperware(
 			),
 		)
 	}
+
+	// Limit the bytes the sub-queries would fetch after splitting and sharding
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrSubqueryTooManyBytesTmpl),
+	)
 
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
@@ -633,6 +647,12 @@ func NewInstantMetricTripperware(
 			),
 		)
 	}
+
+	// Limit the bytes the sub-queries would fetch after sharding
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		NewQuerySizeLimiterMiddleware(limits.MaxQuerierBytesRead, limErrSubqueryTooManyBytesTmpl),
+	)
 
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
