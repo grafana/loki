@@ -333,6 +333,12 @@ type StringLabelFilter struct {
 // This is the only LabelFilterer that can filter out the __error__ label.
 // Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
 func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
+	// "" is a special case. It matches everything as a line
+	// filter but is an actual string match as a label filter
+	if m.Type == labels.MatchEqual && m.Value == "" {
+		return &StringLabelFilter{Matcher: m}
+	}
+
 	f, err := NewFilter(m.Value, m.Type)
 	if err != nil {
 		return &StringLabelFilter{Matcher: m}

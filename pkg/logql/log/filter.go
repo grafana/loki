@@ -35,11 +35,14 @@ var TrueFilter = trueFilter{}
 
 type existsFilter struct{}
 
-func (existsFilter) Filter(_ []byte) bool { return true }
-func (existsFilter) ToStage() Stage {
+func (e existsFilter) Filter(line []byte) bool {
+	return len(line) > 0
+}
+
+func (e existsFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, len(line) > 0
+			return line, e.Filter(line)
 		},
 	}
 }
