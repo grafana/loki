@@ -45,6 +45,13 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{- end }}
+    {{- with .ObjectStorage.AlibabaCloud}}
+    alibabacloud:
+      bucket: {{ .Bucket }}
+      endpoint: {{ .Endpoint }}
+      access_key_id: {{ .AccessKeyID }}
+      secret_access_key: {{ .SecretAccessKey }}
+    {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
   ring:
