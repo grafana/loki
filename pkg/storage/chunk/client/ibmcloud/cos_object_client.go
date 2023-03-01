@@ -3,6 +3,7 @@ package ibmcloud
 import (
 	"context"
 	"flag"
+	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
@@ -18,12 +19,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
-
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
 
 var (
@@ -217,14 +217,65 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 	return nil
 }
 
+// bucketFromKey maps a key to a bucket name
+func (c *COSObjectClient) bucketFromKey(key string) string {
+	if len(c.bucketNames) == 0 {
+		return ""
+	}
+
+	hasher := fnv.New32a()
+	hasher.Write([]byte(key)) //nolint: errcheck
+	hash := hasher.Sum32()
+
+	return c.bucketNames[hash%uint32(len(c.bucketNames))]
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-	return nil, 0, nil
+
+	var resp *cos.GetObjectOutput
+
+	// Map the key into a bucket
+	bucket := c.bucketFromKey(objectKey)
+
+	retries := backoff.New(ctx, c.cfg.BackoffConfig)
+	err := ctx.Err()
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during cos getObject")
+		}
+		err = instrument.CollectedRequest(ctx, "cos.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var requestErr error
+			resp, requestErr = c.hedgedS3.GetObjectWithContext(ctx, &cos.GetObjectInput{
+				Bucket: ibm.String(bucket),
+				Key:    ibm.String(objectKey),
+			})
+			return requestErr
+		})
+		var size int64
+		if resp.ContentLength != nil {
+			size = *resp.ContentLength
+		}
+		if err == nil && resp.Body != nil {
+			return resp.Body, size, nil
+		}
+		retries.Wait()
+	}
+	return nil, 0, errors.Wrap(err, "failed to get cos object")
 }
 
 // PutObject into the store
 func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return nil
+	return instrument.CollectedRequest(ctx, "cos.PutObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		putObjectInput := &cos.PutObjectInput{
+			Body:   object,
+			Bucket: ibm.String(c.bucketFromKey(objectKey)),
+			Key:    ibm.String(objectKey),
+		}
+
+		_, err := c.cos.PutObjectWithContext(ctx, putObjectInput)
+		return err
+	})
 }
 
 // List implements chunk.ObjectClient.
