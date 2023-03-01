@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -197,5 +198,72 @@ func watchAndLogDirEntries(t *testing.T, path string) {
 	require.NoError(t, err)
 	for _, dir := range dirs {
 		t.Logf("dir entry found: %s", dir.Name())
+	}
+}
+
+func BenchmarkWriter_WriteEntries(b *testing.B) {
+	type testCase struct {
+		lines          int
+		labelSetsCount int
+	}
+	var cases = []testCase{
+		{
+			lines:          1000,
+			labelSetsCount: 1,
+		},
+		{
+			lines:          1000,
+			labelSetsCount: 4,
+		},
+		{
+			lines:          1e6,
+			labelSetsCount: 1,
+		},
+		{
+			lines:          1e6,
+			labelSetsCount: 100,
+		},
+		{
+			lines:          1e7,
+			labelSetsCount: 1,
+		},
+		{
+			lines:          1e7,
+			labelSetsCount: 1e3,
+		},
+	}
+	for _, testCase := range cases {
+		b.Run(fmt.Sprintf("%d lines, %d different label sets", testCase.lines, testCase.labelSetsCount), func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				benchWriteEntries(b, testCase.lines, testCase.labelSetsCount)
+			}
+		})
+	}
+}
+
+func benchWriteEntries(b *testing.B, lines, labelSetCount int) {
+	logger := log.NewLogfmtLogger(os.Stdout)
+	dir := b.TempDir()
+
+	writer, err := NewWriter(Config{
+		Dir:           dir,
+		Enabled:       true,
+		MaxSegmentAge: time.Minute,
+	}, logger, prometheus.NewRegistry())
+	require.NoError(b, err)
+	defer func() {
+		writer.Stop()
+	}()
+
+	for i := 0; i < lines; i++ {
+		writer.Chan() <- api.Entry{
+			Labels: model.LabelSet{
+				"someLabel": model.LabelValue(fmt.Sprint(i % labelSetCount)),
+			},
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      fmt.Sprintf("some line being written %d", i),
+			},
+		}
 	}
 }

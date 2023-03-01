@@ -67,6 +67,33 @@ func (w *wrapper) Log(record *wal.Record) error {
 		return nil
 	}
 
+	// The code below extracts the wal write operations to when possible, batch both series and records writes
+	if len(record.Series) > 0 && len(record.RefEntries) > 0 {
+		return w.logBatched(record)
+	}
+	return w.logSingle(record)
+}
+
+// logBatched logs to the WAL both series and records, batching the operation to prevent unnecessary page flushes.
+func (w *wrapper) logBatched(record *wal.Record) error {
+	seriesBuf := recordPool.GetBytes()[:0]
+	entriesBuf := recordPool.GetBytes()[:0]
+	defer func() {
+		recordPool.PutBytes(seriesBuf)
+		recordPool.PutBytes(entriesBuf)
+	}()
+
+	seriesBuf = record.EncodeSeries(seriesBuf)
+	entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, entriesBuf)
+	// Always write series then entries
+	if err := w.wal.Log(seriesBuf, entriesBuf); err != nil {
+		return err
+	}
+	return nil
+}
+
+// logSingle logs to the WAL series and records in separate WAL operation. This causes a page flush after each operation.
+func (w *wrapper) logSingle(record *wal.Record) error {
 	buf := recordPool.GetBytes()[:0]
 	defer func() {
 		recordPool.PutBytes(buf)
