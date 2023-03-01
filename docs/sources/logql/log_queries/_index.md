@@ -268,6 +268,16 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{<relref "../ip">}}) for details.
 
+### Distinct filter expression
+
+Distinct filter expression allows filtering log line using their original and extracted labels to filter out duplicate label values.
+
+For example the following expression:
+
+```logql
+{job="varlogs"} |distinct filename
+```
+
 ### Parser expression
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{<relref "../metric_queries">}}).
