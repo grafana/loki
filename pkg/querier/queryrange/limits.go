@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -204,25 +205,71 @@ func NewQuerySizeLimiterMiddleware(maxQueryBytesRead func(string) int, errorTemp
 	})
 }
 
-// getIndexStatsForRequest return the index stats for the matchers in r's query
-func (q *querySizeLimiter) getIndexStatsForRequest(ctx context.Context, r queryrangebase.Request) (*logproto.IndexStatsResponse, error) {
-	matchers, err := syntax.ExtractMatchersFromQuery(r.GetQuery())
+// getBytesReadForRequest returns the number of bytes that would be read for the query in r.
+// Since the query expression may contain multiple stream matchers, this function sums up the
+// bytes that will be read for each stream.
+// E.g. for the following query:
+//
+//	count_over_time({job="foo"}[5m]) / count_over_time({job="bar"}[5m] offset 10m)
+//
+// this function will sum the bytes read for each of the following streams, taking into account
+// individual intervals and offsets
+//   - {job="foo"}
+//   - {job="bar"}
+//
+// TODO: This function shares a lot of code with dynamicShardResolver.Shards. I think we should extract the functionality to a common function?
+func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
+	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	// Get Stats for this query
-	var indexStatsReq definitions.Request = &logproto.IndexStatsRequest{}
-	indexStatsReq = indexStatsReq.WithStartEnd(r.GetStart(), r.GetEnd())
-	indexStatsReq = indexStatsReq.WithQuery(syntax.MatchersString(matchers))
-
-	resp, err := q.next.Do(ctx, indexStatsReq)
+	matcherGroups, err := syntax.MatcherGroups(expr)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	return resp.(*IndexStatsResponse).Response, nil
+	// TODO: Set concurrency dynamically as in shardResolverForConf?
+	const maxConcurrentIndexReq = 10
+	results := make([]*stats.Stats, len(matcherGroups), len(matcherGroups))
+	if err := concurrency.ForEachJob(ctx, len(matcherGroups), maxConcurrentIndexReq, func(ctx context.Context, i int) error {
+		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
+		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
+		adjustedFrom := model.Time(r.GetStart()).Add(-diff)
+		if matcherGroups[i].Interval == 0 {
+			// TODO: IIUC, this is needed for instant queries.
+			//       Should we use the MaxLookBackPeriod as done in shardResolverForConf?
+			adjustedFrom = adjustedFrom.Add(-100)
+		}
 
+		adjustedThrough := model.Time(r.GetEnd()).Add(-matcherGroups[i].Offset)
+
+		resp, err := q.next.Do(ctx, &logproto.IndexStatsRequest{
+			From:     adjustedFrom,
+			Through:  adjustedThrough,
+			Matchers: matchers,
+		})
+		if err != nil {
+			return err
+		}
+
+		casted, ok := resp.(*IndexStatsResponse)
+		if !ok {
+			return fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
+		}
+
+		results[i] = casted.Response
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+
+	var bytesRead uint64 = 0
+	for _, r := range results {
+		bytesRead += r.GetBytes()
+	}
+
+	return bytesRead, nil
 }
 
 // skipRequestType returns whether we should enforce the q.maxQueryBytesRead limit
@@ -248,13 +295,13 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	}
 
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.maxQueryBytesRead); maxBytesRead > 0 {
-		stats, err := q.getIndexStatsForRequest(ctx, r)
+		bytesRead, err := q.getBytesReadForRequest(ctx, r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get index stats for query", err.Error())
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query", err.Error())
 		}
 
-		if int(stats.Bytes) > maxBytesRead {
-			statsBytesStr := flagext.ByteSize(stats.Bytes).String()
+		if int(bytesRead) > maxBytesRead {
+			statsBytesStr := flagext.ByteSize(bytesRead).String()
 			maxBytesReadStr := flagext.ByteSize(maxBytesRead).String()
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.errorTemplate, statsBytesStr, maxBytesReadStr)
 		}
