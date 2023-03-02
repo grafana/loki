@@ -71,10 +71,16 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 	ctx := context.Background()
 	userMap, err := client.ListAllRuleGroups(ctx) // Client loads rules in its List method.
+
+	for u, _ := range userMap {
+		println("user = ", u)
+	}
+
 	require.NoError(t, err)
 
 	for _, u := range []string{user1, user2} {
 		actual, found := userMap[u]
+
 		require.True(t, found)
 
 		require.Equal(t, 2, len(actual))
@@ -82,4 +88,54 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
 		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
 	}
+}
+
+func TestListRules_withConfigMapSharding(t *testing.T) {
+	user1 := "user1"
+	shards := []string{"shard-0", "shard-1", "shard-3"}
+	namespace1 := "ns"
+
+	dir := t.TempDir()
+
+	ruleGroups := rulefmt.RuleGroups{
+		Groups: []rulefmt.RuleGroup{
+			{
+				Name:     "rule",
+				Interval: model.Duration(100 * time.Second),
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: yaml.Node{Kind: yaml.ScalarNode, Value: "test_rule"},
+						Expr:   yaml.Node{Kind: yaml.ScalarNode, Value: "up"},
+					},
+				},
+			},
+		},
+	}
+
+	b, err := yaml.Marshal(ruleGroups)
+	require.NoError(t, err)
+
+	for _, shardName := range shards {
+		err = os.MkdirAll(path.Join(dir, shardName, user1), 0777)
+		require.NoError(t, err)
+
+		err = os.WriteFile(path.Join(dir, shardName, user1, namespace1), b, 0777)
+		require.NoError(t, err)
+	}
+
+	client, err := NewLocalRulesClient(Config{
+		Directory: dir,
+	}, promRules.FileLoader{})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	userMap, err := client.ListAllRuleGroups(ctx)
+
+	require.NoError(t, err)
+
+	actual, found := userMap[user1]
+
+	require.True(t, found)
+	require.Equal(t, 3, len(actual))
+	require.Equal(t, rulespb.ToProto(user1, namespace1, ruleGroups.Groups[0]), actual[0])
 }
