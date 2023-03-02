@@ -95,6 +95,18 @@ Statefulsets are significantly more cumbersome to work with/upgrade/etc. Much of
 
 In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`. This will leave the pods alive but delete the statefulset. Then you may recreate the (updated) statefulset and one-by-one start deleting the `ingester-0` through `ingester-n` pods _in that order_, allowing the statefulset to spin up new pods to replace them.
 
+#### Scaling Down Using `/flush_shutdown` Endpoint and Lifecycle Hook
+
+1. **StatefulSets for Ordered Scaling Down**: Loki's ingesters should be scaled down one by one, which is efficiently handled by Kubernetes StatefulSets. This ensures an ordered and reliable scaling process, as described in the [Deployment and Scaling Guarantees](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#deployment-and-scaling-guarantees) documentation.
+
+2. **Using PreStop Lifecycle Hook**: During the pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the `/flush_shutdown` endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion.
+
+3. **Using terminationGracePeriodSeconds**: Provides time for the ingester to flush its data before being deleted, if flushing data takes more than 30 minutes, you may need to increase it.
+
+4. **Cleaning Persistent Volumes**: Persistent volumes are automatically cleaned up by leveraging the [enableStatefulSetAutoDeletePVC](https://kubernetes.io/blog/2021/12/16/kubernetes-1-23-statefulset-pvc-auto-deletion/) feature in Kubernetes.
+
+By following the above steps, you can ensure a smooth scaling down process for Loki's ingesters while maintaining data integrity and minimizing potential disruptions.
+
 ### Non-Kubernetes or baremetal deployments
 
 * When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
