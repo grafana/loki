@@ -25,7 +25,7 @@ func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 	_, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, false, prometheus.NewRegistry(), wal.Config{
 		Dir:     walDir,
 		Enabled: true,
-	})
+	}, func(subscriber wal.WriterEventSubscriber) {})
 	require.Error(t, err)
 }
 
@@ -68,9 +68,10 @@ func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
 	clientMetrics := NewMetrics(reg)
 	manager, err := NewManager(clientMetrics, log.NewLogfmtLogger(os.Stdout), 0, 0, false, reg, wal.Config{
-		Dir:     walDir,
-		Enabled: true,
-	}, testClientConfig)
+		Dir:           walDir,
+		Enabled:       true,
+		MaxSegmentAge: time.Second * 10,
+	}, func(subscriber wal.WriterEventSubscriber) {}, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 

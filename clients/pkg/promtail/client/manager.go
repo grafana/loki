@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 )
 
+type AddWriterSubscriberFunc func(subscriber wal.WriterEventSubscriber)
+
 type Stoppable interface {
 	Stop()
 }
@@ -33,7 +35,16 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager
-func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int, maxLineSizeTruncate bool, reg prometheus.Registerer, walCfg wal.Config, clientCfgs ...Config) (*Manager, error) {
+func NewManager(
+	metrics *Metrics,
+	logger log.Logger,
+	maxStreams, maxLineSize int,
+	maxLineSizeTruncate bool,
+	reg prometheus.Registerer,
+	walCfg wal.Config,
+	subscribeToWriter AddWriterSubscriberFunc,
+	clientCfgs ...Config,
+) (*Manager, error) {
 	// TODO: refactor this to instantiate all clients types
 	var fake struct{}
 
@@ -64,7 +75,9 @@ func NewManager(metrics *Metrics, logger log.Logger, maxStreams, maxLineSize int
 		// Look for deleted segments with a frequency of MaxSegmentAge / 2. Segments are checked if they are safe to delete
 		// every MaxSegmentAge/10. We don't want a high frequency since SeriesReset calls in the writeTo lock the cache,
 		// but we don't want to fall behind too much.
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger, walCfg.MaxSegmentAge/2)
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger)
+		// subscribe watcher to writer events, such as old segments being reclaimed
+		subscribeToWriter(watcher)
 		watcher.Start()
 		watchers = append(watchers, watcher)
 	}

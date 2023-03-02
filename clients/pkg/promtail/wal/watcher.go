@@ -55,31 +55,31 @@ type Watcher struct {
 	// the metric/log line corresponds.
 	id string
 
-	writeTo                         WriteTo
-	done                            chan struct{}
-	quit                            chan struct{}
-	walDir                          string
-	logger                          log.Logger
-	MaxSegment                      int
-	seenSegments                    diffset
-	deletedSegmentsWatcherFrequency time.Duration
+	writeTo    WriteTo
+	done       chan struct{}
+	quit       chan struct{}
+	walDir     string
+	logger     log.Logger
+	MaxSegment int
 
 	metrics *WatcherMetrics
 }
 
+func (w *Watcher) NotifySegmentsCleaned(num int) {
+	w.writeTo.SeriesReset(num)
+}
+
 // NewWatcher creates a new Watcher.
-func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger, deletedSegmentsWatcherFrequency time.Duration) *Watcher {
+func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger) *Watcher {
 	return &Watcher{
-		walDir:                          walDir,
-		id:                              id,
-		writeTo:                         writeTo,
-		quit:                            make(chan struct{}),
-		done:                            make(chan struct{}),
-		MaxSegment:                      -1,
-		deletedSegmentsWatcherFrequency: deletedSegmentsWatcherFrequency,
-		seenSegments:                    diffset{},
-		logger:                          logger,
-		metrics:                         metrics,
+		walDir:     walDir,
+		id:         id,
+		writeTo:    writeTo,
+		quit:       make(chan struct{}),
+		done:       make(chan struct{}),
+		MaxSegment: -1,
+		logger:     logger,
+		metrics:    metrics,
 	}
 }
 
@@ -87,7 +87,6 @@ func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, log
 func (w *Watcher) Start() {
 	w.metrics.watchersRunning.WithLabelValues().Inc()
 	go w.mainLoop()
-	go w.runSeriesResetWatcher()
 }
 
 // mainLoop retries when there's an error reading a specific segment or advancing one, but leaving a bigger time in-between
@@ -105,58 +104,6 @@ func (w *Watcher) mainLoop() {
 		case <-time.After(5 * time.Second):
 		}
 	}
-}
-
-func (w *Watcher) runSeriesResetWatcher() {
-	ticker := time.NewTicker(w.deletedSegmentsWatcherFrequency)
-	for {
-		select {
-		case <-ticker.C:
-			// run series reset
-			if err := w.readSegmentsAndEmitSeriesResets(); err != nil {
-				level.Error(w.logger).Log("msg", "error emitting series resets", "err", err)
-			}
-		case <-w.quit:
-			// closing
-			ticker.Stop()
-			return
-		}
-	}
-}
-
-func (w *Watcher) readSegmentsAndEmitSeriesResets() error {
-	segments, err := readSegmentNumbers(w.walDir)
-	if err != nil {
-		return err
-	}
-	// Set differences are used to calculate the segments that we deleted between one run and the other. The initial
-	// seenSegments set is an empty set. Therefore, the first run will reclaim all segments in diff = empty - new, which
-	// is empty.
-	// In following runs, seenSegments is the list of segments seen in the last run, therefore diff = seen - new are the
-	// segments s such that s is part of seen, but not part of new, hence deleted.
-	newSeenSegments := newDiffset(segments)
-	diff := w.seenSegments.Difference(newSeenSegments)
-	w.seenSegments = newSeenSegments
-	if len(diff) == 0 {
-		level.Debug(w.logger).Log("msg", "No segment was gc-ed. No series being resetted")
-		return nil
-	}
-	// Since segments are created with a segment number that is increasing, we can order them by it's number like
-	// segment i, segment i+1, ..., segment n. Also, we can assume that if segment i was last written at time T, all
-	// segments before were last written at a time T', with T' < T.
-	// Promtail only has a single WAL writer, therefore at each time, the WAL has a single writer head. Also, this writer
-	// creates a routine that deletes segments older than a configured threshold. Considering the above, we can assure that
-	// if at some point a segment i was deleted, all segments numbered j with j <= i are deleted or safe to delete as well.
-	// Therefore, if SeriesReset is called with the highest numbered deleted segment in the diffset, then all previous
-	// were as well.
-	maxDeleted := -1
-	for s := range diff {
-		if s > maxDeleted {
-			maxDeleted = s
-		}
-	}
-	w.writeTo.SeriesReset(maxDeleted)
-	return nil
 }
 
 // Run the watcher, which will tail the WAL until the quit channel is closed
