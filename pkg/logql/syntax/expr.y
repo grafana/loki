@@ -41,6 +41,7 @@ import (
   LabelParser             *LabelParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
+  DistinctLabel           []string
   DistinctFilter          *DistinctFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
@@ -104,6 +105,7 @@ import (
 %type <LineFilters>           lineFilters
 %type <LineFilter>            lineFilter
 %type <DistinctFilter>        distinctFilter
+%type <DistinctLabel>         distinctLabel
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
 %type <DropLabelsExpr>        dropLabelsExpr
@@ -317,8 +319,13 @@ labelsFormat:
 labelFormatExpr:
       LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
+distinctLabel:
+    IDENTIFIER                     { $$ = []string{ $1 } }
+  | distinctLabel COMMA IDENTIFIER { $$ = append($1, $3) }
+  ;
+
 distinctFilter:
-      DISTINCT IDENTIFIER { $$ = newDistinctFilterExpr($2) };
+      DISTINCT distinctLabel { $$ = newDistinctFilterExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }

@@ -213,29 +213,29 @@ func Test_DistinctFilter(t *testing.T) {
 
 	c := struct {
 		name          string
-		label         string
+		label         []string
 		lbs           labels.Labels
 		input         []string
 		expectedCount int
 		expectedLines []string
 	}{
 		name:  "distinct test",
-		label: "id",
+		label: []string{"id", "time"},
 		lbs: labels.Labels{
 			{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			{Name: "status", Value: "200"},
 			{Name: "method", Value: "POST"},
 		},
 		input: []string{
-			`{"event": "access", "id": "1", "msg": "1"}`,
+			`{"event": "access", "id": "1", "time": "1"}`,
 			`{"event": "access", "id": "1", "time": "2"}`,
 			`{"event": "access", "id": "2", "time": "3"}`,
 			`{"event": "access", "id": "2", "time": "4"}`,
-			`{"event": "access", "id": "1", "time": "2023-02-28 15:12:11"}`,
+			`{"event": "access", "id": "1", "time": "5"}`,
 		},
 		expectedCount: 2,
 		expectedLines: []string{
-			`{"event": "access", "id": "1", "msg": "1"}`,
+			`{"event": "access", "id": "1", "time": "1"}`,
 			`{"event": "access", "id": "2", "time": "3"}`,
 		},
 	}

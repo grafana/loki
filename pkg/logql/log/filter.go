@@ -212,26 +212,36 @@ func (a orFilter) ToStage() Stage {
 }
 
 type distinctFilter struct {
-	data  map[string]int
-	label string
+	datas  map[string]map[string]int
+	labels []string
 }
 
-func NewDistinctFilter(label string) (Stage, error) {
+func NewDistinctFilter(labels []string) (Stage, error) {
+	datas := make(map[string]map[string]int, 0)
+	for _, label := range labels {
+		datas[label] = make(map[string]int, 0)
+	}
 	return &distinctFilter{
-		label: label,
-		data:  make(map[string]int, 0),
+		labels: labels,
+		datas:  datas,
 	}, nil
 }
 func (r *distinctFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if val, ok := lbs.Get(r.label); ok {
-		_, ok := r.data[val]
+	isPass := false
+	for _, label := range r.labels {
+		val, ok := lbs.Get(label)
+		if !ok {
+			return line, false
+
+		}
+		_, ok = r.datas[label][val]
 		if ok {
 			return line, false
 		}
-		r.data[val] = 1
-		return line, true
+		r.datas[label][val] = 1
+		isPass = true
 	}
-	return line, false
+	return line, isPass
 }
 
 func (r *distinctFilter) RequiredLabelNames() []string {

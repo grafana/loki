@@ -572,13 +572,13 @@ func (j *JSONExpressionParser) String() string {
 }
 
 type DistinctFilterExpr struct {
-	label string
+	labels []string
 	implicit
 }
 
-func newDistinctFilterExpr(label string) *DistinctFilterExpr {
+func newDistinctFilterExpr(labels []string) *DistinctFilterExpr {
 	return &DistinctFilterExpr{
-		label: label,
+		labels: labels,
 	}
 }
 
@@ -587,11 +587,19 @@ func (e *DistinctFilterExpr) Shardable() bool { return true }
 func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
 
 func (e *DistinctFilterExpr) Stage() (log.Stage, error) {
-	return log.NewDistinctFilter(e.label)
+	return log.NewDistinctFilter(e.labels)
 }
 
 func (e *DistinctFilterExpr) String() string {
-	return fmt.Sprintf("%s %s %s ", OpPipe, OpFilterDistinct, e.label)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFilterDistinct))
+	for i, label := range e.labels {
+		sb.WriteString(label)
+		if i+1 != len(e.labels) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
 }
 
 type internedStringSet map[string]struct {
