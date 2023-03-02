@@ -377,8 +377,9 @@ scrape_configs:
         target_label: message_key
 ```
 
-Only the `brokers` and `topics` is required.
-see the [configuration](../../configuration/#kafka) section for more information.
+Only the `brokers` and `topics` are required.
+Read the [configuration]({{< relref "configuration/#kafka" >}}) section for more information.
+
 
 ## GELF
 
