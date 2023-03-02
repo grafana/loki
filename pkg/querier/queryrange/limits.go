@@ -30,9 +30,9 @@ import (
 )
 
 const (
-	limitErrTmpl                   = "maximum of series (%d) reached for a single query"
-	limErrQueryTooManyBytesTmpl    = "the query would read too many bytes (query: %s, limit: %s)"
-	limErrSubqueryTooManyBytesTmpl = "after splitting and sharding, at least one sub-query would read too many bytes (query: %s, limit: %s)"
+	limitErrTmpl                  = "maximum of series (%d) reached for a single query"
+	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s)"
+	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled or the query is unshardable: (query: %s, limit: %s)"
 )
 
 var (
@@ -51,7 +51,7 @@ type Limits interface {
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(string) int
 	MaxQueryBytesRead(u string) int
-	MaxSubqueryBytesRead(u string) int
+	MaxQuerierBytesRead(u string) int
 }
 
 type limits struct {
