@@ -21,7 +21,6 @@ func (r *distinctFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]by
 		val, ok := lbs.Get(label)
 		if !ok {
 			return line, false
-
 		}
 		_, ok = r.datas[label][val]
 		if ok {
