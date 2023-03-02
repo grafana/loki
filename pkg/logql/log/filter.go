@@ -263,7 +263,7 @@ type equalFilter struct {
 	caseInsensitive bool
 }
 
-func (l *equalFilter) Filter(line []byte) bool {
+func (l equalFilter) Filter(line []byte) bool {
 	if len(l.match) != len(line) {
 		return false
 	}
@@ -283,8 +283,8 @@ func (l equalFilter) String() string {
 	return string(l.match)
 }
 
-func newEqualFilter(match []byte, caseInsensitive bool) *equalFilter {
-	return &equalFilter{match, caseInsensitive}
+func newEqualFilter(match []byte, caseInsensitive bool) Filterer {
+	return equalFilter{match, caseInsensitive}
 }
 
 type containsFilter struct {
