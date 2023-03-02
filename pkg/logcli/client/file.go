@@ -186,15 +186,15 @@ type limiter struct {
 	n int
 }
 
-func (l *limiter) MaxQuerySeries(userID string) int {
+func (l *limiter) MaxQuerySeries(ctx context.Context, userID string) int {
 	return l.n
 }
 
-func (l *limiter) QueryTimeout(userID string) time.Duration {
+func (l *limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
 	return time.Minute * 5
 }
 
-func (l *limiter) BlockedQueries(userID string) []*validation.BlockedQuery {
+func (l *limiter) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return []*validation.BlockedQuery{}
 }
 

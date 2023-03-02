@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
@@ -53,9 +54,10 @@ func ResetBoltDBIndexClientWithShipper() {
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	downloads.Limits
-	CardinalityLimit(userID string) int
-	MaxChunksPerQueryFromStore(userID string) int
-	MaxQueryLength(userID string) time.Duration
+	stores.StoreLimits
+	CardinalityLimit(string) int
+	// MaxChunksPerQueryFromStore(string) int
+	// MaxQueryLength(context.Context, string) time.Duration
 }
 
 // NamedStores helps configure additional object stores from a given storage provider
