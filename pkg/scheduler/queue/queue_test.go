@@ -49,13 +49,14 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		idx := StartIndex
+		idx := ""
 		for j := 0; j < maxOutstandingPerTenant*numTenants; j++ {
 			querier := ""
 		b:
 			// Find querier with at least one request to avoid blocking in getNextRequestForQuerier.
-			for _, q := range queues[i].queues.queues {
-				for qid := range q.queriers {
+			for _, q := range queues[i].queues.queues.Values() {
+				tq, _ := q.(*tenantQueue)
+				for qid := range tq.queriers {
 					querier = qid
 					break b
 				}
@@ -136,7 +137,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	querier2wg.Add(1)
 	go func() {
 		defer querier2wg.Done()
-		_, _, err := queue.Dequeue(ctx, StartIndex, "querier-2")
+		_, _, err := queue.Dequeue(ctx, "", "querier-2")
 		require.NoError(t, err)
 	}()
 

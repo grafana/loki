@@ -203,14 +203,13 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	f.requestQueue.RegisterQuerierConnection(querierID)
 	defer f.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastIndex := queue.StartIndex
+	lastQueueName := ""
 
 	for {
-		reqWrapper, idx, err := f.requestQueue.Dequeue(server.Context(), lastIndex, querierID)
+		reqWrapper, queueName, err := f.requestQueue.Dequeue(server.Context(), lastQueueName, querierID)
 		if err != nil {
 			return err
 		}
-		lastIndex = idx
 
 		req := reqWrapper.(*request)
 
@@ -229,9 +228,10 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		  it's possible that it's own queue would perpetually contain only expired requests.
 		*/
 		if req.originalCtx.Err() != nil {
-			lastIndex = lastIndex.ReuseLastIndex()
 			continue
 		}
+		// update last used queue name
+		lastQueueName = queueName
 
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.

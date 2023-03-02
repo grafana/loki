@@ -450,7 +450,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	s.requestQueue.RegisterQuerierConnection(querierID)
 	defer s.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastIndex := queue.StartIndex
+	lastIndex := ""
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
 	for s.isRunningOrStopping() {
@@ -458,7 +458,6 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		if err != nil {
 			return err
 		}
-		lastIndex = idx
 
 		r := req.(*schedulerRequest)
 
@@ -487,10 +486,10 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		if r.ctx.Err() != nil {
 			// Remove from pending requests.
 			s.cancelRequestAndRemoveFromPending(r.frontendAddress, r.queryID)
-
-			lastIndex = lastIndex.ReuseLastIndex()
 			continue
 		}
+		// update last index
+		lastIndex = idx
 
 		if err := s.forwardRequestToQuerier(querier, r); err != nil {
 			return err

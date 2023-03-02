@@ -6,6 +6,7 @@
 package queue
 
 import (
+	"container/list"
 	"math/rand"
 	"sort"
 	"time"
@@ -25,15 +26,80 @@ type querier struct {
 	disconnectedAt time.Time
 }
 
+type LinkedMap struct {
+	l        *list.List // LinkedList<TenantQueue>
+	elements map[string]*list.Element
+}
+
+func (m *LinkedMap) Init() *LinkedMap {
+	m.l = list.New()
+	m.elements = make(map[string]*list.Element)
+	return m
+}
+
+func (m *LinkedMap) Len() int {
+	return m.l.Len()
+}
+
+func (m *LinkedMap) Add(key string, value any) *list.Element {
+	// prevent inserting empty string as key or nil value
+	if key == "" || value == nil {
+		return nil
+	}
+	e := m.l.PushBack(value)
+	m.elements[key] = e
+	return e
+}
+
+func (m *LinkedMap) Get(key string) any {
+	if e, ok := m.elements[key]; ok {
+		return e.Value
+	}
+	return nil
+}
+
+func (m *LinkedMap) Remove(key string) any {
+	if e, ok := m.elements[key]; ok {
+		return m.l.Remove(e)
+	}
+	return nil
+}
+
+func (m *LinkedMap) Next(key string) any {
+	if e, ok := m.elements[key]; ok {
+		return e.Next()
+	}
+	// key == ""
+	return m.First()
+}
+
+func (m *LinkedMap) Keys() []string {
+	keys := make([]string, 0, len(m.elements))
+	for k := range m.elements {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (m *LinkedMap) Values() []any {
+	values := make([]interface{}, 0, len(m.elements))
+	for k := range m.elements {
+		values = append(values, m.elements[k].Value)
+	}
+	return values
+}
+
+func (m *LinkedMap) First() any {
+	if first := m.l.Front(); first != nil {
+		return first.Value
+	}
+	return nil
+}
+
 // This struct holds tenant queues for pending requests. It also keeps track of connected queriers,
 // and mapping between tenants and queriers.
 type tenantQueues struct {
-	queues map[string]*tenantQueue
-
-	// List of all tenants with queues, used for iteration when searching for next queue to handle.
-	// Tenants removed from the middle are replaced with "". To avoid skipping tenants during iteration, we only shrink
-	// this list when there are ""'s at the end of it.
-	tenants []string
+	queues *LinkedMap
 
 	maxUserQueueSize int
 
@@ -60,12 +126,12 @@ type tenantQueue struct {
 	queriers    map[string]struct{}
 	maxQueriers int
 
+	// name of the queue
+	name string
+
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
 	seed int64
-
-	// Points back to 'users' field in queues. Enables quick cleanup.
-	index int
 }
 
 func (q *tenantQueue) Chan() RequestChannel {
@@ -73,9 +139,9 @@ func (q *tenantQueue) Chan() RequestChannel {
 }
 
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
+	queues := &LinkedMap{}
 	return &tenantQueues{
-		queues:           map[string]*tenantQueue{},
-		tenants:          nil,
+		queues:           queues.Init(),
 		maxUserQueueSize: maxUserQueueSize,
 		forgetDelay:      forgetDelay,
 		queriers:         map[string]*querier{},
@@ -84,29 +150,18 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 }
 
 func (q *tenantQueues) len() int {
-	return len(q.queues)
+	return q.queues.Len()
 }
 
 func (q *tenantQueues) deleteQueue(tenant string) {
-	uq := q.queues[tenant]
-	if uq == nil {
-		return
-	}
-
-	delete(q.queues, tenant)
-	q.tenants[uq.index] = ""
-
-	// Shrink users list size if possible. This is safe, and no users will be skipped during iteration.
-	for ix := len(q.tenants) - 1; ix >= 0 && q.tenants[ix] == ""; ix-- {
-		q.tenants = q.tenants[:ix]
-	}
+	q.queues.Remove(tenant)
 }
 
 // Returns existing or new queue for a tenant.
 // MaxQueriers is used to compute which queriers should handle requests for this tenant.
 // If maxQueriers is <= 0, all queriers can handle this tenant's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) RequestChannel {
+func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) Queue {
 	// Empty tenant is not allowed, as that would break our tenants list ("" is used for free spot).
 	if tenant == "" {
 		return nil
@@ -116,78 +171,47 @@ func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) RequestChan
 		maxQueriers = 0
 	}
 
-	uq := q.queues[tenant]
-
-	if uq == nil {
-		uq = &tenantQueue{
-			ch:    make(RequestChannel, q.maxUserQueueSize),
-			seed:  util.ShuffleShardSeed(tenant, ""),
-			index: -1,
+	tq, _ := q.queues.Get(tenant).(*tenantQueue)
+	if tq == nil {
+		tq = &tenantQueue{
+			ch:   make(RequestChannel, q.maxUserQueueSize),
+			seed: util.ShuffleShardSeed(tenant, ""),
+			name: tenant,
 		}
-		q.queues[tenant] = uq
-
-		// Add user to the list of users... find first free spot, and put it there.
-		for ix, u := range q.tenants {
-			if u == "" {
-				uq.index = ix
-				q.tenants[ix] = tenant
-				break
-			}
-		}
-
-		// ... or add to the end.
-		if uq.index < 0 {
-			uq.index = len(q.tenants)
-			q.tenants = append(q.tenants, tenant)
-		}
+		q.queues.Add(tenant, tq)
 	}
 
-	if uq.maxQueriers != maxQueriers {
-		uq.maxQueriers = maxQueriers
-		uq.queriers = shuffleQueriersForTenants(uq.seed, maxQueriers, q.sortedQueriers, nil)
+	if tq.maxQueriers != maxQueriers {
+		tq.maxQueriers = maxQueriers
+		tq.queriers = shuffleQueriersForTenants(tq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
-	return uq.ch
+	return tq
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierID string) (Queue, string, QueueIndex) {
-	uid := lastUserIndex
+func (q *tenantQueues) getNextQueueForQuerier(lastTenant string, querierID string) (Queue, string) {
+	newTenant := lastTenant
 
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
 	// any more queries to it.
 	if info := q.queriers[querierID]; info == nil || info.shuttingDown {
-		return nil, "", uid
+		return nil, newTenant
 	}
 
-	for iters := 0; iters < len(q.tenants); iters++ {
-		uid = uid + 1
-
-		// Don't use "mod len(q.users)", as that could skip users at the beginning of the list
-		// for example when q.users has shrunk since last call.
-		if int(uid) >= len(q.tenants) {
-			uid = 0
-		}
-
-		u := q.tenants[uid]
-		if u == "" {
-			continue
-		}
-
-		q := q.queues[u]
-
-		if q.queriers != nil {
+	for tq, _ := q.queues.Next(newTenant).(*tenantQueue); tq != nil; {
+		newTenant = tq.name
+		if tq.queriers != nil {
 			if _, ok := q.queriers[querierID]; !ok {
 				// This querier is not handling the user.
 				continue
 			}
 		}
-
-		return q, u, uid
+		return tq, newTenant
 	}
-	return nil, "", uid
+	return nil, ""
 }
 
 func (q *tenantQueues) addQuerierConnection(querierID string) {
@@ -292,7 +316,8 @@ func (q *tenantQueues) forgetDisconnectedQueriers(now time.Time) int {
 func (q *tenantQueues) recomputeUserQueriers() {
 	scratchpad := make([]string, 0, len(q.sortedQueriers))
 
-	for _, uq := range q.queues {
+	for _, queue := range q.queues.Values() {
+		uq := queue.(*tenantQueue)
 		uq.queriers = shuffleQueriersForTenants(uq.seed, uq.maxQueriers, q.sortedQueriers, scratchpad)
 	}
 }

@@ -95,7 +95,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 	}
 
 	select {
-	case queue <- req:
+	case queue.Chan() <- req:
 		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
@@ -112,7 +112,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 // Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
 // If querier finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
-func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error) {
+func (q *RequestQueue) Dequeue(ctx context.Context, last string, querierID string) (Request, string, error) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -134,8 +134,8 @@ FindQueue:
 	}
 
 	for {
-		queue, tenant, idx := q.queues.getNextQueueForQuerier(last, querierID)
-		last = idx
+		queue, tenant := q.queues.getNextQueueForQuerier(last, querierID)
+		last = tenant
 		if queue == nil {
 			break
 		}
@@ -144,10 +144,10 @@ FindQueue:
 		for {
 			request := <-queue.Chan()
 			if len(queue.Chan()) == 0 {
-				q.queues.deleteQueue(tenant)
+				q.queues.deleteQueue(last)
 			}
 
-			q.metrics.QueueLength.WithLabelValues(tenant).Dec()
+			q.metrics.QueueLength.WithLabelValues(last).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
