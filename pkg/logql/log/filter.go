@@ -258,6 +258,35 @@ func (r regexpFilter) ToStage() Stage {
 	}
 }
 
+type equalFilter struct {
+	match           []byte
+	caseInsensitive bool
+}
+
+func (l *equalFilter) Filter(line []byte) bool {
+	if len(l.match) != len(line) {
+		return false
+	}
+
+	return contains(line, l.match, l.caseInsensitive)
+}
+
+func (l equalFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, l.Filter(line)
+		},
+	}
+}
+
+func (l equalFilter) String() string {
+	return string(l.match)
+}
+
+func newEqualFilter(match []byte, caseInsensitive bool) *equalFilter {
+	return &equalFilter{match, caseInsensitive}
+}
+
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
@@ -453,10 +482,9 @@ func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 		return simplify(reg, isLabel)
 	case syntax.OpLiteral:
 		if isLabel {
-			// labels don't have a concept of contains
-			return nil, false
+			return newEqualFilter([]byte(string(reg.Rune)), isCaseInsensitive(reg)), true
 		}
-		return newContainsFilter([]byte(string((reg.Rune))), isCaseInsensitive(reg)), true
+		return newContainsFilter([]byte(string(reg.Rune)), isCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
