@@ -238,8 +238,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when shuffle-sharding is enabled in the ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).")
-	_ = l.RetentionPeriod.Set("744h")
-	f.Var(&l.RetentionPeriod, "store.retention", "Retention to apply for the store, if the retention is enabled on the compactor side.")
+	_ = l.RetentionPeriod.Set("0s")
+	f.Var(&l.RetentionPeriod, "store.retention", "Retention to apply for the store, if the retention is enabled on the compactor side. Default is 0s which is equivalent to no retention.")
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Feature renamed to 'runtime configuration'; flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML).")
