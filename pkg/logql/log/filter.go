@@ -400,24 +400,31 @@ func (f containsAllFilter) ToStage() Stage {
 
 // NewFilter creates a new line filter from a match string and type.
 func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
-	return createFilter(match, mt, false)
-}
-
-// NewLabelFilter creates a new filter that has label regex semantics
-func NewLabelFilter(match string, mt labels.MatchType) (Filterer, error) {
-	return createFilter(match, mt, true)
-}
-
-func createFilter(match string, mt labels.MatchType, isLabel bool) (Filterer, error) {
 	switch mt {
 	case labels.MatchRegexp:
-		return parseRegexpFilter(match, true, isLabel)
+		return parseRegexpFilter(match, true, false)
 	case labels.MatchNotRegexp:
-		return parseRegexpFilter(match, false, isLabel)
+		return parseRegexpFilter(match, false, false)
 	case labels.MatchEqual:
 		return newContainsFilter([]byte(match), false), nil
 	case labels.MatchNotEqual:
 		return newNotFilter(newContainsFilter([]byte(match), false)), nil
+	default:
+		return nil, fmt.Errorf("unknown matcher: %v", match)
+	}
+}
+
+// NewLabelFilter creates a new filter that has label regex semantics
+func NewLabelFilter(match string, mt labels.MatchType) (Filterer, error) {
+	switch mt {
+	case labels.MatchRegexp:
+		return parseRegexpFilter(match, true, true)
+	case labels.MatchNotRegexp:
+		return parseRegexpFilter(match, false, true)
+	case labels.MatchEqual:
+		return newEqualFilter([]byte(match), false), nil
+	case labels.MatchNotEqual:
+		return newNotFilter(newEqualFilter([]byte(match), false)), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
