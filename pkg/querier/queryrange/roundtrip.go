@@ -330,7 +330,7 @@ func NewLogFilterTripperware(
 	// Limit the bytes the sub-queries would fetch after splitting and sharding
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrQuerierTooManyBytesTmpl),
+		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQueryBytesRead, limErrQuerierTooManyBytesTmpl),
 	)
 
 	if cfg.MaxRetries > 0 {
@@ -361,7 +361,7 @@ func NewLimitedTripperware(
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
-		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
+		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
 		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Limited queries only need to fetch up to the requested line limit worth of logs,
 		// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
@@ -407,7 +407,7 @@ func NewLimitedTripperware(
 	// Limit the bytes the sub-queries would fetch after splitting and sharding
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrQuerierTooManyBytesTmpl),
+		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQueryBytesRead, limErrQuerierTooManyBytesTmpl),
 	)
 
 	if cfg.MaxRetries > 0 {
@@ -536,7 +536,7 @@ func NewMetricTripperware(
 	// Limit the bytes the query would fetch regardless of splitting and sharding.
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
+		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
 	)
 
 	queryRangeMiddleware = append(
@@ -597,7 +597,7 @@ func NewMetricTripperware(
 	// Limit the bytes the sub-queries would fetch after splitting and sharding
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl),
+		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl),
 	)
 
 	if cfg.MaxRetries > 0 {
@@ -651,7 +651,7 @@ func NewInstantMetricTripperware(
 	// Limit the bytes the sub-queries would fetch after sharding
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl),
+		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl),
 	)
 
 	if cfg.MaxRetries > 0 {

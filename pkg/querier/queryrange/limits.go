@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
@@ -189,16 +190,22 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 type querySizeLimiter struct {
 	next              queryrangebase.Handler
+	cfg               []config.PeriodConfig
 	maxQueryBytesRead func(string) int
 	errorTemplate     string
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
 // The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
-func NewQuerySizeLimiterMiddleware(maxQueryBytesRead func(string) int, errorTemplate string) queryrangebase.Middleware {
+func NewQuerySizeLimiterMiddleware(
+	cfg []config.PeriodConfig,
+	maxQueryBytesRead func(string) int,
+	errorTemplate string,
+) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &querySizeLimiter{
 			next:              next,
+			cfg:               cfg,
 			maxQueryBytesRead: maxQueryBytesRead,
 			errorTemplate:     errorTemplate,
 		}
@@ -272,6 +279,36 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return bytesRead, nil
 }
 
+// TODO: This is pretty similar to ShardingConfigs.ValidRange, we should probably extract the functionality to a new function
+func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.PeriodConfig, error) {
+	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
+	if err != nil {
+		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration")
+	}
+
+	adjustedStart := model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset)
+	adjustedEnd := model.Time(r.GetEnd()).Add(-maxOffset)
+
+	for i, conf := range q.cfg {
+		// The query starts before the schema
+		if adjustedStart < conf.From.Time {
+			return config.PeriodConfig{}, errors.New("Start of the query falls outside any configured schema")
+		}
+
+		// This is the last config
+		if i == len(q.cfg)-1 {
+			return conf, nil
+		}
+
+		// The request is scoped into the current schema
+		if adjustedEnd < q.cfg[i+1].From.Time {
+			return conf, nil
+		}
+	}
+
+	return config.PeriodConfig{}, errors.New("Failed to find schema config for range")
+}
+
 // skipRequestType returns whether we should enforce the q.maxQueryBytesRead limit
 // on the r request type.
 // This is needed when we have two instances of this querySizeLimiter in the same middleware pipeline
@@ -282,12 +319,21 @@ func (q *querySizeLimiter) skipRequestType(r queryrangebase.Request) bool {
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	log, ctx := spanlogger.New(ctx, "query_size_limits")
+	defer log.Finish()
+
 	if q.skipRequestType(r) {
 		return q.next.Do(ctx, r)
 	}
 
-	log, ctx := spanlogger.New(ctx, "query_size_limits")
-	defer log.Finish()
+	// Only support TSDB
+	schemaCfg, err := q.getSchemaCfg(r)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get schema config", err.Error())
+	}
+	if schemaCfg.IndexType != config.TSDBType {
+		return q.next.Do(ctx, r)
+	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
