@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -185,7 +184,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	}
 
 	for _, buf := range cacheBufs {
-		chunkFetchedSize.With(labels.FromStrings("source", "cache").Map()).Observe(float64(len(buf)))
+		chunkFetchedSize.WithLabelValues("cache").Observe(float64(len(buf)))
 	}
 
 	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
@@ -204,7 +203,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	for _, c := range fromStorage {
 		bytes += c.Size()
 
-		chunkFetchedSize.With(labels.FromStrings("source", "store").Map()).Observe(float64(c.Size()))
+		chunkFetchedSize.WithLabelValues("store").Observe(float64(c.Size()))
 	}
 
 	st := stats.FromContext(ctx)
