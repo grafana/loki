@@ -133,7 +133,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 		getOrAdd(t, uq, uid, maxQueriersPerUser)
 
 		// Verify it has maxQueriersPerUser queriers assigned now.
-		qs := uq.queues[uid].queriers
+		qs := uq.mapping.GetByKey(uid).queriers
 		assert.Equal(t, maxQueriersPerUser, len(qs))
 	}
 
@@ -189,11 +189,11 @@ func TestQueuesConsistency(t *testing.T) {
 
 			r := rand.New(rand.NewSource(time.Now().Unix()))
 
-			lastUserIndexes := map[string]QueueIndex{}
+			n := 10000
+			lastUserIndexes := make(map[string]QueueIndex, n)
+			conns := make(map[string]int, n)
 
-			conns := map[string]int{}
-
-			for i := 0; i < 10000; i++ {
+			for i := 0; i < n; i++ {
 				switch r.Int() % 6 {
 				case 0:
 					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), 3))
@@ -204,9 +204,9 @@ func TestQueuesConsistency(t *testing.T) {
 				case 2:
 					uq.deleteQueue(generateTenant(r))
 				case 3:
-					q := generateQuerier(r)
-					uq.addQuerierConnection(q)
-					conns[q]++
+					qid := generateQuerier(r)
+					uq.addQuerierConnection(qid)
+					conns[qid]++
 				case 4:
 					q := generateQuerier(r)
 					if conns[q] > 0 {
@@ -397,7 +397,7 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *tenantQueues, tenant string, maxQueriers int) RequestChannel {
+func getOrAdd(t *testing.T, uq *tenantQueues, tenant string, maxQueriers int) Queue {
 	q := uq.getOrAddQueue(tenant, maxQueriers)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
@@ -405,8 +405,9 @@ func getOrAdd(t *testing.T, uq *tenantQueues, tenant string, maxQueriers int) Re
 	return q
 }
 
-func confirmOrderForQuerier(t *testing.T, uq *tenantQueues, querier string, lastUserIndex QueueIndex, qs ...RequestChannel) QueueIndex {
-	var n RequestChannel
+func confirmOrderForQuerier(t *testing.T, uq *tenantQueues, querier string, lastUserIndex QueueIndex, qs ...Queue) QueueIndex {
+	t.Helper()
+	var n Queue
 	for _, q := range qs {
 		n, _, lastUserIndex = uq.getNextQueueForQuerier(lastUserIndex, querier)
 		assert.Equal(t, q, n)
@@ -421,8 +422,8 @@ func isConsistent(uq *tenantQueues) error {
 	}
 
 	uc := 0
-	for ix, u := range uq.tenants {
-		q := uq.queues[u]
+	for _, u := range uq.mapping.Keys() {
+		q := uq.mapping.GetByKey(u)
 		if u != "" && q == nil {
 			return fmt.Errorf("user %s doesn't have queue", u)
 		}
@@ -434,10 +435,6 @@ func isConsistent(uq *tenantQueues) error {
 		}
 
 		uc++
-
-		if q.index != ix {
-			return fmt.Errorf("invalid user's index, expected=%d, got=%d", ix, q.index)
-		}
 
 		if q.maxQueriers == 0 && q.queriers != nil {
 			return fmt.Errorf("user %s has queriers, but maxQueriers=0", u)
@@ -452,7 +449,7 @@ func isConsistent(uq *tenantQueues) error {
 		}
 	}
 
-	if uc != len(uq.queues) {
+	if uc != uq.mapping.Len() {
 		return fmt.Errorf("inconsistent number of users list and user queues")
 	}
 
@@ -462,7 +459,8 @@ func isConsistent(uq *tenantQueues) error {
 // getUsersByQuerier returns the list of users handled by the provided querierID.
 func getUsersByQuerier(queues *tenantQueues, querierID string) []string {
 	var userIDs []string
-	for userID, q := range queues.queues {
+	for _, userID := range queues.mapping.Keys() {
+		q := queues.mapping.GetByKey(userID)
 		if q.queriers == nil {
 			// If it's nil then all queriers can handle this user.
 			userIDs = append(userIDs, userID)

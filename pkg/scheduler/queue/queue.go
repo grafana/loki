@@ -95,7 +95,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 	}
 
 	select {
-	case queue <- req:
+	case queue.Chan() <- req:
 		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
