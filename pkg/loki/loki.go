@@ -5,11 +5,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.uber.org/atomic"
 	"net/http"
 	"os"
 	rt "runtime"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
@@ -328,6 +329,17 @@ type Frontend interface {
 	CheckReady(_ context.Context) error
 }
 
+type CombinedLimits interface {
+	compactor.Limits
+	distributor.Limits
+	ingester.Limits
+	querier.Limits
+	queryrange.Limits
+	ruler.RulesLimits
+	scheduler.Limits
+	storage.StoreLimits
+}
+
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -341,7 +353,7 @@ type Loki struct {
 	Server                   *server.Server
 	InternalServer           *server.Server
 	ring                     *ring.Ring
-	overrides                *validation.Overrides
+	overrides                CombinedLimits
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
