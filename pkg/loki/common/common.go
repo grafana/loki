@@ -2,6 +2,7 @@ package common
 
 import (
 	"flag"
+
 	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 
 	"github.com/grafana/dskit/flagext"

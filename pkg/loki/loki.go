@@ -353,7 +353,7 @@ type Loki struct {
 	Server                   *server.Server
 	InternalServer           *server.Server
 	ring                     *ring.Ring
-	overrides                CombinedLimits
+	Overrides                CombinedLimits
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
