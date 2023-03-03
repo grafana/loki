@@ -42,29 +42,30 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				}
 			}
 		}
+
+	}
+
+	querierNames := make([]string, queriers)
+	for x := 0; x < queriers; x++ {
+		querierNames[x] = fmt.Sprintf("querier-%d", x)
 	}
 
 	ctx := context.Background()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		idx := StartIndex
-		for j := 0; j < maxOutstandingPerTenant*numTenants; j++ {
-			querier := ""
-		b:
-			// Find querier with at least one request to avoid blocking in getNextRequestForQuerier.
-			for _, q := range queues[i].queues.queues {
-				for qid := range q.queriers {
-					querier = qid
-					break b
+		for j := 0; j < queriers; j++ {
+			idx := StartIndex
+			for x := 0; x < maxOutstandingPerTenant*numTenants/queriers; x++ {
+				r, nidx, err := queues[i].Dequeue(ctx, idx, querierNames[j])
+				if r == nil {
+					break
 				}
+				if err != nil {
+					b.Fatal(err)
+				}
+				idx = nidx
 			}
-
-			_, nidx, err := queues[i].Dequeue(ctx, idx, querier)
-			if err != nil {
-				b.Fatal(err)
-			}
-			idx = nidx
 		}
 	}
 }
