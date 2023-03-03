@@ -263,7 +263,7 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 }
 
 // NotifySegmentsCleaned allows Watcher to implement NotifySegmentsCleaned, in order to receive notifications from a
-// Writer. In particualr, NotifySegmentsCleaned allows the Watcher to notify the attached WriteTo that some segments
+// Writer. In particular, NotifySegmentsCleaned allows the Watcher to notify the attached WriteTo that some segments
 // were reclaimed in order to clean up the series cache.
 func (w *Watcher) NotifySegmentsCleaned(num int) {
 	w.writeTo.SeriesReset(num)
