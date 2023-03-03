@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
@@ -67,6 +68,7 @@ type NamedStores struct {
 	GCS          map[string]gcp.GCSConfig             `yaml:"gcs"`
 	AlibabaCloud map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
 	Swift        map[string]openstack.SwiftConfig     `yaml:"swift"`
+	COS          map[string]ibmcloud.COSConfig 		  `yaml:"cos"` 
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -178,7 +180,7 @@ type Config struct {
 	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
 	Hedging                hedging.Config            `yaml:"hedging"`
 	NamedStores            NamedStores               `yaml:"named_stores"`
-
+	COSConfig       	   ibmcloud.COSConfig 		 `yaml:"cos"`
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
@@ -380,8 +382,14 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
+	case config.StorageTypeCOS:
+		c, err := NewObjectClient(name, cfg, clientMetrics)
+		if err != nil {
+			return nil, err
+		}
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc,config.StorageTypeCOS)
 	}
 }
 
@@ -548,7 +556,18 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 
 		return baidubce.NewBOSObjectStorage(&bosCfg)
+
+	case config.StorageTypeCOS:
+		cosCfg := cfg.COSConfig
+		if namedStore != "" {
+			var ok bool
+			cosCfg, ok = cfg.NamedStores.COS[namedStore]
+			if !ok {
+				return nil, fmt.Errorf("Unrecognized named cos storage config %s", name)
+			}
+		}
+		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem, config.StorageTypeCOS)
 	}
 }
