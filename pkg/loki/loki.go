@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/grafana/loki/pkg/coprocessor"
 	"go.uber.org/atomic"
 	"net/http"
 	"os"
@@ -86,6 +87,7 @@ type Config struct {
 	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
 	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
+	CoprocessorConfig   coprocessor.Config          `yaml:"coprocessor,omitempty"`
 	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
 	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
 	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
@@ -151,6 +153,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.StorageConfig.RegisterFlags(f)
 	c.IndexGateway.RegisterFlags(f)
 	c.ChunkStoreConfig.RegisterFlags(f)
+	c.CoprocessorConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)

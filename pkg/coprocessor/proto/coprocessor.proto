@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/grafana/loki/pkg/coprocessor/proto";
+
+message QueryPreQueryRequest {
+  string selector = 1;
+  uint32 limit = 2;
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  repeated string shards = 5 [(gogoproto.jsontag) = "shards,omitempty"];
+}
+
+message QueryPreQueryResponse {
+  bool pass = 1;
+}

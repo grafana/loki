@@ -168,6 +168,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # to wait before saving them to the backing store.
 [chunk_store_config: <chunk_store_config>]
 
+# Configures the coprocessor.
+[coprocessor: <coprocessor>]
+
 # Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
@@ -1868,6 +1871,20 @@ Configures the chunk index schema and where it is stored.
 
 ```yaml
 [configs: <list of period_configs>]
+```
+
+### coprocessor
+
+Configures the `coprocessor`.
+
+```yaml
+pre_query:
+  url:
+    [url: <url>]
+
+  # timeout.
+  # CLI flag: -coprocessor.pre-query-timeout
+  [timeout: <duration> | default = 2m]
 ```
 
 ### compactor

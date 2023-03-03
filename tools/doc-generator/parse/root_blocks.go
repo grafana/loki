@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/weaveworks/common/server"
 
+	"github.com/grafana/loki/pkg/coprocessor"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -109,6 +110,11 @@ var (
 			Name:       "schema_config",
 			StructType: reflect.TypeOf(storage_config.SchemaConfig{}),
 			Desc:       "Configures the chunk index schema and where it is stored.",
+		},
+		{
+			Name:       "coprocessor",
+			StructType: reflect.TypeOf(coprocessor.Config{}),
+			Desc:       "Configures the coprocessor.",
 		},
 		{
 			Name:       "compactor",
