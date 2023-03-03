@@ -59,6 +59,7 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for req := range receivedCh {
+			t.Logf("received request: %s", req.Request.String())
 			for _, stream := range req.Request.Streams {
 				received[stream.Labels] = append(received[stream.Labels], stream.Entries...)
 			}

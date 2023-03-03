@@ -20,12 +20,18 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+type notifier func(subscriber wal.WriterEventSubscriber)
+
+func (n notifier) Subscribe(subscriber wal.WriterEventSubscriber) {
+	n(subscriber)
+}
+
 func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 	walDir := t.TempDir()
 	_, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, false, prometheus.NewRegistry(), wal.Config{
 		Dir:     walDir,
 		Enabled: true,
-	}, func(subscriber wal.WriterEventSubscriber) {})
+	}, notifier(func(subscriber wal.WriterEventSubscriber) {}))
 	require.Error(t, err)
 }
 
@@ -75,7 +81,7 @@ func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
 	clientMetrics := NewMetrics(reg)
-	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, func(subscriber wal.WriterEventSubscriber) {}, testClientConfig)
+	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, notifier(func(subscriber wal.WriterEventSubscriber) {}), testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 

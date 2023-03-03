@@ -167,7 +167,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 			cfg.LimitsConfig.MaxLineSizeTruncate,
 			p.reg,
 			cfg.WAL,
-			p.walWriter.AddSubscriber,
+			p.walWriter,
 			cfg.ClientConfigs...,
 		)
 		if err != nil {

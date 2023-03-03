@@ -14,6 +14,10 @@ import (
 
 type AddWriterSubscriberFunc func(subscriber wal.WriterEventSubscriber)
 
+type WriterEventsNotifier interface {
+	Subscribe(subscriber wal.WriterEventSubscriber)
+}
+
 type Stoppable interface {
 	Stop()
 }
@@ -42,7 +46,7 @@ func NewManager(
 	maxLineSizeTruncate bool,
 	reg prometheus.Registerer,
 	walCfg wal.Config,
-	subscribeToWriter AddWriterSubscriberFunc,
+	notifier WriterEventsNotifier,
 	clientCfgs ...Config,
 ) (*Manager, error) {
 	// TODO: refactor this to instantiate all clients types
@@ -77,7 +81,7 @@ func NewManager(
 		// but we don't want to fall behind too much.
 		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger)
 		// subscribe watcher to writer events, such as old segments being reclaimed
-		subscribeToWriter(watcher)
+		notifier.Subscribe(watcher)
 		watcher.Start()
 		watchers = append(watchers, watcher)
 	}

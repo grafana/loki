@@ -28,7 +28,7 @@ const (
 )
 
 // WriterEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
-// they can subscribe to events by adding themselves as subscribers on the Writer with writer.AddSubscriber.
+// they can subscribe to events by adding themselves as subscribers on the Writer with writer.Subscribe.
 type WriterEventSubscriber interface {
 	// NotifySegmentsCleaned will notify the subscriber that all WAL segments with a number lower or equal to num, were
 	// reclaimed.
@@ -190,8 +190,8 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	return nil
 }
 
-// AddSubscriber adds a new WriterEventSubscriber that will receive Writer events.
-func (wrt *Writer) AddSubscriber(subscriber WriterEventSubscriber) {
+// Subscribe adds a new WriterEventSubscriber that will receive Writer events.
+func (wrt *Writer) Subscribe(subscriber WriterEventSubscriber) {
 	wrt.subscribersLock.Lock()
 	defer wrt.subscribersLock.Unlock()
 	wrt.subscribers = append(wrt.subscribers, subscriber)
