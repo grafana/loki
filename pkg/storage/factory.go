@@ -56,8 +56,6 @@ type StoreLimits interface {
 	downloads.Limits
 	stores.StoreLimits
 	CardinalityLimit(string) int
-	// MaxChunksPerQueryFromStore(string) int
-	// MaxQueryLength(context.Context, string) time.Duration
 }
 
 // NamedStores helps configure additional object stores from a given storage provider
