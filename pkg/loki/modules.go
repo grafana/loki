@@ -267,7 +267,7 @@ func (t *Loki) initOverridesExporter() (services.Service, error) {
 }
 
 func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
-	t.Overrides, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
+	t.tenantConfigs, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
 	// tenantConfigs are not a service, since they don't have any operational state.
 	return nil, err
 }
@@ -277,7 +277,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.distributor, err = distributor.New(
 		t.Cfg.Distributor,
 		t.Cfg.IngesterClient,
-		t.Overrides,
+		t.tenantConfigs,
 		t.ring,
 		t.Overrides,
 		prometheus.DefaultRegisterer,
@@ -427,7 +427,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.Overrides, prometheus.DefaultRegisterer)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
