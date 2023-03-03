@@ -115,7 +115,7 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 
 			for _, entry := range stream.Entries {
 				out.FormatAndPrintln(entry.Timestamp, labels, 0, entry.Line)
-				lastReceivedTimestamp = entry.Timestamp
+				lastReceivedTimestamp = entry.Timestamp.Add(1 * time.Nanosecond)
 			}
 
 		}
