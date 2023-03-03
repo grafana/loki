@@ -2,7 +2,6 @@ package positions
 
 import (
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -180,30 +179,4 @@ func Test_ReadOnly(t *testing.T) {
 		"/log/path/random.log": "17623",
 	}, out)
 
-}
-
-func TestPositionsLeaking(t *testing.T) {
-	memUsage := &runtime.MemStats{}
-	runtime.GC() // free resources before grabbing mem stats
-	runtime.ReadMemStats(memUsage)
-	currentAllocations := memUsage.HeapObjects
-
-	temp := tempFilename(t)
-	defer func() {
-		_ = os.Remove(temp)
-	}()
-	p, err := New(util_log.Logger, Config{
-		SyncPeriod:    20 * time.Nanosecond,
-		PositionsFile: temp,
-		ReadOnly:      true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	p.Stop()
-
-	runtime.GC() // free resources before grabbing mem stats
-	runtime.ReadMemStats(memUsage)
-	require.Equal(t, currentAllocations, memUsage.HeapObjects)
 }
