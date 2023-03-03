@@ -189,11 +189,11 @@ func TestQueuesConsistency(t *testing.T) {
 
 			r := rand.New(rand.NewSource(time.Now().Unix()))
 
-			n := 10000
-			lastUserIndexes := make(map[string]QueueIndex, n)
-			conns := make(map[string]int, n)
+			lastUserIndexes := map[string]QueueIndex{}
 
-			for i := 0; i < n; i++ {
+			conns := map[string]int{}
+
+			for i := 0; i < 10000; i++ {
 				switch r.Int() % 6 {
 				case 0:
 					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), 3))
@@ -204,9 +204,9 @@ func TestQueuesConsistency(t *testing.T) {
 				case 2:
 					uq.deleteQueue(generateTenant(r))
 				case 3:
-					qid := generateQuerier(r)
-					uq.addQuerierConnection(qid)
-					conns[qid]++
+					q := generateQuerier(r)
+					uq.addQuerierConnection(q)
+					conns[q]++
 				case 4:
 					q := generateQuerier(r)
 					if conns[q] > 0 {
@@ -424,13 +424,13 @@ func isConsistent(uq *tenantQueues) error {
 	uc := 0
 	for _, u := range uq.mapping.Keys() {
 		q := uq.mapping.GetByKey(u)
-		if u != "" && q == nil {
+		if u != empty && q == nil {
 			return fmt.Errorf("user %s doesn't have queue", u)
 		}
-		if u == "" && q != nil {
+		if u == empty && q != nil {
 			return fmt.Errorf("user %s shouldn't have queue", u)
 		}
-		if u == "" {
+		if u == empty {
 			continue
 		}
 

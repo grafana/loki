@@ -28,7 +28,7 @@ type querier struct {
 // This struct holds tenant queues for pending requests. It also keeps track of connected queriers,
 // and mapping between tenants and queriers.
 type tenantQueues struct {
-	mapping *QueueMapping
+	mapping *Mapping
 
 	maxUserQueueSize int
 
@@ -61,6 +61,9 @@ type tenantQueue struct {
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
 	seed int64
+
+	// Points back to 'users' field in queues. Enables quick cleanup.
+	index int
 }
 
 func (q *tenantQueue) Chan() RequestChannel {
@@ -68,7 +71,7 @@ func (q *tenantQueue) Chan() RequestChannel {
 }
 
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
-	mm := &QueueMapping{}
+	mm := &Mapping{}
 	mm.Init(64)
 	return &tenantQueues{
 		mapping:          mm,
@@ -132,16 +135,11 @@ func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierI
 	}
 
 	for iters := 0; iters < q.mapping.Len(); iters++ {
-		uid = uid + 1
-
-		if int(uid) >= q.mapping.Len() {
-			uid = 0
-		}
-
-		tq := q.mapping.Get(uid)
+		tq := q.mapping.GetNext(uid)
 		if tq == nil {
 			break
 		}
+		uid = QueueIndex(tq.index)
 
 		if tq.queriers != nil {
 			if _, ok := tq.queriers[querierID]; !ok {

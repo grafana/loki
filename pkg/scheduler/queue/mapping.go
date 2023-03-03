@@ -1,96 +1,46 @@
 package queue
 
-// OrderedMap is a map-like data structure that allows accessing its items not
+var empty = string([]byte{byte(0)})
+
+// Mapping is a map-like data structure that allows accessing its items not
 // only by key but also by index.
-// It preserves the ingest order of times for iterating over the values.
-// Keys are only of type string, values are of any type.
+// When an item is removed, the iinternal key array is not resized, but the
+// removed place is marked as empty. This allows to remove keys without
+// changing the index of the remaining items after the removed key.
+// Mapping uses *tenantQueue as concrete value and keys of type string.
 // The data structure is not thread-safe.
 // TODO(chaudum): Implement QueueMapping using generics
-type OrderedMap struct {
-	// m is the loopup table from key to item
-	m map[string]any
-	// keys is a slice of keys which conserves ingest order
-	keys []string
+type Mapping struct {
+	m     map[string]*tenantQueue
+	keys  []string
+	empty []int
 }
 
-func (om *OrderedMap) Init(size int) {
-	om.m = make(map[string]any, size)
-	om.keys = make([]string, 0, size)
-}
-
-func (om *OrderedMap) Put(key string, value any) int {
-	if key == "" {
-		return len(om.keys)
-	}
-	om.keys = append(om.keys, key)
-	om.m[key] = value
-	return len(om.keys)
-}
-
-func (om *OrderedMap) Get(idx int) any {
-	if len(om.keys) == 0 {
-		return nil
-	}
-	k := om.keys[idx]
-	return om.GetByKey(k)
-}
-
-func (om *OrderedMap) GetByKey(key string) any {
-	if key == "" {
-		return nil
-	}
-	return om.m[key]
-}
-
-func (om *OrderedMap) Remove(key string) any {
-	for idx, k := range om.keys {
-		if k == key {
-			om.keys = append(om.keys[:idx], om.keys[idx+1:]...)
-			delete(om.m, key)
-			break
-		}
-	}
-	return nil
-}
-
-func (om *OrderedMap) Keys() []string {
-	return om.keys
-}
-
-func (om *OrderedMap) Values() []any {
-	values := make([]any, 0, len(om.keys))
-	for _, k := range om.keys {
-		values = append(values, om.m[k])
-	}
-	return values
-}
-
-func (om *OrderedMap) Len() int {
-	return len(om.keys)
-}
-
-// QueueMapping is a concrete implementation of the OrderedMap
-// to avoid casting the return values.
-type QueueMapping struct {
-	m    map[string]*tenantQueue
-	keys []string
-}
-
-func (om *QueueMapping) Init(size int) {
+func (om *Mapping) Init(size int) {
 	om.m = make(map[string]*tenantQueue, size)
 	om.keys = make([]string, 0, size)
+	om.empty = make([]int, 0, size)
 }
 
-func (om *QueueMapping) Put(key string, value *tenantQueue) int {
-	if key == "" {
-		return len(om.keys)
+func (om *Mapping) Put(key string, value *tenantQueue) bool {
+	// do not allow empty string or 0 byte string as key
+	if key == "" || key == empty {
+		return false
 	}
-	om.keys = append(om.keys, key)
+	if len(om.empty) == 0 {
+		value.index = len(om.keys)
+		om.keys = append(om.keys, key)
+	} else {
+		idx := om.empty[0]
+		om.empty = om.empty[1:]
+		om.keys[idx] = key
+		value.index = idx
+	}
 	om.m[key] = value
-	return len(om.keys)
+	return true
 }
 
-func (om *QueueMapping) Get(idx QueueIndex) *tenantQueue {
+func (om *Mapping) Get(idx QueueIndex) *tenantQueue { //nolint:revive
 	if len(om.keys) == 0 {
 		return nil
 	}
@@ -98,36 +48,64 @@ func (om *QueueMapping) Get(idx QueueIndex) *tenantQueue {
 	return om.GetByKey(k)
 }
 
-func (om *QueueMapping) GetByKey(key string) *tenantQueue {
-	if key == "" {
+func (om *Mapping) GetNext(idx QueueIndex) *tenantQueue { //nolint:revive
+	if len(om.keys) == 0 {
+		return nil
+	}
+
+	// convert to int
+	i := int(idx)
+	// proceed to the next index
+	i = i + 1
+	// start from beginning if next index exceeds slice length
+	if i >= len(om.keys) {
+		i = 0
+	}
+
+	for i < len(om.keys) {
+		k := om.keys[i]
+		if k != empty {
+			return om.GetByKey(k)
+		}
+		i++
+	}
+	return nil
+}
+
+func (om *Mapping) GetByKey(key string) *tenantQueue { //nolint:revive
+	// do not allow empty string or 0 byte string as key
+	if key == "" || key == empty {
 		return nil
 	}
 	return om.m[key]
 }
 
-func (om *QueueMapping) Remove(key string) *tenantQueue {
-	for idx, k := range om.keys {
-		if k == key {
-			om.keys = append(om.keys[:idx], om.keys[idx+1:]...)
-			delete(om.m, key)
-			break
-		}
+func (om *Mapping) Remove(key string) bool {
+	e := om.m[key]
+	if e == nil {
+		return false
 	}
-	return nil
+	delete(om.m, key)
+	om.keys[e.index] = empty
+	om.empty = append(om.empty, e.index)
+	return true
 }
 
-func (om *QueueMapping) Keys() []string {
+func (om *Mapping) Keys() []string {
 	return om.keys
 }
 
-func (om *QueueMapping) Values() []*tenantQueue {
+func (om *Mapping) Values() []*tenantQueue { //nolint:revive
 	values := make([]*tenantQueue, 0, len(om.keys))
 	for _, k := range om.keys {
+		if k == empty {
+			continue
+		}
 		values = append(values, om.m[k])
 	}
 	return values
 }
 
-func (om *QueueMapping) Len() int {
-	return len(om.keys)
+func (om *Mapping) Len() int {
+	return len(om.keys) - len(om.empty)
 }
