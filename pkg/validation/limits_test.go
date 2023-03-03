@@ -223,6 +223,21 @@ ruler_remote_write_headers:
 			},
 		},
 		{
+			desc: "no overrides does not affect defaults",
+			yaml: ``,
+			exp: Limits{
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+
+				// Rest from new defaults
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+			},
+		},
+		{
 			desc: "slice",
 			yaml: `
 retention_stream:
