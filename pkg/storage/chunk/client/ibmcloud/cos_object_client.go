@@ -75,20 +75,20 @@ func (cfg *COSConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.ForcePathStyle, prefix+"cos.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
-	f.StringVar(&cfg.BucketNames, prefix+"cos.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over.")
+	f.BoolVar(&cfg.ForcePathStyle, prefix+"COS.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
+	f.StringVar(&cfg.BucketNames, prefix+"COS.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over.")
 
-	f.StringVar(&cfg.Endpoint, prefix+"cos.endpoint", "", "COS Endpoint to connect to.")
-	f.StringVar(&cfg.Region, prefix+"cos.region", "", "COS region to use.")
-	f.StringVar(&cfg.AccessKeyID, prefix+"cos.access-key-id", "", "COS HMAC Access Key ID")
-	f.Var(&cfg.SecretAccessKey, prefix+"cos.secret-access-key", "COS HMAC Secret Access Key")
+	f.StringVar(&cfg.Endpoint, prefix+"COS.endpoint", "", "COS Endpoint to connect to.")
+	f.StringVar(&cfg.Region, prefix+"COS.region", "", "COS region to use.")
+	f.StringVar(&cfg.AccessKeyID, prefix+"COS.access-key-id", "", "COS HMAC Access Key ID")
+	f.Var(&cfg.SecretAccessKey, prefix+"COS.secret-access-key", "COS HMAC Secret Access Key")
 
-	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"cos.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
-	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"cos.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
+	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"COS.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
+	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"COS.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 
-	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"cos.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object")
-	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"cos.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"cos.max-retries", 5, "Maximum number of times to retry when cos get Object")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"COS.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"COS.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"COS.max-retries", 5, "Maximum number of times to retry when cos get Object")
 }
 
 type COSObjectClient struct {
@@ -209,14 +209,6 @@ func buckets(cfg COSConfig) ([]string, error) {
 	return bucketNames, nil
 }
 
-// Stop fulfills the chunk.ObjectClient interface
-func (c *COSObjectClient) Stop() {}
-
-// DeleteObject deletes the specified objectKey from the appropriate S3 bucket
-func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	return nil
-}
-
 // bucketFromKey maps a key to a bucket name
 func (c *COSObjectClient) bucketFromKey(key string) string {
 	if len(c.bucketNames) == 0 {
@@ -228,6 +220,22 @@ func (c *COSObjectClient) bucketFromKey(key string) string {
 	hash := hasher.Sum32()
 
 	return c.bucketNames[hash%uint32(len(c.bucketNames))]
+}
+
+// Stop fulfills the chunk.ObjectClient interface
+func (c *COSObjectClient) Stop() {}
+
+// DeleteObject deletes the specified objectKey from the appropriate S3 bucket
+func (a *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	return instrument.CollectedRequest(ctx, "COS.DeleteObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		deleteObjectInput := &cos.DeleteObjectInput{
+			Bucket: ibm.String(a.bucketFromKey(objectKey)),
+			Key:    ibm.String(objectKey),
+		}
+
+		_, err := a.cos.DeleteObjectWithContext(ctx, deleteObjectInput)
+		return err
+	})
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
@@ -244,7 +252,7 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 		if ctx.Err() != nil {
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during cos getObject")
 		}
-		err = instrument.CollectedRequest(ctx, "cos.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err = instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
 			resp, requestErr = c.hedgedS3.GetObjectWithContext(ctx, &cos.GetObjectInput{
 				Bucket: ibm.String(bucket),
@@ -266,7 +274,7 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 
 // PutObject into the store
 func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "cos.PutObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "COS.PutObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &cos.PutObjectInput{
 			Body:   object,
 			Bucket: ibm.String(c.bucketFromKey(objectKey)),
@@ -279,8 +287,54 @@ func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 }
 
 // List implements chunk.ObjectClient.
-func (c *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
-	return nil, nil, nil
+func (a *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var storageObjects []client.StorageObject
+	var commonPrefixes []client.StorageCommonPrefix
+
+	for i := range a.bucketNames {
+		err := instrument.CollectedRequest(ctx, "COS.List", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			input := cos.ListObjectsV2Input{
+				Bucket:    ibm.String(a.bucketNames[i]),
+				Prefix:    ibm.String(prefix),
+				Delimiter: ibm.String(delimiter),
+			}
+
+			for {
+				output, err := a.cos.ListObjectsV2WithContext(ctx, &input)
+				if err != nil {
+					return err
+				}
+
+				for _, content := range output.Contents {
+					storageObjects = append(storageObjects, client.StorageObject{
+						Key:        *content.Key,
+						ModifiedAt: *content.LastModified,
+					})
+				}
+
+				for _, commonPrefix := range output.CommonPrefixes {
+					commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(ibm.StringValue(commonPrefix.Prefix)))
+				}
+
+				if output.IsTruncated == nil || !*output.IsTruncated {
+					// No more results to fetch
+					break
+				}
+				if output.NextContinuationToken == nil {
+					// No way to continue
+					break
+				}
+				input.SetContinuationToken(*output.NextContinuationToken)
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return storageObjects, commonPrefixes, nil
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
