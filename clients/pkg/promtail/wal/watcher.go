@@ -65,10 +65,6 @@ type Watcher struct {
 	metrics *WatcherMetrics
 }
 
-func (w *Watcher) NotifySegmentsCleaned(num int) {
-	w.writeTo.SeriesReset(num)
-}
-
 // NewWatcher creates a new Watcher.
 func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger) *Watcher {
 	return &Watcher{
@@ -264,6 +260,13 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 		}
 	}
 	return first, last, nil
+}
+
+// NotifySegmentsCleaned allows Watcher to implement NotifySegmentsCleaned, in order to receive notifications from a
+// Writer. In particualr, NotifySegmentsCleaned allows the Watcher to notify the attached WriteTo that some segments
+// were reclaimed in order to clean up the series cache.
+func (w *Watcher) NotifySegmentsCleaned(num int) {
+	w.writeTo.SeriesReset(num)
 }
 
 // isClosed checks in a non-blocking manner if a channel is closed or not.

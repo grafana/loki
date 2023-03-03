@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 )
 
-type AddWriterSubscriberFunc func(subscriber wal.WriterEventSubscriber)
-
+// WriterEventsNotifier implements a notifier that's received by the Manager, to which wal.Watcher can subscribe for
+// writer events.
 type WriterEventsNotifier interface {
 	Subscribe(subscriber wal.WriterEventSubscriber)
 }
