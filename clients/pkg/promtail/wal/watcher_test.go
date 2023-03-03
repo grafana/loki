@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -54,12 +53,12 @@ func (t *testWriteTo) AppendEntries(entries wal.RefEntries) error {
 
 // watcherTestResources contains all resources necessary to test an individual Watcher functionality
 type watcherTestResources struct {
-	writeEntry     func(entry api.Entry)
-	startWatcher   func()
-	syncWAL        func() error
-	nextWALSegment func() error
-	writeTo        *testWriteTo
-	deleteSegment  func(segmentNum int) error
+	writeEntry             func(entry api.Entry)
+	startWatcher           func()
+	syncWAL                func() error
+	nextWALSegment         func() error
+	writeTo                *testWriteTo
+	notifySegmentReclaimed func(segmentNum int)
 }
 
 type watcherTest func(t *testing.T, res *watcherTestResources)
@@ -200,7 +199,7 @@ var cases = map[string]watcherTest{
 		}
 	},
 
-	"series are reclaimed after new segment is started and old one reclaimed": func(t *testing.T, res *watcherTestResources) {
+	"watcher receives segments reclaimed notifications correctly": func(t *testing.T, res *watcherTestResources) {
 		res.startWatcher()
 		testLabels := model.LabelSet{
 			"test": "watcher_read",
@@ -230,7 +229,7 @@ var cases = map[string]watcherTest{
 		writeAndWaitForWatcherToCatchUp("segment 1", 2)
 
 		// collecting segment 0
-		require.NoError(t, res.deleteSegment(0), "error deleting old segment")
+		res.notifySegmentReclaimed(0)
 		require.Eventually(t, func() bool {
 			return len(res.writeTo.ReceivedSeriesReset) == 1 && res.writeTo.ReceivedSeriesReset[0] == 0
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
@@ -243,9 +242,8 @@ var cases = map[string]watcherTest{
 		require.NoError(t, res.nextWALSegment(), "expected no error when moving to next wal segment")
 		writeAndWaitForWatcherToCatchUp("segment 3", 4)
 
-		// collecting segment 1 and 2
-		require.NoError(t, res.deleteSegment(1), "error deleting old segment")
-		require.NoError(t, res.deleteSegment(2), "error deleting old segment")
+		// collecting all segments up to 2
+		res.notifySegmentReclaimed(2)
 		// Expect second SeriesReset call to have the highest numbered deleted segment, 2
 		require.Eventually(t, func() bool {
 			t.Logf("received series reset: %v", res.writeTo.ReceivedSeriesReset)
@@ -295,9 +293,8 @@ func TestWatcher(t *testing.T) {
 						return err
 					},
 					writeTo: writeTo,
-					deleteSegment: func(segmentNum int) error {
-						segmentName := wlog.SegmentName(wl.Dir(), segmentNum)
-						return os.Remove(segmentName)
+					notifySegmentReclaimed: func(segmentNum int) {
+						watcher.NotifySegmentsCleaned(segmentNum)
 					},
 				},
 			)

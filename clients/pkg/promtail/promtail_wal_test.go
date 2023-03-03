@@ -70,12 +70,13 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	testServerURL := flagext.URLValue{}
 	testServerURL.Set(testServer.URL)
 
-	cfg := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{stages.PipelineStage{
+	cfg, err := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{stages.PipelineStage{
 		stages.StageTypeLabelDrop: []string{
 			"filename",
 			"localhost",
 		},
 	}})
+	require.NoError(t, err)
 	cfg.WAL = wal.Config{
 		Enabled:       true,
 		Dir:           walDir,
@@ -169,7 +170,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 	testServerURL := flagext.URLValue{}
 	testServerURL.Set(testServer.URL)
 
-	cfg := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{
+	cfg, err := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{
 		// extract tenant ID from log line
 		stages.PipelineStage{stages.StageTypeRegex: stages.RegexConfig{
 			Expression: `^msg="(?P<msg>.+)" tenantID="(?P<tenantID>.+)"$`,
@@ -188,6 +189,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 			Source: "tenantID",
 		}},
 	})
+	require.NoError(t, err)
 	cfg.WAL = wal.Config{
 		Enabled:       true,
 		Dir:           walDir,
@@ -255,7 +257,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 
 // createPromtailConfig creates a config.Config targeting the provided remote write server, and processing read log lines
 // with the provided pipeline.
-func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFileName string, pipeline stages.PipelineStages) config.Config {
+func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFileName string, pipeline stages.PipelineStages) (config.Config, error) {
 	// configure basic server settings
 	cfg := config.Config{}
 	// apply default values
@@ -267,7 +269,11 @@ func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFil
 	cfg.ServerConfig.GRPCListenPort = 0
 
 	// positions file
-	cfg.PositionsConfig.PositionsFile = path.Join(dir, "positions.txt")
+	internalFilesDir := path.Join(dir, "internal")
+	if err := os.Mkdir(internalFilesDir, 0755); err != nil {
+		return config.Config{}, err
+	}
+	cfg.PositionsConfig.PositionsFile = path.Join(internalFilesDir, "positions.txt")
 
 	// configure remote write client
 	cfg.ClientConfigs = append(cfg.ClientConfigs, client.Config{
@@ -301,5 +307,5 @@ func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFil
 	}
 
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, fixedFileScrapeConfig)
-	return cfg
+	return cfg, nil
 }

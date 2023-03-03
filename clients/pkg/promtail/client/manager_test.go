@@ -64,16 +64,33 @@ func newServerAncClientConfig(t *testing.T) (Config, chan receivedReq, closer) {
 
 func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 	walDir := t.TempDir()
-	reg := prometheus.NewRegistry()
-	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
-	clientMetrics := NewMetrics(reg)
-	manager, err := NewManager(clientMetrics, log.NewLogfmtLogger(os.Stdout), 0, 0, false, reg, wal.Config{
+	walConfig := wal.Config{
 		Dir:           walDir,
 		Enabled:       true,
 		MaxSegmentAge: time.Second * 10,
-	}, func(subscriber wal.WriterEventSubscriber) {}, testClientConfig)
+	}
+	logger := log.NewLogfmtLogger(os.Stdout)
+	writer, err := wal.NewWriter(walConfig, logger, nil)
+	require.NoError(t, err)
+	reg := prometheus.NewRegistry()
+	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
+	clientMetrics := NewMetrics(reg)
+	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, func(subscriber wal.WriterEventSubscriber) {}, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
+
+	receivedRequests := []receivedReq{}
+	go func() {
+		for req := range rwReceivedReqs {
+			receivedRequests = append(receivedRequests, req)
+		}
+	}()
+
+	defer func() {
+		writer.Stop()
+		manager.Stop()
+		closeServer.Close()
+	}()
 
 	var testLabels = model.LabelSet{
 		"wal_enabled": "true",
@@ -84,7 +101,7 @@ func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 		"Sed eget felis at ipsum auctor congue.",
 	}
 	for _, line := range lines {
-		manager.Chan() <- api.Entry{
+		writer.Chan() <- api.Entry{
 			Labels: testLabels,
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),
@@ -93,18 +110,15 @@ func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 		}
 	}
 
-	// stop client to flush WAL, stop rw server
-	manager.Stop()
-	closeServer.Close()
+	require.Eventually(t, func() bool {
+		return len(receivedRequests) == 3
+	}, 5*time.Second, time.Second, "timed out waiting for requests to be received")
 
 	// assert over rw client received entries
-	rwSeenEntriesCount := 0
-	for req := range rwReceivedReqs {
-		rwSeenEntriesCount++
+	for _, req := range receivedRequests {
 		require.Len(t, req.pushReq.Streams, 1, "expected 1 stream requests to be received")
 		require.Len(t, req.pushReq.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
 		require.Equal(t, `{wal_enabled="true"}`, req.pushReq.Streams[0].Labels)
 		require.Contains(t, lines, req.pushReq.Streams[0].Entries[0].Line)
 	}
-	require.Equal(t, 3, rwSeenEntriesCount)
 }
