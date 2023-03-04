@@ -111,4 +111,5 @@ variable "kinesis_stream_name" {
 variable "sqs_enabled" {
   type        = bool
   description = "Enables sending S3 logs to an SQS queue which will trigger lambda-promtail, unsuccessfully processed message are sent to a dead-letter-queue"
+  default     = false
 }
