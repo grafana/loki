@@ -180,7 +180,7 @@ resource "aws_lambda_event_source_mapping" "kinesis_event_source" {
 }
 
 resource "aws_s3_bucket_notification" "push-to-lambda-promtail" {
-  for_each = var.bucket_names
+  for_each = var.sqs_enabled ? [] : var.bucket_names
   bucket   = each.value
 
   lambda_function {
