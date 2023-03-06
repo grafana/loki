@@ -28,7 +28,7 @@ type querier struct {
 // This struct holds tenant queues for pending requests. It also keeps track of connected queriers,
 // and mapping between tenants and queriers.
 type tenantQueues struct {
-	mapping *Mapping
+	mapping *Mapping[*tenantQueue]
 
 	maxUserQueueSize int
 
@@ -45,6 +45,9 @@ type tenantQueues struct {
 
 type Queue interface {
 	Chan() RequestChannel
+	Dequeue() Request
+	Name() string
+	Len() int
 }
 
 type tenantQueue struct {
@@ -63,15 +66,41 @@ type tenantQueue struct {
 	seed int64
 
 	// Points back to 'users' field in queues. Enables quick cleanup.
-	index int
+	index QueueIndex
 }
 
+// Chan implements Queue
 func (q *tenantQueue) Chan() RequestChannel {
 	return q.ch
 }
 
+// Dequeue implements Queue
+func (q *tenantQueue) Dequeue() Request {
+	return <-q.ch
+}
+
+// Name implements Queue
+func (q *tenantQueue) Name() string {
+	return q.name
+}
+
+// Len implements Queue
+func (q *tenantQueue) Len() int {
+	return len(q.ch)
+}
+
+// Len implements Mapable
+func (q *tenantQueue) Pos() QueueIndex {
+	return q.index
+}
+
+// Len implements Mapable
+func (q *tenantQueue) SetPos(index QueueIndex) {
+	q.index = index
+}
+
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
-	mm := &Mapping{}
+	mm := &Mapping[*tenantQueue]{}
 	mm.Init(64)
 	return &tenantQueues{
 		mapping:          mm,
@@ -139,7 +168,7 @@ func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierI
 		if tq == nil {
 			break
 		}
-		uid = QueueIndex(tq.index)
+		uid = tq.index
 
 		if tq.queriers != nil {
 			if _, ok := tq.queriers[querierID]; !ok {
