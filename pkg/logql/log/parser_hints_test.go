@@ -236,13 +236,13 @@ func Test_ParserHints(t *testing.T) {
 
 func TestRecordingExtractedLabels(t *testing.T) {
 	p := log.NewParserHint([]string{"1", "2", "3"}, nil, false, true, "")
-	p.RecordExtracted("1")
-	p.RecordExtracted("2")
+	p.RecordExtracted()
+	p.RecordExtracted()
 
 	require.False(t, p.AllRequiredExtracted())
 	require.False(t, p.NoLabels())
 
-	p.RecordExtracted("3")
+	p.RecordExtracted()
 
 	require.True(t, p.AllRequiredExtracted())
 	require.True(t, p.NoLabels())

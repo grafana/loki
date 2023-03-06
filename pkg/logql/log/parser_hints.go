@@ -29,7 +29,7 @@ type ParserHint interface {
 
 	// Holds state about what's already been extracted for the associated
 	// labels. This assumes that only required labels are ever extracted
-	RecordExtracted(key string)
+	RecordExtracted()
 	AllRequiredExtracted() bool
 	Reset()
 	// PreserveError returns true when parsing errors were specifically requested
@@ -72,7 +72,7 @@ func (p *parserHint) NoLabels() bool {
 	return p.noLabels || p.AllRequiredExtracted()
 }
 
-func (p *parserHint) RecordExtracted(key string) {
+func (p *parserHint) RecordExtracted() {
 	p.extracted++
 }
 

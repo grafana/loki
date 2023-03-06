@@ -240,7 +240,7 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 
 	// Sometimes labels are set and later modified. Only record
 	// each label once
-	b.parserKeyHints.RecordExtracted(n)
+	b.parserKeyHints.RecordExtracted()
 	return b
 }
 
