@@ -187,12 +187,6 @@ func (tm *TableManager) handoverIndexesToShipper(force bool) {
 }
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
-	// as we are running multiple instances of TableManger - one for each period
-	// existing tables should be migrated to period specific directory
-	if err := migrateTables(tm.cfg.IndexDir, tm.tableRange, tm.logger); err != nil {
-		return nil, errors.Wrap(err, "migrating tables")
-	}
-
 	localTables := make(map[string]*Table)
 	dirEntries, err := os.ReadDir(tm.cfg.IndexDir)
 	if err != nil {
@@ -207,6 +201,10 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 
 	for _, entry := range dirEntries {
 		if !re.MatchString(entry.Name()) {
+			continue
+		}
+
+		if ok, _ := tm.tableRange.TableInRange(entry.Name()); !ok {
 			continue
 		}
 
@@ -264,25 +262,4 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	}
 
 	return localTables, nil
-}
-
-func migrateTables(dir string, tableRange config.TableRange, logger log.Logger) error {
-	parentDir := filepath.Dir(filepath.Clean(dir))
-	entries, err := os.ReadDir(parentDir)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		if ok, err := tableRange.TableInRange(entry.Name()); !ok {
-			level.Warn(logger).Log("msg", fmt.Sprintf("skip table migration. table not in range: %s", entry.Name()), "err", err)
-			continue
-		}
-
-		if err := os.Rename(filepath.Join(parentDir, entry.Name()), filepath.Join(dir, entry.Name())); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

@@ -99,7 +99,7 @@ func (i *indexClient) init(name string, storageClient client.ObjectClient, limit
 
 		cfg := index.Config{
 			Uploader:             uploader,
-			IndexDir:             path.Join(i.cfg.ActiveIndexDirectory, name),
+			IndexDir:             i.cfg.ActiveIndexDirectory,
 			DBRetainPeriod:       i.cfg.IngesterDBRetainPeriod,
 			MakePerTenantBuckets: i.cfg.BuildPerTenantIndex,
 		}

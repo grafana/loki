@@ -4,13 +4,11 @@ import (
 	"context"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
@@ -58,11 +56,12 @@ func TestLoadTables(t *testing.T) {
 	indexPath := filepath.Join(testDir, indexDirName)
 	require.NoError(t, util.EnsureDirectory(indexPath))
 
-	// add a legacy db which is outside of table specific folder
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table0"), 0, 10, nil)
+	// add a legacy db which is outside of table specific folder
+	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table1"), 0, 10, nil)
 
 	// table1 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBConfig{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
 				Start:      10,
@@ -78,7 +77,7 @@ func TestLoadTables(t *testing.T) {
 	}, nil)
 
 	// table2 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table3"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
 				Start:      30,
@@ -93,12 +92,28 @@ func TestLoadTables(t *testing.T) {
 		},
 	}, nil)
 
+	// table3 with 2 dbs
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table4"), map[string]testutil.DBConfig{
+		"db1": {
+			DBRecords: testutil.DBRecords{
+				Start:      50,
+				NumRecords: 10,
+			},
+		},
+		"db2": {
+			DBRecords: testutil.DBRecords{
+				Start:      60,
+				NumRecords: 10,
+			},
+		},
+	}, nil)
+
 	expectedTables := map[string]struct {
 		start, numRecords int
 	}{
-		"table0": {start: 0, numRecords: 10},
-		"table1": {start: 10, numRecords: 20},
-		"table2": {start: 30, numRecords: 20},
+		"table1": {start: 0, numRecords: 10},
+		"table2": {start: 10, numRecords: 20},
+		"table3": {start: 30, numRecords: 20},
 	}
 
 	cfg := Config{
@@ -107,9 +122,10 @@ func TestLoadTables(t *testing.T) {
 	}
 
 	tableRange := config.TableRange{
-		End: math.MaxInt64,
+		Start: 1,
+		End:   3,
 		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_",
+			Prefix: "table",
 			Period: indexTablePeriod,
 		}},
 	}
@@ -119,7 +135,7 @@ func TestLoadTables(t *testing.T) {
 
 	require.Len(t, tm.tables, len(expectedTables))
 
-	stat, err := os.Stat(filepath.Join(indexPath, "table0", "table0"))
+	stat, err := os.Stat(filepath.Join(indexPath, "table1", "table1"))
 	require.NoError(t, err)
 	require.True(t, !stat.IsDir())
 
@@ -214,43 +230,4 @@ func TestTableManager_ForEach(t *testing.T) {
 		},
 		0, 30)
 
-}
-
-func TestMigrateTables(t *testing.T) {
-	parentDir := t.TempDir()
-	dir := path.Join(parentDir, "fs_1234")
-	for _, name := range []string{
-		"index_9", "index_24", // outside of table range
-		"index_12", "index_16", // within table range
-		"table_16", // prefix mismatch
-		"foobar",   // invalid table name
-	} {
-		assert.NoError(t, os.MkdirAll(path.Join(parentDir, name), 0755))
-	}
-
-	// migrate legacy index files
-	_, err := os.Create(path.Join(parentDir, "index_13"))
-	assert.NoError(t, err)
-
-	tableRange := config.TableRange{
-		Start: 10,
-		End:   20,
-		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_",
-			Period: indexTablePeriod,
-		}},
-	}
-
-	assert.NoError(t, util.EnsureDirectory(dir))
-	assert.NoError(t, migrateTables(dir, tableRange, log.NewNopLogger()))
-
-	files, err := os.ReadDir(dir)
-	assert.NoError(t, err)
-
-	var got []string
-	for _, f := range files {
-		got = append(got, f.Name())
-	}
-
-	assert.ElementsMatch(t, got, []string{"index_12", "index_13", "index_16"})
 }
