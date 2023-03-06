@@ -5,8 +5,10 @@ import (
 	"time"
 )
 
+var randomGenerator *rand.Rand
+
 func InitRandom() {
-	rand.Seed(time.Now().UnixNano())
+	randomGenerator = rand.New(rand.NewSource(time.Now().UnixNano()))
 }
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -14,7 +16,7 @@ var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 func RandName() string {
 	b := make([]rune, 10)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		b[i] = letters[randomGenerator.Intn(len(letters))]
 	}
 	return string(b)
 }

@@ -239,7 +239,7 @@ memberlist:
 			assert.ErrorIs(t, err, ErrTooManyStorageConfigs)
 		})
 
-		t.Run("when common s3 storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+		t.Run("when common s3 storage config is provided (with empty session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
 			s3Config := `common:
   storage:
     s3:
@@ -271,6 +271,66 @@ memberlist:
 				assert.Equal(t, "us-east1", actual.Region)
 				assert.Equal(t, "abc123", actual.AccessKeyID)
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
+				assert.Equal(t, "", actual.SessionToken.String())
+				assert.Equal(t, true, actual.Insecure)
+				assert.Equal(t, false, actual.SSEEncryption)
+				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
+				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
+
+				assert.Equal(t, aws.SignatureVersionV4, actual.SignatureVersion,
+					"signature version should equal default value")
+				assert.Equal(t, 90*time.Second, actual.HTTPConfig.IdleConnTimeout,
+					"idle connection timeout should equal default value")
+			}
+
+			// should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			// should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+		})
+
+		t.Run("when common s3 storage config is provided (with session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
+			s3Config := `common:
+  storage:
+    s3:
+      s3: s3://foo-bucket/example
+      endpoint: s3://foo-bucket
+      region: us-east1
+      access_key_id: abc123
+      secret_access_key: def789
+      session_token: 456abc
+      insecure: true
+      http_config:
+        response_header_timeout: 5m`
+
+			config, defaults := testContext(s3Config, nil)
+
+			expected, err := url.Parse("s3://foo-bucket/example")
+			require.NoError(t, err)
+
+			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []aws.S3Config{
+				config.Ruler.StoreConfig.S3,
+				config.StorageConfig.AWSStorageConfig.S3Config,
+			} {
+				require.NotNil(t, actual.S3.URL)
+				assert.Equal(t, *expected, *actual.S3.URL)
+
+				assert.Equal(t, false, actual.S3ForcePathStyle)
+				assert.Equal(t, "s3://foo-bucket", actual.Endpoint)
+				assert.Equal(t, "us-east1", actual.Region)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, "def789", actual.SecretAccessKey.String())
+				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)

@@ -113,7 +113,7 @@ func New(
 	clientCfg client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
-	overrides *validation.Overrides,
+	overrides Limits,
 	registerer prometheus.Registerer,
 ) (*Distributor, error) {
 	factory := cfg.factory

@@ -662,12 +662,13 @@ func factor(f float64) func(float64) float64 {
 // 2 series.
 func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMatrix {
 	res := &testMatrix{}
+	var it chunkenc.Iterator
 	for i, s := range testMatrices.series {
 		if i%shardTotal != shardIndex {
 			continue
 		}
 		var points []promql.Point
-		it := s.Iterator()
+		it = s.Iterator(it)
 		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			points = append(points, promql.Point{

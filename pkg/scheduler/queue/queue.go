@@ -21,29 +21,28 @@ var (
 	ErrStopped         = errors.New("queue is stopped")
 )
 
-// UserIndex is opaque type that allows to resume iteration over users between successive calls
+// QueueIndex is opaque type that allows to resume iteration over tenants between successive calls
 // of RequestQueue.GetNextRequestForQuerier method.
-type UserIndex struct {
-	last int
-}
+type QueueIndex int // nolint:revive
 
-// Modify index to start iteration on the same user, for which last queue was returned.
-func (ui UserIndex) ReuseLastUser() UserIndex {
-	if ui.last >= 0 {
-		return UserIndex{last: ui.last - 1}
+// Modify index to start iteration on the same tenant, for which last queue was returned.
+func (ui QueueIndex) ReuseLastIndex() QueueIndex {
+	if ui < 0 {
+		return ui
 	}
-	return ui
+	return ui - 1
 }
 
-// FirstUser returns UserIndex that starts iteration over user queues from the very first user.
-func FirstUser() UserIndex {
-	return UserIndex{last: -1}
-}
+// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
+var StartIndex QueueIndex = -1
 
 // Request stored into the queue.
-type Request interface{}
+type Request any
 
-// RequestQueue holds incoming requests in per-user queues. It also assigns each user specified number of queriers,
+// RequestChannel is a channel that queues Requests
+type RequestChannel chan Request
+
+// RequestQueue holds incoming requests in per-tenant queues. It also assigns each tenant specified number of queriers,
 // and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
 // in a fair fashion.
 type RequestQueue struct {
@@ -53,16 +52,16 @@ type RequestQueue struct {
 
 	mtx     sync.Mutex
 	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
-	queues  *queues
+	queues  *tenantQueues
 	stopped bool
 
-	queueLength       *prometheus.GaugeVec   // Per user and reason.
-	discardedRequests *prometheus.CounterVec // Per user.
+	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
+	discardedRequests *prometheus.CounterVec // Per tenant.
 }
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
-		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay),
+		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		queueLength:             queueLength,
 		discardedRequests:       discardedRequests,
@@ -74,12 +73,12 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, que
 	return q
 }
 
-// EnqueueRequest puts the request into the queue. MaxQueries is user-specific value that specifies how many queriers can
-// this user use (zero or negative = all queriers). It is passed to each EnqueueRequest, because it can change
+// Enqueue puts the request into the queue. MaxQueries is tenant-specific value that specifies how many queriers can
+// this tenant use (zero or negative = all queriers). It is passed to each Enqueue, because it can change
 // between calls.
 //
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers int, successFn func()) error {
+func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -87,15 +86,15 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(userID, maxQueriers)
+	queue := q.queues.getOrAddQueue(tenant, maxQueriers)
 	if queue == nil {
-		// This can only happen if userID is "".
+		// This can only happen if tenant is "".
 		return errors.New("no queue found")
 	}
 
 	select {
 	case queue <- req:
-		q.queueLength.WithLabelValues(userID).Inc()
+		q.queueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -103,22 +102,22 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		}
 		return nil
 	default:
-		q.discardedRequests.WithLabelValues(userID).Inc()
+		q.discardedRequests.WithLabelValues(tenant).Inc()
 		return ErrTooManyRequests
 	}
 }
 
-// GetNextRequestForQuerier find next user queue and takes the next request off of it. Will block if there are no requests.
-// By passing user index from previous call of this method, querier guarantees that it iterates over all users fairly.
-// If querier finds that request from the user is already expired, it can get a request for the same user by using UserIndex.ReuseLastUser.
-func (q *RequestQueue) GetNextRequestForQuerier(ctx context.Context, last UserIndex, querierID string) (Request, UserIndex, error) {
+// Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
+// By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
+// If querier finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
+func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
 	querierWait := false
 
 FindQueue:
-	// We need to wait if there are no users, or no pending requests for given querier.
+	// We need to wait if there are no tenants, or no pending requests for given querier.
 	for (q.queues.len() == 0 || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
 		q.cond.Wait(ctx)
@@ -133,8 +132,8 @@ FindQueue:
 	}
 
 	for {
-		queue, userID, idx := q.queues.getNextQueueForQuerier(last.last, querierID)
-		last.last = idx
+		queue, tenant, idx := q.queues.getNextQueueForQuerier(last, querierID)
+		last = idx
 		if queue == nil {
 			break
 		}
@@ -143,10 +142,10 @@ FindQueue:
 		for {
 			request := <-queue
 			if len(queue) == 0 {
-				q.queues.deleteQueue(userID)
+				q.queues.deleteQueue(tenant)
 			}
 
-			q.queueLength.WithLabelValues(userID).Dec()
+			q.queueLength.WithLabelValues(tenant).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()

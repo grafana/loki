@@ -110,7 +110,7 @@ It's also worth noting that the batching nature of the Loki push API can lead to
 
 Using `chunk_target_size` instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
 
-Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 1h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
+Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 2h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 
 Depending on the compression used (we have been using snappy which has less compressibility but faster performance), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
 

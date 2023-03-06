@@ -82,7 +82,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
 		}
-		if p == log.NoopStage {
+		if p == log.NoopStage || p == log.NoopLabelFilter {
 			continue
 		}
 		c = append(c, p)
@@ -537,12 +537,12 @@ func (e *LabelFmtExpr) String() string {
 }
 
 type JSONExpressionParser struct {
-	Expressions []log.XExpression
+	Expressions []log.LabelExtractionExpr
 
 	implicit
 }
 
-func newJSONExpressionParser(expressions []log.XExpression) *JSONExpressionParser {
+func newJSONExpressionParser(expressions []log.LabelExtractionExpr) *JSONExpressionParser {
 	return &JSONExpressionParser{
 		Expressions: expressions,
 	}
@@ -577,14 +577,14 @@ type internedStringSet map[string]struct {
 }
 
 type LogfmtExpressionParser struct {
-	Expressions []log.XExpression
+	Expressions []log.LabelExtractionExpr
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 
 	implicit
 }
 
-func newLogfmtExpressionParser(expressions []log.XExpression) *LogfmtExpressionParser {
+func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr) *LogfmtExpressionParser {
 	return &LogfmtExpressionParser{
 		Expressions: expressions,
 	}
