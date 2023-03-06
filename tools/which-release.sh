@@ -12,6 +12,8 @@ if [ -z "${REMOTE}" ]; then
     exit 1
 fi
 
+echo "It is recommended that you run \`git fetch -ap ${REMOTE}\` to ensure you get a correct result."
+
 RELEASES=$(git branch -r --contains "${COMMIT}" | grep "${REMOTE}" | grep "/release-" | sed "s|${REMOTE}/||")
 if [ -z "${RELEASES}" ]; then
     echo "Commit was not found in any release"
