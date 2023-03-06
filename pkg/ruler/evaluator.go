@@ -1,0 +1,35 @@
+package ruler
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// Evaluator is the interface that must be satisfied in order to accept rule evaluations from the Ruler.
+type Evaluator interface {
+	// Eval evaluates the given rule and returns the result.
+	Eval(ctx context.Context, qs string, now time.Time) (interface{}, error) // TODO correct return type
+}
+
+type EvaluationConfig struct {
+	Mode string `yaml:"evaluation_mode,omitempty"`
+}
+
+var (
+	EvalModeRemote = "remote"
+)
+
+func (c *EvaluationConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&c.Mode, "ruler.evaluation.mode", EvalModeLocal, "The evaluation mode for the ruler. Can be either 'local' or 'remote'. If set to 'local', the ruler will evaluate rules locally. If set to 'remote', the ruler will evaluate rules remotely. If unset, the ruler will evaluate rules locally.")
+}
+
+func (c *EvaluationConfig) Validate() error {
+	if c.Mode != EvalModeLocal && c.Mode != EvalModeRemote {
+		return fmt.Errorf("invalid evaluation mode: %s. Acceptable modes are: %s", c.Mode, strings.Join([]string{EvalModeLocal, EvalModeRemote}, ", "))
+	}
+
+	return nil
+}

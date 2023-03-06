@@ -94,6 +94,7 @@ const (
 	QueryLimitsTripperware   string = "query-limits-tripper"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
+	RuleEvaluator            string = "rule-evaluator"
 	Store                    string = "store"
 	TableManager             string = "table-manager"
 	MemberlistKV             string = "memberlist-kv"
@@ -904,27 +905,20 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 
 func (t *Loki) initRuler() (_ services.Service, err error) {
 	if t.RulerStorage == nil {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
+		level.Warn(util_log.Logger).Log("msg", "RulerStorage is nil. Not starting the ruler.")
+		return nil, nil
+	}
+
+	if t.ruleEvaluator == nil {
+		level.Warn(util_log.Logger).Log("msg", "RuleEvaluator is nil. Not starting the ruler.") // TODO better error msg
 		return nil, nil
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	deleteStore, err := t.deleteRequestsClient("ruler", t.Overrides)
-	if err != nil {
-		return nil, err
-	}
-
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.Overrides, log.With(util_log.Logger, "component", "ruler"))
-
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
-		engine,
+		t.ruleEvaluator,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 		t.RulerStorage,
@@ -968,8 +962,44 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 	}
 
+	deleteStore, err := t.deleteRequestsClient("ruler", t.Overrides)
+	if err != nil {
+		return nil, err
+	}
 	t.ruler.AddListener(deleteRequestsStoreListener(deleteStore))
+
 	return t.ruler, nil
+}
+
+func (t *Loki) initRuleEvaluator() (services.Service, error) {
+	if err := t.Cfg.Ruler.Evaluation.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ruler evaluation config: %w", err)
+	}
+
+	var evaluator ruler.Evaluator
+	switch t.Cfg.Ruler.Evaluation.Mode {
+	case ruler.EvalModeLocal:
+		deleteStore, err := t.deleteRequestsClient("rule-evaluator", t.Overrides)
+		if err != nil {
+			return nil, err
+		}
+
+		q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.Overrides, log.With(util_log.Logger, "component", "ruler"))
+		evaluator = ruler.NewLocalEvaluator(engine)
+	case ruler.EvalModeRemote:
+		panic("oops") // TODO don't panic
+	default:
+		panic("oops") // TODO don't panic
+	}
+
+	t.ruleEvaluator = evaluator
+
+	return nil, nil
 }
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
