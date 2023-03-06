@@ -37,6 +37,7 @@ var (
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
+	errFoundAllLabels       = errors.New("found all required labels")
 )
 
 type JSONParser struct {
@@ -64,6 +65,10 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	j.lbs = lbs
 
 	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
+		if errors.Is(err, errFoundAllLabels) {
+			return line, true
+		}
+
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
 		if lbs.ParserLabelHints().PreserveError() {
@@ -87,6 +92,10 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 		// rollback the prefix as we exit the current object.
 		j.prefixBuffer = j.prefixBuffer[:prefixLen]
 		return err
+	}
+
+	if j.lbs.ParserLabelHints().AllRequiredExtracted() {
+		return errFoundAllLabels
 	}
 
 	return nil
@@ -135,6 +144,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !j.lbs.ParserLabelHints().ShouldExtract(string(j.prefixBuffer)) {
 			return "", false
 		}
+
 		return string(j.prefixBuffer), true
 	})
 
@@ -265,6 +275,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
+
 	l.dec.Reset(line)
 	for l.dec.ScanKeyval() {
 		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
@@ -289,6 +300,10 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			val = nil
 		}
 		lbs.Set(key, string(val))
+
+		if lbs.ParserLabelHints().AllRequiredExtracted() {
+			break
+		}
 	}
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
@@ -340,6 +355,10 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 		}
 
 		lbs.Set(name, string(m))
+
+		if lbs.ParserLabelHints().AllRequiredExtracted() {
+			return line, true
+		}
 	}
 	return line, true
 }
@@ -433,6 +452,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				key = key + duplicateSuffix
 			}
 			lbs.Set(key, string(val))
+
+			if lbs.ParserLabelHints().AllRequiredExtracted() {
+				break
+			}
 		}
 	}
 	if l.dec.Err() != nil {
@@ -519,6 +542,12 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		}
 
 		identifier := j.ids[idx]
+		if !lbs.ParserLabelHints().ShouldExtract(identifier) {
+			// It's possible that something was asked for that
+			// shouldn't actually be extracted
+			return
+		}
+
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
 			if lbs.BaseHas(identifier) {
 				identifier = identifier + duplicateSuffix

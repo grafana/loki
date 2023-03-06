@@ -516,12 +516,55 @@ func Benchmark_Parser(b *testing.B) {
 
 			b.Run("labels hints", func(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
-				builder.parserKeyHints = newParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
+				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 				}
 			})
+		})
+	}
+}
+
+func BenchmarkKeyExtraction(b *testing.B) {
+	simpleJsn := []byte(`{
+      "data": "Click Here",
+      "size": 36,
+      "style": "bold",
+      "name": "text1",
+      "hOffset": 250,
+      "vOffset": 100,
+      "alignment": "center",
+      "onMouseUp": "sun1.opacity = (sun1.opacity / 100) * 90;"
+    }`)
+	logFmt := []byte(`data="Click Here" size=36 style=bold name=text1 hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
+
+	lbs := NewBaseLabelsBuilder().ForLabels(labels.Labels{}, 0)
+	lbs.parserKeyHints = NewParserHint([]string{"name"}, nil, false, true, "")
+
+	benchmarks := []struct {
+		name string
+		p    Stage
+		line []byte
+	}{
+		{"json", NewJSONParser(), simpleJsn},
+		{"logfmt", NewLogfmtParser(), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")})), logFmt},
+		{"pattern", mustStage(NewPatternParser(`<_> <style> <name> <hOffset> <_>`)), logFmt},
+		{"json-expression", mustStage(NewJSONExpressionParser([]LabelExtractionExpr{
+			NewLabelExtractionExpr("size", "size"),
+			NewLabelExtractionExpr("name", "name"),
+			NewLabelExtractionExpr("onMouseUp", "onMouseUp"),
+		})), simpleJsn},
+	}
+	for _, bb := range benchmarks {
+		b.Run(bb.name, func(b *testing.B) {
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				lbs.Reset()
+				_, result = bb.p.Process(0, bb.line, lbs)
+			}
 		})
 	}
 }

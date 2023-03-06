@@ -26,6 +26,12 @@ type ParserHint interface {
 	//		 sum(rate({app="foo"} | json [5m]))
 	// We don't need to extract any labels from the log line.
 	NoLabels() bool
+
+	// Holds state about what's already been extracted for the associated
+	// labels. This assumes that only required labels are ever extracted
+	RecordExtracted(key string)
+	AllRequiredExtracted() bool
+	Reset()
 	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
 }
@@ -34,6 +40,7 @@ type parserHint struct {
 	noLabels            bool
 	requiredLabels      []string
 	shouldPreserveError bool
+	extracted      int
 }
 
 func (p *parserHint) ShouldExtract(key string) bool {
@@ -62,15 +69,31 @@ func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
 }
 
 func (p *parserHint) NoLabels() bool {
-	return p.noLabels
+	return p.noLabels || p.AllRequiredExtracted()
 }
 
+func (p *parserHint) RecordExtracted(key string) {
+	p.extracted++
+}
+
+func (p *parserHint) AllRequiredExtracted() bool {
+	if len(p.requiredLabels) == 0 {
+		return false
+	}
+	return p.extracted == len(p.requiredLabels)
+}
+
+func (p *parserHint) Reset() {
+	p.extracted = 0
+}
+
+// NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func (p *parserHint) PreserveError() bool {
 	return p.shouldPreserveError
 }
 
-// newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
+// NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)

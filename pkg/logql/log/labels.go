@@ -93,6 +93,10 @@ type LabelsBuilder struct {
 
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
+	if parserKeyHints == nil {
+		parserKeyHints = noParserHints
+	}
+
 	return &BaseLabelsBuilder{
 		del:            make([]string, 0, 5),
 		add:            make([]labels.Label, 0, 16),
@@ -137,6 +141,7 @@ func (b *LabelsBuilder) Reset() {
 	b.add = b.add[:0]
 	b.err = ""
 	b.errDetails = ""
+	b.parserKeyHints.Reset()
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
@@ -233,6 +238,9 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 	}
 	b.add = append(b.add, labels.Label{Name: n, Value: v})
 
+	// Sometimes labels are set and later modified. Only record
+	// each label once
+	b.parserKeyHints.RecordExtracted(n)
 	return b
 }
 
