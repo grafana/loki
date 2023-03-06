@@ -310,8 +310,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			return nil, err
 		}
 
-		instanceName := fmt.Sprintf("%s_%d", periodCfg.ObjectType, tableRange.Start)
-		shipper, err := shipper.NewShipper(instanceName, cfg.BoltDBShipperConfig, objectClient, limits,
+		shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
 			ownsTenantFn, tableRange, registerer, logger)
 		if err != nil {
 			return nil, err

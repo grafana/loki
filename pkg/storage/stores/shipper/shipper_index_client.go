@@ -64,7 +64,7 @@ type indexClient struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (series_index.Client, error) {
 	i := indexClient{
 		cfg:     cfg,
@@ -72,7 +72,7 @@ func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limi
 		logger:  logger,
 	}
 
-	err := i.init(name, storageClient, limits, ownsTenantFn, tableRange, registerer)
+	err := i.init(storageClient, limits, ownsTenantFn, tableRange, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func NewShipper(name string, cfg Config, storageClient client.ObjectClient, limi
 	return &i, nil
 }
 
-func (i *indexClient) init(name string, storageClient client.ObjectClient, limits downloads.Limits,
+func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.Limits,
 	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
 	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn,
