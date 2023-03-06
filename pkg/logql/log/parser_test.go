@@ -131,6 +131,80 @@ func Test_jsonParser_Parse(t *testing.T) {
 	}
 }
 
+func TestKeyShortCircuit(t *testing.T) {
+	simpleJsn := []byte(`{
+      "data": "Click Here",
+      "size": 36,
+      "style": "bold",
+      "name": "text1",
+      "hOffset": 250,
+      "vOffset": 100,
+      "alignment": "center",
+      "onMouseUp": "sun1.opacity = (sun1.opacity / 100) * 90;"
+    }`)
+	logFmt := []byte(`data="ClickHere" size=36 style=bold name=text1 hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
+
+	hints := &fakeParseHints{label: "name"}
+	lbs := NewBaseLabelsBuilder().ForLabels(labels.Labels{}, 0)
+	lbs.parserKeyHints = hints
+
+	tests := []struct {
+		name string
+		p    Stage
+		line []byte
+	}{
+		{"json", NewJSONParser(), simpleJsn},
+		{"logfmt", NewLogfmtParser(), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")})), logFmt},
+		{"pattern", mustStage(NewPatternParser(`<data> <size> <style> <name> <hOffset> <_>`)), logFmt},
+		{"json-expression", mustStage(NewJSONExpressionParser([]LabelExtractionExpr{
+			NewLabelExtractionExpr("data", "data"),
+			NewLabelExtractionExpr("size", "size"),
+			NewLabelExtractionExpr("style", "style"),
+			NewLabelExtractionExpr("name", "name"),
+			NewLabelExtractionExpr("onMouseUp", "onMouseUp"),
+		})), simpleJsn},
+	}
+	for _, tt := range tests {
+		lbs.Reset()
+		t.Run(tt.name, func(t *testing.T) {
+			_, result = tt.p.Process(0, tt.line, lbs)
+
+			require.Len(t, lbs.labels(), 1)
+			name, ok := lbs.Get("name")
+			require.True(t, ok)
+			require.Contains(t, name, "text1")
+		})
+	}
+}
+
+type fakeParseHints struct {
+	label      string
+	checkCount int
+	count      int
+}
+
+func (p *fakeParseHints) ShouldExtract(key string) bool {
+	p.checkCount++
+	return key == p.label
+}
+func (p *fakeParseHints) ShouldExtractPrefix(prefix string) bool {
+	return prefix == p.label
+}
+func (p *fakeParseHints) NoLabels() bool {
+	return false
+}
+func (p *fakeParseHints) RecordExtracted() {
+	p.count++
+}
+func (p *fakeParseHints) AllRequiredExtracted() bool {
+	return p.count == 1
+}
+func (p *fakeParseHints) Reset() {
+	p.checkCount = 0
+	p.count = 0
+}
+
 func TestJSONExpressionParser(t *testing.T) {
 	testLine := []byte(`{"app":"foo","field with space":"value","field with ÜFT8👌":"value","null_field":null,"bool_field":false,"namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar", "params": [1,2,3]}}}`)
 
