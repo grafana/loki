@@ -87,18 +87,11 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 	cliQueryFrontend.Now = now
 
-	t.Run("ingest-logs-store", func(t *testing.T) {
+	t.Run("ingest-logs", func(t *testing.T) {
 		// ingest some log lines
 		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
 		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
 
-		// TODO: Flushing is currently causing a panic, as the boltdb shipper is shared using a global variable in:
-		// https://github.com/grafana/loki/blob/66a4692423582ed17cce9bd86b69d55663dc7721/pkg/storage/factory.go#L32-L35
-		//require.NoError(t, cliIngester.Flush())
-	})
-
-	t.Run("ingest-logs-ingester", func(t *testing.T) {
-		// ingest some log lines
 		require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
 		require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
 	})
@@ -201,19 +194,18 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 			cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 			cliQueryFrontend.Now = now
 
-			t.Run("ingest-logs-store", func(t *testing.T) {
-				// ingest some log lines
+			t.Run("ingest-logs", func(t *testing.T) {
+				// ingest logs to the previous period
 				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
 				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-36*time.Hour), map[string]string{"job": "fake"}))
-			})
 
-			t.Run("ingest-logs-ingester", func(t *testing.T) {
-				// ingest some log lines
+				// ingest logs to the current period
 				require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
 				require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
 			})
 
 			t.Run("query-lookback-default", func(t *testing.T) {
+				// queries ingesters with the default lookback period (3h)
 				resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 				require.NoError(t, err)
 				assert.Equal(t, "streams", resp.Data.ResultType)
@@ -228,7 +220,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 			})
 
 			t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
-				// restart ingester which should flush the chunks
+				// restart ingester which should flush the chunks and index
 				require.NoError(t, tIngester.Restart())
 
 				// restart querier and index shipper to sync the index
