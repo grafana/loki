@@ -204,7 +204,13 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			continue
 		}
 
-		if ok, _ := tm.tableRange.TableInRange(entry.Name()); !ok {
+		if ok, err := tm.tableRange.TableInRange(entry.Name()); !ok {
+			if err != nil {
+				level.Error(tm.logger).Log("msg", "failed to load table", "table-name", entry.Name(), "err", err)
+			} else {
+				level.Debug(tm.logger).Log("msg", "skip loading table as it is not in range", "table-name", entry.Name())
+			}
+
 			continue
 		}
 

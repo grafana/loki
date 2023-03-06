@@ -294,7 +294,12 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		if ok, err := tm.tableRangeToHandle.TableInRange(tableName); !ok {
-			level.Warn(tm.logger).Log("msg", fmt.Sprintf("skip query readiness. table not in range: %s", tableName), "err", err)
+			if err != nil {
+				level.Error(tm.logger).Log("msg", "failed to run query readiness for table", "table-name", tableName, "err", err)
+			} else {
+				level.Debug(tm.logger).Log("msg", "skipping query readiness. table not in range", "table-name", tableName)
+			}
+
 			continue
 		}
 
@@ -397,7 +402,12 @@ func (tm *tableManager) loadLocalTables() error {
 		}
 
 		if ok, err := tm.tableRangeToHandle.TableInRange(entry.Name()); !ok {
-			level.Warn(tm.logger).Log("msg", fmt.Sprintf("skip loading local table. table not in range: %s", entry.Name()), "err", err)
+			if err != nil {
+				level.Error(tm.logger).Log("msg", "failed to load table", "table-name", entry.Name(), "err", err)
+			} else {
+				level.Debug(tm.logger).Log("msg", "skip loading table as it is not in range", "table-name", entry.Name())
+			}
+
 			continue
 		}
 
