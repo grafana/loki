@@ -1,5 +1,12 @@
 package queue
 
+type Mapable interface {
+	*tenantQueue | *LeafQueue
+	// https://github.com/golang/go/issues/48522#issuecomment-924348755
+	Pos() QueueIndex
+	SetPos(index QueueIndex)
+}
+
 var empty = string([]byte{byte(0)})
 
 // Mapping is a map-like data structure that allows accessing its items not
@@ -9,47 +16,46 @@ var empty = string([]byte{byte(0)})
 // changing the index of the remaining items after the removed key.
 // Mapping uses *tenantQueue as concrete value and keys of type string.
 // The data structure is not thread-safe.
-// TODO(chaudum): Implement QueueMapping using generics
-type Mapping struct {
-	m     map[string]*tenantQueue
+type Mapping[v Mapable] struct {
+	m     map[string]v
 	keys  []string
-	empty []int
+	empty []QueueIndex
 }
 
-func (om *Mapping) Init(size int) {
-	om.m = make(map[string]*tenantQueue, size)
-	om.keys = make([]string, 0, size)
-	om.empty = make([]int, 0, size)
+func (m *Mapping[v]) Init(size int) {
+	m.m = make(map[string]v, size)
+	m.keys = make([]string, 0, size)
+	m.empty = make([]QueueIndex, 0, size)
 }
 
-func (om *Mapping) Put(key string, value *tenantQueue) bool {
+func (m *Mapping[v]) Put(key string, value v) bool {
 	// do not allow empty string or 0 byte string as key
 	if key == "" || key == empty {
 		return false
 	}
-	if len(om.empty) == 0 {
-		value.index = len(om.keys)
-		om.keys = append(om.keys, key)
+	if len(m.empty) == 0 {
+		value.SetPos(QueueIndex(len(m.keys)))
+		m.keys = append(m.keys, key)
 	} else {
-		idx := om.empty[0]
-		om.empty = om.empty[1:]
-		om.keys[idx] = key
-		value.index = idx
+		idx := m.empty[0]
+		m.empty = m.empty[1:]
+		m.keys[idx] = key
+		value.SetPos(idx)
 	}
-	om.m[key] = value
+	m.m[key] = value
 	return true
 }
 
-func (om *Mapping) Get(idx QueueIndex) *tenantQueue { //nolint:revive
-	if len(om.keys) == 0 {
+func (m *Mapping[v]) Get(idx QueueIndex) v {
+	if len(m.keys) == 0 {
 		return nil
 	}
-	k := om.keys[idx]
-	return om.GetByKey(k)
+	k := m.keys[idx]
+	return m.GetByKey(k)
 }
 
-func (om *Mapping) GetNext(idx QueueIndex) *tenantQueue { //nolint:revive
-	if len(om.keys) == 0 {
+func (m *Mapping[v]) GetNext(idx QueueIndex) v {
+	if len(m.keys) == 0 {
 		return nil
 	}
 
@@ -58,54 +64,54 @@ func (om *Mapping) GetNext(idx QueueIndex) *tenantQueue { //nolint:revive
 	// proceed to the next index
 	i = i + 1
 	// start from beginning if next index exceeds slice length
-	if i >= len(om.keys) {
+	if i >= len(m.keys) {
 		i = 0
 	}
 
-	for i < len(om.keys) {
-		k := om.keys[i]
+	for i < len(m.keys) {
+		k := m.keys[i]
 		if k != empty {
-			return om.GetByKey(k)
+			return m.GetByKey(k)
 		}
 		i++
 	}
 	return nil
 }
 
-func (om *Mapping) GetByKey(key string) *tenantQueue { //nolint:revive
+func (m *Mapping[v]) GetByKey(key string) v {
 	// do not allow empty string or 0 byte string as key
 	if key == "" || key == empty {
 		return nil
 	}
-	return om.m[key]
+	return m.m[key]
 }
 
-func (om *Mapping) Remove(key string) bool {
-	e := om.m[key]
+func (m *Mapping[v]) Remove(key string) bool {
+	e := m.m[key]
 	if e == nil {
 		return false
 	}
-	delete(om.m, key)
-	om.keys[e.index] = empty
-	om.empty = append(om.empty, e.index)
+	delete(m.m, key)
+	m.keys[e.Pos()] = empty
+	m.empty = append(m.empty, e.Pos())
 	return true
 }
 
-func (om *Mapping) Keys() []string {
-	return om.keys
+func (m *Mapping[v]) Keys() []string {
+	return m.keys
 }
 
-func (om *Mapping) Values() []*tenantQueue { //nolint:revive
-	values := make([]*tenantQueue, 0, len(om.keys))
-	for _, k := range om.keys {
+func (m *Mapping[v]) Values() []v {
+	values := make([]v, 0, len(m.keys))
+	for _, k := range m.keys {
 		if k == empty {
 			continue
 		}
-		values = append(values, om.m[k])
+		values = append(values, m.m[k])
 	}
 	return values
 }
 
-func (om *Mapping) Len() int {
-	return len(om.keys) - len(om.empty)
+func (m *Mapping[v]) Len() int {
+	return len(m.keys) - len(m.empty)
 }

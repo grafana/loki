@@ -25,6 +25,9 @@ var (
 // of RequestQueue.GetNextRequestForQuerier method.
 type QueueIndex int // nolint:revive
 
+// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
+var StartIndex QueueIndex = -1
+
 // Modify index to start iteration on the same tenant, for which last queue was returned.
 func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	if ui < 0 {
@@ -32,9 +35,6 @@ func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	}
 	return ui - 1
 }
-
-// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
-var StartIndex QueueIndex = -1
 
 // Request stored into the queue.
 type Request any
@@ -142,8 +142,8 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			request := <-queue.Chan()
-			if len(queue.Chan()) == 0 {
+			request := queue.Dequeue()
+			if queue.Len() == 0 {
 				q.queues.deleteQueue(tenant)
 			}
 
