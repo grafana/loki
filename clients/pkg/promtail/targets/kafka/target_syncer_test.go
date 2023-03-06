@@ -282,8 +282,24 @@ func Test_withAuthentication(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, false, mTLSCfg.Net.SASL.Enable)
 
-	// SASL/PLAIN
+	// SASL/PLAIN default mechanism "PLAIN"
 	saslCfg, err := withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: scrapeconfig.KafkaAuthenticationTypeSASL,
+		SASLConfig: scrapeconfig.KafkaSASLConfig{
+			User:     "user",
+			Password: flagext.SecretWithValue("pass"),
+		},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, false, saslCfg.Net.TLS.Enable)
+	assert.Equal(t, true, saslCfg.Net.SASL.Enable)
+	assert.Equal(t, "user", saslCfg.Net.SASL.User)
+	assert.Equal(t, "pass", saslCfg.Net.SASL.Password)
+	assert.Equal(t, sarama.SASLTypePlaintext, string(saslCfg.Net.SASL.Mechanism))
+	assert.NoError(t, saslCfg.Validate())
+
+	// SASL/PLAIN
+	saslCfg, err = withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
 		Type: scrapeconfig.KafkaAuthenticationTypeSASL,
 		SASLConfig: scrapeconfig.KafkaSASLConfig{
 			Mechanism: sarama.SASLTypePlaintext,

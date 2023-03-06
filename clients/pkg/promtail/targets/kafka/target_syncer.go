@@ -159,8 +159,8 @@ func withSASLAuthentication(cfg sarama.Config, authCfg scrapeconfig.KafkaAuthent
 		sarama.SASLTypeSCRAMSHA256,
 		sarama.SASLTypePlaintext,
 	}
-	if !util.StringsContain(supportedMechanism, string(authCfg.SASLConfig.Mechanism)) {
-		return nil, fmt.Errorf("error unsupported sasl mechanism: %s", authCfg.SASLConfig.Mechanism)
+	if !util.StringsContain(supportedMechanism, string(cfg.Net.SASL.Mechanism)) {
+		return nil, fmt.Errorf("error unsupported sasl mechanism: %s", cfg.Net.SASL.Mechanism)
 	}
 
 	if cfg.Net.SASL.Mechanism == sarama.SASLTypeSCRAMSHA512 {
