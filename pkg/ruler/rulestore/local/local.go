@@ -70,7 +70,7 @@ func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 		if d.Type()&fs.FileMode(os.ModeSymlink) != 0 {
 			fi, err := os.Stat(p)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "unable to stat file %s", p)
 			}
 			isDir = fi.IsDir()
 		} else {
@@ -86,7 +86,7 @@ func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		println(err)
+		return nil, errors.Wrapf(err, "failed to walk the file tree located at %s", l.cfg.Directory)
 	}
 
 	return result, nil
