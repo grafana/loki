@@ -15,16 +15,20 @@ import (
 const EvalModeLocal = "local"
 
 type LocalEvaluator struct {
+	cfg    *EvaluationConfig
 	engine *logql.Engine
 	logger log.Logger
 }
 
-func NewLocalEvaluator(engine *logql.Engine, logger log.Logger) (*LocalEvaluator, error) {
+func NewLocalEvaluator(cfg *EvaluationConfig, engine *logql.Engine, logger log.Logger) (*LocalEvaluator, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("given config is nil")
+	}
 	if engine == nil {
 		return nil, fmt.Errorf("given engine is nil")
 	}
 
-	return &LocalEvaluator{engine: engine, logger: logger}, nil
+	return &LocalEvaluator{cfg: cfg, engine: engine, logger: logger}, nil
 }
 
 func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {

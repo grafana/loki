@@ -13,7 +13,7 @@ import (
 // Evaluator is the interface that must be satisfied in order to accept rule evaluations from the Ruler.
 type Evaluator interface {
 	// Eval evaluates the given rule and returns the result.
-	Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) // TODO correct return type
+	Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error)
 }
 
 type EvaluationConfig struct {

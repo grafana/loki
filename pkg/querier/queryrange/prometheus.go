@@ -144,7 +144,6 @@ func (p *LokiPromResponse) marshalScalar() ([]byte, error) {
 			continue
 		}
 
-		// TODO: losing precision on timestamp before getting here?
 		scalar = loghttp.Scalar{
 			Value:     model.SampleValue(r.Samples[0].Value),
 			Timestamp: model.TimeFromUnix(r.Samples[0].TimestampMs),

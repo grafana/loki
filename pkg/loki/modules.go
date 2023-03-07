@@ -986,26 +986,22 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 	switch mode {
 	case ruler.EvalModeLocal:
-		deleteStore, err := t.deleteRequestsClient("rule-evaluator", t.Overrides)
+		var engine *logql.Engine
+
+		engine, err = t.createRulerQueryEngine(logger)
 		if err != nil {
-			return nil, err
+			break
 		}
 
-		q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.Overrides, logger)
-		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
+		evaluator, err = ruler.NewLocalEvaluator(&t.Cfg.Ruler.Evaluation, engine, logger)
 	case ruler.EvalModeRemote:
 		evaluator, err = ruler.NewRemoteEvaluator(&t.Cfg.Ruler.Evaluation, logger)
 	default:
-		panic("oops") // TODO don't panic
+		return nil, fmt.Errorf("unknown rule evaluation mode %q", mode)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %q evaluator: %w", mode, err)
+		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
 	}
 
 	t.ruleEvaluator = evaluator
@@ -1254,6 +1250,20 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 	}
 
 	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
+}
+
+func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err error) {
+	deleteStore, err := t.deleteRequestsClient("rule-evaluator", t.Overrides)
+	if err != nil {
+		return nil, fmt.Errorf("could not create delete requests store: %w", err)
+	}
+
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not create querier: %w", err)
+	}
+
+	return logql.NewEngine(t.Cfg.Querier.Engine, q, t.Overrides, logger), nil
 }
 
 func calculateMaxLookBack(pc config.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
