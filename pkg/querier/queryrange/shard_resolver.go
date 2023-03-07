@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
@@ -141,9 +140,9 @@ func (r *dynamicShardResolver) checkQuerySizeLimit(shardStats []*stats.Stats) er
 
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, r.limits.MaxQuerierBytesRead); maxBytesRead > 0 {
 		for _, stats := range shardStats {
-			if int(stats.Bytes) > maxBytesRead {
-				statsBytesStr := flagext.ByteSize(stats.Bytes).String()
-				maxBytesReadStr := flagext.ByteSize(maxBytesRead).String()
+			if stats.Bytes > uint64(maxBytesRead) {
+				statsBytesStr := humanize.Bytes(stats.Bytes)
+				maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
 				return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
 			}
 		}

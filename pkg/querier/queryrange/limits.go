@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -314,9 +313,9 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query", err.Error())
 		}
 
-		if int(bytesRead) > maxBytesRead {
-			statsBytesStr := flagext.ByteSize(bytesRead).String()
-			maxBytesReadStr := flagext.ByteSize(maxBytesRead).String()
+		if bytesRead > uint64(maxBytesRead) {
+			statsBytesStr := humanize.Bytes(bytesRead)
+			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.errorTemplate, statsBytesStr, maxBytesReadStr)
 		}
 	}
