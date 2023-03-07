@@ -232,26 +232,7 @@ type shardSplitter struct {
 	now          func() time.Time       // injectable time.Now
 }
 
-// skipRequestType returns whether we should apply sharding on the r request type.
-// This is needed when we have middlewares that send different requests types down
-// in the pipeline that do not support sharding.
-func (splitter *shardSplitter) skipRequestType(r queryrangebase.Request) bool {
-	if _, ok := r.(*LokiRequest); ok {
-		return false
-	}
-
-	if _, ok := r.(*LokiInstantRequest); ok {
-		return false
-	}
-
-	return true
-}
-
 func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	if splitter.skipRequestType(r) {
-		return splitter.next.Do(ctx, r)
-	}
-
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

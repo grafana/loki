@@ -317,16 +317,12 @@ func reduceSplitIntervalForRangeVector(r queryrangebase.Request, interval time.D
 func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var reqs []queryrangebase.Request
 
-	lokiReq, ok := r.(*LokiRequest)
-	if !ok {
-		// If this type of request cannot get split
-		return []queryrangebase.Request{}, nil
-	}
-
 	interval, err := reduceSplitIntervalForRangeVector(r, interval)
 	if err != nil {
 		return nil, err
 	}
+
+	lokiReq := r.(*LokiRequest)
 
 	// step align start and end time of the query. Start time is rounded down and end time is rounded up.
 	stepNs := r.GetStep() * 1e6

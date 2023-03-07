@@ -181,3 +181,39 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 
 	return q.codec.DecodeResponse(ctx, response, r)
 }
+
+type roundTripperHandler struct {
+	next  http.RoundTripper
+	codec Codec
+}
+
+// NewRoundTripperHandler TODO.
+func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
+	return roundTripperHandler{
+		next:  next,
+		codec: codec,
+	}
+}
+
+// Do implements Handler.
+func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error) {
+	request, err := q.codec.EncodeRequest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	response, err := q.next.RoundTrip(request)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
+		response.Body.Close()
+	}()
+
+	return q.codec.DecodeResponse(ctx, response, r)
+}

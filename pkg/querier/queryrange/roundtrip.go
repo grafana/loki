@@ -520,34 +520,12 @@ func NewMetricTripperware(
 	metrics *Metrics,
 	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, error) {
-	queryRangeMiddleware := []queryrangebase.Middleware{
-		StatsCollectorMiddleware(),
-		NewLimitsMiddleware(limits),
-	}
-
-	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(
-			queryRangeMiddleware,
-			queryrangebase.InstrumentMiddleware("step_align", metrics.InstrumentMiddlewareMetrics),
-			queryrangebase.StepAlignMiddleware,
-		)
-	}
-
-	// Limit the bytes the query would fetch regardless of splitting and sharding.
-	queryRangeMiddleware = append(
-		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl),
-	)
-
-	queryRangeMiddleware = append(
-		queryRangeMiddleware,
-		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
-	)
 
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
+	var queryCacheMiddleware queryrangebase.Middleware
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := queryrangebase.NewResultsCacheMiddleware(
+		var err error
+		queryCacheMiddleware, err = queryrangebase.NewResultsCacheMiddleware(
 			log,
 			c,
 			cacheKey,
@@ -574,41 +552,71 @@ func NewMetricTripperware(
 		if err != nil {
 			return nil, err
 		}
-		queryRangeMiddleware = append(
-			queryRangeMiddleware,
-			queryrangebase.InstrumentMiddleware("results_cache", metrics.InstrumentMiddlewareMetrics),
-			queryCacheMiddleware,
-		)
-	}
-
-	if cfg.ShardedQueries {
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewQueryShardMiddleware(
-				log,
-				schema.Configs,
-				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-				metrics.MiddlewareMapperMetrics.shardMapper,
-				limits,
-				0, // 0 is unlimited shards
-			),
-		)
-	}
-
-	// Limit the bytes the sub-queries would fetch after splitting and sharding
-	queryRangeMiddleware = append(
-		queryRangeMiddleware,
-		NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl),
-	)
-
-	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(
-			queryRangeMiddleware,
-			queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-			queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
-		)
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
+		skipMiddleware := queryrangebase.NewRoundTripperHandler(next, codec)
+
+		queryRangeMiddleware := []queryrangebase.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(limits),
+		}
+
+		if cfg.AlignQueriesWithStep {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware,
+				queryrangebase.InstrumentMiddleware("step_align", metrics.InstrumentMiddlewareMetrics),
+				queryrangebase.StepAlignMiddleware,
+			)
+		}
+
+		// Limit the bytes the query would fetch regardless of splitting and sharding.
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, skipMiddleware),
+		)
+
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
+		)
+
+		if cfg.CacheResults {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware,
+				queryrangebase.InstrumentMiddleware("results_cache", metrics.InstrumentMiddlewareMetrics),
+				queryCacheMiddleware,
+			)
+		}
+
+		if cfg.ShardedQueries {
+			queryRangeMiddleware = append(queryRangeMiddleware,
+				NewQueryShardMiddleware(
+					log,
+					schema.Configs,
+					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+					metrics.MiddlewareMapperMetrics.shardMapper,
+					limits,
+					0, // 0 is unlimited shards
+				),
+			)
+		}
+
+		// Limit the bytes the sub-queries would fetch after splitting and sharding
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			NewQuerySizeLimiterMiddleware(schema.Configs, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, skipMiddleware),
+		)
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware,
+				queryrangebase.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+			)
+		}
+
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
 			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)

@@ -190,6 +190,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 type querySizeLimiter struct {
 	next              queryrangebase.Handler
+	statsHandler      queryrangebase.Handler
 	cfg               []config.PeriodConfig
 	maxQueryBytesRead func(string) int
 	errorTemplate     string
@@ -201,14 +202,23 @@ func NewQuerySizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
 	maxQueryBytesRead func(string) int,
 	errorTemplate string,
+	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return &querySizeLimiter{
+		q := &querySizeLimiter{
 			next:              next,
 			cfg:               cfg,
 			maxQueryBytesRead: maxQueryBytesRead,
 			errorTemplate:     errorTemplate,
 		}
+
+		if len(statsHandler) > 0 {
+			q.statsHandler = statsHandler[0]
+		} else {
+			q.statsHandler = next
+		}
+
+		return q
 	})
 }
 
@@ -244,14 +254,14 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
 		adjustedFrom := model.Time(r.GetStart()).Add(-diff)
 		if matcherGroups[i].Interval == 0 {
-			// TODO: IIUC, this is needed for instant queries.
+			// TODO: IIUC, this is needed for instant log queries.
 			//       Should we use the MaxLookBackPeriod as done in shardResolverForConf?
 			adjustedFrom = adjustedFrom.Add(-100)
 		}
 
 		adjustedThrough := model.Time(r.GetEnd()).Add(-matcherGroups[i].Offset)
 
-		resp, err := q.next.Do(ctx, &logproto.IndexStatsRequest{
+		resp, err := q.statsHandler.Do(ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
 			Through:  adjustedThrough,
 			Matchers: matchers,
@@ -309,22 +319,9 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 	return config.PeriodConfig{}, errors.New("Failed to find schema config for range")
 }
 
-// skipRequestType returns whether we should enforce the q.maxQueryBytesRead limit
-// on the r request type.
-// This is needed when we have two instances of this querySizeLimiter in the same middleware pipeline
-// since we don't want to compute the stats for the stats request from the upper querySizeLimiter.
-func (q *querySizeLimiter) skipRequestType(r queryrangebase.Request) bool {
-	_, ok := r.(*logproto.IndexStatsRequest)
-	return ok
-}
-
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log, ctx := spanlogger.New(ctx, "query_size_limits")
 	defer log.Finish()
-
-	if q.skipRequestType(r) {
-		return q.next.Do(ctx, r)
-	}
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
