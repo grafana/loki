@@ -54,6 +54,51 @@ func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 	require.Equal(t, annotations[expected], sha1C)
 }
 
+func TestNewGatewayDeployment_HasNodeSelector(t *testing.T) {
+	toleration := []corev1.Toleration{
+		{
+			Key:      "foo",
+			Operator: corev1.TolerationOpEqual,
+			Value:    "bar",
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+	}
+	selector := map[string]string{
+		"foo": "bar",
+	}
+	dpl := NewGatewayDeployment(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas:     rand.Int31(),
+					NodeSelector: selector,
+					Tolerations:  toleration,
+				},
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+		},
+	}, "deadbeef")
+
+	require.Equal(t, dpl.Spec.Template.Spec.NodeSelector, selector)
+	require.ElementsMatch(t, dpl.Spec.Template.Spec.Tolerations, toleration)
+}
+
 func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
 	sha1C := "deadbeef"
 	ss := NewGatewayDeployment(Options{

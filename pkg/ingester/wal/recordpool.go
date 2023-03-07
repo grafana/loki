@@ -26,7 +26,8 @@ func NewRecordPool() *ResettingPool {
 		},
 		bPool: &sync.Pool{
 			New: func() interface{} {
-				return make([]byte, 0, 1<<10) // 1kb
+				buf := make([]byte, 0, 1<<10) // 1kb
+				return &buf
 			},
 		},
 	}
@@ -53,10 +54,11 @@ func (p *ResettingPool) PutEntries(es []logproto.Entry) {
 	p.ePool.Put(es[:0]) // nolint:staticcheck
 }
 
-func (p *ResettingPool) GetBytes() []byte {
-	return p.bPool.Get().([]byte)
+func (p *ResettingPool) GetBytes() *[]byte {
+	return p.bPool.Get().(*[]byte)
 }
 
-func (p *ResettingPool) PutBytes(b []byte) {
-	p.bPool.Put(b[:0]) // nolint:staticcheck
+func (p *ResettingPool) PutBytes(b *[]byte) {
+	*b = (*b)[:0]
+	p.bPool.Put(b)
 }

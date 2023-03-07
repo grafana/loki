@@ -38,6 +38,15 @@ var (
 		Name:      "cache_corrupt_chunks_total",
 		Help:      "Total count of corrupt chunks found in cache.",
 	})
+	chunkFetchedSize = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "loki",
+		Subsystem: "chunk_fetcher",
+		Name:      "fetched_size_bytes",
+		Help:      "Compressed chunk size distribution fetched from storage.",
+		// TODO: expand these buckets if we ever make larger chunks
+		// TODO: consider adding `chunk_target_size` to this list in case users set very large chunk sizes
+		Buckets: []float64{128, 1024, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 1.5 * 1024 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024},
+	}, []string{"source"})
 )
 
 const chunkDecodeParallelism = 16
@@ -173,6 +182,11 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
+
+	for _, buf := range cacheBufs {
+		chunkFetchedSize.WithLabelValues("cache").Observe(float64(len(buf)))
+	}
+
 	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
 	if err != nil {
 		level.Warn(log).Log("msg", "error process response from cache", "err", err)
@@ -188,6 +202,8 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	var bytes int
 	for _, c := range fromStorage {
 		bytes += c.Size()
+
+		chunkFetchedSize.WithLabelValues("store").Observe(float64(c.Size()))
 	}
 
 	st := stats.FromContext(ctx)
