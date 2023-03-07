@@ -284,27 +284,10 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration")
 	}
 
-	adjustedStart := model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset)
-	adjustedEnd := model.Time(r.GetEnd()).Add(-maxOffset)
+	adjustedStart := int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset))
+	adjustedEnd := int64(model.Time(r.GetEnd()).Add(-maxOffset))
 
-	for i, conf := range q.cfg {
-		// The query starts before the schema
-		if adjustedStart < conf.From.Time {
-			return config.PeriodConfig{}, errors.New("Start of the query falls outside any configured schema")
-		}
-
-		// This is the last config
-		if i == len(q.cfg)-1 {
-			return conf, nil
-		}
-
-		// The request is scoped into the current schema
-		if adjustedEnd < q.cfg[i+1].From.Time {
-			return conf, nil
-		}
-	}
-
-	return config.PeriodConfig{}, errors.New("Failed to find schema config for range")
+	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
