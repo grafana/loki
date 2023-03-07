@@ -976,8 +976,15 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		return nil, fmt.Errorf("invalid ruler evaluation config: %w", err)
 	}
 
-	var evaluator ruler.Evaluator
-	switch t.Cfg.Ruler.Evaluation.Mode {
+	var (
+		evaluator ruler.Evaluator
+		err       error
+	)
+
+	mode := t.Cfg.Ruler.Evaluation.Mode
+	logger := log.With(util_log.Logger, "component", "ruler", "evaluation_mode", mode)
+
+	switch mode {
 	case ruler.EvalModeLocal:
 		deleteStore, err := t.deleteRequestsClient("rule-evaluator", t.Overrides)
 		if err != nil {
@@ -989,12 +996,16 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			return nil, err
 		}
 
-		engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.Overrides, log.With(util_log.Logger, "component", "ruler"))
-		evaluator = ruler.NewLocalEvaluator(engine)
+		engine := logql.NewEngine(t.Cfg.Querier.Engine, q, t.Overrides, logger)
+		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
 	case ruler.EvalModeRemote:
-		panic("oops") // TODO don't panic
+		evaluator, err = ruler.NewRemoteEvaluator(&t.Cfg.Ruler.Evaluation, logger)
 	default:
 		panic("oops") // TODO don't panic
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %q evaluator: %w", mode, err)
 	}
 
 	t.ruleEvaluator = evaluator

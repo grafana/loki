@@ -23,7 +23,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/util"
@@ -63,15 +62,11 @@ func engineQueryFunc(evaluator Evaluator, overrides RulesLimits, checker readyCh
 
 		adjusted := t.Add(-overrides.EvaluationDelay(userID))
 		res, err := evaluator.Eval(ctx, qs, adjusted)
-		r, ok := res.(logqlmodel.Result)
-		if !ok {
-			panic("oops") // TODO don't panic
-		}
 
 		if err != nil {
 			return nil, err
 		}
-		switch v := r.Data.(type) {
+		switch v := res.Data.(type) {
 		case promql.Vector:
 			return v, nil
 		case promql.Scalar:
