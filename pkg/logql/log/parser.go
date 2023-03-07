@@ -553,6 +553,11 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return
 		}
 
+		matches++
+		if lbs.ParserLabelHints().AllRequiredExtracted() {
+			return
+		}
+
 		identifier := j.ids[idx]
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
 			if lbs.BaseHas(identifier) {
@@ -573,8 +578,6 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		default:
 			lbs.Set(key, unsafeGetString(data))
 		}
-
-		matches++
 	}, j.paths...)
 
 	// Ensure there's a label for every value

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var noParserHints = &parserHint{}
+var noParserHints = &Hints{}
 
 // ParserHint are hints given to LogQL parsers.
 // This is specially useful for parser that extract implicitly all possible label keys.
@@ -36,14 +36,14 @@ type ParserHint interface {
 	PreserveError() bool
 }
 
-type parserHint struct {
+type Hints struct {
 	noLabels            bool
 	requiredLabels      []string
 	shouldPreserveError bool
 	extracted      int
 }
 
-func (p *parserHint) ShouldExtract(key string) bool {
+func (p *Hints) ShouldExtract(key string) bool {
 	if len(p.requiredLabels) == 0 {
 		return true
 	}
@@ -55,7 +55,7 @@ func (p *parserHint) ShouldExtract(key string) bool {
 	return false
 }
 
-func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
+func (p *Hints) ShouldExtractPrefix(prefix string) bool {
 	if len(p.requiredLabels) == 0 {
 		return true
 	}
@@ -68,32 +68,32 @@ func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
 	return false
 }
 
-func (p *parserHint) NoLabels() bool {
+func (p *Hints) NoLabels() bool {
 	return p.noLabels || p.AllRequiredExtracted()
 }
 
-func (p *parserHint) RecordExtracted() {
+func (p *Hints) RecordExtracted() {
 	p.extracted++
 }
 
-func (p *parserHint) AllRequiredExtracted() bool {
+func (p *Hints) AllRequiredExtracted() bool {
 	if len(p.requiredLabels) == 0 {
 		return false
 	}
 	return p.extracted == len(p.requiredLabels)
 }
 
-func (p *parserHint) Reset() {
+func (p *Hints) Reset() {
 	p.extracted = 0
 }
 
 // NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func (p *parserHint) PreserveError() bool {
+func (p *Hints) PreserveError() bool {
 	return p.shouldPreserveError
 }
 
 // NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *Hints {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
@@ -102,9 +102,9 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 
 	if noLabels {
 		if len(hints) > 0 {
-			return &parserHint{requiredLabels: hints, shouldPreserveError: containsError(hints)}
+			return &Hints{requiredLabels: hints, shouldPreserveError: containsError(hints)}
 		}
-		return &parserHint{noLabels: true}
+		return &Hints{noLabels: true}
 	}
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
@@ -112,7 +112,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return noParserHints
 	}
-	return &parserHint{requiredLabels: hints, shouldPreserveError: containsError(hints)}
+	return &Hints{requiredLabels: hints, shouldPreserveError: containsError(hints)}
 }
 
 func containsError(hints []string) bool {
