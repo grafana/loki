@@ -492,7 +492,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	// Check that the line starts correctly
 	// the parser will pass an error if other
 	// parts of the line are malformed
-	if !isValidJsonStart(line) {
+	if !isValidJSONStart(line) {
 		lbs.SetErr(errJSON)
 		return line, true
 	}
@@ -534,7 +534,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	return line, true
 }
 
-func isValidJsonStart(data []byte) bool {
+func isValidJSONStart(data []byte) bool {
 	switch data[0] {
 	case '"', '{', '}', '[', ']':
 		return true
