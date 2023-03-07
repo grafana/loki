@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -189,6 +191,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 }
 
 type querySizeLimiter struct {
+	logger            log.Logger
 	next              queryrangebase.Handler
 	statsHandler      queryrangebase.Handler
 	cfg               []config.PeriodConfig
@@ -200,12 +203,14 @@ type querySizeLimiter struct {
 // The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerySizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
+	logger log.Logger,
 	maxQueryBytesRead func(string) int,
 	errorTemplate string,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		q := &querySizeLimiter{
+			logger:            logger,
 			next:              next,
 			cfg:               cfg,
 			maxQueryBytesRead: maxQueryBytesRead,
@@ -233,9 +238,10 @@ func NewQuerySizeLimiterMiddleware(
 // individual intervals and offsets
 //   - {job="foo"}
 //   - {job="bar"}
-//
-// TODO: This function shares a lot of code with dynamicShardResolver.Shards. I think we should extract the functionality to a common function?
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
+	sp, ctx := spanlogger.NewWithLogger(ctx, q.logger, "querySizeLimiter.getBytesReadForRequest")
+	defer sp.Finish()
+
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
 		return 0, err
@@ -247,46 +253,28 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	}
 
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
+	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	results := make([]*stats.Stats, len(matcherGroups), len(matcherGroups))
-	if err := concurrency.ForEachJob(ctx, len(matcherGroups), maxConcurrentIndexReq, func(ctx context.Context, i int) error {
-		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
-		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
-		adjustedFrom := model.Time(r.GetStart()).Add(-diff)
-		if matcherGroups[i].Interval == 0 {
-			// TODO: IIUC, this is needed for instant log queries.
-			//       Should we use the MaxLookBackPeriod as done in shardResolverForConf?
-			adjustedFrom = adjustedFrom.Add(-100)
-		}
-
-		adjustedThrough := model.Time(r.GetEnd()).Add(-matcherGroups[i].Offset)
-
-		resp, err := q.statsHandler.Do(ctx, &logproto.IndexStatsRequest{
-			From:     adjustedFrom,
-			Through:  adjustedThrough,
-			Matchers: matchers,
-		})
-		if err != nil {
-			return err
-		}
-
-		casted, ok := resp.(*IndexStatsResponse)
-		if !ok {
-			return fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
-		}
-
-		results[i] = casted.Response
-		return nil
-	}); err != nil {
+	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq)
+	if err != nil {
 		return 0, err
 	}
 
-	var bytesRead uint64 = 0
-	for _, r := range results {
-		bytesRead += r.GetBytes()
-	}
+	combinedStats := stats.MergeStats(matcherStats...)
 
-	return bytesRead, nil
+	level.Debug(sp).Log(
+		append(
+			combinedStats.LoggingKeyValues(),
+			"msg", "queried index",
+			"type", "combined",
+			"len", len(matcherStats),
+			"max_parallelism", maxConcurrentIndexReq,
+			"duration", time.Since(start),
+			"total_bytes", strings.Replace(humanize.Bytes(combinedStats.Bytes), " ", "", 1),
+		)...,
+	)
+
+	return combinedStats.Bytes, nil
 }
 
 // TODO: This is pretty similar to ShardingConfigs.ValidRange, we should probably extract the functionality to a new function

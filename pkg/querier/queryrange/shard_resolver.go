@@ -61,6 +61,70 @@ type dynamicShardResolver struct {
 	defaultLookback time.Duration
 }
 
+// getStatsForMatchers returns the index stats for all the groups in matcherGroups.
+func getStatsForMatchers(
+	ctx context.Context,
+	logger log.Logger,
+	statsHandler queryrangebase.Handler,
+	start, end model.Time,
+	matcherGroups []syntax.MatcherRange,
+	parallelism int,
+	defaultLookback ...time.Duration,
+) ([]*stats.Stats, error) {
+	startTime := time.Now()
+
+	results := make([]*stats.Stats, len(matcherGroups), len(matcherGroups))
+	if err := concurrency.ForEachJob(ctx, len(matcherGroups), parallelism, func(ctx context.Context, i int) error {
+		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
+		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
+		adjustedFrom := model.Time(start).Add(-diff)
+		if matcherGroups[i].Interval == 0 && len(defaultLookback) > 0 {
+			// For limited instant queries, when start == end, the queries would return
+			// zero results. Prometheus has a concept of "look back amount of time for instant queries"
+			// since metric data is sampled at some configurable scrape_interval (commonly 15s, 30s, or 1m).
+			// We copy that idea and say "find me logs from the past when start=end".
+			adjustedFrom = adjustedFrom.Add(-defaultLookback[0])
+		}
+
+		adjustedThrough := model.Time(end).Add(-matcherGroups[i].Offset)
+
+		resp, err := statsHandler.Do(ctx, &logproto.IndexStatsRequest{
+			From:     adjustedFrom,
+			Through:  adjustedThrough,
+			Matchers: matchers,
+		})
+		if err != nil {
+			return err
+		}
+
+		casted, ok := resp.(*IndexStatsResponse)
+		if !ok {
+			return fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
+		}
+
+		results[i] = casted.Response
+
+		level.Debug(logger).Log(
+			append(
+				casted.Response.LoggingKeyValues(),
+				"msg", "queried index",
+				"type", "single",
+				"matchers", matchers,
+				"duration", time.Since(startTime),
+				"from", adjustedFrom.Time(),
+				"through", adjustedThrough.Time(),
+				"length", adjustedThrough.Sub(adjustedFrom),
+			)...,
+		)
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
 	defer sp.Finish()
@@ -77,49 +141,10 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results := make([]*stats.Stats, 0, len(grps))
-
 	start := time.Now()
-	if err := concurrency.ForEachJob(ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
-		matchers := syntax.MatchersString(grps[i].Matchers)
-		diff := grps[i].Interval + grps[i].Offset
-		adjustedFrom := r.from.Add(-diff)
-		if grps[i].Interval == 0 {
-			adjustedFrom = adjustedFrom.Add(-r.defaultLookback)
-		}
 
-		adjustedThrough := r.through.Add(-grps[i].Offset)
-
-		start := time.Now()
-		resp, err := r.handler.Do(r.ctx, &logproto.IndexStatsRequest{
-			From:     adjustedFrom,
-			Through:  adjustedThrough,
-			Matchers: matchers,
-		})
-		if err != nil {
-			return err
-		}
-
-		casted, ok := resp.(*IndexStatsResponse)
-		if !ok {
-			return fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
-		}
-
-		results = append(results, casted.Response)
-		level.Debug(sp).Log(
-			append(
-				casted.Response.LoggingKeyValues(),
-				"msg", "queried index",
-				"type", "single",
-				"matchers", matchers,
-				"duration", time.Since(start),
-				"from", adjustedFrom.Time(),
-				"through", adjustedThrough.Time(),
-				"length", adjustedThrough.Sub(adjustedFrom),
-			)...,
-		)
-		return nil
-	}); err != nil {
+	results, err := getStatsForMatchers(ctx, sp, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	if err != nil {
 		return 0, err
 	}
 
