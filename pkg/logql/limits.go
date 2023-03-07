@@ -15,7 +15,7 @@ var (
 // Limits allow the engine to fetch limits for a given users.
 type Limits interface {
 	MaxQuerySeries(context.Context, string) int
-	QueryTimeout(context.Context, string) time.Duration
+	QueryTimeout(context.Context, string) (time.Duration, error)
 	BlockedQueries(context.Context, string) []*validation.BlockedQuery
 }
 
@@ -29,8 +29,8 @@ func (f fakeLimits) MaxQuerySeries(ctx context.Context, userID string) int {
 	return f.maxSeries
 }
 
-func (f fakeLimits) QueryTimeout(ctx context.Context, userID string) time.Duration {
-	return f.timeout
+func (f fakeLimits) QueryTimeout(ctx context.Context, userID string) (time.Duration, error) {
+	return f.timeout, nil
 }
 
 func (f fakeLimits) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {

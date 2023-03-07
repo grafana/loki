@@ -165,7 +165,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			if err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
-			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
+			if err := validateMaxEntriesLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
 			}
 			// Only filter expressions are query sharded
@@ -238,15 +238,39 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 	return expr, nil
 }
 
+func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int) int {
+	var result *int
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v > 0 && (result == nil || v < *result) {
+			result = &v
+		}
+	}
+	if result == nil {
+		return 0
+	}
+	return *result
+}
+
 // validates log entries limits
-func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
+func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 	tenantIDs, err := tenant.TenantIDs(req.Context())
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
-	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
+	var maxEntries []int
+	//maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
+	for _, t := range tenantIDs {
+		me, err := limits.MaxEntriesLimitPerQuery(req.Context(), t)
+		if err != nil {
+			return err
+		}
+		maxEntries = append(maxEntries, me)
+	}
+
+	maxEntriesLimit := validation.SmallestPositiveNonZeroInt(maxEntries)
+
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)

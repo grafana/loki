@@ -88,10 +88,11 @@ type Querier interface {
 type Limits interface {
 	logql.Limits
 	timeRangeLimits
-	QueryTimeout(context.Context, string) time.Duration
+	QueryTimeout(context.Context, string) (time.Duration, error)
 	MaxStreamsMatchersPerQuery(context.Context, string) int
 	MaxConcurrentTailRequests(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
+	MaxEntriesLimitPerQuery(context.Context, string) (int, error)
+	RequiredLabels(context.Context, string) ([]string, error)
 }
 
 // SingleTenantQuerier handles single tenant queries.
@@ -363,7 +364,10 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+	queryTimeout, err := q.limits.QueryTimeout(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "err", err, "call", "Label")
@@ -457,7 +461,10 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load tenant")
 	}
-	queryTimeout := q.limits.QueryTimeout(tailCtx, tenantID)
+	queryTimeout, err := q.limits.QueryTimeout(tailCtx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Tail")
@@ -506,7 +513,10 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+	queryTimeout, err := q.limits.QueryTimeout(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Series")
@@ -661,15 +671,18 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 }
 
 type timeRangeLimits interface {
-	MaxQueryLookback(context.Context, string) time.Duration
-	MaxQueryLength(context.Context, string) time.Duration
+	MaxQueryLookback(context.Context, string) (time.Duration, error)
+	MaxQueryLength(context.Context, string) (time.Duration, error)
 }
 
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
-	var maxQueryLookback time.Duration
-	if maxQueryLookback = limits.MaxQueryLookback(ctx, userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+	maxQueryLookback, err := limits.MaxQueryLookback(ctx, userID)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
@@ -679,7 +692,11 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 			"updated", from)
 
 	}
-	if maxQueryLength := limits.MaxQueryLength(ctx, userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
+	maxQueryLength, err := limits.MaxQueryLength(ctx, userID)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
 	if through.Before(from) {
@@ -734,7 +751,10 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+	queryTimeout, err := q.limits.QueryTimeout(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/IndexStats")

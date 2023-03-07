@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/grafana/loki/pkg/util/querylimits"
 	"net/http"
 	"os"
 	rt "runtime"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
@@ -57,6 +59,7 @@ import (
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
@@ -329,17 +332,6 @@ type Frontend interface {
 	CheckReady(_ context.Context) error
 }
 
-type CombinedLimits interface {
-	compactor.Limits
-	distributor.Limits
-	ingester.Limits
-	querier.Limits
-	queryrange.Limits
-	ruler.RulesLimits
-	scheduler.Limits
-	storage.StoreLimits
-}
-
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -353,7 +345,7 @@ type Loki struct {
 	Server                   *server.Server
 	InternalServer           *server.Server
 	ring                     *ring.Ring
-	Overrides                CombinedLimits
+	Overrides                limiter.CombinedLimits
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
@@ -415,6 +407,9 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 		})
+	middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
+		log.With(util_log.Logger, "component", "query_limits_middleware"),
+	))
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
@@ -634,6 +629,9 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
@@ -658,10 +656,13 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader, QueryLimiter},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader, QueryLimitsTripperware},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
+		QueryLimiter:             {Overrides},
+		QueryLimitsInterceptors:  {},
+		QueryLimitsTripperware:   {},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},

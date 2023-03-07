@@ -190,8 +190,8 @@ func (l *limiter) MaxQuerySeries(ctx context.Context, userID string) int {
 	return l.n
 }
 
-func (l *limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
-	return time.Minute * 5
+func (l *limiter) QueryTimeout(ctx context.Context, userID string) (time.Duration, error) {
+	return time.Minute * 5, nil
 }
 
 func (l *limiter) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {

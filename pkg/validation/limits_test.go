@@ -2,6 +2,7 @@ package validation
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -182,6 +183,8 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 		},
 	}
 	SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
+	fmt.Println("initial default limits required labels: ", newDefaults.RequiredLabels)
+	//os.Exit(1)
 
 	for _, tc := range []struct {
 		desc string

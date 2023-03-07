@@ -64,7 +64,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/querylimits"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -87,6 +89,9 @@ const (
 	IngesterQuerier          string = "ingester-querier"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
+	QueryLimiter             string = "query-limiter"
+	QueryLimitsInterceptors  string = "query-limits-interceptors"
+	QueryLimitsTripperware   string = "query-limits-tripper"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
 	Store                    string = "store"
@@ -1109,6 +1114,34 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 	return s, nil
 }
 
+func (t *Loki) initQueryLimiter() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limiter")
+	t.Overrides = querylimits.NewLimiter(t.Overrides)
+	return nil, nil
+}
+
+func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
+	// Add server GRPC interceptors to the Ingester
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
+
+	// Add client GRPC interceptors to the IngesterClient
+	t.Cfg.IngesterClient.GRPCUnaryClientInterceptors = append(t.Cfg.IngesterClient.GRPCUnaryClientInterceptors, querylimits.ClientQueryLimitsInterceptor)
+	t.Cfg.IngesterClient.GRCPStreamClientInterceptors = append(t.Cfg.IngesterClient.GRCPStreamClientInterceptors, querylimits.StreamClientQueryLimitsInterceptor)
+
+	return nil, nil
+}
+
+func (t *Loki) initQueryLimitsTripperware() (services.Service, error) {
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits tripperware")
+	t.QueryFrontEndTripperware = querylimits.WrapTripperware(
+		t.QueryFrontEndTripperware,
+	)
+
+	return nil, nil
+}
+
 func (t *Loki) initUsageReport() (services.Service, error) {
 	if !t.Cfg.UsageReport.Enabled {
 		return nil, nil
@@ -1138,7 +1171,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 	return ur, nil
 }
 
-func (t *Loki) deleteRequestsClient(clientType string, limits CombinedLimits) (deletion.DeleteRequestsClient, error) {
+func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
 	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
 		return deletion.NewNoOpDeleteRequestsStore(), nil
 	}

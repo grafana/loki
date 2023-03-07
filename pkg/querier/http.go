@@ -72,7 +72,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -108,7 +108,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -162,7 +162,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -456,7 +456,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -472,8 +472,16 @@ func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, li
 		return nil
 	}
 
-	maxEntriesCapture := func(id string) int { return q.limits.MaxEntriesLimitPerQuery(ctx, id) }
-	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
+	var maxEntries []int
+	for _, t := range tenantIDs {
+		me, err := q.limits.MaxEntriesLimitPerQuery(ctx, t)
+		if err != nil {
+			return err
+		}
+		maxEntries = append(maxEntries, me)
+	}
+
+	maxEntriesLimit := util_validation.SmallestPositiveNonZeroInt(maxEntries)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
@@ -495,8 +503,18 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				return
 			}
 
-			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
-			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
+			var timeouts []time.Duration
+			for _, t := range tenants {
+				to, err := q.limits.QueryTimeout(ctx, t)
+				if err != nil {
+					level.Error(log).Log("msg", "invalid query timeout", "err", err)
+					serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+					return
+				}
+				timeouts = append(timeouts, to)
+			}
+
+			timeout := util_validation.SmallestPositiveNonZeroDuration(timeouts)
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
 			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
 				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))
