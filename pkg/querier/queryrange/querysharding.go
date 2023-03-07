@@ -128,6 +128,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.maxShards,
 		r,
 		ast.next,
+		ast.limits,
 	)
 	if !ok {
 		return ast.next.Do(ctx, r)

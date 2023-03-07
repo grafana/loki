@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	math "math"
+	"net/http"
 	strings "strings"
 	"time"
 
@@ -11,7 +12,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -31,12 +36,14 @@ func shardResolverForConf(
 	maxShards int,
 	r queryrangebase.Request,
 	handler queryrangebase.Handler,
+	limits Limits,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == config.TSDBType {
 		return &dynamicShardResolver{
 			ctx:             ctx,
 			logger:          logger,
 			handler:         handler,
+			limits:          limits,
 			from:            model.Time(r.GetStart()),
 			through:         model.Time(r.GetEnd()),
 			maxParallelism:  maxParallelism,
@@ -54,6 +61,7 @@ type dynamicShardResolver struct {
 	ctx     context.Context
 	handler queryrangebase.Handler
 	logger  log.Logger
+	limits  Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -125,6 +133,25 @@ func getStatsForMatchers(
 	return results, nil
 }
 
+func (r *dynamicShardResolver) checkQuerySizeLimit(shardStats []*stats.Stats) error {
+	tenantIDs, err := tenant.TenantIDs(r.ctx)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, r.limits.MaxQuerierBytesRead); maxBytesRead > 0 {
+		for _, stats := range shardStats {
+			if int(stats.Bytes) > maxBytesRead {
+				statsBytesStr := flagext.ByteSize(stats.Bytes).String()
+				maxBytesReadStr := flagext.ByteSize(maxBytesRead).String()
+				return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
 	defer sp.Finish()
@@ -145,6 +172,10 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 
 	results, err := getStatsForMatchers(ctx, sp, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
+		return 0, err
+	}
+
+	if err = r.checkQuerySizeLimit(results); err != nil {
 		return 0, err
 	}
 
