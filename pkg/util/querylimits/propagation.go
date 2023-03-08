@@ -20,25 +20,12 @@ const (
 // NOTE: we use custom `model.Duration` instead of standard `time.Duration` because,
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type QueryLimits struct {
-	MaxQueryLength   model.Duration `json:"max_query_length"`
-	MaxQueryLookback model.Duration `json:"max_query_lookback"`
+	MaxQueryLength   model.Duration `json:"maxQueryLength"`
+	MaxQueryLookback model.Duration `json:"maxQueryLookback"`
 	// this should be changed to max bytes
-	MaxEntriesLimitPerQuery int            `json:"max_entries_limit_per_query"`
-	QueryTimeout            model.Duration `json:"query_timeout"`
-	RequiredLabels          []string       `json:"required_labels"`
+	MaxEntriesLimitPerQuery int      `json:"maxEntriesLimitPerQuery"`
+	RequiredLabels          []string `json:"requiredLabels"`
 }
-
-// These are the defaults for the QueryLimitsStruct.
-// When we see these values in the middleware we should use
-// the tenants limit for this value instead of the default from
-// the query limit struct.
-//var defaultQueryLimits = QueryLimits{
-//	// should we allow 0 durations and entries?
-//	MaxQueryLength:          -1,
-//	MaxQueryLookback:        -1,
-//	QueryTimeout:            -1,
-//	MaxEntriesLimitPerQuery: -1,
-//}
 
 func UnmarshalQueryLimits(data []byte) (*QueryLimits, error) {
 	limits := &QueryLimits{}

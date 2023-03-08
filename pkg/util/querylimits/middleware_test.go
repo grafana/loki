@@ -30,7 +30,6 @@ func Test_MiddlewareWithHeader(t *testing.T) {
 		model.Duration(1 * time.Second),
 		model.Duration(1 * time.Second),
 		1,
-		model.Duration(1 * time.Second),
 		[]string{},
 	}
 

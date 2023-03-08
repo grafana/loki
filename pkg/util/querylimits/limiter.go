@@ -32,17 +32,6 @@ func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Durati
 	return time.Duration(requestLimits.MaxQueryLength)
 }
 
-func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
-	original := l.CombinedLimits.QueryTimeout(ctx, userID)
-	// in theory this error should never happen
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.QueryTimeout == 0 || time.Duration(requestLimits.QueryTimeout) > original {
-		_ = level.Debug(logutil.WithContext(ctx, logutil.Logger)).Log("msg", "using original limit")
-		return original
-	}
-	return time.Duration(requestLimits.QueryTimeout)
-}
-
 // MaxQueryLookback returns the max lookback period of queries.
 func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryLookback(ctx, userID)
