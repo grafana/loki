@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
 	"path"
 	"sync"
 
@@ -140,7 +139,7 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 			tsdbMetrics,
 		)
 		// build TSDB from legacy WAL files so they get migrated to the period specific dir by the respective tsdbManager.
-		if err := buildOldWALs(tsdbManager, indexShipperCfg.ActiveIndexDirectory, defaultRotationPeriod, s.logger); err != nil && !os.IsNotExist(err) {
+		if err := buildOldWALs(tsdbManager, indexShipperCfg.ActiveIndexDirectory, defaultRotationPeriod, s.logger); err != nil {
 			return errors.Wrap(err, "building legacy WAL files")
 		}
 

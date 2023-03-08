@@ -93,7 +93,7 @@ type TableRange struct {
 // TableRanges represents a list of table ranges for multiple schemas.
 type TableRanges []TableRange
 
-// TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
+// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
 func (t TableRanges) TableInRange(tableName string) (bool, error) {
 	tableNumber, err := ExtractTableNumberFromName(tableName)
 	if err != nil {

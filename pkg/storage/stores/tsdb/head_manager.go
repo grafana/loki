@@ -280,6 +280,15 @@ func (m *HeadManager) Start() error {
 }
 
 func buildOldWALs(m TSDBManager, dir string, period period, logger log.Logger) error {
+	if _, err := os.Stat(managerWalDir(dir)); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+
+		// nothing to build
+		return nil
+	}
+
 	walsByPeriod, err := walsByPeriod(dir, period)
 	if err != nil {
 		return errors.Wrap(err, "building tsdb from old WALs")
