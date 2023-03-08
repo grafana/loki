@@ -67,7 +67,6 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 
 // NewRulerStatefulSet creates a StatefulSet object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
-
 	var volumeProjections []corev1.VolumeProjection
 
 	for _, name := range opts.RulesConfigMapNames {
@@ -357,7 +356,7 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 
 	for tenantID, tenant := range tenants {
 		for _, rule := range tenant.RuleFiles {
-			//rule file name is in the format <cmName>___<tenantID>___<ruleName>
+			// rule file name is in the format cmName___tenantID___ruleName
 			shard_name := strings.Split(rule, "___")[0]
 			if shard_name == configMapName {
 				items = append(items, corev1.KeyToPath{
@@ -369,5 +368,4 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 	}
 
 	return items
-
 }
