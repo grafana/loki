@@ -2335,8 +2335,9 @@ ruler_remote_write_sigv4_config:
 
 # Retention to apply for the store, if the retention is enabled on the compactor
 # side.
+# A zero value of 0 or 0s disables retention.
 # CLI flag: -store.retention
-[retention_period: <duration> | default = 31d]
+[retention_period: <duration> | default = 0s]
 
 # Per-stream retention to apply, if the retention is enable on the compactor
 # side.
