@@ -442,14 +442,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	expressions map[string][]interface{}
-
-	keys internedStringSet
+	ids   []string
+	paths [][]string
+	keys  internedStringSet
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
-	paths := make(map[string][]interface{})
-
+	var ids []string
+	var paths [][]string
 	for _, exp := range expressions {
 		path, err := jsonexpr.Parse(exp.Expression, false)
 		if err != nil {
@@ -460,13 +460,28 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 
-		paths[exp.Identifier] = path
+		ids = append(ids, exp.Identifier)
+		paths = append(paths, pathsToString(path))
 	}
 
 	return &JSONExpressionParser{
-		expressions: paths,
-		keys:        internedStringSet{},
+		ids:   ids,
+		paths: paths,
+		keys:  internedStringSet{},
 	}, nil
+}
+
+func pathsToString(paths []interface{}) []string {
+	stingPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		switch v := p.(type) {
+		case int:
+			stingPaths = append(stingPaths, fmt.Sprintf("[%d]", v))
+		case string:
+			stingPaths = append(stingPaths, v)
+		}
+	}
+	return stingPaths
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -474,13 +489,22 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		return line, true
 	}
 
-	if !jsoniter.ConfigFastest.Valid(line) {
+	// Check that the line starts correctly
+	// the parser will pass an error if other
+	// parts of the line are malformed
+	if !isValidJSONStart(line) {
 		lbs.SetErr(errJSON)
 		return line, true
 	}
 
-	for identifier, paths := range j.expressions {
-		result := jsoniter.ConfigFastest.Get(line, paths...).ToString()
+	var matches int
+	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
+		if err != nil {
+			lbs.SetErr(errJSON)
+			return
+		}
+
+		identifier := j.ids[idx]
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
 			if lbs.BaseHas(identifier) {
 				identifier = identifier + duplicateSuffix
@@ -488,9 +512,35 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return identifier, true
 		})
 
-		lbs.Set(key, result)
+		switch typ {
+		case jsonparser.Null:
+			lbs.Set(key, "")
+		default:
+			lbs.Set(key, unsafeGetString(data))
+		}
+
+		matches++
+	}, j.paths...)
+
+	// Ensure there's a label for every value
+	if matches < len(j.ids) {
+		for _, id := range j.ids {
+			if _, ok := lbs.Get(id); !ok {
+				lbs.Set(id, "")
+			}
+		}
 	}
+
 	return line, true
+}
+
+func isValidJSONStart(data []byte) bool {
+	switch data[0] {
+	case '"', '{', '[':
+		return true
+	default:
+		return false
+	}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
