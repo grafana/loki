@@ -197,6 +197,7 @@ type querySizeLimiter struct {
 	cfg                 []config.PeriodConfig
 	codec               queryrangebase.Codec
 	limits              Limits
+	maxLookBackPeriod   time.Duration
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
@@ -217,10 +218,13 @@ func NewQuerySizeLimiterMiddleware(
 			codec:  codec,
 		}
 
+		// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
+		ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
+		q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
+
 		// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 		// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
 		statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
-
 		if len(statsHandler) > 0 {
 			q.statsHandler = statsSplitTimeMiddleware.Wrap(statsHandler[0])
 			q.statsHandlerNonSpit = statsHandler[0]
@@ -261,7 +265,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq)
+	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
 	if err != nil {
 		return 0, err
 	}
@@ -269,7 +273,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	combinedStats := stats.MergeStats(matcherStats...)
 
 	// TODO: Remove this one, using just to compare
-	matcherStatsNoSplit, err := getStatsForMatchers(ctx, q.logger, q.statsHandlerNonSpit, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq)
+	matcherStatsNoSplit, err := getStatsForMatchers(ctx, q.logger, q.statsHandlerNonSpit, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
 	if err != nil {
 		return 0, err
 	}
