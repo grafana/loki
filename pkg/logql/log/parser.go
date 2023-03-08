@@ -536,7 +536,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 func isValidJSONStart(data []byte) bool {
 	switch data[0] {
-	case '"', '{', '}', '[', ']':
+	case '"', '{', '[':
 		return true
 	default:
 		return false
