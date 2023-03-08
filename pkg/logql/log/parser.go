@@ -553,11 +553,6 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return
 		}
 
-		matches++
-		if lbs.ParserLabelHints().AllRequiredExtracted() {
-			return
-		}
-
 		identifier := j.ids[idx]
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
 			if lbs.BaseHas(identifier) {
@@ -566,18 +561,14 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return identifier, true
 		})
 
-		if !lbs.ParserLabelHints().ShouldExtract(key) {
-			// It's possible that something was asked for that
-			// shouldn't actually be extracted
-			return
-		}
-
 		switch typ {
 		case jsonparser.Null:
 			lbs.Set(key, "")
 		default:
 			lbs.Set(key, unsafeGetString(data))
 		}
+
+		matches++
 	}, j.paths...)
 
 	// Ensure there's a label for every value
