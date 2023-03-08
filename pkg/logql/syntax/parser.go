@@ -136,6 +136,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 
 // ExtractMatchersFromQuery extracts the matchers from a query.
 // compared to ParseMatchers, it will not fail if the query contains anything else.
+// TODO: Delete this function
 func ExtractMatchersFromQuery(input string) ([]*labels.Matcher, error) {
 	expr, err := ParseExpr(input)
 	if err != nil {

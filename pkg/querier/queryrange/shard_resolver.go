@@ -84,7 +84,7 @@ func getStatsForMatchers(
 	if err := concurrency.ForEachJob(ctx, len(matcherGroups), parallelism, func(ctx context.Context, i int) error {
 		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
 		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
-		adjustedFrom := model.Time(start).Add(-diff)
+		adjustedFrom := start.Add(-diff)
 		if matcherGroups[i].Interval == 0 && len(defaultLookback) > 0 {
 			// For limited instant queries, when start == end, the queries would return
 			// zero results. Prometheus has a concept of "look back amount of time for instant queries"
@@ -93,7 +93,7 @@ func getStatsForMatchers(
 			adjustedFrom = adjustedFrom.Add(-defaultLookback[0])
 		}
 
-		adjustedThrough := model.Time(end).Add(-matcherGroups[i].Offset)
+		adjustedThrough := end.Add(-matcherGroups[i].Offset)
 
 		resp, err := statsHandler.Do(ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
