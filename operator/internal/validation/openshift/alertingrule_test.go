@@ -12,6 +12,8 @@ import (
 )
 
 func TestAlertingRuleValidator(t *testing.T) {
+	var nilMap map[string]string
+
 	tt := []struct {
 		desc       string
 		spec       *lokiv1.AlertingRule
@@ -31,6 +33,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: `sum(rate({kubernetes_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -53,6 +62,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -75,6 +91,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: `sum(rate({kubernetes_namespace_name="openshift-example", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -104,6 +127,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: "invalid",
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -133,6 +163,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: `{kubernetes_namespace_name="example", level="error"}`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -162,6 +199,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -191,6 +235,13 @@ func TestAlertingRuleValidator(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Expr: `sum(rate({kubernetes_namespace_name="other-ns", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
 								},
 							},
 						},
@@ -203,6 +254,151 @@ func TestAlertingRuleValidator(t *testing.T) {
 					Field:    "Spec.Groups[0].Rules[0].Expr",
 					BadValue: `sum(rate({kubernetes_namespace_name="other-ns", level="error"}[5m])) by (job) > 0.1`,
 					Detail:   lokiv1.ErrRuleMustMatchNamespace.Error(),
+				},
+			},
+		},
+		{
+			desc: "missing severity label",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "example",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "application",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:     field.ErrorTypeInvalid,
+					Field:    "Spec.Groups[0].Rules[0].Labels",
+					BadValue: nilMap,
+					Detail:   lokiv1.ErrSeverityLabelMissing.Error(),
+				},
+			},
+		},
+		{
+			desc: "invalid severity label",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "example",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "application",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "page",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:  field.ErrorTypeInvalid,
+					Field: "Spec.Groups[0].Rules[0].Labels",
+					BadValue: map[string]string{
+						severityLabelName: "page",
+					},
+					Detail: lokiv1.ErrSeverityLabelInvalid.Error(),
+				},
+			},
+		},
+		{
+			desc: "missing summary annotation",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "example",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "application",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										descriptionAnnotationName: "alert description",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:  field.ErrorTypeInvalid,
+					Field: "Spec.Groups[0].Rules[0].Annotations",
+					BadValue: map[string]string{
+						descriptionAnnotationName: "alert description",
+					},
+					Detail: lokiv1.ErrSummaryAnnotationMissing.Error(),
+				},
+			},
+		},
+		{
+			desc: "missing description annotation",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "example",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "application",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName: "alert summary",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:  field.ErrorTypeInvalid,
+					Field: "Spec.Groups[0].Rules[0].Annotations",
+					BadValue: map[string]string{
+						summaryAnnotationName: "alert summary",
+					},
+					Detail: lokiv1.ErrDescriptionAnnotationMissing.Error(),
 				},
 			},
 		},

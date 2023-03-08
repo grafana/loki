@@ -59,4 +59,12 @@ var (
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.
 	ErrRuleMustMatchNamespace = errors.New("rule needs to have a matcher for the namespace")
+	// ErrSeverityLabelMissing indicates that an alerting rule is missing the severity label
+	ErrSeverityLabelMissing = errors.New("rule requires label: severity")
+	// ErrSeverityLabelInvalid indicates that an alerting rule has an invalid value for the summary label
+	ErrSeverityLabelInvalid = errors.New("rule severity label value invalid, allowed values: critical, warning, info")
+	// ErrSummaryAnnotationMissing indicates that an alerting rule is missing the summary annotation
+	ErrSummaryAnnotationMissing = errors.New("rule requires annotation: summary")
+	// ErrDescriptionAnnotationMissing indicates that an alerting rule is missing the description annotation
+	ErrDescriptionAnnotationMissing = errors.New("rule requires annotation: description")
 )
