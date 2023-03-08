@@ -140,7 +140,7 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 }
 
 func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
-	// Create the large config map which will be split into 2 shards
+	// Create a large config map which will be split into 2 shards
 	opts := testOptions_withSharding()
 	rulesCMShards, err := manifests.RulesConfigMapShards(opts)
 	require.NoError(t, err)
@@ -151,7 +151,7 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 		opts.RulesConfigMapNames = append(opts.RulesConfigMapNames, shard.Name)
 	}
 
-	// Create the Ruler statefulset and mount the shards into the Ruler pod
+	// Create the Ruler StatefulSet and mount the ConfigMap shards into the Ruler pod
 	sts := manifests.NewRulerStatefulSet(*opts)
 
 	vs := sts.Spec.Template.Spec.Volumes
@@ -161,6 +161,5 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 		volumeNames = append(volumeNames, v.Name)
 	}
 
-	// There will be 3 volumes: 1 config and 2 rules ConfigMap shards
-	require.Len(t, volumeNames, 3)
+	require.Len(t, volumeNames, 2)
 }

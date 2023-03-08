@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -64,8 +65,22 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 	), nil
 }
 
-// NewRulerStatefulSet creates a statefulset object for a ruler
+// NewRulerStatefulSet creates a StatefulSet object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
+
+	var volumeProjections []corev1.VolumeProjection
+
+	for _, name := range opts.RulesConfigMapNames {
+		volumeProjections = append(volumeProjections, corev1.VolumeProjection{
+			ConfigMap: &corev1.ConfigMapProjection{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: name,
+				},
+				Items: ruleVolumeItems(name, opts.Tenants.Configs),
+			},
+		})
+	}
+
 	volumes := []corev1.Volume{
 		{
 			Name: configVolumeName,
@@ -75,6 +90,14 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: lokiConfigMapName(opts.Name),
 					},
+				},
+			},
+		},
+		{
+			Name: rulesStorageVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: volumeProjections,
 				},
 			},
 		},
@@ -96,25 +119,11 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			ReadOnly:  false,
 			MountPath: dataDirectory,
 		},
-	}
-
-	for _, name := range opts.RulesConfigMapNames {
-		volumes = append(volumes, corev1.Volume{
-			Name: name,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					DefaultMode: &defaultConfigMapMode,
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: name,
-					},
-				},
-			},
-		})
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      name,
+		{
+			Name:      rulesStorageVolumeName,
 			ReadOnly:  false,
-			MountPath: fmt.Sprintf("%s/%s", rulesStorageDirectory, name),
-		})
+			MountPath: rulesStorageDirectory,
+		},
 	}
 
 	podSpec := corev1.PodSpec{
@@ -341,4 +350,24 @@ func configureRulerObjsForMode(opts Options) []client.Object {
 	}
 
 	return openShiftObjs
+}
+
+func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []corev1.KeyToPath {
+	var items []corev1.KeyToPath
+
+	for tenantID, tenant := range tenants {
+		for _, rule := range tenant.RuleFiles {
+			//rule file name is in the format <cmName>___<tenantID>___<ruleName>
+			shard_name := strings.Split(rule, "___")[0]
+			if shard_name == configMapName {
+				items = append(items, corev1.KeyToPath{
+					Key:  strings.Split(rule, "___")[2],
+					Path: fmt.Sprintf("%s/%s", tenantID, strings.Split(rule, "___")[2]),
+				})
+			}
+		}
+	}
+
+	return items
+
 }
