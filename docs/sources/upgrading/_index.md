@@ -107,7 +107,7 @@ In releases 2.7.5 and later, the Compactor supports index compaction on multiple
 And going forward loki will not set any defaults on `-boltdb.shipper.compactor.shared-store`, this has a couple of side effects detailed as follows:
 
 ##### store on which index compaction should be performed:
-If `-boltdb.shipper.compactor.shared-store` is configured by the user, loki would run index compaction only the store specified by the config.
+If `-boltdb.shipper.compactor.shared-store` is configured by the user, loki would run index compaction only on the store specified by the config.
 If not set, compaction would be performed on all the object stores that contain either a boltdb-shipper or tsdb index.
 
 ##### store used for managing delete requests:
