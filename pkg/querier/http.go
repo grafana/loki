@@ -472,16 +472,8 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string,
 		return nil
 	}
 
-	var maxEntries []int
-	for _, t := range tenantIDs {
-		me, err := q.limits.MaxEntriesLimitPerQuery(ctx, t)
-		if err != nil {
-			return err
-		}
-		maxEntries = append(maxEntries, me)
-	}
-
-	maxEntriesLimit := util_validation.SmallestPositiveNonZeroInt(maxEntries)
+	maxEntriesCapture := func(id string) int { return q.limits.MaxEntriesLimitPerQuery(ctx, id) }
+	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
@@ -503,18 +495,8 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				return
 			}
 
-			var timeouts []time.Duration
-			for _, t := range tenants {
-				to, err := q.limits.QueryTimeout(ctx, t)
-				if err != nil {
-					level.Error(log).Log("msg", "invalid query timeout", "err", err)
-					serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-					return
-				}
-				timeouts = append(timeouts, to)
-			}
-
-			timeout := util_validation.SmallestPositiveNonZeroDuration(timeouts)
+			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
 			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
 				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))

@@ -23,7 +23,7 @@ var _ Store = &compositeStore{}
 
 type StoreLimits interface {
 	MaxChunksPerQueryFromStore(string) int
-	MaxQueryLength(context.Context, string) (time.Duration, error)
+	MaxQueryLength(context.Context, string) time.Duration
 }
 
 type ChunkWriter interface {
@@ -135,10 +135,7 @@ func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, 
 		return false, errors.QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
 	}
 
-	maxQueryLength, err := c.limits.MaxQueryLength(ctx, userID)
-	if err != nil {
-		return false, errors.QueryError(fmt.Sprintf("%e", err))
-	}
+	maxQueryLength := c.limits.MaxQueryLength(ctx, userID)
 	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
 		return false, errors.QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength))
 	}

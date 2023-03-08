@@ -88,11 +88,11 @@ type Querier interface {
 type Limits interface {
 	logql.Limits
 	timeRangeLimits
-	QueryTimeout(context.Context, string) (time.Duration, error)
+	QueryTimeout(context.Context, string) time.Duration
 	MaxStreamsMatchersPerQuery(context.Context, string) int
 	MaxConcurrentTailRequests(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) (int, error)
-	RequiredLabels(context.Context, string) ([]string, error)
+	MaxEntriesLimitPerQuery(context.Context, string) int
+	RequiredLabels(context.Context, string) []string
 }
 
 // SingleTenantQuerier handles single tenant queries.
@@ -364,7 +364,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout, err := q.limits.QueryTimeout(ctx, userID)
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +461,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load tenant")
 	}
-	queryTimeout, err := q.limits.QueryTimeout(tailCtx, tenantID)
+	queryTimeout := q.limits.QueryTimeout(tailCtx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +513,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout, err := q.limits.QueryTimeout(ctx, userID)
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -671,17 +671,14 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 }
 
 type timeRangeLimits interface {
-	MaxQueryLookback(context.Context, string) (time.Duration, error)
-	MaxQueryLength(context.Context, string) (time.Duration, error)
+	MaxQueryLookback(context.Context, string) time.Duration
+	MaxQueryLength(context.Context, string) time.Duration
 }
 
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
-	maxQueryLookback, err := limits.MaxQueryLookback(ctx, userID)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
+	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)
 	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
@@ -692,10 +689,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 			"updated", from)
 
 	}
-	maxQueryLength, err := limits.MaxQueryLength(ctx, userID)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
+	maxQueryLength := limits.MaxQueryLength(ctx, userID)
 	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
@@ -751,7 +745,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout, err := q.limits.QueryTimeout(ctx, userID)
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

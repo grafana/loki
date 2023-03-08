@@ -9,10 +9,10 @@ import (
 // the query handling code.
 type Limits interface {
 	// MaxQueryLookback returns the max lookback period of queries.
-	MaxQueryLookback(context.Context, string) (time.Duration, error)
+	MaxQueryLookback(context.Context, string) time.Duration
 
 	// MaxQueryLength returns the limit of the length (in time) of a query.
-	MaxQueryLength(context.Context, string) (time.Duration, error)
+	MaxQueryLength(context.Context, string) time.Duration
 
 	// MaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel.

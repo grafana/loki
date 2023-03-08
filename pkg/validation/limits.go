@@ -417,8 +417,8 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
-func (o *Overrides) MaxQueryLength(ctx context.Context, userID string) (time.Duration, error) {
-	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength), nil
+func (o *Overrides) MaxQueryLength(ctx context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
 }
 
 // Compatibility with Cortex interface, this method is set to be removed in 1.12,
@@ -493,12 +493,12 @@ func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
-func (o *Overrides) MaxEntriesLimitPerQuery(ctx context.Context, userID string) (int, error) {
-	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery, nil
+func (o *Overrides) MaxEntriesLimitPerQuery(ctx context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
-func (o *Overrides) QueryTimeout(ctx context.Context, userID string) (time.Duration, error) {
-	return time.Duration(o.getOverridesForUser(userID).QueryTimeout), nil
+func (o *Overrides) QueryTimeout(ctx context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
 }
 
 func (o *Overrides) MaxCacheFreshness(ctx context.Context, userID string) time.Duration {
@@ -506,8 +506,8 @@ func (o *Overrides) MaxCacheFreshness(ctx context.Context, userID string) time.D
 }
 
 // MaxQueryLookback returns the max lookback period of queries.
-func (o *Overrides) MaxQueryLookback(ctx context.Context, userID string) (time.Duration, error) {
-	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback), nil
+func (o *Overrides) MaxQueryLookback(ctx context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
 }
 
 // EvaluationDelay returns the rules evaluation delay for a given user.
@@ -652,9 +652,9 @@ func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*valida
 	return o.getOverridesForUser(userID).BlockedQueries
 }
 
-func (o *Overrides) RequiredLabels(ctx context.Context, userID string) ([]string, error) {
+func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
 	// todo (callum), this probably needs to take a list of the labels present?
-	return o.getOverridesForUser(userID).RequiredLabels, nil
+	return o.getOverridesForUser(userID).RequiredLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

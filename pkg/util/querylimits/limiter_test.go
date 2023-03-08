@@ -49,17 +49,13 @@ func TestLimiter_Defaults(t *testing.T) {
 		QueryTimeout:            model.Duration(30 * time.Second),
 	}
 	ctx := context.Background()
-	queryLookback, err := l.MaxQueryLookback(ctx, "fake")
-	require.NoError(t, err)
+	queryLookback := l.MaxQueryLookback(ctx, "fake")
 	require.Equal(t, time.Duration(expectedLimits.MaxQueryLookback), queryLookback)
-	queryLength, err := l.MaxQueryLength(ctx, "fake")
-	require.NoError(t, err)
+	queryLength := l.MaxQueryLength(ctx, "fake")
 	require.Equal(t, time.Duration(expectedLimits.MaxQueryLength), queryLength)
-	maxEntries, err := l.MaxEntriesLimitPerQuery(ctx, "fake")
-	require.NoError(t, err)
+	maxEntries := l.MaxEntriesLimitPerQuery(ctx, "fake")
 	require.Equal(t, expectedLimits.MaxEntriesLimitPerQuery, maxEntries)
-	queryTimeout, err := l.QueryTimeout(ctx, "fake")
-	require.NoError(t, err)
+	queryTimeout := l.QueryTimeout(ctx, "fake")
 	require.Equal(t, time.Duration(expectedLimits.QueryTimeout), queryTimeout)
 
 	var limits QueryLimits
@@ -73,17 +69,13 @@ func TestLimiter_Defaults(t *testing.T) {
 	}
 	{
 		ctx2 := InjectQueryLimitsContext(context.Background(), limits)
-		queryLookback, err := l.MaxQueryLookback(ctx2, "fake")
-		require.NoError(t, err)
+		queryLookback := l.MaxQueryLookback(ctx2, "fake")
 		require.Equal(t, time.Duration(expectedLimits2.MaxQueryLookback), queryLookback)
-		queryLength, err := l.MaxQueryLength(ctx2, "fake")
-		require.NoError(t, err)
+		queryLength := l.MaxQueryLength(ctx2, "fake")
 		require.Equal(t, time.Duration(expectedLimits2.MaxQueryLength), queryLength)
-		maxEntries, err := l.MaxEntriesLimitPerQuery(ctx2, "fake")
-		require.NoError(t, err)
+		maxEntries := l.MaxEntriesLimitPerQuery(ctx2, "fake")
 		require.Equal(t, expectedLimits2.MaxEntriesLimitPerQuery, maxEntries)
-		queryTimeout, err := l.QueryTimeout(ctx2, "fake")
-		require.NoError(t, err)
+		queryTimeout := l.QueryTimeout(ctx2, "fake")
 		require.Equal(t, time.Duration(expectedLimits2.QueryTimeout), queryTimeout)
 	}
 
@@ -107,16 +99,18 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 		MaxEntriesLimitPerQuery: 100,
 		QueryTimeout:            model.Duration(100 * time.Second),
 	}
+	expectedLimits := QueryLimits{
+		MaxQueryLength:          model.Duration(30 * time.Second),
+		MaxQueryLookback:        model.Duration(30 * time.Second),
+		MaxEntriesLimitPerQuery: 10,
+		QueryTimeout:            model.Duration(30 * time.Second),
+	}
 
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
-	_, err := l.MaxQueryLookback(ctx, "fake")
-	require.Error(t, err)
-	_, err = l.MaxQueryLength(ctx, "fake")
-	require.Error(t, err)
-	_, err = l.MaxEntriesLimitPerQuery(ctx, "fake")
-	require.Error(t, err)
-	_, err = l.QueryTimeout(ctx, "fake")
-	require.Error(t, err)
+	require.Equal(t, time.Duration(expectedLimits.MaxQueryLookback), l.MaxQueryLookback(ctx, "fake"))
+	require.Equal(t, time.Duration(expectedLimits.MaxQueryLength), l.MaxQueryLength(ctx, "fake"))
+	require.Equal(t, expectedLimits.MaxEntriesLimitPerQuery, l.MaxEntriesLimitPerQuery(ctx, "fake"))
+	require.Equal(t, time.Duration(expectedLimits.QueryTimeout), l.QueryTimeout(ctx, "fake"))
 }
 
 func TestLimiter_AcceptLowerLimits(t *testing.T) {
@@ -139,16 +133,8 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 	}
 
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
-	queryLookback, err := l.MaxQueryLookback(ctx, "fake")
-	require.NoError(t, err)
-	require.Equal(t, time.Duration(limits.MaxQueryLookback), queryLookback)
-	queryLength, err := l.MaxQueryLength(ctx, "fake")
-	require.NoError(t, err)
-	require.Equal(t, time.Duration(limits.MaxQueryLength), queryLength)
-	maxEntries, err := l.MaxEntriesLimitPerQuery(ctx, "fake")
-	require.NoError(t, err)
-	require.Equal(t, limits.MaxEntriesLimitPerQuery, maxEntries)
-	queryTimeout, err := l.QueryTimeout(ctx, "fake")
-	require.NoError(t, err)
-	require.Equal(t, time.Duration(limits.QueryTimeout), queryTimeout)
+	require.Equal(t, time.Duration(limits.MaxQueryLookback), l.MaxQueryLookback(ctx, "fake"))
+	require.Equal(t, time.Duration(limits.MaxQueryLength), l.MaxQueryLength(ctx, "fake"))
+	require.Equal(t, limits.MaxEntriesLimitPerQuery, l.MaxEntriesLimitPerQuery(ctx, "fake"))
+	require.Equal(t, time.Duration(limits.QueryTimeout), l.QueryTimeout(ctx, "fake"))
 }

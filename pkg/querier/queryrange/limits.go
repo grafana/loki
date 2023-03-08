@@ -40,7 +40,7 @@ type Limits interface {
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) (int, error)
+	MaxEntriesLimitPerQuery(context.Context, string) int
 	MinShardingLookback(string) time.Duration
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
@@ -140,15 +140,8 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	// Clamp the time range based on the max query lookback.
-	var lookbacks []time.Duration
-	for _, t := range tenantIDs {
-		lb, err := l.MaxQueryLookback(ctx, t)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		lookbacks = append(lookbacks, lb)
-	}
-	if maxQueryLookback := validation.SmallestPositiveNonZeroDuration(lookbacks); maxQueryLookback > 0 {
+	lookbackCapture := func(id string) time.Duration { return l.MaxQueryLookback(ctx, id) }
+	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
 		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
 
 		if r.GetEnd() < minStartTime {
@@ -175,16 +168,8 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	// Enforce the max query length.
-	var queryLengths []time.Duration
-	for _, t := range tenantIDs {
-		lb, err := l.MaxQueryLength(ctx, t)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		queryLengths = append(lookbacks, lb)
-	}
-	// Enforce the max query length.
-	if maxQueryLength := validation.SmallestPositiveNonZeroDuration(queryLengths); maxQueryLength > 0 {
+	lengthCapture := func(id string) time.Duration { return l.MaxQueryLength(ctx, id) }
+	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLength)

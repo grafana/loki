@@ -591,11 +591,11 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	return f.splits[key]
 }
 
-func (f fakeLimits) MaxQueryLength(context.Context, string) (time.Duration, error) {
+func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
 	if f.maxQueryLength == 0 {
-		return time.Hour * 7, nil
+		return time.Hour * 7
 	}
-	return f.maxQueryLength, nil
+	return f.maxQueryLength
 }
 
 func (f fakeLimits) MaxQueryParallelism(context.Context, string) int {
@@ -606,8 +606,8 @@ func (f fakeLimits) TSDBMaxQueryParallelism(context.Context, string) int {
 	return f.tsdbMaxQueryParallelism
 }
 
-func (f fakeLimits) MaxEntriesLimitPerQuery(context.Context, string) (int, error) {
-	return f.maxEntriesLimitPerQuery, nil
+func (f fakeLimits) MaxEntriesLimitPerQuery(context.Context, string) int {
+	return f.maxEntriesLimitPerQuery
 }
 
 func (f fakeLimits) MaxQuerySeries(context.Context, string) int {
@@ -618,16 +618,16 @@ func (f fakeLimits) MaxCacheFreshness(context.Context, string) time.Duration {
 	return 1 * time.Minute
 }
 
-func (f fakeLimits) MaxQueryLookback(context.Context, string) (time.Duration, error) {
-	return f.maxQueryLookback, nil
+func (f fakeLimits) MaxQueryLookback(context.Context, string) time.Duration {
+	return f.maxQueryLookback
 }
 
 func (f fakeLimits) MinShardingLookback(string) time.Duration {
 	return f.minShardingLookback
 }
 
-func (f fakeLimits) QueryTimeout(context.Context, string) (time.Duration, error) {
-	return f.queryTimeout, nil
+func (f fakeLimits) QueryTimeout(context.Context, string) time.Duration {
+	return f.queryTimeout
 }
 
 func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.BlockedQuery {

@@ -259,17 +259,8 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	var maxEntries []int
-	//maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
-	for _, t := range tenantIDs {
-		me, err := limits.MaxEntriesLimitPerQuery(req.Context(), t)
-		if err != nil {
-			return err
-		}
-		maxEntries = append(maxEntries, me)
-	}
-
-	maxEntriesLimit := validation.SmallestPositiveNonZeroInt(maxEntries)
+	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
+	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
