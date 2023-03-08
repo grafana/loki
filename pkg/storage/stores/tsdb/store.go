@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path"
 	"sync"
 
@@ -41,6 +42,7 @@ type newStoreFactoryFunc func(
 	name string,
 	indexShipperCfg indexshipper.Config,
 	p config.PeriodConfig,
+	schemaCfg config.SchemaConfig,
 	f *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
@@ -60,6 +62,7 @@ var NewStore = func() newStoreFactoryFunc {
 		name string,
 		indexShipperCfg indexshipper.Config,
 		p config.PeriodConfig,
+		schemaCfg config.SchemaConfig,
 		f *fetcher.Fetcher,
 		objectClient client.ObjectClient,
 		limits downloads.Limits,
@@ -80,7 +83,7 @@ var NewStore = func() newStoreFactoryFunc {
 			backupIndexWriter: backupIndexWriter,
 			logger:            logger,
 		}
-		err := storeInstance.init(name, indexShipperCfg, objectClient, limits, tableRange, reg)
+		err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -89,7 +92,7 @@ var NewStore = func() newStoreFactoryFunc {
 	}
 }()
 
-func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
+func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
 
 	var err error
@@ -124,15 +127,29 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, objectCli
 
 		var (
 			nodeName    = indexShipperCfg.IngesterName
-			dir         = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
+			dir         = indexShipperCfg.ActiveIndexDirectory
 			tsdbMetrics = NewMetrics(reg)
 		)
 
 		tsdbManager := NewTSDBManager(
 			nodeName,
 			dir,
+			indexshipper.Noop{},
+			config.GetIndexStoreTableRanges(config.TSDBType, schemaCfg.Configs),
+			s.logger,
+			tsdbMetrics,
+		)
+		// build TSDB from legacy WAL files so they get migrated to the period specific dir by the respective tsdbManager.
+		if err := buildOldWALs(tsdbManager, indexShipperCfg.ActiveIndexDirectory, defaultRotationPeriod, s.logger); err != nil && !os.IsNotExist(err) {
+			return errors.Wrap(err, "building legacy WAL files")
+		}
+
+		dir = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
+		tsdbManager = NewTSDBManager(
+			nodeName,
+			dir,
 			s.indexShipper,
-			tableRange,
+			[]config.TableRange{tableRange},
 			s.logger,
 			tsdbMetrics,
 		)

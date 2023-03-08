@@ -257,16 +257,34 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
-	walsByPeriod, err := walsByPeriod(m.dir, m.period)
-	if err != nil {
-		return err
-	}
-	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
-
 	// Load the shipper with any previously built TSDBs
 	if err := m.tsdbManager.Start(); err != nil {
 		return errors.Wrap(err, "failed to start tsdb manager")
 	}
+
+	if err := buildOldWALs(m.tsdbManager, m.dir, m.period, m.log); err != nil {
+		m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
+		return err
+	}
+	m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
+
+	err := m.Rotate(time.Now())
+	if err != nil {
+		return errors.Wrap(err, "rotating tsdb head")
+	}
+
+	m.wg.Add(1)
+	go m.loop()
+
+	return nil
+}
+
+func buildOldWALs(m TSDBManager, dir string, period period, logger log.Logger) error {
+	walsByPeriod, err := walsByPeriod(dir, period)
+	if err != nil {
+		return errors.Wrap(err, "building tsdb from old WALs")
+	}
+	level.Info(logger).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	// Build any old WALs into a TSDB for the shipper
 	var allWALs []WALIdentifier
@@ -275,26 +293,16 @@ func (m *HeadManager) Start() error {
 	}
 
 	now := time.Now()
-	if err := m.tsdbManager.BuildFromWALs(
+	if err := m.BuildFromWALs(
 		now,
 		allWALs,
 	); err != nil {
-		return errors.Wrap(err, "building tsdb")
+		return errors.Wrap(err, "building tsdb from old WALs")
 	}
 
-	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
-		m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
-		return errors.New("cleaning (removing) wal dir")
+	if err := os.RemoveAll(managerWalDir(dir)); err != nil {
+		return errors.Wrap(err, "cleaning (removing) wal dir")
 	}
-	m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
-
-	err = m.Rotate(now)
-	if err != nil {
-		return errors.Wrap(err, "rotating tsdb head")
-	}
-
-	m.wg.Add(1)
-	go m.loop()
 
 	return nil
 }
@@ -404,7 +412,6 @@ type WalGroup struct {
 }
 
 func walsByPeriod(dir string, period period) ([]WalGroup, error) {
-
 	groupsMap, err := walGroups(dir, period)
 	if err != nil {
 		return nil, err

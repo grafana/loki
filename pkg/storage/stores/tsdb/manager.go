@@ -42,11 +42,11 @@ tsdbManager is used for managing active index and is responsible for:
   - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
-	nodeName   string // node name
-	log        log.Logger
-	dir        string
-	metrics    *Metrics
-	tableRange config.TableRange
+	nodeName    string // node name
+	log         log.Logger
+	dir         string
+	metrics     *Metrics
+	tableRanges config.TableRanges
 
 	sync.RWMutex
 
@@ -57,17 +57,17 @@ func NewTSDBManager(
 	nodeName,
 	dir string,
 	shipper indexshipper.IndexShipper,
-	tableRange config.TableRange,
+	tableRanges config.TableRanges,
 	logger log.Logger,
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
-		nodeName:   nodeName,
-		log:        log.With(logger, "component", "tsdb-manager"),
-		dir:        dir,
-		metrics:    metrics,
-		tableRange: tableRange,
-		shipper:    shipper,
+		nodeName:    nodeName,
+		log:         log.With(logger, "component", "tsdb-manager"),
+		dir:         dir,
+		metrics:     metrics,
+		tableRanges: tableRanges,
+		shipper:     shipper,
 	}
 }
 
@@ -89,7 +89,7 @@ func (m *tsdbManager) Start() (err error) {
 
 	// as we are running multiple instances of tsdbManager, one for each period
 	// existing tables should be migrated to period specific directory
-	if err := migrateMultitenantDir(m.dir, m.tableRange, m.log); err != nil {
+	if err := migrateMultitenantDir(m.dir, m.tableRanges, m.log); err != nil {
 		return errors.Wrap(err, "migrating multitenant dir")
 	}
 
@@ -170,7 +170,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]index.ChunkMetas)
 		for _, chk := range chks {
-			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRange)
+			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
 
 			for _, bucket := range idxBuckets {
 				pds[bucket] = append(pds[bucket], chk)
@@ -287,7 +287,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func migrateMultitenantDir(dir string, tableRange config.TableRange, logger log.Logger) error {
+func migrateMultitenantDir(dir string, tableRanges config.TableRanges, logger log.Logger) error {
 	parentDir := filepath.Dir(filepath.Clean(dir))
 	mulitenantDir := managerMultitenantDir(parentDir)
 	if _, err := os.Stat(mulitenantDir); err != nil {
@@ -310,7 +310,7 @@ func migrateMultitenantDir(dir string, tableRange config.TableRange, logger log.
 			continue
 		}
 
-		if ok, err := tableRange.TableInRange(f.Name()); !ok {
+		if ok, err := tableRanges.TableInRange(f.Name()); !ok {
 			level.Warn(logger).Log("msg", fmt.Sprintf("skip multi tenant dir migration. table not in range: %s", f.Name()), "err", err)
 			continue
 		}
@@ -323,11 +323,11 @@ func migrateMultitenantDir(dir string, tableRange config.TableRange, logger log.
 	return nil
 }
 
-func indexBuckets(from, through model.Time, tableRange config.TableRange) (res []string) {
+func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
-		cfg := tableRange.ConfigForTableNumber(cur)
+		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
 			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
 		}

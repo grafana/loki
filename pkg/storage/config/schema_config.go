@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"sort"
@@ -87,6 +88,31 @@ func ExtractTableNumberFromName(tableName string) (int64, error) {
 type TableRange struct {
 	Start, End   int64
 	PeriodConfig *PeriodConfig
+}
+
+// TableRanges represents a list of table ranges for multiple schemas.
+type TableRanges []TableRange
+
+// TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
+func (t TableRanges) TableInRange(tableName string) (bool, error) {
+	tableNumber, err := ExtractTableNumberFromName(tableName)
+	if err != nil {
+		return false, err
+	}
+
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil &&
+		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName, nil
+}
+
+func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
+	for _, r := range t {
+		if cfg := r.ConfigForTableNumber(tableNumber); cfg != nil {
+			return cfg
+		}
+	}
+
+	return nil
 }
 
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
@@ -582,4 +608,22 @@ func newExternalKey(ref logproto.ChunkRef) string {
 // v12+
 func newerExternalKey(ref logproto.ChunkRef) string {
 	return fmt.Sprintf("%s/%x/%x:%x:%x", ref.UserID, ref.Fingerprint, int64(ref.From), int64(ref.Through), ref.Checksum)
+}
+
+func GetIndexStoreTableRanges(indexType string, periodicConfigs []PeriodConfig) TableRanges {
+	var ranges TableRanges
+	for i := range periodicConfigs {
+		if periodicConfigs[i].IndexType != indexType {
+			continue
+		}
+
+		periodEndTime := DayTime{Time: math.MaxInt64}
+		if i < len(periodicConfigs)-1 {
+			periodEndTime = DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
+	}
+
+	return ranges
 }

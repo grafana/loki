@@ -44,7 +44,7 @@ func TestMigrateMultitenantDir(t *testing.T) {
 		assert.NoError(t, util.EnsureDirectory(managerMultitenantDir(dir)))
 
 		// perform migration
-		assert.NoError(t, migrateMultitenantDir(dir, tableRange, log.NewNopLogger()))
+		assert.NoError(t, migrateMultitenantDir(dir, []config.TableRange{tableRange}, log.NewNopLogger()))
 
 		files, err := os.ReadDir(managerMultitenantDir(dir))
 		assert.NoError(t, err)
@@ -65,7 +65,7 @@ func TestMigrateMultitenantDir(t *testing.T) {
 		parentDir := t.TempDir()
 		dir := path.Join(parentDir, "fs_1234")
 		// should handle gracefully
-		assert.NoError(t, migrateMultitenantDir(dir, tableRange, log.NewNopLogger()))
+		assert.NoError(t, migrateMultitenantDir(dir, []config.TableRange{tableRange}, log.NewNopLogger()))
 	})
 
 }

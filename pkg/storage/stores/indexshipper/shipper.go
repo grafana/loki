@@ -224,3 +224,14 @@ func (s *indexShipper) stop() {
 		s.downloadsManager.Stop()
 	}
 }
+
+type Noop struct{}
+
+func (Noop) AddIndex(tableName, userID string, index index.Index) error { return nil }
+func (Noop) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	return nil
+}
+func (Noop) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	return nil
+}
+func (Noop) Stop() {}
