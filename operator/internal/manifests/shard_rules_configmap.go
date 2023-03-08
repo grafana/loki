@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -63,7 +64,23 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 			currentCMSize = 0
 			currentCM = cm.newConfigMapShard(currentCMIndex)
 		}
+		// extract tenantID from the key
+		// to later match to the tenant when mounting to the pod
+		tenantID := strings.Split(k, "___")[0]
+
+		// add the current configMap name to the rule file name
+		// this is also to help mount rule files to the pod
+		ruleFileName := fmt.Sprintf("%s___%s", currentCM.Name, k)
+
+		if tenant, ok := opts.Tenants.Configs[tenantID]; ok {
+			tenant.RuleFiles = append(tenant.RuleFiles, ruleFileName)
+			opts.Tenants.Configs[tenantID] = tenant
+		}
+
 		currentCMSize += dataSize
+
+		// remove the tenantID from the file name
+		k = strings.Split(k, "___")[1]
 		currentCM.Data[k] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)

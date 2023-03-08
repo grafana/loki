@@ -25,12 +25,8 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := fmt.Sprintf("%s-%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
-		if tenant, ok := opts.Tenants.Configs[r.Spec.TenantID]; ok {
-			tenant.RuleFiles = append(tenant.RuleFiles, key)
-			shardedConfigMap.data[key] = c
-			opts.Tenants.Configs[r.Spec.TenantID] = tenant
-		}
+		key := fmt.Sprintf("%s___%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
+		shardedConfigMap.data[key] = c
 	}
 
 	for _, r := range opts.RecordingRules {
@@ -38,24 +34,12 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := fmt.Sprintf("%s-%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
-		if tenant, ok := opts.Tenants.Configs[r.Spec.TenantID]; ok {
-			tenant.RuleFiles = append(tenant.RuleFiles, key)
-			shardedConfigMap.data[key] = c
-			opts.Tenants.Configs[r.Spec.TenantID] = tenant
-		}
+		key := fmt.Sprintf("%s___%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
+		shardedConfigMap.data[key] = c
 	}
 
 	// If configmap size exceeds 1MB, split it into shards, identified by "prefix+index"
 	shards := shardedConfigMap.Shard(opts)
-
-	/* for id, tenant := range opts.Tenants.Configs {
-		println(id)
-		for _, rulefile := range tenant.RuleFiles {
-			println(rulefile)
-		}
-	} */
-	//ruleVolumeItems(opts.Tenants.Configs)
 
 	return shards, nil
 }
