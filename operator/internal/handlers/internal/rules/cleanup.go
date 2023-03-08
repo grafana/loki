@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -12,25 +13,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// RemoveRulesConfigMap removes the rules configmap if it exists.
+// RemoveRulesConfigMap removes the rules configmap/s if it/they exist(s).
 func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
-	// Check if the CM exists before proceeding.
-	key := client.ObjectKey{Name: manifests.RulesConfigMapName(req.Name), Namespace: req.Namespace}
-
-	var rulesCm corev1.ConfigMap
-	if err := c.Get(ctx, key, &rulesCm); err != nil {
-		if apierrors.IsNotFound(err) {
-			// resource doesnt exist, so nothing to do.
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to lookup configmap", "name", key)
+	var rulesCmList corev1.ConfigMapList
+	err := c.List(ctx, &rulesCmList, &client.ListOptions{
+		Namespace: req.Namespace,
+	})
+	if err != nil {
+		return err
 	}
 
-	if err := c.Delete(ctx, &rulesCm, &client.DeleteOptions{}); err != nil {
-		return kverrors.Wrap(err, "failed to delete configmap",
-			"name", rulesCm.Name,
-			"namespace", rulesCm.Namespace,
-		)
+	for _, rulesCm := range rulesCmList.Items {
+		if strings.HasPrefix(rulesCm.Name, manifests.RulesConfigMapName(req.Name)) {
+			if err := c.Delete(ctx, &rulesCm, &client.DeleteOptions{}); err != nil {
+				return kverrors.Wrap(err, "failed to delete ConfigMap",
+					"name", rulesCm.Name,
+					"namespace", rulesCm.Namespace,
+				)
+			}
+		}
 	}
 
 	return nil
