@@ -65,11 +65,6 @@ func (q *LeafQueue) getOrCreate(ident string) (subq *LeafQueue, created bool) {
 	return subq, created
 }
 
-// TODO(chaudum): implement removal of queues
-func (q *LeafQueue) remove(ident string) bool {
-	return q.mapping.Remove(ident)
-}
-
 // Chan implements Queue
 func (q *LeafQueue) Chan() RequestChannel {
 	return q.ch
@@ -92,8 +87,7 @@ func (q *LeafQueue) Dequeue() Request {
 			if item != nil {
 				return item
 			}
-			// TODO(chaudum) remove queue if empty
-			// q.remove(subq.name)
+			q.mapping.Remove(subq.name)
 		}
 	}
 	return nil
