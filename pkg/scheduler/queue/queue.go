@@ -25,6 +25,9 @@ var (
 // of RequestQueue.GetNextRequestForQuerier method.
 type QueueIndex int // nolint:revive
 
+// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
+var StartIndex QueueIndex = -1
+
 // Modify index to start iteration on the same tenant, for which last queue was returned.
 func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	if ui < 0 {
@@ -32,9 +35,6 @@ func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	}
 	return ui - 1
 }
-
-// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
-var StartIndex QueueIndex = -1
 
 // Request stored into the queue.
 type Request any
@@ -54,17 +54,19 @@ type RequestQueue struct {
 	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
 	queues  *tenantQueues
 	stopped bool
-
-	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	discardedRequests *prometheus.CounterVec // Per tenant.
+	metrics *Metrics
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
+type Metrics struct {
+	QueueLength       *prometheus.GaugeVec   // Per tenant and reason.
+	DiscardedRequests *prometheus.CounterVec // Per tenant.
+}
+
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
-		queueLength:             queueLength,
-		discardedRequests:       discardedRequests,
+		metrics:                 metrics,
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -93,8 +95,8 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 	}
 
 	select {
-	case queue <- req:
-		q.queueLength.WithLabelValues(tenant).Inc()
+	case queue.Chan() <- req:
+		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -102,7 +104,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 		}
 		return nil
 	default:
-		q.discardedRequests.WithLabelValues(tenant).Inc()
+		q.metrics.DiscardedRequests.WithLabelValues(tenant).Inc()
 		return ErrTooManyRequests
 	}
 }
@@ -140,12 +142,12 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			request := <-queue
-			if len(queue) == 0 {
+			request := queue.Dequeue()
+			if queue.Len() == 0 {
 				q.queues.deleteQueue(tenant)
 			}
 
-			q.queueLength.WithLabelValues(tenant).Dec()
+			q.metrics.QueueLength.WithLabelValues(tenant).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
