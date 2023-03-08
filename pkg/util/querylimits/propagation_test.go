@@ -15,7 +15,7 @@ func TestInjectAndExtractQueryLimits(t *testing.T) {
 		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
 		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
 		MaxEntriesLimitPerQuery: 100,
-		RequiredLabels:          []string{"cluster"},
+		QueryTimeout:            model.Duration(5 * time.Second),
 	}
 
 	ctx = InjectQueryLimitsContext(ctx, limits)
@@ -35,16 +35,11 @@ func TestSerializingQueryLimits(t *testing.T) {
 		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
 		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
 		MaxEntriesLimitPerQuery: 100,
-		RequiredLabels:          []string{"cluster"},
+		QueryTimeout:            model.Duration(5 * time.Second),
 	}
 
 	actual, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
-	expected := `{
-		"maxEntriesLimitPerQuery": 100,
-		"maxQueryLength": "2d",
-		"maxQueryLookback": "2w",
-		"requiredLabels": ["cluster"]
-	}`
+	expected := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "queryTimeout": "5s"}`
 	require.JSONEq(t, expected, string(actual))
 }

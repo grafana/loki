@@ -4,9 +4,6 @@ const (
 	// ErrQueryTooLong is used in chunk store, querier and query frontend.
 	ErrQueryTooLong = "the query time range exceeds the limit (query length: %s, limit: %s)"
 
-	// ErrRequiredLabels is used when required labels are not provided in a query
-	ErrRequiredLabels = "the query does not provide label selectors for all required labels (required labels: %v)"
-
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited = "rate_limited"

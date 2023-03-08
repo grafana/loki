@@ -38,23 +38,6 @@ func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int)
 	return *result
 }
 
-// SmallestPositiveNonZeroInt is returning the minimal positive and
-// non-zero value of the supplied limit. In many limits a value of 0
-// means unlimited so the method will return 0 only if all inputs have
-// a limit of 0 or an empty list is given.
-func SmallestPositiveNonZeroInt(values []int) int {
-	var result *int
-	for _, v := range values {
-		if v > 0 && (result == nil || v < *result) {
-			result = &v
-		}
-	}
-	if result == nil {
-		return 0
-	}
-	return *result
-}
-
 // SmallestPositiveNonZeroDurationPerTenant is returning the minimal positive
 // and non-zero value of the supplied limit function for all given tenants. In
 // many limits a value of 0 means unlimited so the method will return 0 only if
@@ -63,23 +46,6 @@ func SmallestPositiveNonZeroDurationPerTenant(tenantIDs []string, f func(string)
 	var result *time.Duration
 	for _, tenantID := range tenantIDs {
 		v := f(tenantID)
-		if v > 0 && (result == nil || v < *result) {
-			result = &v
-		}
-	}
-	if result == nil {
-		return 0
-	}
-	return *result
-}
-
-// SmallestPositiveNonZeroDuration is returning the minimal positive
-// and non-zero value. In many limits a value of 0 means unlimited so
-// the method will return 0 only if all inputs have a limit of 0 or an
-// empty list is given.
-func SmallestPositiveNonZeroDuration(durations []time.Duration) time.Duration {
-	var result *time.Duration
-	for _, v := range durations {
 		if v > 0 && (result == nil || v < *result) {
 			result = &v
 		}

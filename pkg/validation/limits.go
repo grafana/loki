@@ -95,8 +95,6 @@ type Limits struct {
 	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
 	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
-	// todo: (callum) cli flag?
-	RequiredLabels []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -650,11 +648,6 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 
 func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
-}
-
-func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
-	// todo (callum), this probably needs to take a list of the labels present?
-	return o.getOverridesForUser(userID).RequiredLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

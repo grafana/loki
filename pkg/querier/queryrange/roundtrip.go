@@ -238,20 +238,6 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 	return expr, nil
 }
 
-func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int) int {
-	var result *int
-	for _, tenantID := range tenantIDs {
-		v := f(tenantID)
-		if v > 0 && (result == nil || v < *result) {
-			result = &v
-		}
-	}
-	if result == nil {
-		return 0
-	}
-	return *result
-}
-
 // validates log entries limits
 func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 	tenantIDs, err := tenant.TenantIDs(req.Context())

@@ -30,7 +30,7 @@ func Test_MiddlewareWithHeader(t *testing.T) {
 		model.Duration(1 * time.Second),
 		model.Duration(1 * time.Second),
 		1,
-		[]string{},
+		model.Duration(1 * time.Second),
 	}
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
