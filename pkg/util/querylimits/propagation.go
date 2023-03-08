@@ -3,9 +3,8 @@ package querylimits
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-
 	"github.com/prometheus/common/model"
+	"net/http"
 )
 
 // Context key type used to avoid collisions

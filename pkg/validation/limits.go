@@ -657,6 +657,11 @@ func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string 
 	return o.getOverridesForUser(userID).RequiredLabels
 }
 
+func (o *Overrides) ValidateQueryLimits(ctx context.Context, userID string) error {
+	// todo (callum), this probably needs to take a list of the labels present?
+	return nil
+}
+
 func (o *Overrides) DefaultLimits() *Limits {
 	return o.defaultLimits
 }

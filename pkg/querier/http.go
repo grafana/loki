@@ -437,6 +437,26 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (q *QuerierAPI) QueryLimitsHandler(w http.ResponseWriter, r *http.Request) {
+	tenantIDs, err := tenant.TenantIDs(r.Context())
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+	// todo: (callum) should we expect there to be only a single ID for this API endpoint
+	if len(tenantIDs) > 1 {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "QueryLimit endpoint expects only one tenant ID"), w)
+		return
+	}
+	
+	err = q.limits.ValidateQueryLimits(r.Context(), tenantIDs[0])
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+	return
+}
+
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
 // This is used only to keep regexp query string support until it gets fully deprecated.
 func parseRegexQuery(httpRequest *http.Request) (string, error) {

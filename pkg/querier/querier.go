@@ -94,6 +94,7 @@ type Limits interface {
 	MaxConcurrentTailRequests(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
 	RequiredLabels(context.Context, string) []string
+	ValidateQueryLimits(context.Context, string) error
 }
 
 // SingleTenantQuerier handles single tenant queries.
