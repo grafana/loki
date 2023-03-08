@@ -9,6 +9,7 @@
 - [8791](https://github.com/grafana/loki/pull/8791) **periklis**: Expand OLM skip range for OpenShift Logging 5.7 release (OpenShift)
 - [8771](https://github.com/grafana/loki/pull/8771) **periklis**: Update Loki operand to v2.7.4
 - [8776](https://github.com/grafana/loki/pull/8776) **Red-GV**: Update go to v1.20, k8s libraries to v1.26.2, and OpenShift libraries to v4.13
+- [7451](https://github.com/grafana/loki/pull/7451) **btaani**: Add support for rules configmap sharding
 - [8707](https://github.com/grafana/loki/pull/8707) **aminesnow**: Fix gateway's nodeSelector and tolerations
 - [8666](https://github.com/grafana/loki/pull/8666) **xperimental**: Fix version inconsistency in generated OpenShift bundle
 - [8578](https://github.com/grafana/loki/pull/8578) **xperimental**: Refactor status update to reduce API calls
@@ -29,7 +30,6 @@
 - [8068](https://github.com/grafana/loki/pull/8068) **periklis**: Use lokistack-gateway replicas from size table
 - [7839](https://github.com/grafana/loki/pull/7839) **aminesnow**: Configure Alertmanager per-tenant
 - [7910](https://github.com/grafana/loki/pull/7910) **periklis**: Update Loki operand to v2.7.1
-- [7451](https://github.com/grafana/loki/pull/7451) **btaani**: Add support for rules configmap sharding
 - [7815](https://github.com/grafana/loki/pull/7815) **periklis**: Apply delete client changes for compat with release-2.7.x
 - [7809](https://github.com/grafana/loki/pull/7809) **xperimental**: Fix histogram-based alerting rules
 - [7808](https://github.com/grafana/loki/pull/7808) **xperimental**: Replace fifocache usage by embedded_cache
