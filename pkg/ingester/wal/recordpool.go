@@ -18,8 +18,9 @@ func NewRecordPool() *ResettingPool {
 		},
 		bPool: &sync.Pool{
 			New: func() interface{} {
-				buf := make([]byte, 0, 1<<10) // 1kb
-				return &buf
+				buf := new([]byte)            // Attempt to force allocation on heap.
+				*buf = make([]byte, 0, 1<<10) // 1kb
+				return buf
 			},
 		},
 	}
