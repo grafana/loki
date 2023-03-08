@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -649,6 +650,21 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 	return ids, nil
 }
 
+func labelsPresent(required []string, matchers []*labels.Matcher) bool {
+	have := make(map[string]struct{})
+	for _, m := range matchers {
+		have[m.Name] = struct{}{}
+	}
+
+	for _, v := range required {
+		if _, ok := have[v]; !ok {
+			return false
+		}
+	}
+	return true
+
+}
+
 func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -660,6 +676,13 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 		return time.Time{}, time.Time{}, err
 	}
 	matchers := selector.Matchers()
+
+	requiredLabels := q.limits.RequiredLabels(ctx, userID)
+	if len(requiredLabels) != 0 && !labelsPresent(requiredLabels, matchers) {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrRequiredLabels, requiredLabels)
+		//fmt.Errorf("not all required labels were present in your query, required labels: %v", requiredLabels)
+
+	}
 
 	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(ctx, userID)
 	if len(matchers) > maxStreamMatchersPerQuery {

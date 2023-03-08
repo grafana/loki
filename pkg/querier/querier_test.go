@@ -185,6 +185,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.MaxStreamsMatchersPerQuery = 1
 	defaultLimits.MaxQueryLength = model.Duration(2 * time.Minute)
+	defaultLimits.RequiredLabels = []string{"type"}
 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
@@ -210,6 +211,10 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	request.Start = request.End.Add(-3 * time.Minute)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m0s, limit: 2m0s)"), err)
+
+	request.Selector = "{fail=\"yes\"}"
+	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query does not provide label selectors for all required labels (required labels: [type])"), err)
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {
