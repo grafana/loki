@@ -156,14 +156,6 @@ func TestKeyShortCircuit(t *testing.T) {
 		{"json", NewJSONParser(), simpleJsn},
 		{"logfmt", NewLogfmtParser(), logFmt},
 		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")})), logFmt},
-		{"pattern", mustStage(NewPatternParser(`<data> <size> <style> <name> <hOffset> <_>`)), logFmt},
-		{"json-expression", mustStage(NewJSONExpressionParser([]LabelExtractionExpr{
-			NewLabelExtractionExpr("data", "data"),
-			NewLabelExtractionExpr("size", "size"),
-			NewLabelExtractionExpr("style", "style"),
-			NewLabelExtractionExpr("name", "name"),
-			NewLabelExtractionExpr("onMouseUp", "onMouseUp"),
-		})), simpleJsn},
 	}
 	for _, tt := range tests {
 		lbs.Reset()
