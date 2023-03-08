@@ -190,12 +190,13 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 }
 
 type querySizeLimiter struct {
-	logger            log.Logger
-	next              queryrangebase.Handler
-	statsHandler      queryrangebase.Handler
-	cfg               []config.PeriodConfig
-	maxQueryBytesRead func(string) int
-	errorTemplate     string
+	logger              log.Logger
+	next                queryrangebase.Handler
+	statsHandler        queryrangebase.Handler
+	statsHandlerNonSpit queryrangebase.Handler
+	cfg                 []config.PeriodConfig
+	codec               queryrangebase.Codec
+	limits              Limits
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
@@ -203,23 +204,29 @@ type querySizeLimiter struct {
 func NewQuerySizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
 	logger log.Logger,
-	maxQueryBytesRead func(string) int,
-	errorTemplate string,
+	limits Limits,
+	codec queryrangebase.Codec,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		q := &querySizeLimiter{
-			logger:            logger,
-			next:              next,
-			cfg:               cfg,
-			maxQueryBytesRead: maxQueryBytesRead,
-			errorTemplate:     errorTemplate,
+			logger: logger,
+			next:   next,
+			cfg:    cfg,
+			limits: limits,
+			codec:  codec,
 		}
 
+		// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
+		// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
+		statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
+
 		if len(statsHandler) > 0 {
-			q.statsHandler = statsHandler[0]
+			q.statsHandler = statsSplitTimeMiddleware.Wrap(statsHandler[0])
+			q.statsHandlerNonSpit = statsHandler[0]
 		} else {
-			q.statsHandler = next
+			q.statsHandler = statsSplitTimeMiddleware.Wrap(next)
+			q.statsHandlerNonSpit = next
 		}
 
 		return q
@@ -261,6 +268,15 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
+	// TODO: Remove this one, using just to compare
+	matcherStatsNoSplit, err := getStatsForMatchers(ctx, q.logger, q.statsHandlerNonSpit, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq)
+	if err != nil {
+		return 0, err
+	}
+
+	combinedStatsNoSplit := stats.MergeStats(matcherStatsNoSplit...)
+	_ = combinedStatsNoSplit
+
 	level.Debug(sp).Log(
 		append(
 			combinedStats.LoggingKeyValues(),
@@ -276,7 +292,6 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return combinedStats.Bytes, nil
 }
 
-// TODO: This is pretty similar to ShardingConfigs.ValidRange, we should probably extract the functionality to a new function
 func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.PeriodConfig, error) {
 	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
 	if err != nil {
@@ -307,7 +322,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.maxQueryBytesRead); maxBytesRead > 0 {
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limits.MaxQueryBytesRead); maxBytesRead > 0 {
 		bytesRead, err := q.getBytesReadForRequest(ctx, r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query", err.Error())
@@ -316,7 +331,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		if bytesRead > uint64(maxBytesRead) {
 			statsBytesStr := humanize.Bytes(bytesRead)
 			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.errorTemplate, statsBytesStr, maxBytesReadStr)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, limErrQueryTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
 		}
 	}
 

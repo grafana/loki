@@ -181,7 +181,10 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
-	h.metrics.splits.Observe(float64(len(intervals)))
+
+	if h.metrics != nil {
+		h.metrics.splits.Observe(float64(len(intervals)))
+	}
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
@@ -205,8 +208,8 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LokiLabelNamesRequest:
-		// Set this to 0 since this is not used in Series/Labels Request.
+	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest:
+		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "unknown request type")
@@ -268,6 +271,16 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:    r.Path,
 				StartTs: start,
 				EndTs:   end,
+			})
+		})
+	case *logproto.IndexStatsRequest:
+		startTS := model.Time(r.GetStart()).Time()
+		endTS := model.Time(r.GetEnd()).Time()
+		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
+			reqs = append(reqs, &logproto.IndexStatsRequest{
+				From:     model.TimeFromUnix(start.Unix()),
+				Through:  model.TimeFromUnix(end.Unix()),
+				Matchers: r.GetMatchers(),
 			})
 		})
 	default:
