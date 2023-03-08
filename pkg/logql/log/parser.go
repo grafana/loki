@@ -362,10 +362,6 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 		}
 
 		lbs.Set(name, string(m))
-
-		if lbs.ParserLabelHints().AllRequiredExtracted() {
-			return line, true
-		}
 	}
 	return line, true
 }
