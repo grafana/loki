@@ -352,20 +352,22 @@ func NewLimitedTripperware(
 	c cache.Cache,
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
-	queryRangeMiddleware := []queryrangebase.Middleware{
-		StatsCollectorMiddleware(),
-		NewLimitsMiddleware(limits),
-		NewQuerySizeLimiterMiddleware(schema.Configs, log, limits, codec), // TODO: Add skip middleware
-		queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		// Limited queries only need to fetch up to the requested line limit worth of logs,
-		// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
-		// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
-		// Therefore we force max parallelism to one so that these queries are executed sequentially.
-		// Below we also fix the number of shards to a static number.
-		SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), codec, splitByTime, metrics.SplitByMetrics),
-	}
-
 	return func(next http.RoundTripper) http.RoundTripper {
+		skipMiddleware := queryrangebase.NewRoundTripperHandler(next, codec)
+
+		queryRangeMiddleware := []queryrangebase.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(limits),
+			NewQuerySizeLimiterMiddleware(schema.Configs, log, limits, codec, skipMiddleware),
+			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+			// Limited queries only need to fetch up to the requested line limit worth of logs,
+			// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
+			// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
+			// Therefore we force max parallelism to one so that these queries are executed sequentially.
+			// Below we also fix the number of shards to a static number.
+			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), codec, splitByTime, metrics.SplitByMetrics),
+		}
+
 		if len(queryRangeMiddleware) > 0 {
 			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
