@@ -8,7 +8,7 @@ import (
 
 func TestQueueMapping(t *testing.T) {
 	// Individual sub-tests in this test case are reflecting a scenario and need
-	// to be eecuted in sequential order.
+	// to be executed in sequential order.
 
 	m := &Mapping[*LeafQueue]{}
 	m.Init(16)
