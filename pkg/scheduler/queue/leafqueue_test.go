@@ -6,7 +6,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type dummyRequest struct {
+	id int
+}
+
+func r(id int) *dummyRequest {
+	return &dummyRequest{id}
+}
+
 func TestLeafQueue(t *testing.T) {
+
 	t.Run("add sub queues recursively", func(t *testing.T) {
 		pathA := QueuePath([]string{"l0", "l1", "l3"})
 		pathB := QueuePath([]string{"l0", "l2", "l3"})
@@ -59,14 +68,6 @@ func TestLeafQueue(t *testing.T) {
 
 		// no items in any queues
 		require.Equal(t, 0, q.Len())
-
-		type dummyRequest struct {
-			id int
-		}
-
-		r := func(id int) *dummyRequest {
-			return &dummyRequest{id}
-		}
 
 		q.Chan() <- r(0)
 		require.Equal(t, 1, q.Len())
@@ -126,14 +127,6 @@ func TestLeafQueue(t *testing.T) {
 		// no items in any queues
 		require.Equal(t, 0, q.Len())
 
-		type dummyRequest struct {
-			id int
-		}
-
-		r := func(id int) *dummyRequest {
-			return &dummyRequest{id}
-		}
-
 		q.mapping.GetByKey("a").Chan() <- r(100)
 		q.mapping.GetByKey("a").Chan() <- r(101)
 		q.mapping.GetByKey("a").Chan() <- r(102)
@@ -154,5 +147,25 @@ func TestLeafQueue(t *testing.T) {
 		}
 		require.Len(t, items, 6)
 		require.Equal(t, []int{100, 200, 300, 101, 301, 102}, items)
+	})
+
+	t.Run("empty sub-queues are removed", func(t *testing.T) {
+		q := newLeafQueue(10, "root")
+		q.add(QueuePath{"a"})
+		q.add(QueuePath{"b"})
+
+		q.mapping.GetByKey("a").Chan() <- r(1)
+		q.mapping.GetByKey("b").Chan() <- r(2)
+
+		t.Log(q)
+
+		// drain queue
+		r := q.Dequeue()
+		for r != nil {
+			r = q.Dequeue()
+		}
+
+		require.Nil(t, q.mapping.GetByKey("a"))
+		require.Nil(t, q.mapping.GetByKey("b"))
 	})
 }
