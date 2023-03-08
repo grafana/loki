@@ -298,7 +298,6 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 		if c.cfg.RetentionEnabled {
 			var (
 				encoder          client.KeyEncoder
-				chunkClient      = client.NewClient(objectClient, encoder, schemaConfig)
 				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", objectStoreType)
 				r                = prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r)
 			)
@@ -306,6 +305,7 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 			if _, ok := objectClient.(*local.FSObjectClient); ok {
 				encoder = client.FSEncoder
 			}
+			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
 
 			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, objectStoreType, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
 			if err != nil {
