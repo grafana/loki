@@ -19,10 +19,10 @@ func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
 	cm := cm_shards[0]
 
 	require.Len(t, cm.Data, 4)
-	require.Contains(t, cm.Data, "tenant-a-dev-alerting-rules-alerts1.yaml")
-	require.Contains(t, cm.Data, "tenant-b-dev-recording-rules-recs1.yaml")
-	require.Contains(t, cm.Data, "tenant-a-prod-alerting-rules-alerts2.yaml")
-	require.Contains(t, cm.Data, "tenant-b-prod-recording-rules-recs2.yaml")
+	require.Contains(t, cm.Data, "dev-alerting-rules-alerts1.yaml")
+	require.Contains(t, cm.Data, "dev-recording-rules-recs1.yaml")
+	require.Contains(t, cm.Data, "prod-alerting-rules-alerts2.yaml")
+	require.Contains(t, cm.Data, "prod-recording-rules-recs2.yaml")
 }
 
 func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
@@ -33,11 +33,10 @@ func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
 
 	cm := cm_shards[0]
 	require.Len(t, cm.Data, 4)
-	//fmt.Print(opts.Tenants.Configs)
-	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "tenant-a-dev-alerting-rules-alerts1.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "tenant-a-prod-alerting-rules-alerts2.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "tenant-b-dev-recording-rules-recs1.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "tenant-b-prod-recording-rules-recs2.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "-rules-0___tenant-a___dev-alerting-rules-alerts1.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "-rules-0___tenant-a___prod-alerting-rules-alerts2.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "-rules-0___tenant-b___dev-recording-rules-recs1.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "-rules-0___tenant-b___prod-recording-rules-recs2.yaml")
 }
 
 func TestRulesConfigMapSharding(t *testing.T) {
@@ -45,6 +44,10 @@ func TestRulesConfigMapSharding(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cm_shards)
 	require.Len(t, cm_shards, 2)
+}
+
+func TestDeleteRulesConfigMaps(t *testing.T) {
+
 }
 
 func testOptions() *manifests.Options {
@@ -184,7 +187,8 @@ func testOptions_withSharding() *manifests.Options {
 		},
 		Tenants: manifests.Tenants{
 			Configs: map[string]manifests.TenantConfig{
-				"tenant-a": {RuleFiles: []string{"sharding-test-rules-0.yaml"}},
+				"tenant-a": {},
+				"tenant-b": {},
 			},
 		},
 		AlertingRules: alertingRules,
