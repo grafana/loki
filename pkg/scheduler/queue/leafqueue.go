@@ -21,7 +21,7 @@ type LeafQueue struct {
 	// mapping for sub-queues
 	mapping *Mapping[*LeafQueue]
 	// name of the queue
-	ident string
+	name string
 	// maximum queue size of the local queue
 	size int
 }
@@ -35,7 +35,7 @@ func newLeafQueue(size int, name string) *LeafQueue {
 		pos:     StartIndex,
 		current: StartIndex,
 		mapping: m,
-		ident:   name,
+		name:    name,
 		size:    size,
 	}
 }
@@ -87,7 +87,7 @@ func (q *LeafQueue) Dequeue() Request {
 			if item != nil {
 				return item
 			}
-			q.mapping.Remove(subq.ident)
+			q.mapping.Remove(subq.name)
 		}
 	}
 	return nil
@@ -95,7 +95,7 @@ func (q *LeafQueue) Dequeue() Request {
 
 // Name implements Queue
 func (q *LeafQueue) Name() string {
-	return q.ident
+	return q.name
 }
 
 // Len implements Queue
