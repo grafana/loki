@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/textproto"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +62,12 @@ const (
 	// ringCheckPeriod is how often we check the ring to see if this instance is still in
 	// the replicaset of instances to act as schedulers.
 	ringCheckPeriod = 3 * time.Second
+
+	// ActorPathHeader is the name of the header used to enqueue requests in hierarchical queues
+	ActorPathHeader = "x-actor-path"
+
+	// ActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor
+	ActorPathDelimiter = "|"
 )
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
@@ -119,6 +126,7 @@ type connectedFrontend struct {
 
 type Config struct {
 	MaxOutstandingPerTenant int               `yaml:"max_outstanding_requests_per_tenant"`
+	MaxQueueHierarchyLevels int               `yaml:"max_queue_hierarchy_levels"`
 	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
@@ -128,6 +136,7 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	f.IntVar(&cfg.MaxQueueHierarchyLevels, "query-scheduler.max-queue-hierarchy-levels", 3, "Maximum number of levels of nesting of hierarchical queues. 0 means that hierarchical queues are disabled.")
 	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query schedulers create and place themselves in a ring. If no frontend_address or scheduler_address are present anywhere else in the configuration, Loki will toggle this value to true.")
@@ -251,6 +260,7 @@ type Limits interface {
 type schedulerRequest struct {
 	frontendAddress string
 	userID          string
+	actor           []string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
@@ -358,6 +368,18 @@ func (s *Scheduler) frontendConnected(frontend schedulerpb.SchedulerForFrontend_
 	return msg.FrontendAddress, cf.ctx, nil
 }
 
+func extractActorPath(msg *schedulerpb.FrontendToScheduler) []string {
+	for _, h := range msg.HttpRequest.Headers {
+		if strings.ToLower(h.Key) == ActorPathHeader {
+			if len(h.Values) == 0 {
+				return nil
+			}
+			return strings.Split(h.Values[0], ActorPathDelimiter)
+		}
+	}
+	return nil
+}
+
 func (s *Scheduler) frontendDisconnected(frontendAddress string) {
 	s.connectedFrontendsMu.Lock()
 	defer s.connectedFrontendsMu.Unlock()
@@ -390,11 +412,20 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		return err
 	}
 
-	userID := msg.GetUserID()
+	var actor []string
+	if s.cfg.MaxQueueHierarchyLevels > 0 {
+		actor = extractActorPath(msg)
+		// trim to the max allowed levels
+		// TODO(chaudum): Would it be better to return an error?
+		if len(actor) > s.cfg.MaxQueueHierarchyLevels {
+			actor = actor[:s.cfg.MaxQueueHierarchyLevels]
+		}
+	}
 
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
 		userID:          msg.UserID,
+		actor:           actor,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
@@ -408,14 +439,14 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	tenantIDs, err := tenant.TenantIDsFromOrgID(req.userID)
 	if err != nil {
 		return err
 	}
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
-	s.activeUsers.UpdateUserTimestamp(userID, now)
-	return s.requestQueue.Enqueue(userID, req, maxQueriers, func() {
+	s.activeUsers.UpdateUserTimestamp(req.userID, now)
+	return s.requestQueue.Enqueue(req.userID, req.actor, req, maxQueriers, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()
