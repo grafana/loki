@@ -624,12 +624,6 @@ func BenchmarkKeyExtraction(b *testing.B) {
 		{"json", NewJSONParser(), simpleJsn},
 		{"logfmt", NewLogfmtParser(), logFmt},
 		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")})), logFmt},
-		{"pattern", mustStage(NewPatternParser(`<_> <style> <name> <hOffset> <_>`)), logFmt},
-		{"json-expression", mustStage(NewJSONExpressionParser([]LabelExtractionExpr{
-			NewLabelExtractionExpr("size", "size"),
-			NewLabelExtractionExpr("name", "name"),
-			NewLabelExtractionExpr("onMouseUp", "onMouseUp"),
-		})), simpleJsn},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
