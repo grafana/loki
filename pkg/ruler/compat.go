@@ -64,7 +64,7 @@ func engineQueryFunc(evaluator Evaluator, overrides RulesLimits, checker readyCh
 		res, err := evaluator.Eval(ctx, qs, adjusted)
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("rule evaluation failed: %w", err)
 		}
 		switch v := res.Data.(type) {
 		case promql.Vector:
