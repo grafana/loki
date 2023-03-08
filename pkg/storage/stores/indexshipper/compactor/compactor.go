@@ -80,7 +80,7 @@ type Config struct {
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
 	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
 	DeleteRequestStore        string          `yaml:"delete_request_store"`
-	LegacySharedStoreDefault  string          `yaml:"_" doc:"hidden"`
+	LegacySharedStoreDefault  string          `yaml:"-" doc:"hidden"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
