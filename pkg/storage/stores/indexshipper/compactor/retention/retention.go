@@ -91,11 +91,10 @@ type Marker struct {
 }
 
 func NewMarker(workingDirectory, objectStoreType string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
-	metrics := newMarkerMetrics(prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r))
 	return &Marker{
-		workingDirectory: filepath.Join(workingDirectory, objectStoreType),
+		workingDirectory: workingDirectory,
 		expiration:       expiration,
-		markerMetrics:    metrics,
+		markerMetrics:    newMarkerMetrics(r),
 		chunkClient:      chunkClient,
 		markTimeout:      markTimeout,
 	}, nil
@@ -276,9 +275,9 @@ type Sweeper struct {
 }
 
 func NewSweeper(workingDir, objectStoreType string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
-	m := newSweeperMetrics(prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r))
+	m := newSweeperMetrics(r)
 
-	p, err := newMarkerStorageReader(filepath.Join(workingDir, objectStoreType), deleteWorkerCount, minAgeDelete, m)
+	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +430,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 
 // since compactor supports multiple stores, markers need to be written to store specific dir.
 // MigrateMarkers checks for markers in retention dir and migrates them.
-func MigrateMarkers(workingDir string, deleteRequestStore string) error {
+func MigrateMarkers(workingDir string, store string) error {
 	markersDir := filepath.Join(workingDir, markersFolder)
 	info, err := os.Stat(markersDir)
 	if err != nil {
@@ -447,8 +446,8 @@ func MigrateMarkers(workingDir string, deleteRequestStore string) error {
 		return nil
 	}
 
-	targetDir := filepath.Join(workingDir, deleteRequestStore, markersFolder)
-	if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, deleteRequestStore)); err != nil {
+	targetDir := filepath.Join(workingDir, store, markersFolder)
+	if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, store)); err != nil {
 		return err
 	}
 

@@ -80,6 +80,7 @@ type Config struct {
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
 	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
 	DeleteRequestStore        string          `yaml:"delete_request_store"`
+	LegacySharedStoreDefault  string          `yaml:"_" doc:"hidden"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
@@ -249,52 +250,69 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 	}
 
 	if c.cfg.RetentionEnabled {
-		deleteRequestStore := c.cfg.DeleteRequestStore
-		// if -boltdb.shipper.compactor.shared-store is set, use it instead to ensure backward compatibility.
-		if c.cfg.SharedStoreType != "" {
-			deleteRequestStore = c.cfg.SharedStoreType
-		}
+		deleteRequestsStore := func() string {
+			switch {
+			case c.cfg.DeleteRequestStore != "":
+				return c.cfg.DeleteRequestStore
+			case c.cfg.SharedStoreType != "":
+				// If -boltdb.shipper.compactor.delete-request-store is not set, delete requests should be stored in either shared_store or it's legacy defaults.
+				// This ensures that any pending delete requests are processed.
+				return c.cfg.SharedStoreType
+			default:
+				return c.cfg.LegacySharedStoreDefault
+			}
+		}()
 
-		objectClient, ok := objectStoreClients[deleteRequestStore]
+		objectClient, ok := objectStoreClients[deleteRequestsStore]
 		if !ok {
-			return fmt.Errorf("failed to init delete store. Object client not found for %s", c.cfg.DeleteRequestStore)
+			return fmt.Errorf("failed to init delete store. Object client not found for %s", deleteRequestsStore)
 		}
 
 		if err := c.initDeletes(objectClient, r, limits); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
 
-		if err := retention.MigrateMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), deleteRequestStore); err != nil {
+		// Legacy markers point to the chunks in -boltdb.shipper.compactor.shared-store if it's explicitly configured.
+		// Otherwise the chunks would belong to the store defined by legacy shared store defaults.
+		legacyMarkersStore := c.cfg.LegacySharedStoreDefault
+		if c.cfg.SharedStoreType != "" {
+			legacyMarkersStore = c.cfg.SharedStoreType
+		}
+
+		if err := retention.MigrateMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), legacyMarkersStore); err != nil {
 			return fmt.Errorf("failed to move markers to store specific dir: %w", err)
 		}
 	}
 
 	c.storeContainers = make(map[string]storeContainer, len(objectStoreClients))
-	for objectType, objectClient := range objectStoreClients {
+	for objectStoreType, objectClient := range objectStoreClients {
 		var sc storeContainer
 		sc.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 
 		if c.cfg.RetentionEnabled {
-			var encoder client.KeyEncoder
+			var (
+				encoder          client.KeyEncoder
+				chunkClient      = client.NewClient(objectClient, encoder, schemaConfig)
+				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", objectStoreType)
+				r                = prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r)
+			)
+
 			if _, ok := objectClient.(*local.FSObjectClient); ok {
 				encoder = client.FSEncoder
 			}
 
-			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
-
-			retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
-			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, objectType, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
+			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, objectStoreType, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
 			if err != nil {
 				return fmt.Errorf("failed to init sweeper: %w", err)
 			}
 
-			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, objectType, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
+			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, objectStoreType, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
 			if err != nil {
 				return fmt.Errorf("failed to init table marker: %w", err)
 			}
 		}
 
-		c.storeContainers[objectType] = sc
+		c.storeContainers[objectStoreType] = sc
 	}
 
 	c.metrics = newMetrics(r)

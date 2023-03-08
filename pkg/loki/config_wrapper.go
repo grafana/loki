@@ -112,12 +112,12 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
-		}
-
 		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
 			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+		}
+
+		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
+			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
 		}
 
 		applyFIFOCacheConfig(r)
@@ -521,13 +521,12 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
 	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
 		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
-	if cfg.CompactorConfig.DeleteRequestStore == defaults.CompactorConfig.DeleteRequestStore {
-		cfg.CompactorConfig.DeleteRequestStore = period.ObjectType
+	if cfg.CompactorConfig.LegacySharedStoreDefault == defaults.CompactorConfig.LegacySharedStoreDefault {
+		cfg.CompactorConfig.LegacySharedStoreDefault = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -544,13 +543,12 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
 	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
 		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
 	}
 
-	if cfg.CompactorConfig.DeleteRequestStore == defaults.CompactorConfig.DeleteRequestStore {
-		cfg.CompactorConfig.DeleteRequestStore = period.ObjectType
+	if cfg.CompactorConfig.LegacySharedStoreDefault == defaults.CompactorConfig.LegacySharedStoreDefault {
+		cfg.CompactorConfig.LegacySharedStoreDefault = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
