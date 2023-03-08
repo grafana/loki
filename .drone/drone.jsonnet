@@ -3,12 +3,18 @@ local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
 
+local drone_updater_plugin_image = 'us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b';
+
 local onPRs = {
   event: ['pull_request'],
 };
 
 local onTagOrMain = {
   event: ['push', 'tag'],
+};
+
+local onTag = {
+  event: ['tag'],
 };
 
 local onPath(path) = {
@@ -44,6 +50,7 @@ local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publis
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
+local helm_chart_auto_update_config_template = secret('helm-chart-update-config-template', 'secret/data/common/loki-helm-chart-auto-update', 'on-loki-release-config.json');
 
 local run(name, commands, env={}) = {
   name: name,
@@ -446,7 +453,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.27.1',
+    local build_image_tag = '0.28.1',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -665,12 +672,62 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+        image: drone_updater_plugin_image,
         settings: {
           github_token: { from_secret: github_secret.name },
           config_file: configFileName,
         },
         depends_on: ['prepare-updater-config'],
+      },
+    ],
+  },
+  pipeline('update-loki-helm-chart-on-loki-release') {
+    local configFileName = 'updater-config.json',
+    depends_on: ['manifest'],
+    image_pull_secrets: [pull_secret.name],
+    trigger: {
+      // wee need to run it only on Loki tags that starts with `v`.
+      ref: ['refs/tags/v*'],
+    },
+    steps: [
+      {
+        name: 'check-version-is-latest',
+        image: 'alpine',
+        when: onTag,
+        commands: [
+          'apk add --no-cache bash git',
+          'git fetch --tags',
+          "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
+          'RELEASE_TAG=$(./tools/image-tag)',
+          'if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
+        ],
+      },
+      {
+        name: 'prepare-helm-chart-update-config',
+        image: 'alpine',
+        depends_on: ['check-version-is-latest'],
+        commands: [
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
+          'RELEASE_TAG=$(./tools/image-tag)',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE TAG
+          'sed -i -E "s/\\{\\{release\\}\\}/$RELEASE_TAG/g" %s' % configFileName,
+        ],
+        settings: {
+          config_template: { from_secret: helm_chart_auto_update_config_template.name },
+        },
+      },
+      {
+        name: 'trigger-helm-chart-update',
+        image: drone_updater_plugin_image,
+        settings: {
+          github_token: {
+            from_secret: github_secret.name,
+          },
+          config_file: configFileName,
+        },
+        depends_on: ['prepare-helm-chart-update-config'],
       },
     ],
   },
@@ -818,6 +875,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ecr_key,
   ecr_secret_key,
   updater_config_template,
+  helm_chart_auto_update_config_template,
   gpg_passphrase,
   gpg_private_key,
 ]

@@ -1,0 +1,23 @@
+Client -> Frontend: GET /api/v1/query_range
+activate Frontend
+
+group gRPC stream [loop]
+    Frontend -> FrontendLoop: SchedulerToFrontend{}
+    FrontendLoop -> RequestQueue: Enqueue()
+    RequestQueue -> tenantqueues: ->chan
+    RequestQueue --> FrontendLoop: 
+    FrontendLoop --> Frontend: FrontendToScheduler{}
+end
+
+group gRPC stream [loop]
+    QuerierLoop -> RequestQueue: GetNextRequestForQuerier()
+    tenantqueues -> RequestQueue: <-chan
+    RequestQueue --> QuerierLoop: Request{}
+    QuerierLoop -> Querier: SchedulerToQuerier{}
+    Querier --> QuerierLoop: QuerierToScheduler{}
+end
+
+Frontend --> Frontend: wait
+Querier -> Frontend: QueryResult{}
+Frontend --> Client: query response {...}
+deactivate Frontend

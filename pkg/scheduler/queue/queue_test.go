@@ -36,7 +36,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 			for j := 0; j < numTenants; j++ {
 				userID := strconv.Itoa(j)
 
-				err := queue.EnqueueRequest(userID, "request", 0, nil)
+				err := queue.Enqueue(userID, "request", 0, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -48,19 +48,19 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		idx := FirstUser()
+		idx := StartIndex
 		for j := 0; j < maxOutstandingPerTenant*numTenants; j++ {
 			querier := ""
 		b:
 			// Find querier with at least one request to avoid blocking in getNextRequestForQuerier.
-			for _, q := range queues[i].queues.userQueues {
+			for _, q := range queues[i].queues.queues {
 				for qid := range q.queriers {
 					querier = qid
 					break b
 				}
 			}
 
-			_, nidx, err := queues[i].GetNextRequestForQuerier(ctx, idx, querier)
+			_, nidx, err := queues[i].Dequeue(ctx, idx, querier)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -100,7 +100,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
-				err := queues[n].EnqueueRequest(users[j], requests[j], 0, nil)
+				err := queues[n].Enqueue(users[j], requests[j], 0, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -132,7 +132,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	querier2wg.Add(1)
 	go func() {
 		defer querier2wg.Done()
-		_, _, err := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-2")
+		_, _, err := queue.Dequeue(ctx, StartIndex, "querier-2")
 		require.NoError(t, err)
 	}()
 
@@ -141,7 +141,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
-	require.NoError(t, queue.EnqueueRequest("user-1", "request", 1, nil))
+	require.NoError(t, queue.Enqueue("user-1", "request", 1, nil))
 
 	startTime := time.Now()
 	querier2wg.Wait()

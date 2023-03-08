@@ -180,7 +180,13 @@ type storeContainer struct {
 	indexStorageClient shipper_storage.Client
 }
 
-func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
+type Limits interface {
+	deletion.Limits
+	retention.Limits
+	DefaultLimits() *validation.Limits
+}
+
+func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -243,7 +249,7 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
+func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -319,7 +325,7 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 	return nil
 }
 
-func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits *validation.Overrides) error {
+func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 	store, err := deletion.NewDeleteStore(deletionWorkDir, shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix))
 	if err != nil {
