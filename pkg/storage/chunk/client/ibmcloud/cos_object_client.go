@@ -13,9 +13,11 @@ import (
 	ibm "github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials"
+	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam"
 	"github.com/IBM/ibm-cos-sdk-go/aws/session"
 	cos "github.com/IBM/ibm-cos-sdk-go/service/s3"
 	cosiface "github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
+
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -26,13 +28,16 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
+const defaultCOSAuthEndpoint = "https://iam.cloud.ibm.com/identity/token"
+
 var (
-	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
-	errInvalidCOSHMACCredentials   = errors.New("must supply both an Access Key ID and Secret Access Key or neither")
-	errEmptyRegion                 = errors.New("region should not be empty")
-	errEmptyEndpoint               = errors.New("endpoint should not be empty")
-	errEmptyBucket                 = errors.New("at least one bucket name must be specified")
-	errCOSConfig                   = "failed to build cos config"
+	errInvalidCOSHMACCredentials = errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+	errEmptyRegion               = errors.New("region should not be empty")
+	errEmptyEndpoint             = errors.New("endpoint should not be empty")
+	errEmptyBucket               = errors.New("at least one bucket name must be specified")
+	errCOSConfig                 = "failed to build cos config"
+	errServiceInstanceID         = errors.New("must supply ServiceInstanceID")
+	errInvalidCredentials        = errors.New("must supply any of Access Key ID and Secret Access Key or API Key")
 )
 
 var cosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -52,14 +57,17 @@ func init() {
 
 // COSConfig specifies config for storing chunks on IBM cos.
 type COSConfig struct {
-	ForcePathStyle  bool           `yaml:"forcepathstyle"`
-	BucketNames     string         `yaml:"bucketnames"`
-	Endpoint        string         `yaml:"endpoint"`
-	Region          string         `yaml:"region"`
-	AccessKeyID     string         `yaml:"access_key_id"`
-	SecretAccessKey flagext.Secret `yaml:"secret_access_key"`
-	HTTPConfig      HTTPConfig     `yaml:"http_config"`
-	BackoffConfig   backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
+	ForcePathStyle    bool           `yaml:"forcepathstyle"`
+	BucketNames       string         `yaml:"bucketnames"`
+	Endpoint          string         `yaml:"endpoint"`
+	Region            string         `yaml:"region"`
+	AccessKeyID       string         `yaml:"access_key_id"`
+	SecretAccessKey   flagext.Secret `yaml:"secret_access_key"`
+	HTTPConfig        HTTPConfig     `yaml:"http_config"`
+	BackoffConfig     backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
+	ApiKey            flagext.Secret `yaml:"api_key"`
+	ServiceInstanceID string         `yaml:"service_instance_id"`
+	AuthEndpoint      string         `yaml:"auth_endpoint"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -75,20 +83,24 @@ func (cfg *COSConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.ForcePathStyle, prefix+"COS.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
-	f.StringVar(&cfg.BucketNames, prefix+"COS.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over.")
+	f.BoolVar(&cfg.ForcePathStyle, prefix+"cos.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
+	f.StringVar(&cfg.BucketNames, prefix+"cos.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over.")
 
-	f.StringVar(&cfg.Endpoint, prefix+"COS.endpoint", "", "COS Endpoint to connect to.")
-	f.StringVar(&cfg.Region, prefix+"COS.region", "", "COS region to use.")
-	f.StringVar(&cfg.AccessKeyID, prefix+"COS.access-key-id", "", "COS HMAC Access Key ID")
-	f.Var(&cfg.SecretAccessKey, prefix+"COS.secret-access-key", "COS HMAC Secret Access Key")
+	f.StringVar(&cfg.Endpoint, prefix+"cos.endpoint", "", "COS Endpoint to connect to.")
+	f.StringVar(&cfg.Region, prefix+"cos.region", "", "COS region to use.")
+	f.StringVar(&cfg.AccessKeyID, prefix+"cos.access-key-id", "", "COS HMAC Access Key ID")
+	f.Var(&cfg.SecretAccessKey, prefix+"cos.secret-access-key", "COS HMAC Secret Access Key")
 
-	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"COS.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
-	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"COS.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
+	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"cos.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
+	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"cos.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 
-	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"COS.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object")
-	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"COS.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"COS.max-retries", 5, "Maximum number of times to retry when cos get Object")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"cos.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"cos.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"cos.max-retries", 5, "Maximum number of times to retry when cos get Object")
+
+	f.Var(&cfg.ApiKey, prefix+"cos.api-key", "api Key")
+	f.StringVar(&cfg.AuthEndpoint, prefix+"cos.auth-endpoint", defaultCOSAuthEndpoint, "Auth Endpoint to connect to.")
+	f.StringVar(&cfg.ServiceInstanceID, prefix+"cos.service-instance-id", "", "COS service instance id to use")
 }
 
 type COSObjectClient struct {
@@ -96,7 +108,7 @@ type COSObjectClient struct {
 
 	bucketNames []string
 	cos         cosiface.S3API
-	hedgedS3    cosiface.S3API
+	hedgedCOS   cosiface.S3API
 }
 
 // NewCOSObjectClient makes a new COS backed ObjectClient.
@@ -116,13 +128,17 @@ func NewCOSObjectClient(cfg COSConfig, hedgingCfg hedging.Config) (*COSObjectCli
 	client := COSObjectClient{
 		cfg:         cfg,
 		cos:         cosClient,
-		hedgedS3:    cosClientHedging,
+		hedgedCOS:   cosClientHedging,
 		bucketNames: bucketNames,
 	}
 	return &client, nil
 }
 
 func validate(cfg COSConfig) error {
+	if (cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "") && cfg.ApiKey.String() == "" {
+		return errInvalidCredentials
+	}
+
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() != "" {
 		return errInvalidCOSHMACCredentials
@@ -134,6 +150,25 @@ func validate(cfg COSConfig) error {
 
 	if cfg.Endpoint == "" {
 		return errEmptyEndpoint
+	}
+
+	if cfg.ApiKey.String() != "" && cfg.AuthEndpoint == "" {
+		cfg.AuthEndpoint = defaultCOSAuthEndpoint
+	}
+
+	if cfg.ApiKey.String() != "" && cfg.ServiceInstanceID == "" {
+		return errServiceInstanceID
+	}
+	return nil
+}
+
+func getCreds(cfg COSConfig) *credentials.Credentials {
+	if cfg.ApiKey.String() != "" {
+		return ibmiam.NewStaticCredentials(ibm.NewConfig(),
+			cfg.AuthEndpoint, cfg.ApiKey.String(), cfg.ServiceInstanceID)
+	}
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
+		return credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
 	}
 	return nil
 }
@@ -152,10 +187,7 @@ func buildCOSClient(cfg COSConfig, hedgingCfg hedging.Config, hedging bool) (*co
 
 	cosConfig = cosConfig.WithRegion(cfg.Region)
 
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
-		cosConfig = cosConfig.WithCredentials(creds)
-	}
+	cosConfig = cosConfig.WithCredentials(getCreds(cfg))
 
 	transport := http.RoundTripper(&http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -254,7 +286,7 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 		}
 		err = instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = c.hedgedS3.GetObjectWithContext(ctx, &cos.GetObjectInput{
+			resp, requestErr = c.hedgedCOS.GetObjectWithContext(ctx, &cos.GetObjectInput{
 				Bucket: ibm.String(bucket),
 				Key:    ibm.String(objectKey),
 			})

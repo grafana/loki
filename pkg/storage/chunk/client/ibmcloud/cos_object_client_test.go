@@ -3,11 +3,18 @@ package ibmcloud
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam/token"
 	"github.com/IBM/ibm-cos-sdk-go/aws/request"
 	"github.com/IBM/ibm-cos-sdk-go/service/s3"
 	"github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
@@ -187,6 +194,31 @@ func Test_COSConfig(t *testing.T) {
 			errEmptyBucket,
 		},
 		{
+			"Access key ID and Secret Access key and APIKEY is empty",
+			COSConfig{
+				BucketNames:       "test",
+				Endpoint:          "test",
+				Region:            "dummy",
+				ServiceInstanceID: "dummy",
+				AuthEndpoint:      "dummy",
+			},
+			errors.Wrap(errInvalidCredentials, errCOSConfig),
+		},
+		{
+			"Service Instance ID is empty",
+			COSConfig{
+				BucketNames:       "test",
+				Endpoint:          "test",
+				Region:            "dummy",
+				AccessKeyID:       "dummy",
+				SecretAccessKey:   flagext.SecretWithValue("dummy"),
+				ApiKey:            flagext.SecretWithValue("dummy"),
+				ServiceInstanceID: "",
+				AuthEndpoint:      "dummy",
+			},
+			errors.Wrap(errServiceInstanceID, errCOSConfig),
+		},
+		{
 			"valid config",
 			COSConfig{
 				BucketNames:     "test",
@@ -194,6 +226,18 @@ func Test_COSConfig(t *testing.T) {
 				Region:          "dummy",
 				AccessKeyID:     "dummy",
 				SecretAccessKey: flagext.SecretWithValue("dummy"),
+			},
+			nil,
+		},
+		{
+			"valid config with APIKEY",
+			COSConfig{
+				BucketNames:       "test",
+				Endpoint:          "test",
+				Region:            "dummy",
+				ApiKey:            flagext.SecretWithValue("dummy"),
+				ServiceInstanceID: "dummy",
+				AuthEndpoint:      "dummy",
 			},
 			nil,
 		},
@@ -205,7 +249,7 @@ func Test_COSConfig(t *testing.T) {
 			continue
 		}
 		require.NotNil(t, cosClient.cos)
-		require.NotNil(t, cosClient.hedgedS3)
+		require.NotNil(t, cosClient.hedgedCOS)
 		require.Equal(t, []string{tt.cosConfig.BucketNames}, cosClient.bucketNames)
 	}
 }
@@ -243,7 +287,7 @@ func Test_GetObject(t *testing.T) {
 		cosClient, err := NewCOSObjectClient(cosConfig, hedging.Config{})
 		require.NoError(t, err)
 
-		cosClient.hedgedS3 = newMockCosClient(testData)
+		cosClient.hedgedCOS = newMockCosClient(testData)
 
 		reader, _, err := cosClient.GetObject(context.Background(), tt.key)
 		if tt.wantErr != nil {
@@ -299,7 +343,7 @@ func Test_PutObject(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		cosClient.hedgedS3 = newMockCosClient(testData)
+		cosClient.hedgedCOS = newMockCosClient(testData)
 
 		reader, _, err := cosClient.GetObject(context.Background(), tt.key)
 		if tt.wantErr != nil {
@@ -346,7 +390,7 @@ func Test_DeleteObject(t *testing.T) {
 		err = cosClient.DeleteObject(context.Background(), tt.key)
 		require.NoError(t, err)
 
-		cosClient.hedgedS3 = newMockCosClient(testDeleteData)
+		cosClient.hedgedCOS = newMockCosClient(testDeleteData)
 
 		// call GetObject() for confirming the deleted object is no longer exist in bucket
 		reader, _, err := cosClient.GetObject(context.Background(), tt.key)
@@ -415,4 +459,62 @@ func Test_List(t *testing.T) {
 
 		require.Equal(t, tt.storage_obj, storage_obj)
 	}
+}
+
+func Test_APIKeyAuth(t *testing.T) {
+	testToken := "test"
+	tokenType := "Bearer"
+	resp := "testGet"
+
+	cosSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != fmt.Sprintf("%s %s", tokenType, testToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, resp)
+	}))
+	defer cosSvr.Close()
+
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := token.Token{
+			AccessToken:  testToken,
+			RefreshToken: "test",
+			TokenType:    tokenType,
+			ExpiresIn:    int64((time.Hour * 24).Seconds()),
+			Expiration:   time.Now().Add(time.Hour * 24).Unix(),
+		}
+
+		data, err := json.Marshal(token)
+		if err != nil {
+			w.Write([]byte("error"))
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		w.Write(data)
+	}))
+	defer authServer.Close()
+
+	cosConfig := COSConfig{
+		BucketNames:       "dummy",
+		Endpoint:          cosSvr.URL,
+		Region:            "dummy",
+		ApiKey:            flagext.SecretWithValue("dummy"),
+		ServiceInstanceID: "test",
+		ForcePathStyle:    true,
+		AuthEndpoint:      authServer.URL,
+		BackoffConfig: backoff.Config{
+			MaxRetries: 1,
+		},
+	}
+
+	cosClient, err := NewCOSObjectClient(cosConfig, hedging.Config{})
+	require.NoError(t, err)
+
+	reader, _, err := cosClient.GetObject(context.Background(), "key-1")
+	require.NoError(t, err)
+
+	data, err := ioutil.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, resp, strings.Trim(string(data), "\n"))
 }

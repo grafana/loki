@@ -15,13 +15,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
@@ -68,7 +68,7 @@ type NamedStores struct {
 	GCS          map[string]gcp.GCSConfig             `yaml:"gcs"`
 	AlibabaCloud map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
 	Swift        map[string]openstack.SwiftConfig     `yaml:"swift"`
-	COS          map[string]ibmcloud.COSConfig 		  `yaml:"cos"` 
+	COS          map[string]ibmcloud.COSConfig        `yaml:"cos"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -180,8 +180,8 @@ type Config struct {
 	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
 	Hedging                hedging.Config            `yaml:"hedging"`
 	NamedStores            NamedStores               `yaml:"named_stores"`
-	COSConfig       	   ibmcloud.COSConfig 		 `yaml:"cos"`
-	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
+	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
+	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
@@ -389,7 +389,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc,config.StorageTypeCOS)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc, config.StorageTypeCOS)
 	}
 }
 
@@ -568,6 +568,6 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem, config.StorageTypeCOS)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem, config.StorageTypeCOS)
 	}
 }
