@@ -31,6 +31,7 @@ type Merger interface {
 
 // Request represents a query range request that can be process by middlewares.
 type Request interface {
+	proto.Message
 	// GetStart returns the start timestamp of the request in milliseconds.
 	GetStart() int64
 	// GetEnd returns the end timestamp of the request in milliseconds.
@@ -45,7 +46,6 @@ type Request interface {
 	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
-	proto.Message
 	// LogToSpan writes information about this request to an OpenTracing span
 	LogToSpan(opentracing.Span)
 }

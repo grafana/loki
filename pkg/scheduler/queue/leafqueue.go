@@ -41,25 +41,22 @@ func newLeafQueue(size int, name string) *LeafQueue {
 }
 
 // add recursively adds queues based on given path
-func (q *LeafQueue) add(ident QueuePath) *LeafQueue {
-	if len(ident) == 0 {
-		return nil
+func (q *LeafQueue) add(path QueuePath) *LeafQueue {
+	if len(path) == 0 {
+		return q
 	}
-	curr := ident[0]
+	curr, remaining := path[0], path[1:]
 	queue, created := q.getOrCreate(curr)
 	if created {
 		q.mapping.Put(queue.Name(), queue)
 	}
-	if len(ident[1:]) > 0 {
-		queue.add(ident[1:])
-	}
-	return queue
+	return queue.add(remaining)
 }
 
-func (q *LeafQueue) getOrCreate(ident string) (subq *LeafQueue, created bool) {
-	subq = q.mapping.GetByKey(ident)
+func (q *LeafQueue) getOrCreate(name string) (subq *LeafQueue, created bool) {
+	subq = q.mapping.GetByKey(name)
 	if subq == nil {
-		subq = newLeafQueue(q.size, ident)
+		subq = newLeafQueue(q.size, name)
 		created = true
 	}
 	return subq, created

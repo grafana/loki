@@ -11,6 +11,7 @@ import (
 
 // NOTE(kavi): Why new type?
 // Our linter won't allow to use basic types like string to be used as key in context.
+// TODO(chaudum): Can we safely change the type of the header key?
 type ctxKey string
 
 var (
@@ -53,4 +54,9 @@ func ExtractQueryMetricsMiddleware() middleware.Interface {
 			next.ServeHTTP(w, req)
 		})
 	})
+}
+
+func ExtractQueryTagsHeader(ctx context.Context) string {
+	v, _ := ctx.Value(QueryTagsHTTPHeader).(string) // it's ok to be empty
+	return v
 }

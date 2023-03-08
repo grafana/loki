@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/textproto"
-	"strings"
 	"sync"
 	"time"
 
@@ -62,12 +61,6 @@ const (
 	// ringCheckPeriod is how often we check the ring to see if this instance is still in
 	// the replicaset of instances to act as schedulers.
 	ringCheckPeriod = 3 * time.Second
-
-	// ActorPathHeader is the name of the header used to enqueue requests in hierarchical queues
-	ActorPathHeader = "x-actor-path"
-
-	// ActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor
-	ActorPathDelimiter = "|"
 )
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
@@ -259,8 +252,7 @@ type Limits interface {
 
 type schedulerRequest struct {
 	frontendAddress string
-	userID          string
-	actor           []string
+	tenantID        string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
@@ -368,18 +360,6 @@ func (s *Scheduler) frontendConnected(frontend schedulerpb.SchedulerForFrontend_
 	return msg.FrontendAddress, cf.ctx, nil
 }
 
-func extractActorPath(msg *schedulerpb.FrontendToScheduler) []string {
-	for _, h := range msg.HttpRequest.Headers {
-		if strings.ToLower(h.Key) == ActorPathHeader {
-			if len(h.Values) == 0 {
-				return nil
-			}
-			return strings.Split(h.Values[0], ActorPathDelimiter)
-		}
-	}
-	return nil
-}
-
 func (s *Scheduler) frontendDisconnected(frontendAddress string) {
 	s.connectedFrontendsMu.Lock()
 	defer s.connectedFrontendsMu.Unlock()
@@ -412,20 +392,9 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		return err
 	}
 
-	var actor []string
-	if s.cfg.MaxQueueHierarchyLevels > 0 {
-		actor = extractActorPath(msg)
-		// trim to the max allowed levels
-		// TODO(chaudum): Would it be better to return an error?
-		if len(actor) > s.cfg.MaxQueueHierarchyLevels {
-			actor = actor[:s.cfg.MaxQueueHierarchyLevels]
-		}
-	}
-
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
-		userID:          msg.UserID,
-		actor:           actor,
+		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
@@ -439,14 +408,24 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(req.userID)
+	tenantIDs, err := tenant.TenantIDsFromOrgID(req.tenantID)
 	if err != nil {
 		return err
 	}
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
-	s.activeUsers.UpdateUserTimestamp(req.userID, now)
-	return s.requestQueue.Enqueue(req.userID, req.actor, req, maxQueriers, func() {
+	var queuePath []string
+	if s.cfg.MaxQueueHierarchyLevels > 0 {
+		queuePath = msg.QueuePath
+		// trim to the max allowed levels
+		// TODO(chaudum): Would it be better to return an error?
+		if len(queuePath) > s.cfg.MaxQueueHierarchyLevels {
+			queuePath = queuePath[:s.cfg.MaxQueueHierarchyLevels]
+		}
+	}
+
+	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
+	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()
@@ -547,7 +526,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	errCh := make(chan error, 1)
 	go func() {
 		err := querier.Send(&schedulerpb.SchedulerToQuerier{
-			UserID:          req.userID,
+			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
@@ -603,7 +582,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 
 	client := frontendv2pb.NewFrontendForQuerierClient(conn)
 
-	userCtx := user.InjectOrgID(ctx, req.userID)
+	userCtx := user.InjectOrgID(ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
 		HttpResponse: &httpgrpc.HTTPResponse{

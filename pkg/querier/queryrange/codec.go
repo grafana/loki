@@ -18,6 +18,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -270,7 +271,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
-		}, err
+		}, nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -278,9 +279,24 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 
 func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
-	queryTags := getQueryTags(ctx)
+
+	queryTags := httpreq.ExtractQueryTagsHeader(ctx)
 	if queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
+	}
+
+	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+	if actor != "" {
+		header.Set(httpreq.LokiActorPathHeader, actor)
+	}
+
+	tenant, err := user.ExtractOrgID(ctx)
+	if tenant != "" {
+		header.Set(user.OrgIDHeaderName, tenant)
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	switch request := r.(type) {
@@ -986,11 +1002,6 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 	}
 
 	return promHeaders
-}
-
-func getQueryTags(ctx context.Context) string {
-	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
-	return v
 }
 
 func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error) {

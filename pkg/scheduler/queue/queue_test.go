@@ -19,56 +19,83 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	const numTenants = 50
 	const queriers = 5
 
-	queues := make([]*RequestQueue, 0, b.N)
+	type generateActor func(i int) []string
 
-	for n := 0; n < b.N; n++ {
-		m := &Metrics{
-			QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-			DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-		}
-		queue := NewRequestQueue(maxOutstandingPerTenant, 0, m)
-		queues = append(queues, queue)
+	benchCases := []struct {
+		name string
+		fn   generateActor
+	}{
+		{
+			"without sub-queues",
+			func(i int) []string { return nil },
+		},
+		{
+			"with 1 level of sub-queues",
+			func(i int) []string { return []string{fmt.Sprintf("user-%d", i%11)} },
+		},
+		{
+			"with 2 levels of sub-queues",
+			func(i int) []string { return []string{fmt.Sprintf("user-%d", i%11), fmt.Sprintf("tool-%d", i%9)} },
+		},
+	}
 
-		for ix := 0; ix < queriers; ix++ {
-			queue.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
-		}
+	for _, benchCase := range benchCases {
+		benchCase := benchCase
 
-		for i := 0; i < maxOutstandingPerTenant; i++ {
-			for j := 0; j < numTenants; j++ {
-				userID := strconv.Itoa(j)
+		b.Run(benchCase.name, func(b *testing.B) {
 
-				err := queue.Enqueue(userID, "request", 0, nil)
-				if err != nil {
-					b.Fatal(err)
+			queues := make([]*RequestQueue, 0, b.N)
+			for n := 0; n < b.N; n++ {
+				m := &Metrics{
+					QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+					DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+				}
+				queue := NewRequestQueue(maxOutstandingPerTenant, 0, m)
+				queues = append(queues, queue)
+
+				for ix := 0; ix < queriers; ix++ {
+					queue.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
+				}
+
+				for i := 0; i < maxOutstandingPerTenant; i++ {
+					for j := 0; j < numTenants; j++ {
+						userID := strconv.Itoa(j)
+						err := queue.Enqueue(userID, benchCase.fn(j), "request", 0, nil)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				}
+
+			}
+
+			querierNames := make([]string, queriers)
+			for x := 0; x < queriers; x++ {
+				querierNames[x] = fmt.Sprintf("querier-%d", x)
+			}
+
+			ctx := context.Background()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				for j := 0; j < queriers; j++ {
+					idx := StartIndex
+					for x := 0; x < maxOutstandingPerTenant*numTenants/queriers; x++ {
+						r, nidx, err := queues[i].Dequeue(ctx, idx, querierNames[j])
+						if r == nil {
+							break
+						}
+						if err != nil {
+							b.Fatal(err)
+						}
+						idx = nidx
+					}
 				}
 			}
-		}
 
+		})
 	}
 
-	querierNames := make([]string, queriers)
-	for x := 0; x < queriers; x++ {
-		querierNames[x] = fmt.Sprintf("querier-%d", x)
-	}
-
-	ctx := context.Background()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < queriers; j++ {
-			idx := StartIndex
-			for x := 0; x < maxOutstandingPerTenant*numTenants/queriers; x++ {
-				r, nidx, err := queues[i].Dequeue(ctx, idx, querierNames[j])
-				if r == nil {
-					break
-				}
-				if err != nil {
-					b.Fatal(err)
-				}
-				idx = nidx
-			}
-		}
-	}
 }
 
 func BenchmarkQueueRequest(b *testing.B) {
@@ -103,7 +130,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
-				err := queues[n].Enqueue(users[j], requests[j], 0, nil)
+				err := queues[n].Enqueue(users[j], nil, requests[j], 0, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -146,7 +173,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
-	require.NoError(t, queue.Enqueue("user-1", "request", 1, nil))
+	require.NoError(t, queue.Enqueue("user-1", nil, "request", 1, nil))
 
 	startTime := time.Now()
 	querier2wg.Wait()
