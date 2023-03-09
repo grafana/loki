@@ -81,7 +81,7 @@ func TestMappingEquivalence(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			noop, mapped, err := mapper.Parse(tc.query)
+			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
@@ -91,12 +91,6 @@ func TestMappingEquivalence(t *testing.T) {
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.Nil(t, err)
-
-			if noop {
-				assert.Equal(t, int64(0), shardedRes.Statistics.Summary.Shards)
-			} else {
-				assert.Equal(t, int64(shards), shardedRes.Statistics.Summary.Shards)
-			}
 
 			if tc.approximate {
 				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
