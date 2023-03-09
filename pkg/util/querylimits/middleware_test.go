@@ -27,11 +27,12 @@ func Test_MiddlewareWithoutHeader(t *testing.T) {
 
 func Test_MiddlewareWithHeader(t *testing.T) {
 	limits := QueryLimits{
-		model.Duration(1 * time.Second),
-		model.Duration(1 * time.Second),
-		1,
-		model.Duration(1 * time.Second),
-		[]string{"cluster"},
+		MaxQueryLength:          model.Duration(1 * time.Second),
+		MaxQueryLookback:        model.Duration(1 * time.Second),
+		MaxEntriesLimitPerQuery: 1,
+		QueryTimeout:            model.Duration(1 * time.Second),
+		RequiredLabels:          []string{"cluster"},
+		MaxInterval:             model.Duration(15 * time.Second),
 	}
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

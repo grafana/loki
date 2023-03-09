@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -168,6 +169,9 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			if err := validateMaxEntriesLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
 			}
+			if err := validateMaxIntervalLimits(req, rangeQuery.Interval, r.limits); err != nil {
+				return nil, err
+			}
 			// Only filter expressions are query sharded
 			if !expr.HasFilter() {
 				return r.limited.RoundTrip(req)
@@ -251,6 +255,25 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
+	}
+	return nil
+}
+
+// validates range query interval limit
+func validateMaxIntervalLimits(req *http.Request, reqLimit time.Duration, limits Limits) error {
+	tenantIDs, err := tenant.TenantIDs(req.Context())
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return limits.MaxInterval(req.Context(), id) }
+	maxIntervalLimit := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, maxIntervalCapture)
+
+	fmt.Println("request limit: ", reqLimit)
+	fmt.Println("limit:", maxIntervalLimit)
+	if reqLimit > maxIntervalLimit && maxIntervalLimit != 0 {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max interval limit for the query exceeded, limit > interval parameter (%v > %v)", reqLimit, maxIntervalLimit)
 	}
 	return nil
 }

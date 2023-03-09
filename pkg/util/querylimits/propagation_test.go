@@ -37,12 +37,14 @@ func TestSerializingQueryLimits(t *testing.T) {
 		MaxEntriesLimitPerQuery: 100,
 		QueryTimeout:            model.Duration(5 * time.Second),
 		RequiredLabels:          []string{"cluster"},
+		MaxInterval:             model.Duration(15 * time.Second),
 	}
 
 	actual, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
 	expected := `{
 		"maxEntriesLimitPerQuery": 100,
+		"maxInterval": "15s",
 		"maxQueryLength": "2d",
 		"maxQueryLookback": "2w",
 		"requiredLabels": ["cluster"],

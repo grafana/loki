@@ -93,6 +93,7 @@ type Limits interface {
 	MaxStreamsMatchersPerQuery(context.Context, string) int
 	MaxConcurrentTailRequests(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
+	MaxInterval(context.Context, string) time.Duration
 	RequiredLabels(context.Context, string) []string
 }
 

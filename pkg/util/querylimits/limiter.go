@@ -55,6 +55,17 @@ func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) in
 	return requestLimits.MaxEntriesLimitPerQuery
 }
 
+// MaxInterval returns the max interval value allowed for range queries.
+func (l *Limiter) MaxInterval(ctx context.Context, userID string) time.Duration {
+	original := l.CombinedLimits.MaxInterval(ctx, userID)
+	requestLimits := ExtractQueryLimitsContext(ctx)
+	if requestLimits == nil || requestLimits.MaxInterval == 0 || time.Duration(requestLimits.MaxInterval) > original {
+		_ = level.Debug(logutil.WithContext(ctx, logutil.Logger)).Log("msg", "using original limit")
+		return original
+	}
+	return time.Duration(requestLimits.MaxInterval)
+}
+
 func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.QueryTimeout(ctx, userID)
 	// in theory this error should never happen

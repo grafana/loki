@@ -23,6 +23,7 @@ type QueryLimits struct {
 	MaxQueryLength          model.Duration `json:"maxQueryLength"`
 	MaxQueryLookback        model.Duration `json:"maxQueryLookback"`
 	MaxEntriesLimitPerQuery int            `json:"maxEntriesLimitPerQuery"`
+	MaxInterval             model.Duration `json:"maxInterval"`
 	QueryTimeout            model.Duration `json:"queryTimeout"`
 	RequiredLabels          []string       `json:"requiredLabels"`
 }

@@ -501,6 +501,39 @@ func TestEntriesLimitsTripperware(t *testing.T) {
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
 }
 
+func TestIntervalLimitsTripperware(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxInterval: 15 * time.Second, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiRequest{
+		Query: `{app="foo"}`,
+		// The request limit is # of ms
+		Interval:  (16 * time.Second).Milliseconds(),
+		Limit:     1000,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max interval limit for the query exceeded, limit > interval parameter (16s > 15s)"), err)
+}
+
 func Test_getOperation(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -578,6 +611,7 @@ type fakeLimits struct {
 	tsdbMaxQueryParallelism int
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
+	maxInterval             time.Duration
 	maxSeries               int
 	splits                  map[string]time.Duration
 	minShardingLookback     time.Duration
@@ -608,6 +642,10 @@ func (f fakeLimits) TSDBMaxQueryParallelism(context.Context, string) int {
 
 func (f fakeLimits) MaxEntriesLimitPerQuery(context.Context, string) int {
 	return f.maxEntriesLimitPerQuery
+}
+
+func (f fakeLimits) MaxInterval(context.Context, string) time.Duration {
+	return f.maxInterval
 }
 
 func (f fakeLimits) MaxQuerySeries(context.Context, string) int {

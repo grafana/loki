@@ -41,6 +41,7 @@ type Limits interface {
 	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
+	MaxInterval(context.Context, string) time.Duration
 	MinShardingLookback(string) time.Duration
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
@@ -62,6 +63,7 @@ func (l limits) QuerySplitDuration(user string) time.Duration {
 }
 
 func (l limits) TSDBMaxQueryParallelism(ctx context.Context, user string) int {
+	fmt.Println("max query parallelism: ", l.maxQueryParallelism)
 	if l.maxQueryParallelism == nil {
 		return l.Limits.TSDBMaxQueryParallelism(ctx, user)
 	}
