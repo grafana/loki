@@ -190,14 +190,13 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 }
 
 type querySizeLimiter struct {
-	logger              log.Logger
-	next                queryrangebase.Handler
-	statsHandler        queryrangebase.Handler
-	statsHandlerNonSpit queryrangebase.Handler
-	cfg                 []config.PeriodConfig
-	maxLookBackPeriod   time.Duration
-	limitFunc           func(string) int
-	limitErrorTmpl      string
+	logger            log.Logger
+	next              queryrangebase.Handler
+	statsHandler      queryrangebase.Handler
+	cfg               []config.PeriodConfig
+	maxLookBackPeriod time.Duration
+	limitFunc         func(string) int
+	limitErrorTmpl    string
 }
 
 func newQuerierSizeLimiter(
@@ -226,7 +225,6 @@ func newQuerierSizeLimiter(
 	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
 	statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
 	q.statsHandler = statsSplitTimeMiddleware.Wrap(statsHandler)
-	q.statsHandlerNonSpit = statsHandler
 
 	return q
 }
@@ -303,15 +301,6 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	}
 
 	combinedStats := stats.MergeStats(matcherStats...)
-
-	// TODO: Remove this one, using just to compare
-	matcherStatsNoSplit, err := getStatsForMatchers(ctx, q.logger, q.statsHandlerNonSpit, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
-	if err != nil {
-		return 0, err
-	}
-
-	combinedStatsNoSplit := stats.MergeStats(matcherStatsNoSplit...)
-	_ = combinedStatsNoSplit
 
 	level.Debug(sp).Log(
 		append(
