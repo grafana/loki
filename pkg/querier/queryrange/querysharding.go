@@ -33,6 +33,7 @@ var errInvalidShardingRange = errors.New("Query does not fit in a single shardin
 func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
+	codec queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
@@ -50,7 +51,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards)
+		return newASTMapperware(confs, next, codec, logger, shardingMetrics, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -69,6 +70,7 @@ func NewQueryShardMiddleware(
 func newASTMapperware(
 	confs ShardingConfigs,
 	next queryrangebase.Handler,
+	codec queryrangebase.Codec,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
 	limits Limits,
@@ -78,6 +80,7 @@ func newASTMapperware(
 		confs:     confs,
 		logger:    log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:    limits,
+		codec:     codec,
 		next:      next,
 		ng:        logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics:   metrics,
@@ -89,6 +92,7 @@ type astMapperware struct {
 	confs     ShardingConfigs
 	logger    log.Logger
 	limits    Limits
+	codec     queryrangebase.Codec
 	next      queryrangebase.Handler
 	ng        *logql.DownstreamEngine
 	metrics   *logql.MapperMetrics
@@ -143,10 +147,15 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
+	// If the ast can't be mapped to a sharded equivalent,
+	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
-		// the ast can't be mapped to a sharded equivalent
-		// so we can bypass the sharding engine.
-		return ast.next.Do(ctx, r)
+		// If the expression cannot be sharded, we'll enforce the MaxQuerierSize limit here.
+		// Note that if the query is shardable, this limits was already enforced by the mapper
+		querierSizeLimiterMiddleware := NewQuerierSizeLimiterMiddleware(ast.confs, ast.logger, ast.limits, ast.codec)
+		next := querierSizeLimiterMiddleware.Wrap(ast.next)
+
+		return next.Do(ctx, r)
 	}
 
 	params, err := paramsFromRequest(r)

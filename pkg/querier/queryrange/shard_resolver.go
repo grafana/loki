@@ -132,19 +132,17 @@ func getStatsForMatchers(
 	return results, nil
 }
 
-func (r *dynamicShardResolver) checkQuerySizeLimit(shardStats []*stats.Stats) error {
+func (r *dynamicShardResolver) checkQuerySizeLimit(bytesPerShard uint64) error {
 	tenantIDs, err := tenant.TenantIDs(r.ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, r.limits.MaxQuerierBytesRead); maxBytesRead > 0 {
-		for _, stats := range shardStats {
-			if stats.Bytes > uint64(maxBytesRead) {
-				statsBytesStr := humanize.Bytes(stats.Bytes)
-				maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
-				return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
-			}
+		if bytesPerShard > uint64(maxBytesRead) {
+			statsBytesStr := humanize.Bytes(bytesPerShard)
+			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
+			return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
 		}
 	}
 
@@ -174,10 +172,6 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		return 0, err
 	}
 
-	if err = r.checkQuerySizeLimit(results); err != nil {
-		return 0, err
-	}
-
 	combined := stats.MergeStats(results...)
 	factor := guessShardFactor(combined, r.maxShards)
 
@@ -185,6 +179,13 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
+
+	// TODO(salvacorts): Discuss in PR - this is more a guess than the actual shards size.
+	//                   is this something we should be concerned about?
+	if err = r.checkQuerySizeLimit(bytesPerShard); err != nil {
+		return 0, err
+	}
+
 	level.Debug(sp).Log(
 		append(
 			combined.LoggingKeyValues(),

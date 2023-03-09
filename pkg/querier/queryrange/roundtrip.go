@@ -319,6 +319,7 @@ func NewLogFilterTripperware(
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
+				codec,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
@@ -545,6 +546,7 @@ func NewMetricTripperware(
 				NewQueryShardMiddleware(
 					log,
 					schema.Configs,
+					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
@@ -592,6 +594,7 @@ func NewInstantMetricTripperware(
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
+				codec,
 				metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,

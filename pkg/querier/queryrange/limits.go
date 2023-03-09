@@ -35,7 +35,7 @@ import (
 const (
 	limitErrTmpl                  = "maximum of series (%d) reached for a single query"
 	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s)"
-	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled or the query is unshardable: (query: %s, limit: %s)"
+	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s)"
 )
 
 var (
@@ -195,9 +195,59 @@ type querySizeLimiter struct {
 	statsHandler        queryrangebase.Handler
 	statsHandlerNonSpit queryrangebase.Handler
 	cfg                 []config.PeriodConfig
-	codec               queryrangebase.Codec
-	limits              Limits
 	maxLookBackPeriod   time.Duration
+	limitFunc           func(string) int
+	limitErrorTmpl      string
+}
+
+func newQuerierSizeLimiter(
+	next queryrangebase.Handler,
+	statsHandler queryrangebase.Handler,
+	cfg []config.PeriodConfig,
+	logger log.Logger,
+	limits Limits,
+	codec queryrangebase.Codec,
+	limitFunc func(string) int,
+	limitErrorTmpl string,
+) *querySizeLimiter {
+	q := &querySizeLimiter{
+		logger:         logger,
+		next:           next,
+		cfg:            cfg,
+		limitFunc:      limitFunc,
+		limitErrorTmpl: limitErrorTmpl,
+	}
+
+	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
+	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: statsHandler, limits: limits}, limits, logger)
+	q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
+
+	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
+	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
+	statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
+	q.statsHandler = statsSplitTimeMiddleware.Wrap(statsHandler)
+	q.statsHandlerNonSpit = statsHandler
+
+	return q
+}
+
+// NewQuerierSizeLimiterMiddleware creates a new Middleware that enforces query size limits after sharding and splitting.
+// The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
+func NewQuerierSizeLimiterMiddleware(
+	cfg []config.PeriodConfig,
+	logger log.Logger,
+	limits Limits,
+	codec queryrangebase.Codec,
+	statsHandler ...queryrangebase.Handler,
+) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		stats := next
+		if len(statsHandler) > 0 {
+			stats = statsHandler[0]
+		}
+
+		return newQuerierSizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl)
+	})
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
@@ -210,30 +260,12 @@ func NewQuerySizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		q := &querySizeLimiter{
-			logger: logger,
-			next:   next,
-			cfg:    cfg,
-			limits: limits,
-			codec:  codec,
-		}
-
-		// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
-		ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
-		q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
-
-		// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-		// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-		statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
+		stats := next
 		if len(statsHandler) > 0 {
-			q.statsHandler = statsSplitTimeMiddleware.Wrap(statsHandler[0])
-			q.statsHandlerNonSpit = statsHandler[0]
-		} else {
-			q.statsHandler = statsSplitTimeMiddleware.Wrap(next)
-			q.statsHandlerNonSpit = next
+			stats = statsHandler[0]
 		}
 
-		return q
+		return newQuerierSizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl)
 	})
 }
 
@@ -326,7 +358,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limits.MaxQueryBytesRead); maxBytesRead > 0 {
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limitFunc); maxBytesRead > 0 {
 		bytesRead, err := q.getBytesReadForRequest(ctx, r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query", err.Error())
@@ -335,7 +367,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		if bytesRead > uint64(maxBytesRead) {
 			statsBytesStr := humanize.Bytes(bytesRead)
 			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, limErrQueryTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
 		}
 	}
 
