@@ -677,6 +677,10 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryLimiter] = []string{Overrides}
 		deps[QueryLimitsInterceptors] = []string{}
 		deps[QueryLimitsTripperware] = []string{}
+
+		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
+			return err
+		}
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.

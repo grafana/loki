@@ -27,7 +27,7 @@ func (t *tripperwareWrapper) RoundTrip(r *http.Request) (*http.Response, error) 
 	ctx := r.Context()
 
 	limits := ExtractQueryLimitsContext(ctx)
-	fmt.Printf("extract limits %v", limits)
+	fmt.Printf("extract limits tripperware %v", limits)
 
 	if limits != nil {
 		ctx = InjectQueryLimitsContext(ctx, *limits)
@@ -41,7 +41,7 @@ func (t *tripperwareWrapper) PostWrappedRoundTrip(r *http.Request) (*http.Respon
 	ctx := r.Context()
 
 	limits := ExtractQueryLimitsContext(ctx)
-	fmt.Printf("extract limits %v", limits)
+	fmt.Printf("extract limits tripperware %v", limits)
 
 	if limits != nil {
 		err := InjectQueryLimitsHTTP(r, limits)
