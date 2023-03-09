@@ -505,6 +505,10 @@ engine:
 # When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
+
+# When true, querier limits sent via a header are enforced.
+# CLI flag: -querier.per-request-limits-enabled
+[per_request_limits_enabled: <boolean> | default = false]
 ```
 
 ### query_scheduler

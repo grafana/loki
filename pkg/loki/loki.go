@@ -408,9 +408,12 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 		})
-	middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
-		log.With(util_log.Logger, "component", "query_limits_middleware"),
-	))
+
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
+			log.With(util_log.Logger, "component", "query-limiter-middleware"),
+		))
+	}
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
@@ -630,9 +633,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
-	mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
-	mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
-	mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
@@ -657,13 +657,10 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader, QueryLimiter},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader, QueryLimitsTripperware},
+		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
-		QueryLimiter:             {Overrides},
-		QueryLimitsInterceptors:  {},
-		QueryLimitsTripperware:   {},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
@@ -675,6 +672,19 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
 		MemberlistKV:             {Server},
+	}
+
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		deps[Querier] = append(deps[Querier], QueryLimiter)
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
+
+		deps[QueryLimiter] = []string{Overrides}
+		deps[QueryLimitsInterceptors] = []string{}
+		deps[QueryLimitsTripperware] = []string{}
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
