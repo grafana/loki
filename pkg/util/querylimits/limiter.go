@@ -29,11 +29,11 @@ func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Durati
 	original := l.CombinedLimits.MaxQueryLength(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryLength == 0 || time.Duration(requestLimits.MaxQueryLength) > original {
-		_ = level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
+		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
 		fmt.Printf("using original limit, passed limits %v\n", requestLimits)
 		return original
 	}
-	_ = level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", requestLimits.MaxQueryLength)
+	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", requestLimits.MaxQueryLength)
 	fmt.Printf("using request limit %d\n", requestLimits.MaxQueryLength)
 	return time.Duration(requestLimits.MaxQueryLength)
 }
@@ -43,7 +43,7 @@ func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Dura
 	original := l.CombinedLimits.MaxQueryLookback(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryLookback == 0 || time.Duration(requestLimits.MaxQueryLookback) > original {
-		_ = level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
+		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
 		return original
 	}
 	return time.Duration(requestLimits.MaxQueryLookback)
@@ -54,7 +54,7 @@ func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) in
 	original := l.CombinedLimits.MaxEntriesLimitPerQuery(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
 	if requestLimits == nil || requestLimits.MaxEntriesLimitPerQuery == 0 || requestLimits.MaxEntriesLimitPerQuery > original {
-		_ = level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
+		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
 		return original
 	}
 	return requestLimits.MaxEntriesLimitPerQuery
@@ -65,7 +65,7 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 	// in theory this error should never happen
 	requestLimits := ExtractQueryLimitsContext(ctx)
 	if requestLimits == nil || requestLimits.QueryTimeout == 0 || time.Duration(requestLimits.QueryTimeout) > original {
-		_ = level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
+		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
 		return original
 	}
 	return time.Duration(requestLimits.QueryTimeout)

@@ -364,6 +364,15 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 		)
 	}
+
+	// TODO: Probably only needed when not target all
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		toMerge = append(
+			toMerge,
+			querylimits.NewQueryLimitsMiddleware(log.With(util_log.Logger, "component", "query-limits-middleware")),
+		)
+	}
+
 	httpMiddleware := middleware.Merge(toMerge...)
 
 	logger := log.With(util_log.Logger, "component", "querier")
@@ -1132,13 +1141,8 @@ func (t *Loki) initQueryLimiter() (services.Service, error) {
 
 func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
-	// Add server GRPC interceptors to the Ingester
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
-
-	// Add client GRPC interceptors to the IngesterClient
-	t.Cfg.IngesterClient.GRPCUnaryClientInterceptors = append(t.Cfg.IngesterClient.GRPCUnaryClientInterceptors, querylimits.ClientQueryLimitsInterceptor)
-	t.Cfg.IngesterClient.GRCPStreamClientInterceptors = append(t.Cfg.IngesterClient.GRCPStreamClientInterceptors, querylimits.StreamClientQueryLimitsInterceptor)
 
 	return nil, nil
 }

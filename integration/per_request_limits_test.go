@@ -38,6 +38,11 @@ func TestPerRequestLimits(t *testing.T) {
 	require.NoError(t, cliTenant.PushLogLineWithTimestamp("lineA", cliTenant.Now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
 
 	// check that per-rquest-limits are enforced
+	_, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)
+	require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
+
+	// check without policy header
+	cliTenant = client.New("org1", "", tAll.HTTPURL())
 	resp, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)
 	require.NoError(t, err)
 	var lines []string
