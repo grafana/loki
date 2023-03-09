@@ -1,7 +1,6 @@
 package querylimits
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -25,12 +24,11 @@ func (l *queryLimitsMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limits, err := ExtractQueryLimitsHTTP(r)
 		if err != nil {
-			// todo, how to return error
-			// api.WritePromError(w, err.Error(), http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
-		fmt.Printf("passing limits from header %v\n", limits)
 		if limits != nil {
 			r = r.Clone(InjectQueryLimitsContext(r.Context(), *limits))
 		}
