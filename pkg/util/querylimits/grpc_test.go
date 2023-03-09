@@ -24,4 +24,8 @@ func TestGRPCQueryLimits(t *testing.T) {
 	c2, err := extractFromGRPCRequest(c1)
 	require.NoError(t, err)
 	require.Equal(t, limits, *(c2.Value(queryLimitsContextKey).(*QueryLimits)))
+
+	c3, err := extractFromGRPCRequest(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, c3.Value(queryLimitsContextKey))
 }
