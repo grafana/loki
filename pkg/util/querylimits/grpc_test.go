@@ -11,10 +11,13 @@ import (
 
 func TestGRPCQueryLimits(t *testing.T) {
 	var err error
+
+	dur := model.Duration(2 * 24 * time.Hour)
+	entries := 100
 	limits := QueryLimits{
-		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
-		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
-		MaxEntriesLimitPerQuery: 100,
+		MaxQueryLength:          &dur,
+		MaxQueryLookback:        &dur,
+		MaxEntriesLimitPerQuery: &entries,
 	}
 	c1 := InjectQueryLimitsContext(context.Background(), limits)
 

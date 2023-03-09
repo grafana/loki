@@ -8,10 +8,6 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-const (
-	lowerQueryLimitsHeaderName = "x-loki-query-limits"
-)
-
 func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 	limits := ExtractQueryLimitsContext(ctx)
 	fmt.Printf("extract limits grpc: %v", limits)
@@ -28,7 +24,7 @@ func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	md.Set(lowerQueryLimitsHeaderName, string(headerValue))
+	md.Set(HTTPHeaderQueryLimitsKey, string(headerValue))
 	newCtx := metadata.NewOutgoingContext(ctx, md)
 
 	return newCtx, nil
@@ -59,7 +55,7 @@ func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 
-	headerValues, ok := md[lowerQueryLimitsHeaderName]
+	headerValues, ok := md[HTTPHeaderQueryLimitsKey]
 	if !ok {
 		// No QueryLimits header in metadata, just return context
 		return ctx, nil

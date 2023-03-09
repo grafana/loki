@@ -2,6 +2,7 @@ package querylimits
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,11 +12,15 @@ import (
 
 func TestInjectAndExtractQueryLimits(t *testing.T) {
 	ctx := context.Background()
+	length := model.Duration(2 * 24 * time.Hour)
+	lookback := model.Duration(14 * 24 * time.Hour)
+	timeout := model.Duration(5 * time.Second)
+	entries := 100
 	limits := QueryLimits{
-		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
-		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
-		MaxEntriesLimitPerQuery: 100,
-		QueryTimeout:            model.Duration(5 * time.Second),
+		MaxQueryLength:          &length,
+		MaxQueryLookback:        &lookback,
+		MaxEntriesLimitPerQuery: &entries,
+		QueryTimeout:            &timeout,
 	}
 
 	ctx = InjectQueryLimitsContext(ctx, limits)
@@ -26,16 +31,21 @@ func TestInjectAndExtractQueryLimits(t *testing.T) {
 func TestDeserializingQueryLimits(t *testing.T) {
 	payload := `{"maxQueryLength":"1h"}`
 	limits, err := UnmarshalQueryLimits([]byte(payload))
+	fmt.Println("limits: ", limits)
 	require.NoError(t, err)
-	require.Equal(t, model.Duration(3600000000000), limits.MaxQueryLength)
+	require.Equal(t, model.Duration(3600000000000), *limits.MaxQueryLength)
 }
 
 func TestSerializingQueryLimits(t *testing.T) {
+	length := model.Duration(2 * 24 * time.Hour)
+	lookback := model.Duration(14 * 24 * time.Hour)
+	timeout := model.Duration(5 * time.Second)
+	entries := 100
 	limits := QueryLimits{
-		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
-		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
-		MaxEntriesLimitPerQuery: 100,
-		QueryTimeout:            model.Duration(5 * time.Second),
+		MaxQueryLength:          &length,
+		MaxQueryLookback:        &lookback,
+		MaxEntriesLimitPerQuery: &entries,
+		QueryTimeout:            &timeout,
 	}
 
 	actual, err := MarshalQueryLimits(&limits)

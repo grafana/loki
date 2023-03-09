@@ -26,11 +26,13 @@ func Test_MiddlewareWithoutHeader(t *testing.T) {
 }
 
 func Test_MiddlewareWithHeader(t *testing.T) {
+	dur := model.Duration(time.Second)
+	entries := 1
 	limits := QueryLimits{
-		model.Duration(1 * time.Second),
-		model.Duration(1 * time.Second),
-		1,
-		model.Duration(1 * time.Second),
+		&dur,
+		&dur,
+		&entries,
+		&dur,
 	}
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
