@@ -593,34 +593,34 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	return f.splits[key]
 }
 
-func (f fakeLimits) MaxQueryLength(string) time.Duration {
+func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
 	if f.maxQueryLength == 0 {
 		return time.Hour * 7
 	}
 	return f.maxQueryLength
 }
 
-func (f fakeLimits) MaxQueryParallelism(string) int {
+func (f fakeLimits) MaxQueryParallelism(context.Context, string) int {
 	return f.maxQueryParallelism
 }
 
-func (f fakeLimits) TSDBMaxQueryParallelism(string) int {
+func (f fakeLimits) TSDBMaxQueryParallelism(context.Context, string) int {
 	return f.tsdbMaxQueryParallelism
 }
 
-func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {
+func (f fakeLimits) MaxEntriesLimitPerQuery(context.Context, string) int {
 	return f.maxEntriesLimitPerQuery
 }
 
-func (f fakeLimits) MaxQuerySeries(string) int {
+func (f fakeLimits) MaxQuerySeries(context.Context, string) int {
 	return f.maxSeries
 }
 
-func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
+func (f fakeLimits) MaxCacheFreshness(context.Context, string) time.Duration {
 	return 1 * time.Minute
 }
 
-func (f fakeLimits) MaxQueryLookback(string) time.Duration {
+func (f fakeLimits) MaxQueryLookback(context.Context, string) time.Duration {
 	return f.maxQueryLookback
 }
 
@@ -636,11 +636,11 @@ func (f fakeLimits) MaxQuerierBytesRead(string) int {
 	return f.maxQuerierBytesRead
 }
 
-func (f fakeLimits) QueryTimeout(string) time.Duration {
+func (f fakeLimits) QueryTimeout(context.Context, string) time.Duration {
 	return f.queryTimeout
 }
 
-func (f fakeLimits) BlockedQueries(string) []*validation.BlockedQuery {
+func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.BlockedQuery {
 	return []*validation.BlockedQuery{}
 }
 

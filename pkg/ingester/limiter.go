@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -21,10 +22,18 @@ type RingCount interface {
 	HealthyInstancesCount() int
 }
 
+type Limits interface {
+	UnorderedWrites(userID string) bool
+	MaxLocalStreamsPerUser(userID string) int
+	MaxGlobalStreamsPerUser(userID string) int
+	PerStreamRateLimit(userID string) validation.RateLimit
+	ShardStreams(userID string) *shardstreams.Config
+}
+
 // Limiter implements primitives to get the maximum number of streams
 // an ingester can handle for a specific tenant
 type Limiter struct {
-	limits            *validation.Overrides
+	limits            Limits
 	ring              RingCount
 	replicationFactor int
 	metrics           *ingesterMetrics
@@ -48,7 +57,7 @@ func (l *Limiter) Enable() {
 }
 
 // NewLimiter makes a new limiter
-func NewLimiter(limits *validation.Overrides, metrics *ingesterMetrics, ring RingCount, replicationFactor int) *Limiter {
+func NewLimiter(limits Limits, metrics *ingesterMetrics, ring RingCount, replicationFactor int) *Limiter {
 	return &Limiter{
 		limits:            limits,
 		ring:              ring,

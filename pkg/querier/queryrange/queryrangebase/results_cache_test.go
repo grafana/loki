@@ -767,7 +767,7 @@ func TestResultsCache(t *testing.T) {
 		nil,
 		nil,
 		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism("fake")
+			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
 		nil,
@@ -813,7 +813,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		nil,
 		nil,
 		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism("fake")
+			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
 		nil,
@@ -881,7 +881,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				nil,
 				nil,
 				func(_ context.Context, tenantIDs []string, r Request) int {
-					return tc.fakeLimits.MaxQueryParallelism("fake")
+					return tc.fakeLimits.MaxQueryParallelism(context.Background(), "fake")
 				},
 				false,
 				nil,
@@ -924,7 +924,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		nil,
 		nil,
 		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism("fake")
+			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
 		nil,
@@ -1039,7 +1039,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				nil,
 				tc.shouldCache,
 				func(_ context.Context, tenantIDs []string, r Request) int {
-					return mockLimits{}.MaxQueryParallelism("fake")
+					return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 				},
 				false,
 				nil,

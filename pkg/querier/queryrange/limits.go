@@ -47,14 +47,15 @@ type Limits interface {
 	queryrangebase.Limits
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
-	MaxQuerySeries(string) int
-	MaxEntriesLimitPerQuery(string) int
+	MaxQuerySeries(context.Context, string) int
+	MaxEntriesLimitPerQuery(context.Context, string) int
 	MinShardingLookback(string) time.Duration
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
-	TSDBMaxQueryParallelism(string) int
+	TSDBMaxQueryParallelism(context.Context, string) int
 	MaxQueryBytesRead(u string) int
 	MaxQuerierBytesRead(u string) int
+
 }
 
 type limits struct {
@@ -72,16 +73,16 @@ func (l limits) QuerySplitDuration(user string) time.Duration {
 	return *l.splitDuration
 }
 
-func (l limits) TSDBMaxQueryParallelism(user string) int {
+func (l limits) TSDBMaxQueryParallelism(ctx context.Context, user string) int {
 	if l.maxQueryParallelism == nil {
-		return l.Limits.TSDBMaxQueryParallelism(user)
+		return l.Limits.TSDBMaxQueryParallelism(ctx, user)
 	}
 	return *l.maxQueryParallelism
 }
 
-func (l limits) MaxQueryParallelism(user string) int {
+func (l limits) MaxQueryParallelism(ctx context.Context, user string) int {
 	if l.maxQueryParallelism == nil {
-		return l.Limits.MaxQueryParallelism(user)
+		return l.Limits.MaxQueryParallelism(ctx, user)
 	}
 	return *l.maxQueryParallelism
 }
@@ -152,7 +153,8 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// Clamp the time range based on the max query lookback.
 
-	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLookback); maxQueryLookback > 0 {
+	lookbackCapture := func(id string) time.Duration { return l.MaxQueryLookback(ctx, id) }
+	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
 		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
 
 		if r.GetEnd() < minStartTime {
@@ -179,7 +181,8 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	// Enforce the max query length.
-	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength); maxQueryLength > 0 {
+	lengthCapture := func(id string) time.Duration { return l.MaxQueryLength(ctx, id) }
+	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLength)
@@ -578,8 +581,8 @@ func WeightedParallelism(
 ) int {
 	logger := util_log.WithContext(ctx, util_log.Logger)
 
-	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(user)
-	regMaxQueryParallelism := l.MaxQueryParallelism(user)
+	tsdbMaxQueryParallelism := l.TSDBMaxQueryParallelism(ctx, user)
+	regMaxQueryParallelism := l.MaxQueryParallelism(ctx, user)
 	if tsdbMaxQueryParallelism+regMaxQueryParallelism == 0 {
 		level.Info(logger).Log("msg", "querying disabled for tenant")
 		return 0
@@ -619,9 +622,9 @@ func WeightedParallelism(
 	if start.Equal(end) {
 		switch configs[i].IndexType {
 		case config.TSDBType:
-			return l.TSDBMaxQueryParallelism(user)
+			return l.TSDBMaxQueryParallelism(ctx, user)
 		}
-		return l.MaxQueryParallelism(user)
+		return l.MaxQueryParallelism(ctx, user)
 
 	}
 
