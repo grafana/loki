@@ -10,13 +10,10 @@ import (
 	rt "runtime"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/querylimits"
-
 	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
@@ -408,12 +405,6 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 		})
-
-	if t.Cfg.Querier.PerRequestLimitsEnabled {
-		middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
-			log.With(util_log.Logger, "component", "query-limiter-middleware"),
-		))
-	}
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
@@ -675,6 +666,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		fmt.Println("enable per request limits")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)

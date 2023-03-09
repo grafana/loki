@@ -1,6 +1,7 @@
 package querylimits
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -26,6 +27,7 @@ func (t *tripperwareWrapper) RoundTrip(r *http.Request) (*http.Response, error) 
 	ctx := r.Context()
 
 	limits := ExtractQueryLimitsContext(ctx)
+	fmt.Printf("extract limits %v", limits)
 
 	if limits != nil {
 		ctx = InjectQueryLimitsContext(ctx, *limits)
@@ -39,6 +41,7 @@ func (t *tripperwareWrapper) PostWrappedRoundTrip(r *http.Request) (*http.Respon
 	ctx := r.Context()
 
 	limits := ExtractQueryLimitsContext(ctx)
+	fmt.Printf("extract limits %v", limits)
 
 	if limits != nil {
 		err := InjectQueryLimitsHTTP(r, limits)

@@ -35,8 +35,6 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		for _, v := range values {
 			req.Header.Add(key, v)
 		}
-
-		fmt.Println(req.Header.Values(key))
 	}
 
 	return r.next.RoundTrip(req)
@@ -443,16 +441,16 @@ func (c *Client) GetRules(ctx context.Context) (*RulesResponse, error) {
 }
 
 func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
 	lokiResp := Response{}
 	err := json.Unmarshal(buf, &lokiResp)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response data: %w", err)
+		return nil, fmt.Errorf("error parsing response data '%s': %w", string(buf), err)
 	}
 
-	if statusCode/100 == 2 {
-		return &lokiResp, nil
-	}
-	return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	return &lokiResp, nil
 }
 
 func (c *Client) rangeQueryURL(query string) string {

@@ -774,10 +774,19 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
 
+	/*
+		if t.Cfg.Querier.PerRequestLimitsEnabled {
+			fmt.Println("setup query limits middleware")
+			middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
+				log.With(util_log.Logger, "component", "query-limiter-middleware"),
+			))
+		}*/
+
 	frontendHandler = middleware.Merge(
 		httpreq.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
+		querylimits.NewQueryLimitsMiddleware(log.With(util_log.Logger, "component", "query-limiter-middleware")),
 		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
