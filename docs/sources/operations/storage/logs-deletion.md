@@ -21,7 +21,7 @@ Log entry deletion relies on configuration of the custom logs retention workflow
 
 Enable log entry deletion by setting `retention_enabled` to true in the compactor's configuration and setting and `deletion_mode` to `filter-only` or `filter-and-delete` in the runtime config.
 
-> **Warning:** Please be very careful when enabling retention, it's strongly recommended to enable versioning on your objects in object storage to allow for recovery from accidental misconfiguration of a retention setting. If you wish to enable delete capability but do not want to enforce any retention, make sure you configure retention_period with a value of `0s`. 
+> **Warning:** Be very careful when enabling retention. It is strongly recommended that you also enable versioning on your objects in object storage to allow you to recover from accidental misconfiguration of a retention setting. If you want to enable deletion but not not want to enforce retention, configure the `retention_period` setting with a value of `0s`.
 
 Because it is a runtime configuration, `deletion_mode` can be set per-tenant, if desired.
 
