@@ -164,6 +164,7 @@ func Test_astMapper(t *testing.T) {
 			},
 		},
 		handler,
+		LokiCodec,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
@@ -198,6 +199,7 @@ func Test_ShardingByPass(t *testing.T) {
 			},
 		},
 		handler,
+		LokiCodec,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
@@ -268,7 +270,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, LokiCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
@@ -553,6 +555,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			mware := newASTMapperware(
 				confs,
 				handler,
+				LokiCodec,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},

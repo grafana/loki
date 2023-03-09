@@ -336,7 +336,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get schema config", err.Error())
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get schema config: %s", err.Error())
 	}
 	if schemaCfg.IndexType != config.TSDBType {
 		return q.next.Do(ctx, r)
@@ -350,7 +350,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limitFunc); maxBytesRead > 0 {
 		bytesRead, err := q.getBytesReadForRequest(ctx, r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query", err.Error())
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
 		if bytesRead > uint64(maxBytesRead) {
