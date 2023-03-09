@@ -798,12 +798,12 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 
 func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
 	for name, tc := range map[string]struct {
-		chunkSamples           chunkSamples
+		chunkSamples           *chunkSamples
 		queryMint              int64
 		expectedChunkSampleIdx int
 	}{
 		"mint greater than largestMaxt": {
-			chunkSamples: chunkSamples{
+			chunkSamples: &chunkSamples{
 				chunks: []chunkSample{
 					{
 						largestMaxt:   100,
@@ -823,7 +823,7 @@ func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
 			expectedChunkSampleIdx: -1,
 		},
 		"mint smaller than first largestMaxt": {
-			chunkSamples: chunkSamples{
+			chunkSamples: &chunkSamples{
 				chunks: []chunkSample{
 					{
 						largestMaxt:   100,
@@ -843,7 +843,7 @@ func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
 			expectedChunkSampleIdx: 0,
 		},
 		"intermediate chunk sample": {
-			chunkSamples: chunkSamples{
+			chunkSamples: &chunkSamples{
 				chunks: []chunkSample{
 					{
 						largestMaxt:   100,
@@ -875,7 +875,7 @@ func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
 			expectedChunkSampleIdx: 1,
 		},
 		"mint matching samples largestMaxt": {
-			chunkSamples: chunkSamples{
+			chunkSamples: &chunkSamples{
 				chunks: []chunkSample{
 					{
 						largestMaxt:   100,
@@ -907,7 +907,7 @@ func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
 			expectedChunkSampleIdx: 1,
 		},
 		"same chunk sampled": {
-			chunkSamples: chunkSamples{
+			chunkSamples: &chunkSamples{
 				chunks: []chunkSample{
 					{
 						largestMaxt:   100,
