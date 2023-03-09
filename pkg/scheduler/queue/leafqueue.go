@@ -75,7 +75,7 @@ func (q *LeafQueue) Dequeue() Request {
 	}
 
 	// only if there are no items queued in the local queue, dequeue from sub-queues
-	maxIter := q.mapping.Len()
+	maxIter := len(q.mapping.keys)
 	for iters := 0; iters < maxIter; iters++ {
 		subq := q.mapping.GetNext(q.current)
 		if subq != nil {
@@ -85,6 +85,8 @@ func (q *LeafQueue) Dequeue() Request {
 				return item
 			}
 			q.mapping.Remove(subq.name)
+		} else {
+			q.current++
 		}
 	}
 	return nil

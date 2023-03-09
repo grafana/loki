@@ -75,8 +75,8 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 	}
 }
 
-func (q *tenantQueues) len() int {
-	return q.mapping.Len()
+func (q *tenantQueues) isEmpty() bool {
+	return q.mapping.Len() == 0
 }
 
 func (q *tenantQueues) deleteQueue(tenant string) {

@@ -55,7 +55,7 @@ func (m *Mapping[v]) Get(idx QueueIndex) v {
 }
 
 func (m *Mapping[v]) GetNext(idx QueueIndex) v {
-	if len(m.keys) == 0 {
+	if m.Len() == 0 {
 		return nil
 	}
 
