@@ -582,6 +582,8 @@ type fakeLimits struct {
 	splits                  map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
+	maxQueryBytesRead       int
+	maxQuerierBytesRead     int
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -624,6 +626,14 @@ func (f fakeLimits) MaxQueryLookback(string) time.Duration {
 
 func (f fakeLimits) MinShardingLookback(string) time.Duration {
 	return f.minShardingLookback
+}
+
+func (f fakeLimits) MaxQueryBytesRead(string) int {
+	return f.maxQueryBytesRead
+}
+
+func (f fakeLimits) MaxQuerierBytesRead(string) int {
+	return f.maxQuerierBytesRead
 }
 
 func (f fakeLimits) QueryTimeout(string) time.Duration {
