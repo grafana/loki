@@ -1116,7 +1116,8 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 
 func (t *Loki) initQueryLimiter() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limiter")
-	t.Overrides = querylimits.NewLimiter(t.Overrides)
+	logger := log.With(util_log.Logger, "component", "query-limiter")
+	t.Overrides = querylimits.NewLimiter(logger, t.Overrides)
 	return nil, nil
 }
 

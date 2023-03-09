@@ -5,11 +5,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/querylimits"
 	"net/http"
 	"os"
 	rt "runtime"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/querylimits"
 
 	"go.uber.org/atomic"
 

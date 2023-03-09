@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -40,7 +41,7 @@ func TestLimiter_Defaults(t *testing.T) {
 	}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
-	l := NewLimiter(overrides)
+	l := NewLimiter(log.NewNopLogger(), overrides)
 
 	expectedLimits := QueryLimits{
 		MaxQueryLength:          model.Duration(30 * time.Second),
@@ -91,7 +92,7 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 	}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
-	l := NewLimiter(overrides)
+	l := NewLimiter(log.NewNopLogger(), overrides)
 	limits := QueryLimits{
 		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
 		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
@@ -123,7 +124,7 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 	}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
-	l := NewLimiter(overrides)
+	l := NewLimiter(log.NewNopLogger(), overrides)
 	limits := QueryLimits{
 		MaxQueryLength:          model.Duration(29 * time.Second),
 		MaxQueryLookback:        model.Duration(29 * time.Second),
