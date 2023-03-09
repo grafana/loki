@@ -608,7 +608,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 
 		promResponses := make([]queryrangebase.Response, 0, len(responses))
 		for _, res := range responses {
-			mergedStats.Merge(res.(*LokiPromResponse).Statistics)
+			mergedStats.MergeSplit(res.(*LokiPromResponse).Statistics)
 			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
 		}
 		promRes, err := queryrangebase.PrometheusCodec.MergeResponse(promResponses...)
@@ -630,6 +630,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// only unique series should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiSeriesResponse)
+			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
 				if _, ok := uniqueSeries[series.String()]; !ok {
 					lokiSeriesData = append(lokiSeriesData, series)
@@ -639,9 +640,10 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}
 
 		return &LokiSeriesResponse{
-			Status:  lokiSeriesRes.Status,
-			Version: lokiSeriesRes.Version,
-			Data:    lokiSeriesData,
+			Status:     lokiSeriesRes.Status,
+			Version:    lokiSeriesRes.Version,
+			Data:       lokiSeriesData,
+			Statistics: mergedStats,
 		}, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
@@ -651,6 +653,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// only unique name should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiLabelNamesResponse)
+			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, labelName := range lokiResult.Data {
 				if _, ok := uniqueNames[labelName]; !ok {
 					names = append(names, labelName)
@@ -660,9 +663,10 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}
 
 		return &LokiLabelNamesResponse{
-			Status:  labelNameRes.Status,
-			Version: labelNameRes.Version,
-			Data:    names,
+			Status:     labelNameRes.Status,
+			Version:    labelNameRes.Version,
+			Data:       names,
+			Statistics: mergedStats,
 		}, nil
 	default:
 		return nil, errors.New("unknown response in merging responses")
@@ -1023,7 +1027,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 
 	for _, res := range responses {
 		lokiResult := res.(*LokiResponse)
-		mergedStats.Merge(lokiResult.Statistics)
+		mergedStats.MergeSplit(lokiResult.Statistics)
 		lokiResponses = append(lokiResponses, lokiResult)
 	}
 
