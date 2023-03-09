@@ -137,3 +137,32 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 	require.Equal(t, limits.MaxEntriesLimitPerQuery, l.MaxEntriesLimitPerQuery(ctx, "fake"))
 	require.Equal(t, time.Duration(limits.QueryTimeout), l.QueryTimeout(ctx, "fake"))
 }
+
+func TestMergeSlices(t *testing.T) {
+	s1 := []string{"cluster", "namespace"}
+	s2 := []string{"job", "namespace"}
+	expected := []string{"cluster", "job", "namespace"}
+	require.Equal(t, expected, mergeStringSlices(s1, s2))
+}
+
+func TestLimiter_RequiredLabels(t *testing.T) {
+	// some fake tenant
+	tLimits := make(map[string]*validation.Limits)
+	tLimits["fake"] = &validation.Limits{}
+
+	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	l := NewLimiter(overrides)
+	limits := QueryLimits{
+		RequiredLabels: []string{"cluster"},
+	}
+
+	ctx := InjectQueryLimitsContext(context.Background(), limits)
+	require.Equal(t, limits.RequiredLabels, l.RequiredLabels(ctx, "fake"))
+
+	tLimits["fake"].RequiredLabels = []string{"cluster", "job"}
+	limits.RequiredLabels = append(limits.RequiredLabels, "namespace")
+	expected := []string{"cluster", "job", "namespace"}
+	overrides, _ = validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	ctx = InjectQueryLimitsContext(context.Background(), limits)
+	require.Equal(t, expected, l.RequiredLabels(ctx, "fake"))
+}

@@ -2,6 +2,7 @@ package querylimits
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -63,4 +64,39 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 		return original
 	}
 	return time.Duration(requestLimits.QueryTimeout)
+}
+
+func mergeStringSlices(s1, s2 []string) []string {
+	// merge the original limits and the request limits
+	ret := make([]string, 0, len(s1)+len(s2))
+	seen := make(map[string]struct{})
+	for _, l := range s1 {
+		if _, ok := seen[l]; ok {
+			continue
+		}
+		seen[l] = struct{}{}
+		ret = append(ret, l)
+	}
+
+	for _, l := range s2 {
+		if _, ok := seen[l]; ok {
+			continue
+		}
+		seen[l] = struct{}{}
+		ret = append(ret, l)
+	}
+	sort.Strings(ret)
+	return ret
+}
+
+func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
+	original := l.CombinedLimits.RequiredLabels(ctx, userID)
+	// in theory this error should never happen
+	requestLimits := ExtractQueryLimitsContext(ctx)
+	if requestLimits == nil || len(requestLimits.RequiredLabels) == 0 {
+		_ = level.Debug(logutil.WithContext(ctx, logutil.Logger)).Log("msg", "using original limit")
+		return original
+	}
+
+	return mergeStringSlices(original, requestLimits.RequiredLabels)
 }

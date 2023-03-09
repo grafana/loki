@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -92,6 +93,7 @@ type Limits interface {
 	MaxStreamsMatchersPerQuery(context.Context, string) int
 	MaxConcurrentTailRequests(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
+	RequiredLabels(context.Context, string) []string
 }
 
 // SingleTenantQuerier handles single tenant queries.
@@ -651,6 +653,11 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 	}
 	matchers := selector.Matchers()
 
+	requiredLabels := q.limits.RequiredLabels(ctx, userID)
+	if len(requiredLabels) != 0 && !labelsPresent(requiredLabels, matchers) {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrRequiredLabels, requiredLabels)
+	}
+
 	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(ctx, userID)
 	if len(matchers) > maxStreamMatchersPerQuery {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest,
@@ -663,6 +670,21 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 type timeRangeLimits interface {
 	MaxQueryLookback(context.Context, string) time.Duration
 	MaxQueryLength(context.Context, string) time.Duration
+}
+
+func labelsPresent(required []string, matchers []*labels.Matcher) bool {
+	have := make(map[string]struct{})
+	for _, m := range matchers {
+		have[m.Name] = struct{}{}
+	}
+
+	for _, v := range required {
+		if _, ok := have[v]; !ok {
+			return false
+		}
+	}
+	return true
+
 }
 
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {

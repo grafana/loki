@@ -36,10 +36,17 @@ func TestSerializingQueryLimits(t *testing.T) {
 		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
 		MaxEntriesLimitPerQuery: 100,
 		QueryTimeout:            model.Duration(5 * time.Second),
+		RequiredLabels:          []string{"cluster"},
 	}
 
 	actual, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
-	expected := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "queryTimeout": "5s"}`
+	expected := `{
+		"maxEntriesLimitPerQuery": 100,
+		"maxQueryLength": "2d",
+		"maxQueryLookback": "2w",
+		"requiredLabels": ["cluster"],
+		"queryTimeout": "5s"
+	}`
 	require.JSONEq(t, expected, string(actual))
 }
