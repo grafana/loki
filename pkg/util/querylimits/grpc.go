@@ -2,6 +2,7 @@ package querylimits
 
 import (
 	"context"
+	"fmt"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -13,6 +14,7 @@ const (
 
 func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 	limits := ExtractQueryLimitsContext(ctx)
+	fmt.Printf("extract limits grpc: %v", limits)
 	if limits == nil {
 		return ctx, nil
 	}
@@ -51,7 +53,6 @@ func StreamClientQueryLimitsInterceptor(ctx context.Context, desc *grpc.StreamDe
 }
 
 func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
-
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		// No metadata, just return as is

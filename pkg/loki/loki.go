@@ -10,13 +10,10 @@ import (
 	rt "runtime"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/querylimits"
-
 	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
@@ -408,12 +405,6 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 		})
-
-	if t.Cfg.Querier.PerRequestLimitsEnabled {
-		middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
-			log.With(util_log.Logger, "component", "query-limiter-middleware"),
-		))
-	}
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
@@ -657,7 +648,7 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, UsageReport, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
@@ -684,7 +675,11 @@ func (t *Loki) setupModuleManager() error {
 
 		deps[QueryLimiter] = []string{Overrides}
 		deps[QueryLimitsInterceptors] = []string{}
-		deps[QueryLimitsTripperware] = []string{}
+		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
+
+		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
+			return err
+		}
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
