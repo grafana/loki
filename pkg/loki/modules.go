@@ -783,23 +783,21 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
 
-	/*
-		if t.Cfg.Querier.PerRequestLimitsEnabled {
-			fmt.Println("setup query limits middleware")
-			middleware.Merge(t.HTTPAuthMiddleware, querylimits.NewQueryLimitsMiddleware(
-				log.With(util_log.Logger, "component", "query-limiter-middleware"),
-			))
-		}*/
-
-	frontendHandler = middleware.Merge(
+	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
-		querylimits.NewQueryLimitsMiddleware(log.With(util_log.Logger, "component", "query-limiter-middleware")),
 		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
-	).Wrap(frontendHandler)
+	}
+
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		logger := log.With(util_log.Logger, "component", "query-limiter-middleware")
+		toMerge = append(toMerge, querylimits.NewQueryLimitsMiddleware(logger))
+	}
+
+	frontendHandler = middleware.Merge(toMerge...).Wrap(frontendHandler)
 
 	var defaultHandler http.Handler
 	// If this process also acts as a Querier we don't do any proxying of tail requests
