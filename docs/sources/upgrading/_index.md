@@ -33,6 +33,31 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### Default retention_period has changed
+
+This change will affect you if you have:
+```yaml
+compactor:
+  retention_enabled: true
+```
+
+And did *not* define a `retention_period` in `limits_config`, thus relying on the previous default of `744h`
+
+In this release the default has been changed to `0s`.
+
+A value of `0s` is the same as "retain forever" or "disable retention".
+
+If, **and only if**, you wish to retain the previous default of 744h, apply this config.
+```yaml
+limits_config:
+  retention_period: 744h
+```
+
+**Please note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
+only in 2.8 and forward releases does the zero value disable retention.
+
 ### Promtail
 
 #### The go build tag `promtail_journal_enabled` was introduced

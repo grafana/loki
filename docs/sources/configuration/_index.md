@@ -2337,10 +2337,12 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -compactor.deletion-mode
 [deletion_mode: <string> | default = "filter-and-delete"]
 
-# Retention to apply for the store, if the retention is enabled on the compactor
-# side.
+# Retention period to apply to stored data, only applies if retention_enabled is
+# true in the compactor config. As of version 2.8.0, a zero value of 0 or 0s
+# disables retention. In previous releases, Loki did not properly honor a zero
+# value to disable retention and a really large value should be used instead.
 # CLI flag: -store.retention
-[retention_period: <duration> | default = 31d]
+[retention_period: <duration> | default = 0s]
 
 # Per-stream retention to apply, if the retention is enable on the compactor
 # side.
