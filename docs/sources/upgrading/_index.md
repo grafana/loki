@@ -58,6 +58,20 @@ limits_config:
 **Please note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
 only in 2.8 and forward releases does the zero value disable retention.
 
+#### metrics.go log line `subqueries` replaced with `splits` and `shards`
+
+The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
+
+In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+
+There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
+
+In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in the statistics API data returned but just for backwards compatibility, the value will always be zero now.
+
+Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
+
+Note: currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+
 ### Promtail
 
 #### The go build tag `promtail_journal_enabled` was introduced
