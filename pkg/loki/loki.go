@@ -666,7 +666,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
-		fmt.Println("enable per request limits")
+		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
