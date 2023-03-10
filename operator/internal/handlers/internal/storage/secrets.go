@@ -103,12 +103,23 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate optional fields
 	region := s.Data["region"]
 
+	urlStyle := s.Data["url_style"]
+	switch string(urlStyle) {
+	case "", "path":
+		urlStyle = []byte("true")
+	case "virtual-host":
+		urlStyle = []byte("false")
+	default:
+		return nil, kverrors.New("url_style valid values: \"\", \"path\", \"virtual-host\"", "url_style", string(urlStyle))
+	}
+
 	return &storage.S3StorageConfig{
 		Endpoint:        string(endpoint),
 		Buckets:         string(buckets),
 		AccessKeyID:     string(id),
 		AccessKeySecret: string(secret),
 		Region:          string(region),
+		URLStyle:        string(urlStyle),
 	}, nil
 }
 

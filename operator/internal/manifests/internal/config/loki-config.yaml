@@ -26,7 +26,7 @@ common:
       region: {{ .Region }}
       access_key_id: {{ .AccessKeyID }}
       secret_access_key: {{ .AccessKeySecret }}
-      s3forcepathstyle: true
+      s3forcepathstyle: {{ .URLStyle }}
     {{- end }}
     {{- with .ObjectStorage.Swift }}
     swift:
