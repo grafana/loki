@@ -3,9 +3,11 @@ package scheduler
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -417,10 +420,17 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	var queuePath []string
 	if s.cfg.MaxQueueHierarchyLevels > 0 {
 		queuePath = msg.QueuePath
-		// trim to the max allowed levels
-		// TODO(chaudum): Would it be better to return an error?
 		if len(queuePath) > s.cfg.MaxQueueHierarchyLevels {
-			queuePath = queuePath[:s.cfg.MaxQueueHierarchyLevels]
+			msg := fmt.Sprintf(
+				"The header %s with value '%s' would result in a sub-queue which is "+
+					"nested %d levels deep, however only %d levels are allowed based on the "+
+					"configuration setting -query-scheduler.max-queue-hierarchy-levels",
+				httpreq.LokiActorPathHeader,
+				strings.Join(queuePath, httpreq.LokiActorPathDelimiter),
+				len(queuePath),
+				s.cfg.MaxQueueHierarchyLevels,
+			)
+			return fmt.Errorf("desired queue level exceeds maxium depth of queue hierarchy: %s", msg)
 		}
 	}
 
@@ -470,6 +480,10 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		}
 		lastIndex = idx
 
+		// This really should not happen, but log additional information before the scheduler panics.
+		if req == nil {
+			level.Error(s.log).Log("msg", "dequeue() call resulted in nil response", "querier", querierID)
+		}
 		r := req.(*schedulerRequest)
 
 		reqQueueTime := time.Since(r.queueTime)

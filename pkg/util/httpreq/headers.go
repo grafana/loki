@@ -22,7 +22,7 @@ func PropagateHeadersMiddleware(headers ...string) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			for _, h := range headers {
-				value := req.Header.Get(LokiActorPathHeader)
+				value := req.Header.Get(h)
 				if value != "" {
 					ctx := req.Context()
 					ctx = context.WithValue(ctx, headerContextKey(h), value)
@@ -40,5 +40,9 @@ func ExtractHeader(ctx context.Context, name string) string {
 }
 
 func ExtractActorPath(ctx context.Context) []string {
-	return strings.Split(ExtractHeader(ctx, LokiActorPathHeader), LokiActorPathDelimiter)
+	value := ExtractHeader(ctx, LokiActorPathHeader)
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, LokiActorPathDelimiter)
 }
