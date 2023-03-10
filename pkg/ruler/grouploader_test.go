@@ -2,14 +2,15 @@ package ruler
 
 import (
 	"fmt"
+	"os"
+	"strings"
+	"testing"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
-	"os"
-	"strings"
-	"testing"
 )
 
 func Test_GroupLoader(t *testing.T) {
