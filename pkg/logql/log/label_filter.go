@@ -2,12 +2,13 @@ package log
 
 import (
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/prometheus/prometheus/model/labels"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/dustin/go-humanize"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
