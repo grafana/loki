@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -365,8 +366,9 @@ func Test_SeriesShardingHandler(t *testing.T) {
 	})
 
 	expected := &LokiSeriesResponse{
-		Status:  "success",
-		Version: 1,
+		Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
+		Status:     "success",
+		Version:    1,
 		Data: []logproto.SeriesIdentifier{
 			{
 				Labels: map[string]string{
