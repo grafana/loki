@@ -39,6 +39,7 @@ type S3StorageConfig struct {
 	Buckets         string
 	AccessKeyID     string
 	AccessKeySecret string
+	URLStyle        string // valid values: "", "path", "virtual-host"
 }
 
 // SwiftStorageConfig for Swift storage config
