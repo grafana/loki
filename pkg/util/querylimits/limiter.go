@@ -2,7 +2,6 @@ package querylimits
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -30,11 +29,9 @@ func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Durati
 	requestLimits := ExtractQueryLimitsContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryLength == 0 || time.Duration(requestLimits.MaxQueryLength) > original {
 		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
-		fmt.Printf("using original limit, passed limits %v\n", requestLimits)
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", requestLimits.MaxQueryLength)
-	fmt.Printf("using request limit %d\n", requestLimits.MaxQueryLength)
 	return time.Duration(requestLimits.MaxQueryLength)
 }
 
