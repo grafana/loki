@@ -998,7 +998,6 @@ func TestStore_MultiPeriod(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	// dates for activation of boltdb shippers
 	firstStoreDate := parseDate("2019-01-01")
 	secondStoreDate := parseDate("2019-01-02")
 

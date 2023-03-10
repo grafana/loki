@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -15,8 +16,14 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type noopTSDBManager struct {
@@ -35,10 +42,23 @@ func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
 	panic("BuildFromHead not implemented")
 }
 
-func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier) error {
+func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
 	return recoverHead(m.dir, m.tenantHeads, wals)
 }
 func (m noopTSDBManager) Start() error { return nil }
+
+type zeroValueLimits struct {
+}
+
+func (m *zeroValueLimits) AllByUserID() map[string]*validation.Limits {
+	return nil
+}
+
+func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
+	return &validation.Limits{
+		QueryReadyIndexNumDays: 0,
+	}
+}
 
 func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
 	for _, x := range xs {
@@ -47,6 +67,19 @@ func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []C
 			Fingerprint: model.Fingerprint(fp),
 			Start:       x.From(),
 			End:         x.Through(),
+			Checksum:    x.Checksum,
+		})
+	}
+	return
+}
+
+func chunkMetasToLogProtoChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []logproto.ChunkRef) {
+	for _, x := range xs {
+		res = append(res, logproto.ChunkRef{
+			UserID:      user,
+			Fingerprint: fp,
+			From:        model.TimeFromUnix(x.From().Unix()),
+			Through:     model.TimeFromUnix(x.Through().Unix()),
 			Checksum:    x.Checksum,
 		})
 	}
@@ -334,6 +367,136 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		lbls.Set(TenantLabel, c.User)
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
 	}
+}
+
+func TestBuildLegacyWALs(t *testing.T) {
+	dir := t.TempDir()
+
+	secondStoreDate := parseDate("2023-01-02")
+	schemaCfg := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				IndexType:  config.TSDBType,
+				ObjectType: config.StorageTypeFileSystem,
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+			{
+				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
+				IndexType:  config.TSDBType,
+				ObjectType: config.StorageTypeFileSystem,
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+		},
+	}
+
+	c := struct {
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
+	}{
+		User:        "tenant1",
+		Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+		Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+		Chunks: []index.ChunkMeta{
+			{
+				MinTime:  secondStoreDate.Add(-36 * time.Hour).UnixMilli(),
+				MaxTime:  secondStoreDate.Add(-24 * time.Hour).UnixMilli(),
+				Checksum: 3,
+			},
+			// chunk overlapping the period boundary
+			{
+				MinTime:  secondStoreDate.Add(-1 * time.Hour).UnixMilli(),
+				MaxTime:  secondStoreDate.Add(1 * time.Hour).UnixMilli(),
+				Checksum: 3,
+			},
+			{
+				MinTime:  secondStoreDate.Add(24 * time.Hour).UnixMilli(),
+				MaxTime:  secondStoreDate.Add(36 * time.Hour).UnixMilli(),
+				Checksum: 3,
+			},
+		},
+	}
+
+	// populate WAL file with chunks from two different periods
+	now := time.Now()
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(dir, now), now)
+	require.Nil(t, err)
+	require.Nil(t, w.Log(&WALRecord{
+		UserID:      c.User,
+		Fingerprint: c.Fingerprint,
+		Series: record.RefSeries{
+			Ref:    chunks.HeadSeriesRef(123),
+			Labels: c.Labels,
+		},
+		Chks: ChunkMetasRecord{
+			Chks: c.Chunks,
+			Ref:  uint64(123),
+		},
+	}))
+	require.Nil(t, w.Stop())
+
+	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: filepath.Join(dir, "fs_store")})
+	require.NoError(t, err)
+
+	shipperCfg := indexshipper.Config{}
+	flagext.DefaultValues(&shipperCfg)
+	shipperCfg.Mode = indexshipper.ModeReadWrite
+	shipperCfg.ActiveIndexDirectory = filepath.Join(dir)
+	shipperCfg.CacheLocation = filepath.Join(dir, "cache")
+
+	for _, tc := range []struct {
+		name, store    string
+		tableRange     config.TableRange
+		expectedChunks []logproto.ChunkRef
+	}{
+		{
+			name:           "query-period-1",
+			store:          "period-1",
+			tableRange:     schemaCfg.Configs[0].GetIndexTableNumberRange(config.DayTime{Time: timeToModelTime(secondStoreDate.Add(-time.Millisecond))}),
+			expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[:2]),
+		},
+		{
+			name:           "query-period-2",
+			store:          "period-2",
+			tableRange:     schemaCfg.Configs[1].GetIndexTableNumberRange(config.DayTime{Time: math.MaxInt64}),
+			expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[1:]),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, stop, err := NewStore(tc.store, shipperCfg, schemaCfg.Configs[0], schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
+			require.NoError(t, err)
+
+			refs, err := store.GetChunkRefs(
+				context.Background(),
+				c.User,
+				0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+			)
+			require.Nil(t, err)
+
+			require.Equal(t, tc.expectedChunks, refs)
+			stop()
+		})
+	}
+}
+
+func parseDate(in string) time.Time {
+	t, err := time.Parse("2006-01-02", in)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func timeToModelTime(t time.Time) model.Time {
+	return model.TimeFromUnixNano(t.UnixNano())
 }
 
 func BenchmarkTenantHeads(b *testing.B) {

@@ -28,7 +28,7 @@ import (
 type TSDBManager interface {
 	Start() error
 	// Builds a new TSDB file from a set of WALs
-	BuildFromWALs(time.Time, []WALIdentifier) error
+	BuildFromWALs(time.Time, []WALIdentifier, bool) error
 	// Builds a new TSDB file from tenantHeads
 	BuildFromHead(*tenantHeads) error
 }
@@ -42,11 +42,12 @@ tsdbManager is used for managing active index and is responsible for:
   - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
-	nodeName    string // node name
-	log         log.Logger
-	dir         string
-	metrics     *Metrics
-	tableRanges config.TableRanges
+	nodeName   string // node name
+	log        log.Logger
+	dir        string
+	metrics    *Metrics
+	tableRange config.TableRange
+	schemaCfg  config.SchemaConfig
 
 	sync.RWMutex
 
@@ -57,17 +58,19 @@ func NewTSDBManager(
 	nodeName,
 	dir string,
 	shipper indexshipper.IndexShipper,
-	tableRanges config.TableRanges,
+	tableRange config.TableRange,
+	schemaCfg config.SchemaConfig,
 	logger log.Logger,
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
-		nodeName:    nodeName,
-		log:         log.With(logger, "component", "tsdb-manager"),
-		dir:         dir,
-		metrics:     metrics,
-		tableRanges: tableRanges,
-		shipper:     shipper,
+		nodeName:   nodeName,
+		log:        log.With(logger, "component", "tsdb-manager"),
+		dir:        dir,
+		metrics:    metrics,
+		tableRange: tableRange,
+		schemaCfg:  schemaCfg,
+		shipper:    shipper,
 	}
 }
 
@@ -89,7 +92,7 @@ func (m *tsdbManager) Start() (err error) {
 
 	// as we are running multiple instances of tsdbManager, one for each period
 	// existing tables should be migrated to period specific directory
-	if err := migrateMultitenantDir(m.dir, m.tableRanges, m.log); err != nil {
+	if err := migrateMultitenantDir(m.dir, m.tableRange, m.log); err != nil {
 		return errors.Wrap(err, "migrating multitenant dir")
 	}
 
@@ -162,7 +165,7 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
-func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
+func (m *tsdbManager) buildFromHead(heads *tenantHeads, dir string, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
@@ -170,7 +173,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]index.ChunkMetas)
 		for _, chk := range chks {
-			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
+			idxBuckets := indexBuckets(chk.From(), chk.Through(), tableRanges)
 
 			for _, bucket := range idxBuckets {
 				pds[bucket] = append(pds[bucket], chk)
@@ -206,7 +209,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 	}
 
 	for p, b := range periods {
-		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
+		dstDir := filepath.Join(managerMultitenantDir(dir), fmt.Sprint(p))
 		dst := newPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
@@ -221,7 +224,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		start := time.Now()
 		_, err = b.Build(
 			context.Background(),
-			managerScratchDir(m.dir),
+			managerScratchDir(dir),
 			func(from, through model.Time, checksum uint32) Identifier {
 				return dst
 			},
@@ -237,7 +240,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 			return err
 		}
 
-		if err := m.shipper.AddIndex(p, "", loaded); err != nil {
+		if err := shipper.AddIndex(p, "", loaded); err != nil {
 			return err
 		}
 	}
@@ -257,10 +260,10 @@ func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 		m.metrics.tsdbBuilds.WithLabelValues(status, "head").Inc()
 	}()
 
-	return m.buildFromHead(heads)
+	return m.buildFromHead(heads, m.dir, m.shipper, []config.TableRange{m.tableRange})
 }
 
-func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
+func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy bool) (err error) {
 	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
 	defer func() {
 		status := statusSuccess
@@ -271,14 +274,31 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		m.metrics.tsdbBuilds.WithLabelValues(status, "wal").Inc()
 	}()
 
+	var (
+		dir         = m.dir
+		tableRanges = []config.TableRange{m.tableRange}
+		shipper     = m.shipper
+	)
+
+	if legacy {
+		dir = filepath.Dir(filepath.Clean(dir))
+
+		// pass all TSDB tableRanges as the legacy WAL files are not period specific.
+		tableRanges = config.GetIndexStoreTableRanges(config.TSDBType, m.schemaCfg.Configs)
+
+		// do not ship legacy WAL files.
+		// TSDBs built from these WAL files would get migrated on starting tsdbManager
+		shipper = indexshipper.Noop{}
+	}
+
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
 	for _, id := range ids {
 		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, m.log)
-		if err = recoverHead(m.dir, tmp, []WALIdentifier{id}); err != nil {
+		if err = recoverHead(dir, tmp, []WALIdentifier{id}); err != nil {
 			return errors.Wrap(err, "building TSDB from WALs")
 		}
 
-		err := m.buildFromHead(tmp)
+		err := m.buildFromHead(tmp, dir, shipper, tableRanges)
 		if err != nil {
 			return err
 		}
@@ -287,7 +307,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func migrateMultitenantDir(dir string, tableRanges config.TableRanges, logger log.Logger) error {
+func migrateMultitenantDir(dir string, tableRange config.TableRange, logger log.Logger) error {
 	parentDir := filepath.Dir(filepath.Clean(dir))
 	mulitenantDir := managerMultitenantDir(parentDir)
 	if _, err := os.Stat(mulitenantDir); err != nil {
@@ -310,7 +330,7 @@ func migrateMultitenantDir(dir string, tableRanges config.TableRanges, logger lo
 			continue
 		}
 
-		if ok, err := tableRanges.TableInRange(f.Name()); !ok {
+		if ok, err := tableRange.TableInRange(f.Name()); !ok {
 			level.Warn(logger).Log("msg", fmt.Sprintf("skip multi tenant dir migration. table not in range: %s", f.Name()), "err", err)
 			continue
 		}

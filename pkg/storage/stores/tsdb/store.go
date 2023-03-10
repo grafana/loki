@@ -123,32 +123,18 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 	}
 
 	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
-
 		var (
 			nodeName    = indexShipperCfg.IngesterName
-			dir         = indexShipperCfg.ActiveIndexDirectory
+			dir         = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
 			tsdbMetrics = NewMetrics(reg)
 		)
 
 		tsdbManager := NewTSDBManager(
 			nodeName,
 			dir,
-			indexshipper.Noop{},
-			config.GetIndexStoreTableRanges(config.TSDBType, schemaCfg.Configs),
-			s.logger,
-			tsdbMetrics,
-		)
-		// build TSDB from legacy WAL files so they get migrated to the period specific dir by the respective tsdbManager.
-		if err := buildOldWALs(tsdbManager, indexShipperCfg.ActiveIndexDirectory, defaultRotationPeriod, s.logger); err != nil {
-			return errors.Wrap(err, "building legacy WAL files")
-		}
-
-		dir = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
-		tsdbManager = NewTSDBManager(
-			nodeName,
-			dir,
 			s.indexShipper,
-			[]config.TableRange{tableRange},
+			tableRange,
+			schemaCfg,
 			s.logger,
 			tsdbMetrics,
 		)

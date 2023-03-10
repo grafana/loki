@@ -257,16 +257,21 @@ func (m *HeadManager) Start() error {
 		}
 	}
 
+	// build WALs from parent dir if any, these would've been generated before the TSDB multi-store support was added.
+	// TSDB files built in this step would be migrated to the period specific dir on starting the tsdbManager.
+	if err := m.buildLegacyWALs(); err != nil {
+		return errors.Wrap(err, "building from legacy WAL files")
+	}
+
 	// Load the shipper with any previously built TSDBs
 	if err := m.tsdbManager.Start(); err != nil {
 		return errors.Wrap(err, "failed to start tsdb manager")
 	}
 
-	if err := buildOldWALs(m.tsdbManager, m.dir, m.period, m.log); err != nil {
-		m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
-		return err
+	// build tsdb from old WAL files
+	if err := m.buildWALs(m.dir, false); err != nil {
+		return errors.Wrap(err, "building tsdb from WAL files")
 	}
-	m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
 
 	err := m.Rotate(time.Now())
 	if err != nil {
@@ -279,21 +284,33 @@ func (m *HeadManager) Start() error {
 	return nil
 }
 
-func buildOldWALs(m TSDBManager, dir string, period period, logger log.Logger) error {
-	if _, err := os.Stat(managerWalDir(dir)); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return err
+func (m *HeadManager) buildLegacyWALs() error {
+	parentDir := filepath.Dir(filepath.Clean(m.dir))
+	if _, err := os.Stat(managerWalDir(parentDir)); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// nothing to build
+			return nil
 		}
 
-		// nothing to build
-		return nil
+		return err
 	}
 
-	walsByPeriod, err := walsByPeriod(dir, period)
-	if err != nil {
-		return errors.Wrap(err, "building tsdb from old WALs")
+	// ensure scratch and multitenant dir are present as they are used by tsdbManager
+	for _, d := range managerRequiredDirs(parentDir) {
+		if err := util.EnsureDirectory(d); err != nil {
+			return errors.Wrapf(err, "ensuring required legacy directory exists: %s", d)
+		}
 	}
-	level.Info(logger).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
+
+	return errors.Wrap(m.buildWALs(parentDir, true), "building tsdb from WALs")
+}
+
+func (m *HeadManager) buildWALs(dir string, legacy bool) error {
+	walsByPeriod, err := walsByPeriod(dir, m.period)
+	if err != nil {
+		return err
+	}
+	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	// Build any old WALs into a TSDB for the shipper
 	var allWALs []WALIdentifier
@@ -302,16 +319,19 @@ func buildOldWALs(m TSDBManager, dir string, period period, logger log.Logger) e
 	}
 
 	now := time.Now()
-	if err := m.BuildFromWALs(
+	if err := m.tsdbManager.BuildFromWALs(
 		now,
 		allWALs,
+		legacy,
 	); err != nil {
-		return errors.Wrap(err, "building tsdb from old WALs")
+		return err
 	}
 
 	if err := os.RemoveAll(managerWalDir(dir)); err != nil {
+		m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
 		return errors.Wrap(err, "cleaning (removing) wal dir")
 	}
+	m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
 
 	return nil
 }
