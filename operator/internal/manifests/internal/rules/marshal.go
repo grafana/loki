@@ -6,6 +6,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const tenantLabel = "tenantId"
+
 type alertingRuleSpec struct {
 	Groups []*lokiv1.AlertingRuleGroup `json:"groups"`
 }
@@ -18,6 +20,16 @@ type recordingRuleSpec struct {
 func MarshalAlertingRule(a lokiv1.AlertingRule) (string, error) {
 	ar := alertingRuleSpec{
 		Groups: a.Spec.Groups,
+	}
+
+	for _, group := range ar.Groups {
+		for _, rule := range group.Rules {
+			if rule.Labels == nil {
+				rule.Labels = map[string]string{}
+			}
+
+			rule.Labels[tenantLabel] = a.Spec.TenantID
+		}
 	}
 
 	content, err := yaml.Marshal(ar)

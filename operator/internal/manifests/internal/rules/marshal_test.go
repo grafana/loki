@@ -1,7 +1,6 @@
 package rules_test
 
 import (
-	"fmt"
 	"testing"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -29,6 +28,7 @@ groups:
         labels:
           environment: production
           severity: page
+          tenantId: a-tenant
       - expr: |-
           sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
             /
@@ -42,10 +42,12 @@ groups:
         labels:
           environment: production
           severity: low
+          tenantId: a-tenant
 `
 
 	a := lokiv1.AlertingRule{
 		Spec: lokiv1.AlertingRuleSpec{
+			TenantID: "a-tenant",
 			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "an-alert",
@@ -141,7 +143,6 @@ groups:
 	}
 
 	cfg, err := rules.MarshalRecordingRule(r)
-	fmt.Print(cfg)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, cfg)
 }
