@@ -4,7 +4,10 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/middleware"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type queryLimitsMiddleware struct {
@@ -25,7 +28,9 @@ func (l *queryLimitsMiddleware) Wrap(next http.Handler) http.Handler {
 		limits, err := ExtractQueryLimitsHTTP(r)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			if _, err := w.Write([]byte(err.Error())); err != nil {
+				level.Error(util_log.Logger).Log("msg", "error in queryLimitsMiddleware Wrap", "err", err)
+			}
 			return
 		}
 
