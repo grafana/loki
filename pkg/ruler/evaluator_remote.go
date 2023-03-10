@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/util/build"
@@ -104,10 +105,6 @@ func dialQueryFrontend(cfg QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 		tlsDialOptions...,
 	)
 
-	if cfg.MaxRecvMsgSize > 0 {
-		dialOptions = append(dialOptions, grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize)))
-	}
-
 	conn, err := grpc.Dial(cfg.Address, dialOptions...)
 	if err != nil {
 		return nil, err
@@ -158,6 +155,7 @@ func (q *remoteQuerier) query(ctx context.Context, query string, ts time.Time, l
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
 	body := []byte(args.Encode())
+	hash := logql.HashedQuery(query)
 
 	req := httpgrpc.HTTPRequest{
 		Method: http.MethodPost,
@@ -176,18 +174,23 @@ func (q *remoteQuerier) query(ctx context.Context, query string, ts time.Time, l
 		}
 	}
 
+	start := time.Now()
 	resp, err := q.client.Handle(ctx, &req)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "qs", query, "tm", ts)
+		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
 		return nil, err
 	}
 	if resp.Code/100 != 2 {
 		return nil, fmt.Errorf("unexpected response status code %d: %s", resp.Code, string(resp.Body))
 	}
-	level.Debug(logger).Log("msg", "query expression successfully evaluated", "qs", query, "tm", ts)
+	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
 
+	return decodeResponse(resp)
+}
+
+func decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmodel.Result, error) {
 	var decoded loghttp.QueryResponse
-	if err = json.NewDecoder(bytes.NewReader(resp.Body)).Decode(&decoded); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(resp.Body)).Decode(&decoded); err != nil {
 		return nil, err
 	}
 	if decoded.Status == "error" {
@@ -196,54 +199,29 @@ func (q *remoteQuerier) query(ctx context.Context, query string, ts time.Time, l
 
 	switch decoded.Data.ResultType {
 	case loghttp.ResultTypeVector:
-		var vv promql.Vector
-		v := decoded.Data.Result.(loghttp.Vector)
+		var res promql.Vector
+		vec := decoded.Data.Result.(loghttp.Vector)
 
-		for _, x := range v {
-			vv = append(vv, promql.Sample{
-				Metric: series.MetricToLabels(x.Metric),
-				Point:  promql.Point{V: float64(x.Value), T: int64(x.Timestamp)},
+		for _, s := range vec {
+			res = append(res, promql.Sample{
+				Metric: series.MetricToLabels(s.Metric),
+				Point:  promql.Point{V: float64(s.Value), T: int64(s.Timestamp)},
 			})
 		}
 
 		return &logqlmodel.Result{
 			Statistics: decoded.Data.Statistics,
-			Data:       vv,
+			Data:       res,
 		}, nil
 	case loghttp.ResultTypeScalar:
-		var vv promql.Scalar
-		v := decoded.Data.Result.(loghttp.Scalar)
-		vv.T = v.Timestamp.Unix()
-		vv.V = float64(v.Value)
+		var res promql.Scalar
+		scalar := decoded.Data.Result.(loghttp.Scalar)
+		res.T = scalar.Timestamp.Unix()
+		res.V = float64(scalar.Value)
 
 		return &logqlmodel.Result{
 			Statistics: decoded.Data.Statistics,
-			Data:       vv,
-		}, nil
-	case loghttp.ResultTypeMatrix:
-		var vv promql.Matrix
-		v := decoded.Data.Result.(loghttp.Matrix)
-
-		for _, x := range v {
-			var s promql.Series
-			s.Metric = series.MetricToLabels(x.Metric)
-			for _, y := range x.Values {
-				s.Points = append(s.Points, promql.Point{V: float64(y.Value), T: int64(y.Timestamp)})
-			}
-			vv = append(vv, s)
-		}
-
-		return &logqlmodel.Result{
-			Statistics: decoded.Data.Statistics,
-			Data:       vv,
-		}, nil
-	case loghttp.ResultTypeStream:
-		v := decoded.Data.Result.(loghttp.Streams)
-		fmt.Printf("hello %v\n", v)
-
-		return &logqlmodel.Result{
-			Statistics: decoded.Data.Statistics,
-			Data:       nil,
+			Data:       res,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported result type %s", decoded.Data.ResultType)
@@ -273,15 +251,12 @@ type QueryFrontendConfig struct {
 	// TLSEnabled tells whether TLS should be used to establish remote connection.
 	TLSEnabled bool `yaml:"tls_enabled"`
 
-	MaxRecvMsgSize int `yaml:"max_recv_msg_size"`
-
 	// TLS is the config for client TLS.
 	TLS tls.ClientConfig `yaml:",inline"`
 }
 
 func (c *QueryFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Address, "ruler.evaluation.query-frontend.address", "", "GRPC listen address of the query-frontend(s). Must be a DNS address (prefixed with dns:///) to enable client side load balancing.")
-	f.IntVar(&c.MaxRecvMsgSize, "ruler.evaluation.query-frontend.max-recv-msg-size", 0, "Maximum response size to receive from query-frontend (0 = unlimited).")
 	f.BoolVar(&c.TLSEnabled, "ruler.evaluation.query-frontend.tls-enabled", false, "Set to true if query-frontend connection requires TLS.")
 
 	c.TLS.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)

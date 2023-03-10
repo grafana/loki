@@ -49,7 +49,6 @@ func (c *Component) WithRulerLocalStorage(fileTenantMap map[string]map[string]st
 		}
 	}
 
-	// ensure remote-write is enabled
 	c.WithExtraConfig(fmt.Sprintf(`
 common:
   storage:

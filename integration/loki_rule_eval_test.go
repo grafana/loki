@@ -17,12 +17,14 @@ import (
 	"github.com/grafana/loki/pkg/ruler"
 )
 
-// TestLocalRuleEval tests that rules are evaluated locally and that the results are written to the backend.
+// TestLocalRuleEval tests that rules are evaluated locally with an embedded query engine
+// and that the results are written to the backend correctly.
 func TestLocalRuleEval(t *testing.T) {
 	testRuleEval(t, ruler.EvalModeLocal)
 }
 
-// TestRemoteRuleEval tests that rules are evaluated locally and that the results are written to the backend.
+// TestRemoteRuleEval tests that rules are evaluated remotely against a configured query-frontend
+// and that the results are written to the backend correctly.
 func TestRemoteRuleEval(t *testing.T) {
 	testRuleEval(t, ruler.EvalModeRemote)
 }
