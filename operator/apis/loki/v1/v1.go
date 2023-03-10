@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// PrometheusDuration defines the type for Prometheus durations.
+//
+// +kubebuilder:validation:Pattern:="((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)"
+type PrometheusDuration string
+
 // StorageSchemaEffectiveDate defines the type for the Storage Schema Effect Date
 //
 // +kubebuilder:validation:Pattern:="^([0-9]{4,})([-]([0-9]{2})){2}$"

@@ -1,9 +1,7 @@
-package v1beta1
+package v1
 
 import (
-	v1 "github.com/grafana/loki/operator/apis/loki/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/conversion"
 )
 
 // AlertManagerDiscoverySpec defines the configuration to use DNS resolution for AlertManager hosts.
@@ -524,7 +522,7 @@ type RulerConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-rulerconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=rulerconfigs,verbs=create;update,versions=v1beta1,name=vrulerconfig.loki.grafana.com,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1-rulerconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=rulerconfigs,verbs=create;update,versions=v1,name=vrulerconfig.loki.grafana.com,admissionReviewVersions=v1
 
 // RulerConfig is the Schema for the rulerconfigs API
 //
@@ -550,138 +548,5 @@ func init() {
 	SchemeBuilder.Register(&RulerConfig{}, &RulerConfigList{})
 }
 
-// ConvertTo RulerConfig this RulerConfig (v1beta1) to the Hub version (v1).
-func (src *RulerConfig) ConvertTo(dstRaw conversion.Hub) error {
-	dst := dstRaw.(*v1.RulerConfig)
-
-	dst.ObjectMeta = src.ObjectMeta
-	dst.Status.Conditions = src.Status.Conditions
-	dst.Spec.EvalutionInterval = v1.PrometheusDuration(src.Spec.EvalutionInterval)
-	dst.Spec.PollInterval = v1.PrometheusDuration(src.Spec.PollInterval)
-
-	if src.Spec.RemoteWriteSpec != nil {
-		dst.Spec.RemoteWriteSpec = &v1.RemoteWriteSpec{
-			Enabled:       src.Spec.RemoteWriteSpec.Enabled,
-			RefreshPeriod: v1.PrometheusDuration(src.Spec.RemoteWriteSpec.RefreshPeriod),
-		}
-
-		if src.Spec.RemoteWriteSpec.QueueSpec != nil {
-			dst.Spec.RemoteWriteSpec.QueueSpec = &v1.RemoteWriteClientQueueSpec{
-				Capacity:          src.Spec.RemoteWriteSpec.QueueSpec.Capacity,
-				MaxShards:         src.Spec.RemoteWriteSpec.QueueSpec.MaxShards,
-				MinShards:         src.Spec.RemoteWriteSpec.QueueSpec.MinShards,
-				MaxSamplesPerSend: src.Spec.RemoteWriteSpec.QueueSpec.MaxSamplesPerSend,
-				BatchSendDeadline: v1.PrometheusDuration(src.Spec.RemoteWriteSpec.QueueSpec.BatchSendDeadline),
-				MinBackOffPeriod:  v1.PrometheusDuration(src.Spec.RemoteWriteSpec.QueueSpec.MinBackOffPeriod),
-				MaxBackOffPeriod:  v1.PrometheusDuration(src.Spec.RemoteWriteSpec.QueueSpec.MaxBackOffPeriod),
-			}
-		}
-
-		if src.Spec.RemoteWriteSpec.ClientSpec != nil {
-			dst.Spec.RemoteWriteSpec.ClientSpec = &v1.RemoteWriteClientSpec{
-				Name:                    src.Spec.RemoteWriteSpec.ClientSpec.Name,
-				URL:                     src.Spec.RemoteWriteSpec.ClientSpec.URL,
-				Timeout:                 v1.PrometheusDuration(src.Spec.RemoteWriteSpec.ClientSpec.Timeout),
-				AuthorizationType:       v1.RemoteWriteAuthType(src.Spec.RemoteWriteSpec.ClientSpec.AuthorizationType),
-				AuthorizationSecretName: src.Spec.RemoteWriteSpec.ClientSpec.AuthorizationSecretName,
-				AdditionalHeaders:       src.Spec.RemoteWriteSpec.ClientSpec.AdditionalHeaders,
-				ProxyURL:                src.Spec.RemoteWriteSpec.ClientSpec.ProxyURL,
-				FollowRedirects:         src.Spec.RemoteWriteSpec.ClientSpec.FollowRedirects,
-			}
-
-			if src.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs != nil {
-				dst.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs = make([]v1.RelabelConfig, len(src.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs))
-				for i, c := range src.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs {
-					dst.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs[i] = v1.RelabelConfig{
-						SourceLabels: c.SourceLabels,
-						Separator:    c.Separator,
-						TargetLabel:  c.TargetLabel,
-						Regex:        c.Regex,
-						Modulus:      c.Modulus,
-						Replacement:  c.Replacement,
-						Action:       v1.RelabelActionType(c.Action),
-					}
-				}
-			}
-		}
-	}
-
-	if src.Spec.AlertManagerSpec != nil {
-		dst.Spec.AlertManagerSpec = &v1.AlertManagerSpec{
-			ExternalURL:    src.Spec.AlertManagerSpec.ExternalURL,
-			ExternalLabels: src.Spec.AlertManagerSpec.ExternalLabels,
-			EnableV2:       src.Spec.AlertManagerSpec.EnableV2,
-			Endpoints:      src.Spec.AlertManagerSpec.Endpoints,
-		}
-
-		if src.Spec.AlertManagerSpec.NotificationQueueSpec != nil {
-			dst.Spec.AlertManagerSpec.NotificationQueueSpec = &v1.AlertManagerNotificationQueueSpec{
-				Capacity:           src.Spec.AlertManagerSpec.NotificationQueueSpec.Capacity,
-				Timeout:            v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.Timeout),
-				ForOutageTolerance: v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForOutageTolerance),
-				ForGracePeriod:     v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForGracePeriod),
-				ResendDelay:        v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ResendDelay),
-			}
-		}
-
-		if src.Spec.AlertManagerSpec.RelabelConfigs != nil {
-			dst.Spec.AlertManagerSpec.RelabelConfigs = make([]v1.RelabelConfig, len(src.Spec.AlertManagerSpec.RelabelConfigs))
-			for i, rc := range src.Spec.AlertManagerSpec.RelabelConfigs {
-				dst.Spec.AlertManagerSpec.RelabelConfigs[i] = v1.RelabelConfig{
-					SourceLabels: rc.SourceLabels,
-					Separator:    rc.Separator,
-					TargetLabel:  rc.TargetLabel,
-					Regex:        rc.Regex,
-					Modulus:      rc.Modulus,
-					Replacement:  rc.Replacement,
-					Action:       v1.RelabelActionType(rc.Action),
-				}
-			}
-		}
-
-		if src.Spec.AlertManagerSpec.Client != nil {
-			dst.Spec.AlertManagerSpec.Client = &v1.AlertManagerClientConfig{}
-			if src.Spec.AlertManagerSpec.Client.BasicAuth != nil {
-				dst.Spec.AlertManagerSpec.Client.BasicAuth = &v1.AlertManagerClientBasicAuth{
-					Username: src.Spec.AlertManagerSpec.Client.BasicAuth.Username,
-					Password: src.Spec.AlertManagerSpec.Client.BasicAuth.Password,
-				}
-			}
-			if src.Spec.AlertManagerSpec.Client.HeaderAuth != nil {
-				dst.Spec.AlertManagerSpec.Client.HeaderAuth = &v1.AlertManagerClientHeaderAuth{
-					Type:            src.Spec.AlertManagerSpec.Client.HeaderAuth.Type,
-					Credentials:     src.Spec.AlertManagerSpec.Client.HeaderAuth.Credentials,
-					CredentialsFile: src.Spec.AlertManagerSpec.Client.HeaderAuth.CredentialsFile,
-				}
-			}
-
-			if src.Spec.AlertManagerSpec.Client.TLS != nil {
-				dst.Spec.AlertManagerSpec.Client.TLS = &v1.AlertManagerClientTLSConfig{
-					CAPath:     src.Spec.AlertManagerSpec.Client.TLS.CAPath,
-					ServerName: src.Spec.AlertManagerSpec.Client.TLS.ServerName,
-					CertPath:   src.Spec.AlertManagerSpec.Client.TLS.CertPath,
-					KeyPath:    src.Spec.AlertManagerSpec.Client.TLS.KeyPath,
-				}
-			}
-		}
-
-		if src.Spec.AlertManagerSpec.DiscoverySpec != nil {
-			dst.Spec.AlertManagerSpec.DiscoverySpec = &v1.AlertManagerDiscoverySpec{
-				EnableSRV:       src.Spec.AlertManagerSpec.DiscoverySpec.EnableSRV,
-				RefreshInterval: v1.PrometheusDuration(src.Spec.AlertManagerSpec.DiscoverySpec.RefreshInterval),
-			}
-		}
-	}
-
-	return nil
-}
-
-// ConvertFrom converts from the Hub version (v1) to this version (v1beta1).
-func (dst *RulerConfig) ConvertFrom(srcRaw conversion.Hub) error {
-	src := srcRaw.(*v1.RulerConfig)
-
-	dst.ObjectMeta = src.ObjectMeta
-	dst.Status.Conditions = src.Status.Conditions
-
-	return nil
-}
+// Hub declares the v1.RulerConfig as the hub CRD version.
+func (*RulerConfig) Hub() {}
