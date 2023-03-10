@@ -34,9 +34,7 @@ var (
 auth_enabled: true
 
 server:
-  http_listen_address: localhost
   http_listen_port: 0
-  grpc_listen_address: localhost
   grpc_listen_port: 0
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
@@ -47,6 +45,7 @@ common:
   storage:
     filesystem:
       chunks_directory: {{.sharedDataPath}}/chunks
+      rules_directory: {{.sharedDataPath}}/rules
   replication_factor: 1
   ring:
     instance_addr: 127.0.0.1
@@ -97,6 +96,11 @@ ruler:
       store: inmemory
   wal:
     dir: {{.sharedDataPath}}/ruler-wal
+  storage:
+    type: local
+    local:
+      directory: {{.sharedDataPath}}/rules
+  rule_path: {{.sharedDataPath}}/prom-rule
 
 `))
 )

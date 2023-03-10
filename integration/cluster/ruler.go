@@ -29,7 +29,7 @@ ruler:
 `, name, url))
 }
 
-func (c *Component) WithRulerLocalStorage(fileTenantMap map[string]map[string]string) error {
+func (c *Component) WithTenantRules(tenantFilesMap map[string]map[string]string) error {
 	sharedPath := c.ClusterSharedPath()
 	rulesPath := filepath.Join(sharedPath, "rules")
 
@@ -37,7 +37,7 @@ func (c *Component) WithRulerLocalStorage(fileTenantMap map[string]map[string]st
 		return fmt.Errorf("error creating rules path: %w", err)
 	}
 
-	for tenant, files := range fileTenantMap {
+	for tenant, files := range tenantFilesMap {
 		for filename, file := range files {
 			path := filepath.Join(rulesPath, tenant)
 			if err := os.Mkdir(path, 0755); err != nil {
@@ -48,19 +48,6 @@ func (c *Component) WithRulerLocalStorage(fileTenantMap map[string]map[string]st
 			}
 		}
 	}
-
-	c.WithExtraConfig(fmt.Sprintf(`
-common:
-  storage:
-    filesystem:
-      rules_directory: %s
-ruler:
- storage:
-   type: local
-   local:
-     directory: %s
- rule_path: %s/rule
-`, rulesPath, rulesPath, sharedPath))
 
 	return nil
 }

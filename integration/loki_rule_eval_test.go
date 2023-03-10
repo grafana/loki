@@ -138,7 +138,7 @@ groups:
       foo: bar
 `, job)
 
-	require.NoError(t, tBackend.WithRulerLocalStorage(map[string]map[string]string{
+	require.NoError(t, tBackend.WithTenantRules(map[string]map[string]string{
 		tenantID: {
 			"record.yaml": record,
 		},
