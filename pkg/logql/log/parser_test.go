@@ -137,12 +137,13 @@ func TestKeyShortCircuit(t *testing.T) {
       "size": 36,
       "style": "bold",
       "name": "text1",
+      "name": "duplicate",
       "hOffset": 250,
       "vOffset": 100,
       "alignment": "center",
       "onMouseUp": "sun1.opacity = (sun1.opacity / 100) * 90;"
     }`)
-	logFmt := []byte(`data="ClickHere" size=36 style=bold name=text1 hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
+	logFmt := []byte(`data="ClickHere" size=36 style=bold name=text1 name=duplicate hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
 
 	hints := &fakeParseHints{label: "name"}
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.Labels{}, 0)
@@ -186,7 +187,7 @@ func (p *fakeParseHints) ShouldExtractPrefix(prefix string) bool {
 func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
-func (p *fakeParseHints) RecordExtracted() {
+func (p *fakeParseHints) RecordExtracted(_ string) {
 	p.count++
 }
 func (p *fakeParseHints) AllRequiredExtracted() bool {
