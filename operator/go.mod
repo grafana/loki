@@ -3,32 +3,28 @@ module github.com/grafana/loki/operator
 go 1.19
 
 require (
+	github.com/ViaQ/logerr/v2 v2.0.0
 	github.com/go-logr/logr v1.2.3
+	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.2.0
+	github.com/grafana/loki v1.6.2-0.20220718071907-6bd05c9a4399
 	github.com/imdario/mergo v0.3.12
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.3.0
 	github.com/openshift/api v0.0.0-20230228142948-d170fcdc0fa6 // release-4.13
+	github.com/openshift/library-go v0.0.0-20230302173334-c5e706838384
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.48.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/prometheus/common v0.37.0
+	github.com/prometheus/prometheus v1.8.2-0.20220303173753-edfe657b5405
 	github.com/stretchr/testify v1.8.0
+	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.26.2
 	k8s.io/apimachinery v0.26.2
+	k8s.io/apiserver v0.26.2
 	k8s.io/client-go v0.26.2
 	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
 	sigs.k8s.io/controller-runtime v0.14.5
 	sigs.k8s.io/yaml v1.3.0
-)
-
-require github.com/ViaQ/logerr/v2 v2.0.0
-
-require (
-	github.com/google/go-cmp v0.5.9
-	github.com/grafana/loki v1.6.2-0.20220718071907-6bd05c9a4399
-	github.com/openshift/library-go v0.0.0-20230302173334-c5e706838384
-	github.com/prometheus/prometheus v1.8.2-0.20220303173753-edfe657b5405
-	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/apiserver v0.26.2
 )
 
 require (
