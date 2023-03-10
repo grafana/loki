@@ -35,6 +35,11 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Change in LogQL behavior
+
+When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
+was kept
+
 #### Default retention_period has changed
 
 This change will affect you if you have:
