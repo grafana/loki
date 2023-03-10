@@ -38,7 +38,7 @@ const (
 	StageTypeStaticLabels    = "static_labels"
 	StageTypeDecolorize      = "decolorize"
 	StageTypeEventLogMessage = "eventlogmessage"
-  StageTypeGeoIP           = "geoip"
+	StageTypeGeoIP           = "geoip"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -219,10 +219,10 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeEventLogMessage:
 		s, err = newEventLogMessageStage(logger, cfg)
-    if err != nil {
+		if err != nil {
 			return nil, err
 		}
-  case StageTypeGeoIP:
+	case StageTypeGeoIP:
 		s, err = newGeoIPStage(logger, cfg)
 		if err != nil {
 			return nil, err

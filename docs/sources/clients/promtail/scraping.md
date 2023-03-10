@@ -382,7 +382,8 @@ scrape_configs:
 ```
 
 Only the `brokers` and `topics` are required.
-Read the [configuration]({{< relref "configuration#kafka" >}}) section for more information.
+Read the [configuration]({{< relref "configuration/#kafka" >}}) section for more information.
+
 
 ## GELF
 

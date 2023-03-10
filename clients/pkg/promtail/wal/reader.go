@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/util"
 	walUtils "github.com/grafana/loki/pkg/util/wal"
