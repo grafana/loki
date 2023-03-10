@@ -66,6 +66,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 
 	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
 		if errors.Is(err, errFoundAllLabels) {
+			// Short-circuited
 			return line, true
 		}
 
@@ -95,6 +96,8 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 	}
 
 	if j.lbs.ParserLabelHints().AllRequiredExtracted() {
+		// Not actually an error. Parsing can be short-circuited
+		// and this tells jsonparser to stop parsing
 		return errFoundAllLabels
 	}
 
