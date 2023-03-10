@@ -1459,7 +1459,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.7.3
+                  value: quay.io/openshift-logging/loki:v2.7.4
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1580,7 +1580,7 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.7.3
+  - image: quay.io/openshift-logging/loki:v2.7.4
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
