@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -360,6 +361,10 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 	request, err := rt.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
+	}
+
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	response, err := rt.next.RoundTrip(request)

@@ -55,8 +55,3 @@ func ExtractQueryMetricsMiddleware() middleware.Interface {
 		})
 	})
 }
-
-func ExtractQueryTagsHeader(ctx context.Context) string {
-	v, _ := ctx.Value(QueryTagsHTTPHeader).(string) // it's ok to be empty
-	return v
-}

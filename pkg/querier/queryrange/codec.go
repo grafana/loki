@@ -271,7 +271,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
-		}, nil
+		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -279,8 +279,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 
 func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
-
-	queryTags := httpreq.ExtractQueryTagsHeader(ctx)
+	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
@@ -288,15 +287,6 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
 		header.Set(httpreq.LokiActorPathHeader, actor)
-	}
-
-	tenant, err := user.ExtractOrgID(ctx)
-	if tenant != "" {
-		header.Set(user.OrgIDHeaderName, tenant)
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	switch request := r.(type) {
@@ -1002,6 +992,11 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 	}
 
 	return promHeaders
+}
+
+func getQueryTags(ctx context.Context) string {
+	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	return v
 }
 
 func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error) {

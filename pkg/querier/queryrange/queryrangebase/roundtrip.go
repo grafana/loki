@@ -25,6 +25,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 )
 
 const day = 24 * time.Hour
@@ -162,6 +164,10 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
+	}
+
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	response, err := q.next.RoundTrip(request)
