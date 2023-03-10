@@ -63,8 +63,8 @@ Where default_value is the value to use if the environment variable is undefined
 
 **Note**: With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
-slashes with single slashes. Because of this every use of a slash `\` needs to
-be replaced with a double slash `\\`
+backslashes with single backslashes. Because of this every use of a backslash `\` needs to
+be replaced with a double backslash `\\`
 
 ### Generic placeholders
 
