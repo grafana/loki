@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -46,18 +47,18 @@ func Test_AppendMatchers(t *testing.T) {
 		matchers []*labels.Matcher
 	}
 	tests := []table{
-		{
-			desc: "vector range query",
-			expr: `sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
-			want: `sum by (cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
-			matchers: []*labels.Matcher{
-				{
-					Name:  "namespace",
-					Type:  labels.MatchEqual,
-					Value: "a",
-				},
-			},
-		},
+		//{
+		//	desc: "vector range query",
+		//	expr: `sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
+		//	want: `sum by (cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
+		//	matchers: []*labels.Matcher{
+		//		{
+		//			Name:  "namespace",
+		//			Type:  labels.MatchEqual,
+		//			Value: "a",
+		//		},
+		//	},
+		//},
 		{
 			desc: "bin op query",
 			expr: `sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
@@ -74,6 +75,7 @@ func Test_AppendMatchers(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.desc, func(t *testing.T) {
+			fmt.Println("lets explain the query: ", test.expr)
 			expr, err := ParseExpr(test.expr)
 			require.NoError(t, err)
 

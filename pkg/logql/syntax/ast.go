@@ -122,7 +122,10 @@ func (e *MatchersExpr) AppendMatchers(m []*labels.Matcher) {
 
 func (e *MatchersExpr) Shardable() bool { return true }
 
-func (e *MatchersExpr) Walk(f WalkFn) { f(e) }
+func (e *MatchersExpr) Walk(f WalkFn) {
+	fmt.Println("matchersExpr: ", e)
+	f(e)
+}
 
 func (e *MatchersExpr) String() string {
 	var sb strings.Builder
@@ -168,6 +171,7 @@ func (e *PipelineExpr) Shardable() bool {
 }
 
 func (e *PipelineExpr) Walk(f WalkFn) {
+	fmt.Println("pipelineExpr: ", e)
 	f(e)
 
 	if e.Left == nil {
@@ -237,6 +241,7 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
+	fmt.Printf("lineFilterExpr; matchType: %s, match: %s, op: %s\n", e.Ty, e.Match, e.Op)
 	f(e)
 	if e.Left == nil {
 		return
@@ -357,7 +362,10 @@ func newLabelParserExpr(op, param string) *LabelParserExpr {
 
 func (e *LabelParserExpr) Shardable() bool { return true }
 
-func (e *LabelParserExpr) Walk(f WalkFn) { f(e) }
+func (e *LabelParserExpr) Walk(f WalkFn) {
+	fmt.Printf("labelParseExpr; op: %s, param: %s\n", e.Op, e.Param)
+	f(e)
+}
 
 func (e *LabelParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
@@ -404,7 +412,10 @@ func newLabelFilterExpr(filterer log.LabelFilterer) *LabelFilterExpr {
 
 func (e *LabelFilterExpr) Shardable() bool { return true }
 
-func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
+func (e *LabelFilterExpr) Walk(f WalkFn) {
+	fmt.Println("labelFilterExpr: ", e.LabelFilterer.String())
+	f(e)
+}
 
 func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
@@ -445,7 +456,10 @@ func (e *DecolorizeExpr) Stage() (log.Stage, error) {
 func (e *DecolorizeExpr) String() string {
 	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
 }
-func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
+func (e *DecolorizeExpr) Walk(f WalkFn) {
+	fmt.Println("decolorize expr")
+	f(e)
+}
 
 type DropLabelsExpr struct {
 	dropLabels []log.DropLabel
@@ -483,11 +497,17 @@ func (e *DropLabelsExpr) String() string {
 	str := sb.String()
 	return str
 }
-func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
+func (e *DropLabelsExpr) Walk(f WalkFn) {
+	fmt.Println("dropLabelsExpr: ", e)
+	f(e)
+}
 
 func (e *LineFmtExpr) Shardable() bool { return true }
 
-func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
+func (e *LineFmtExpr) Walk(f WalkFn) {
+	fmt.Println("lineFmtExpr: ", e)
+	f(e)
+}
 
 func (e *LineFmtExpr) Stage() (log.Stage, error) {
 	return log.NewFormatter(e.Value)
@@ -510,7 +530,10 @@ func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 
 func (e *LabelFmtExpr) Shardable() bool { return false }
 
-func (e *LabelFmtExpr) Walk(f WalkFn) { f(e) }
+func (e *LabelFmtExpr) Walk(f WalkFn) {
+	fmt.Println("labelFmtExpr: ", e)
+	f(e)
+}
 
 func (e *LabelFmtExpr) Stage() (log.Stage, error) {
 	return log.NewLabelsFormatter(e.Formats)
@@ -592,7 +615,10 @@ func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr) *LogfmtExp
 
 func (l *LogfmtExpressionParser) Shardable() bool { return true }
 
-func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
+func (l *LogfmtExpressionParser) Walk(f WalkFn) {
+	fmt.Println("logfmtExprParser:", l)
+	f(l)
+}
 
 func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
 	return log.NewLogfmtExpressionParser(l.Expressions)
@@ -686,6 +712,7 @@ func (r LogRange) String() string {
 func (r *LogRange) Shardable() bool { return r.Left.Shardable() }
 
 func (r *LogRange) Walk(f WalkFn) {
+	fmt.Printf("logRange; interval: %s, offset: %s\n", r.Interval, r.Offset)
 	f(r)
 	if r.Left == nil {
 		return
@@ -957,6 +984,7 @@ func (e *RangeAggregationExpr) Shardable() bool {
 }
 
 func (e *RangeAggregationExpr) Walk(f WalkFn) {
+	fmt.Printf("rangeAggregationExpr; operation: %s, grouping: %s range: %d\n", e.Operation, e.Grouping, e.Params)
 	f(e)
 	if e.Left == nil {
 		return
@@ -1116,6 +1144,7 @@ func (e *VectorAggregationExpr) Walk(f WalkFn) {
 	if e.Left == nil {
 		return
 	}
+	fmt.Printf("vectorAggregationExpr; operation: %s, grouping: %s\n", e.Operation, e.Grouping)
 	e.Left.Walk(f)
 }
 
@@ -1231,6 +1260,7 @@ func (e *BinOpExpr) Shardable() bool {
 }
 
 func (e *BinOpExpr) Walk(f WalkFn) {
+	fmt.Println("binOpExpr; operation: ", e.Op)
 	walkAll(f, e.SampleExpr, e.RHS)
 }
 
@@ -1590,10 +1620,13 @@ func (e *LiteralExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *LiteralExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
-func (e *LiteralExpr) HasFilter() bool                         { return false }
-func (e *LiteralExpr) Shardable() bool                         { return true }
-func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
+func (e *LiteralExpr) Selector() (LogSelectorExpr, error) { return e, e.err }
+func (e *LiteralExpr) HasFilter() bool                    { return false }
+func (e *LiteralExpr) Shardable() bool                    { return true }
+func (e *LiteralExpr) Walk(f WalkFn) {
+	fmt.Println("literall expression")
+	f(e)
+}
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
 func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
@@ -1681,6 +1714,7 @@ func (e *LabelReplaceExpr) Shardable() bool {
 }
 
 func (e *LabelReplaceExpr) Walk(f WalkFn) {
+	fmt.Println("label replace expression")
 	f(e)
 	if e.Left == nil {
 		return
@@ -1803,10 +1837,13 @@ func (e *VectorExpr) Value() (float64, error) {
 	return e.Val, nil
 }
 
-func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
-func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable() bool                         { return false }
-func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
+func (e *VectorExpr) Selector() (LogSelectorExpr, error) { return e, e.err }
+func (e *VectorExpr) HasFilter() bool                    { return false }
+func (e *VectorExpr) Shardable() bool                    { return false }
+func (e *VectorExpr) Walk(f WalkFn) {
+	fmt.Println("vector expression")
+	f(e)
+}
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
 func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
