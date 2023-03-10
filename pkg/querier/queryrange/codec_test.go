@@ -1013,10 +1013,10 @@ var (
 			"linesProcessedPerSecond": 23,
 			"queueTime": 21,
 			"shards": 0,
-            "splits": 0,
+			"splits": 0,
 			"subqueries": 0,
 			"totalBytesProcessed": 24,
-                        "totalEntriesReturned": 10,
+			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25
 		}
 	},`
