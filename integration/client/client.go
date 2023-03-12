@@ -475,25 +475,19 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 
 	url := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
 
-	req, err := c.request(ctx, "GET", url)
+	buf, statusCode, err := c.run(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("unexpected status code of %d", res.StatusCode)
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
 	}
 
 	var values struct {
 		Data []string `json:"data"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&values); err != nil {
+	if err := json.Unmarshal(buf, &values); err != nil {
 		return nil, err
 	}
 
