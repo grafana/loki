@@ -41,6 +41,9 @@ func TestPerRequestLimits(t *testing.T) {
 	_, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)
 	require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
 
+	_, err = cliTenant.LabelNames(context.Background())
+	require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
+
 	// check without policy header
 	cliTenant = client.New("org1", "", tAll.HTTPURL())
 	resp, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)
