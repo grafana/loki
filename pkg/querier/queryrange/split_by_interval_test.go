@@ -644,7 +644,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      1000,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 4}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 4}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -675,7 +675,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
 				Direction:  logproto.FORWARD,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 4}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 4}},
 				Limit:      1000,
 				Version:    1,
 				Data: LokiData{
@@ -710,7 +710,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Direction:  logproto.FORWARD,
 				Limit:      2,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -741,7 +741,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      2,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -810,8 +810,9 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 				Path:    "/loki/api/v1/series",
 			},
 			&LokiSeriesResponse{
-				Status:  "success",
-				Version: 1,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 4}},
+				Status:     "success",
+				Version:    1,
 				Data: []logproto.SeriesIdentifier{
 					{
 						Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
@@ -894,7 +895,7 @@ func Test_ExitEarly(t *testing.T) {
 		Version:   1,
 		Statistics: stats.Result{
 			Summary: stats.Summary{
-				Subqueries: 2,
+				Splits: 2,
 			},
 		},
 		Data: LokiData{

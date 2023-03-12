@@ -3,7 +3,6 @@ package querylimits
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/prometheus/common/model"
@@ -66,7 +65,6 @@ func ExtractQueryLimitsHTTP(r *http.Request) (*QueryLimits, error) {
 // ExtractQueryLimitsContext gets the embedded limits from the context
 func ExtractQueryLimitsContext(ctx context.Context) *QueryLimits {
 	source, ok := ctx.Value(queryLimitsContextKey).(*QueryLimits)
-	fmt.Printf("extracted limits from context: %v\n", source)
 
 	if !ok {
 		return nil
@@ -77,6 +75,5 @@ func ExtractQueryLimitsContext(ctx context.Context) *QueryLimits {
 
 // InjectQueryLimitsContext returns a derived context containing the provided query limits
 func InjectQueryLimitsContext(ctx context.Context, limits QueryLimits) context.Context {
-	fmt.Printf("inject limits into context: %v\n", limits)
 	return context.WithValue(ctx, interface{}(queryLimitsContextKey), &limits)
 }

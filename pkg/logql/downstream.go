@@ -216,6 +216,8 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		// Set a shard count to 1 which will allow the stats to correctly aggregate all the shards executed in the query.
+		res.Statistics.Summary.Shards = 1
 		stats.JoinResults(ctx, res.Statistics)
 	}
 
