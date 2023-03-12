@@ -25,12 +25,15 @@ var (
 // of RequestQueue.GetNextRequestForQuerier method.
 type QueueIndex int // nolint:revive
 
-// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
+// StartIndexWithLocalQueue is the index of the queue that starts iteration over local and sub queues.
+var StartIndexWithLocalQueue QueueIndex = -2
+
+// StartIndex is the index of the queue that starts iteration over sub queues.
 var StartIndex QueueIndex = -1
 
 // Modify index to start iteration on the same tenant, for which last queue was returned.
 func (ui QueueIndex) ReuseLastIndex() QueueIndex {
-	if ui < 0 {
+	if ui < StartIndex {
 		return ui
 	}
 	return ui - 1
@@ -120,7 +123,7 @@ func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID s
 
 FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
-	for (q.queues.isEmpty() || querierWait) && ctx.Err() == nil && !q.stopped {
+	for (q.queues.hasTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
 		q.cond.Wait(ctx)
 	}
@@ -179,7 +182,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	for !q.queues.isEmpty() && q.connectedQuerierWorkers.Load() > 0 {
+	for !q.queues.hasTenantQueues() && q.connectedQuerierWorkers.Load() > 0 {
 		q.cond.Wait(context.Background())
 	}
 

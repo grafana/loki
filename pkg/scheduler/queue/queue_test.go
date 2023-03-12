@@ -79,7 +79,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				for j := 0; j < queriers; j++ {
-					idx := StartIndex
+					idx := StartIndexWithLocalQueue
 					for x := 0; x < maxOutstandingPerTenant*numTenants/queriers; x++ {
 						r, nidx, err := queues[i].Dequeue(ctx, idx, querierNames[j])
 						if r == nil {

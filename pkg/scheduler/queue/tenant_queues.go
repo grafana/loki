@@ -75,7 +75,7 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 	}
 }
 
-func (q *tenantQueues) isEmpty() bool {
+func (q *tenantQueues) hasTenantQueues() bool {
 	return q.mapping.Len() == 0
 }
 
@@ -123,14 +123,24 @@ func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers i
 func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierID string) (Queue, string, QueueIndex) {
 	uid := lastUserIndex
 
+	// at the RequestQueue level we don't have local queues, so start index is -1
+	if uid == StartIndexWithLocalQueue {
+		uid = StartIndex
+	}
+
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
 	// any more queries to it.
 	if info := q.queriers[querierID]; info == nil || info.shuttingDown {
 		return nil, "", uid
 	}
 
-	for iters := 0; iters < q.mapping.Len(); iters++ {
-		tq := q.mapping.GetNext(uid)
+	maxIters := len(q.mapping.keys) + 1
+	for iters := 0; iters < maxIters; iters++ {
+		tq, err := q.mapping.GetNext(uid)
+		if err == ErrOutOfBounds {
+			uid = StartIndex
+			continue
+		}
 		if tq == nil {
 			break
 		}

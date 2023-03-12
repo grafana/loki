@@ -1,11 +1,17 @@
 package queue
 
+import (
+	"github.com/pkg/errors"
+)
+
 type Mapable interface {
 	*tenantQueue | *LeafQueue
 	// https://github.com/golang/go/issues/48522#issuecomment-924348755
 	Pos() QueueIndex
 	SetPos(index QueueIndex)
 }
+
+var ErrOutOfBounds = errors.New("queue index out of bounds")
 
 var empty = string([]byte{byte(0)})
 
@@ -54,28 +60,22 @@ func (m *Mapping[v]) Get(idx QueueIndex) v {
 	return m.GetByKey(k)
 }
 
-func (m *Mapping[v]) GetNext(idx QueueIndex) v {
+func (m *Mapping[v]) GetNext(idx QueueIndex) (v, error) {
 	if m.Len() == 0 {
-		return nil
+		return nil, ErrOutOfBounds
 	}
 
-	// convert to int
 	i := int(idx)
-	// proceed to the next index
-	i = i + 1
-	// start from beginning if next index exceeds slice length
-	if i >= len(m.keys) {
-		i = 0
-	}
+	i++
 
 	for i < len(m.keys) {
 		k := m.keys[i]
 		if k != empty {
-			return m.GetByKey(k)
+			return m.GetByKey(k), nil
 		}
 		i++
 	}
-	return nil
+	return nil, ErrOutOfBounds
 }
 
 func (m *Mapping[v]) GetByKey(key string) v {

@@ -9,8 +9,7 @@ type QueuePath []string //nolint:revive
 
 // LeafQueue is an hierarchical queue implementation where each sub-queue
 // has the same guarantees to be chosen from.
-// Each queue has also a local queue, which gets chosen from first. Only if the
-// local queue is empty, items from the sub-queues are dequeued.
+// Each queue has also a local queue, which gets chosen with equal preference as the sub-queues.
 type LeafQueue struct {
 	// local queue
 	ch RequestChannel
@@ -32,8 +31,8 @@ func newLeafQueue(size int, name string) *LeafQueue {
 	m.Init(64) // TODO(chaudum): What is a good initial value?
 	return &LeafQueue{
 		ch:      make(RequestChannel, size),
-		pos:     StartIndex,
-		current: StartIndex,
+		pos:     StartIndexWithLocalQueue,
+		current: StartIndexWithLocalQueue,
 		mapping: m,
 		name:    name,
 		size:    size,
@@ -69,15 +68,34 @@ func (q *LeafQueue) Chan() RequestChannel {
 
 // Dequeue implements Queue
 func (q *LeafQueue) Dequeue() Request {
-	// first, return item from local channel
-	if len(q.ch) > 0 {
-		return <-q.ch
+	var item Request
+
+	// shortcut of there are not sub-queues
+	// always use local queue
+	if q.mapping.Len() == 0 {
+		if len(q.ch) > 0 {
+			return <-q.ch
+		}
+		return nil
 	}
 
-	// only if there are no items queued in the local queue, dequeue from sub-queues
-	maxIter := len(q.mapping.keys)
+	maxIter := len(q.mapping.keys) + 1
 	for iters := 0; iters < maxIter; iters++ {
-		subq := q.mapping.GetNext(q.current)
+		if q.current == StartIndexWithLocalQueue {
+			q.current++
+			if len(q.ch) > 0 {
+				item = <-q.ch
+				if item != nil {
+					return item
+				}
+			}
+		}
+
+		subq, err := q.mapping.GetNext(q.current)
+		if err == ErrOutOfBounds {
+			q.current = StartIndexWithLocalQueue
+			continue
+		}
 		if subq != nil {
 			q.current = subq.pos
 			item := subq.Dequeue()
@@ -85,8 +103,6 @@ func (q *LeafQueue) Dequeue() Request {
 				return item
 			}
 			q.mapping.Remove(subq.name)
-		} else {
-			q.current++
 		}
 	}
 	return nil
