@@ -365,26 +365,24 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		)
 	}
 
-	labelsToMerge := []middleware.Interface{
-		querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI),
-	}
+	logger := log.With(util_log.Logger, "component", "querier")
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+
+	labelsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI)
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
 		toMerge = append(
 			toMerge,
 			querylimits.NewQueryLimitsMiddleware(log.With(util_log.Logger, "component", "query-limits-middleware")),
 		)
-		labelsToMerge = append(
-			labelsToMerge,
+		labelsHTTPMiddleware = middleware.Merge(
 			querylimits.NewQueryLimitsMiddleware(log.With(util_log.Logger, "component", "query-limits-middleware")),
+			labelsHTTPMiddleware,
 		)
 	}
 
 	httpMiddleware := middleware.Merge(toMerge...)
-	labelsHTTPMiddleware := middleware.Merge(labelsToMerge...)
 
-	logger := log.With(util_log.Logger, "component", "querier")
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
 	queryHandlers := map[string]http.Handler{
 		"/loki/api/v1/query_range": middleware.Merge(
 			httpMiddleware,

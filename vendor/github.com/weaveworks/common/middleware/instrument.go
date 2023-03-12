@@ -78,11 +78,12 @@ func (i Instrument) Wrap(next http.Handler) http.Handler {
 }
 
 // Return a name identifier for ths request.  There are three options:
-//   1. The request matches a gorilla mux route, with a name.  Use that.
-//   2. The request matches an unamed gorilla mux router.  Munge the path
-//      template such that templates like '/api/{org}/foo' come out as
-//      'api_org_foo'.
-//   3. The request doesn't match a mux route. Return "other"
+//  1. The request matches a gorilla mux route, with a name.  Use that.
+//  2. The request matches an unamed gorilla mux router.  Munge the path
+//     template such that templates like '/api/{org}/foo' come out as
+//     'api_org_foo'.
+//  3. The request doesn't match a mux route. Return "other"
+//
 // We do all this as we do not wish to emit high cardinality labels to
 // prometheus.
 func (i Instrument) getRouteName(r *http.Request) string {
