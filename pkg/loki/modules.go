@@ -999,7 +999,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			break
 		}
 
-		evaluator, err = ruler.NewLocalEvaluator(&t.Cfg.Ruler.Evaluation, engine, logger)
+		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
 	case ruler.EvalModeRemote:
 		qfClient, err := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
 		if err != nil {

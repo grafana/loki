@@ -169,11 +169,13 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
-		return nil, err
+		return nil, fmt.Errorf("remote query evaluation failed: %w", err)
 	}
 
+	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
+	//   i.e. critical alerts or recording rules producing crucial metrics series
 	if resp.Code/100 != 2 {
-		return nil, fmt.Errorf("unexpected response status code %d: %s", resp.Code, string(resp.Body))
+		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d: %s", resp.Code, string(resp.Body))
 	}
 
 	maxSize := r.overrides.RulerRemoteEvaluationMaxResponseSize(orgID)
@@ -188,10 +190,10 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 func (r *RemoteEvaluator) decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmodel.Result, error) {
 	var decoded loghttp.QueryResponse
 	if err := json.NewDecoder(bytes.NewReader(resp.Body)).Decode(&decoded); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unexpected body encoding, not valid JSON: %w", err)
 	}
-	if decoded.Status == "error" {
-		return nil, fmt.Errorf("query response error: %s", decoded.Status)
+	if decoded.Status != loghttp.QueryStatusSuccess {
+		return nil, fmt.Errorf("query response error - status %q: %s", decoded.Status, resp.Body)
 	}
 
 	switch decoded.Data.ResultType {
@@ -221,7 +223,7 @@ func (r *RemoteEvaluator) decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmod
 			Data:       res,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported result type %s", decoded.Data.ResultType)
+		return nil, fmt.Errorf("unsupported result type: %q", decoded.Data.ResultType)
 	}
 }
 
