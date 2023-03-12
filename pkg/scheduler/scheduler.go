@@ -35,7 +35,6 @@ import (
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -425,8 +424,8 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 				"The header %s with value '%s' would result in a sub-queue which is "+
 					"nested %d levels deep, however only %d levels are allowed based on the "+
 					"configuration setting -query-scheduler.max-queue-hierarchy-levels",
-				httpreq.LokiActorPathHeader,
-				strings.Join(queuePath, httpreq.LokiActorPathDelimiter),
+				lokihttpreq.LokiActorPathHeader,
+				strings.Join(queuePath, lokihttpreq.LokiActorPathDelimiter),
 				len(queuePath),
 				s.cfg.MaxQueueHierarchyLevels,
 			)
