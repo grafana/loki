@@ -2797,6 +2797,10 @@ Configuration for usage report.
 # Enable anonymous usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
+
+# URL to which reports are sent
+# CLI flag: -reporting.usage-stats-url
+[usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 
 ### common
