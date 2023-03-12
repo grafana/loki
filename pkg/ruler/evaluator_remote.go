@@ -54,33 +54,51 @@ const EvalModeRemote = "remote"
 var userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
 
 type RemoteEvaluator struct {
-	rq     *remoteQuerier
-	logger log.Logger
+	client    httpgrpc.HTTPClient
+	overrides RulesLimits
+	logger    log.Logger
 }
 
-func NewRemoteEvaluator(cfg *EvaluationConfig, logger log.Logger) (*RemoteEvaluator, error) {
-	qfClient, err := dialQueryFrontend(cfg.QueryFrontend)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial query frontend for remote rule evaluation: %w", err)
-	}
-
+func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logger log.Logger) (*RemoteEvaluator, error) {
 	return &RemoteEvaluator{
-		rq:     newRemoteQuerier(qfClient, logger, WithOrgIDMiddleware),
-		logger: logger,
+		client:    client,
+		overrides: overrides,
+		logger:    logger,
 	}, nil
 }
 
-func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
-	res, err := r.rq.Query(ctx, qs, now)
-	if err != nil {
-		return nil, fmt.Errorf("failed to perform remote evaluation of query %q: %w", qs, err)
-	}
-
-	return res, err
+type queryResponse struct {
+	res *logqlmodel.Result
+	err error
 }
 
-// dialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
-func dialQueryFrontend(cfg QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
+func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve tenant ID from context: %w", err)
+	}
+
+	ch := make(chan queryResponse, 1)
+
+	timeout := r.overrides.RulerRemoteEvaluationTimeout(orgID)
+	tCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	go r.Query(tCtx, ch, orgID, qs, now)
+
+	for {
+		select {
+		case <-tCtx.Done():
+			return nil, fmt.Errorf("remote rule evaluation exceeded deadline of %fs (defined by ruler_remote_evaluation_timeout): %w", timeout.Seconds(), tCtx.Err())
+		case res := <-ch:
+			return res.res, res.err
+		default:
+		}
+	}
+}
+
+// DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
+func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 	tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
 	if err != nil {
 		return nil, err
@@ -115,35 +133,16 @@ func dialQueryFrontend(cfg QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 // Middleware provides a mechanism to inspect outgoing remote querier requests.
 type Middleware func(ctx context.Context, req *httpgrpc.HTTPRequest) error
 
-// remoteQuerier executes read operations against a httpgrpc.HTTPClient.
-type remoteQuerier struct {
-	client      httpgrpc.HTTPClient
-	middlewares []Middleware
-	logger      log.Logger
-}
-
-// newRemoteQuerier creates and initializes a new remoteQuerier instance.
-func newRemoteQuerier(
-	client httpgrpc.HTTPClient,
-	logger log.Logger,
-	middlewares ...Middleware,
-) *remoteQuerier {
-	return &remoteQuerier{
-		client:      client,
-		middlewares: middlewares,
-		logger:      logger,
-	}
-}
-
 // Query performs a query for the given time.
-func (q *remoteQuerier) Query(ctx context.Context, qs string, t time.Time) (*logqlmodel.Result, error) {
-	logger, ctx := spanlogger.NewWithLogger(ctx, q.logger, "ruler.remoteEvaluation.Query")
+func (r *RemoteEvaluator) Query(ctx context.Context, ch chan<- queryResponse, orgID, qs string, t time.Time) {
+	logger, ctx := spanlogger.NewWithLogger(ctx, r.logger, "ruler.remoteEvaluation.Query")
 	defer logger.Span.Finish()
 
-	return q.query(ctx, qs, t, logger)
+	res, err := r.query(ctx, orgID, qs, t, logger)
+	ch <- queryResponse{res, err}
 }
 
-func (q *remoteQuerier) query(ctx context.Context, query string, ts time.Time, logger log.Logger) (*logqlmodel.Result, error) {
+func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts time.Time, logger log.Logger) (*logqlmodel.Result, error) {
 	args := make(url.Values)
 	args.Set("query", query)
 	args.Set("direction", "forward")
@@ -161,30 +160,32 @@ func (q *remoteQuerier) query(ctx context.Context, query string, ts time.Time, l
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
+			{Key: textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName), Values: []string{orgID}},
 		},
 	}
 
-	for _, mdw := range q.middlewares {
-		if err := mdw(ctx, &req); err != nil {
-			return nil, err
-		}
-	}
-
 	start := time.Now()
-	resp, err := q.client.Handle(ctx, &req)
+	resp, err := r.client.Handle(ctx, &req)
+
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
 		return nil, err
 	}
+
 	if resp.Code/100 != 2 {
 		return nil, fmt.Errorf("unexpected response status code %d: %s", resp.Code, string(resp.Body))
 	}
-	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
 
-	return decodeResponse(resp)
+	maxSize := r.overrides.RulerRemoteEvaluationMaxResponseSize(orgID)
+	if maxSize > 0 && int64(len(resp.Body)) >= maxSize {
+		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
+	}
+
+	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
+	return r.decodeResponse(resp)
 }
 
-func decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmodel.Result, error) {
+func (r *RemoteEvaluator) decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmodel.Result, error) {
 	var decoded loghttp.QueryResponse
 	if err := json.NewDecoder(bytes.NewReader(resp.Body)).Decode(&decoded); err != nil {
 		return nil, err
@@ -222,21 +223,6 @@ func decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmodel.Result, error) {
 	default:
 		return nil, fmt.Errorf("unsupported result type %s", decoded.Data.ResultType)
 	}
-}
-
-// WithOrgIDMiddleware attaches 'X-Scope-OrgID' header value to the outgoing request by inspecting the passed context.
-// In case the expression to evaluate corresponds to a federated rule, the ExtractTenantIDs function will take care
-// of normalizing and concatenating source tenants by separating them with a '|' character.
-func WithOrgIDMiddleware(ctx context.Context, req *httpgrpc.HTTPRequest) error {
-	orgID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-	req.Headers = append(req.Headers, &httpgrpc.Header{
-		Key:    textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName),
-		Values: []string{orgID},
-	})
-	return nil
 }
 
 // QueryFrontendConfig defines query-frontend transport configuration.

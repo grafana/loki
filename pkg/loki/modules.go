@@ -1001,7 +1001,12 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 		evaluator, err = ruler.NewLocalEvaluator(&t.Cfg.Ruler.Evaluation, engine, logger)
 	case ruler.EvalModeRemote:
-		evaluator, err = ruler.NewRemoteEvaluator(&t.Cfg.Ruler.Evaluation, logger)
+		qfClient, err := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
+		if err != nil {
+			return nil, fmt.Errorf("failed to dial query frontend for remote rule evaluation: %w", err)
+		}
+
+		evaluator, err = ruler.NewRemoteEvaluator(qfClient, t.Overrides, logger)
 	default:
 		err = fmt.Errorf("unknown rule evaluation mode %q", mode)
 	}
