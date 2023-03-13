@@ -1001,8 +1001,8 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
 	case ruler.EvalModeRemote:
-		qfClient, err := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
-		if err != nil {
+		qfClient, e := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
+		if e != nil {
 			return nil, fmt.Errorf("failed to dial query frontend for remote rule evaluation: %w", err)
 		}
 

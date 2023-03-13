@@ -159,7 +159,6 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 			return nil, fmt.Errorf("remote rule evaluation exceeded deadline of %fs (defined by ruler_remote_evaluation_timeout): %w", timeout.Seconds(), tCtx.Err())
 		case res := <-ch:
 			return res.res, res.err
-		default:
 		}
 	}
 }
