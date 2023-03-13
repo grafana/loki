@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -222,7 +221,6 @@ type Ingester struct {
 	// loki process.
 	// This is set when calling the shutdown handler.
 	terminateOnShutdown bool
-	releaseResources    *atomic.Bool
 
 	// Only used by WAL & flusher to coordinate backpressure during replay.
 	replayController *replayController
@@ -262,7 +260,6 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
-		releaseResources:      atomic.NewBool(false),
 		streamRateCalculator:  NewStreamRateCalculator(),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
@@ -514,10 +511,7 @@ func (i *Ingester) stopping(_ error) error {
 	var errs errUtil.MultiError
 	errs.Add(i.wal.Stop())
 
-	shouldReleaseResources := i.releaseResources.Load()
-
-	shouldFlushOnShutdown := i.flushOnShutdownSwitch.Get() || shouldReleaseResources
-	if shouldFlushOnShutdown {
+	if i.flushOnShutdownSwitch.Get() {
 		i.lifecycler.SetFlushOnShutdown(true)
 	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
@@ -535,9 +529,6 @@ func (i *Ingester) stopping(_ error) error {
 	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
-		return modules.ErrStopProcess
-	}
-	if shouldReleaseResources && errs.Err() == nil {
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
@@ -585,7 +576,9 @@ func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 // Releasing resources meaning flushing data, deleting tokens, and removing itself from the ring.
 func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 	level.Info(util_log.Logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
-	i.releaseResources.Store(true)
+	i.lifecycler.SetFlushOnShutdown(true)
+	i.lifecycler.SetUnregisterOnShutdown(true)
+	i.terminateOnShutdown = true
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 }
