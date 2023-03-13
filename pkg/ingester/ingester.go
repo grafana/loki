@@ -570,7 +570,7 @@ func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PrepareShutdown will handle the /prepare_shutdown endpoint.
+// PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
 //
 // Internally, when triggered, this handler will configure the ingester service to release their resources whenever a SIGTERM is received.
 // Releasing resources meaning flushing data, deleting tokens, and removing itself from the ring.
