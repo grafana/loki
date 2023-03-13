@@ -263,12 +263,12 @@ spec:
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
-      - description: BindNetworkType defines the type of network to use to advertise
-          IPs to the ring. Defaults to the private network available to the current
-          pod. Alternatively the pod public network can be used in case private networks
-          (RFC 1918 and RFC 6598) are not available.
-        displayName: Hash Ring Type
-        path: hashRing.memberlist.bindNetworkType
+      - description: InstanceAddrType defines the type of address to use to advertise
+          to the ring. Defaults to the first address from any private network interfaces
+          of the current pod. Alternatively the public pod IP can be used in case
+          private networks (RFC 1918 and RFC 6598) are not available.
+        displayName: Instance Address
+        path: hashRing.memberlist.instanceAddrType
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:private
         - urn:alm:descriptor:com.tectonic.ui:select:public

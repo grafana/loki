@@ -50,27 +50,6 @@ func (r *LokiStack) ValidateDelete() error {
 	return nil
 }
 
-func (hrs *HashRingSpec) ValidateHashRing() field.ErrorList {
-	var allErrs field.ErrorList
-
-	if hrs == nil {
-		return nil
-	}
-
-	switch hrs.Type {
-	case HashRingMemberList:
-		if hrs.MemberList == nil {
-			allErrs = append(allErrs, field.NotFound(field.NewPath("Spec").Child("HashRing").Child("Memberlist"), hrs.MemberList))
-		}
-	}
-
-	if len(allErrs) == 0 {
-		return nil
-	}
-
-	return allErrs
-}
-
 // ValidateSchemas ensures that the schemas are in a valid format
 func (s *ObjectStorageSpec) ValidateSchemas(utcTime time.Time, status LokiStackStorageStatus) field.ErrorList {
 	var allErrs field.ErrorList
@@ -164,11 +143,6 @@ func (r *LokiStack) validate(old *LokiStack) error {
 	}
 
 	errors := r.Spec.Storage.ValidateSchemas(time.Now().UTC(), storageStatus)
-	if len(errors) != 0 {
-		allErrs = append(allErrs, errors...)
-	}
-
-	errors = r.Spec.HashRing.ValidateHashRing()
 	if len(errors) != 0 {
 		allErrs = append(allErrs, errors...)
 	}

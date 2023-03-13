@@ -12,10 +12,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-const (
-	podIPKey = "POD_IP"
-)
-
 // BuildLokiGossipRingService creates a k8s service for the gossip/memberlist members of the cluster
 func BuildLokiGossipRingService(stackName string) *corev1.Service {
 	return &corev1.Service{
@@ -43,7 +39,7 @@ func BuildLokiGossipRingService(stackName string) *corev1.Service {
 }
 
 func configureHashRingEnv(p *corev1.PodSpec, opts Options) error {
-	resetProxyVar(p, podIPKey)
+	resetProxyVar(p, gossipInstanceAddrEnvVarName)
 
 	if opts.Stack.HashRing == nil {
 		return nil
@@ -57,14 +53,14 @@ func configureHashRingEnv(p *corev1.PodSpec, opts Options) error {
 		return nil
 	}
 
-	if opts.Stack.HashRing.MemberList.BindNetworkType == lokiv1.MemberListPrivateNetwork {
+	if opts.Stack.HashRing.MemberList.InstanceAddrType == lokiv1.MemberListAnyIP {
 		return nil
 	}
 
 	src := corev1.Container{
 		Env: []corev1.EnvVar{
 			{
-				Name: gossipBindAddrEnvVarName,
+				Name: gossipInstanceAddrEnvVarName,
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						APIVersion: "v1",

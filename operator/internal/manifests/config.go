@@ -244,12 +244,12 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 }
 
 func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
-	var bindAddrs []string
+	var instanceAddr string
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList {
-		switch spec.MemberList.BindNetworkType {
-		case lokiv1.MemberListPublicNetwork:
-			bindAddrs = append(bindAddrs, fmt.Sprintf("${%s}", gossipBindAddrEnvVarName))
-		case lokiv1.MemberListPrivateNetwork:
+		switch spec.MemberList.InstanceAddrType {
+		case lokiv1.MemberListPodIP:
+			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+		case lokiv1.MemberListAnyIP:
 			// Do nothing use loki defaults
 		default:
 			// Do nothing use loki defaults
@@ -257,8 +257,8 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) conf
 	}
 
 	return config.GossipRing{
-		BindAddrs:            bindAddrs,
-		BindPort:             gossipPort,
+		InstanceAddr:         instanceAddr,
+		InstancePort:         gossipPort,
 		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
 	}
 }

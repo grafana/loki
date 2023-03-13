@@ -57,10 +57,10 @@ type Address struct {
 
 // GossipRing defines the memberlist configuration
 type GossipRing struct {
-	// BindAddress is optional, defaults to private networks
-	BindAddrs []string
-	// BindPort is required
-	BindPort int
+	// InstanceAddr is optional, defaults to private networks
+	InstanceAddr string
+	// InstancePort is required
+	InstancePort int
 	// MembersDiscoveryAddr is required
 	MembersDiscoveryAddr string
 }

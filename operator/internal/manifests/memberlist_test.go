@@ -55,7 +55,7 @@ func TestConfigureHashRingEnv_UsePrivateNetworks_NoHashRingSpec(t *testing.T) {
 
 	for _, cs := range lokiContainers(t, opt) {
 		for _, c := range cs {
-			require.NotContains(t, c.Env, wantEnvVar, "contains envVar POD_IP for: %s", c.Name)
+			require.NotContains(t, c.Env, wantEnvVar, "contains envVar %s for: %s", gossipInstanceAddrEnvVarName, c.Name)
 		}
 	}
 }
@@ -70,7 +70,7 @@ func TestConfigureHashRingEnv_UsePrivateNetworks_WithCustomHashRingSpec(t *testi
 			HashRing: &lokiv1.HashRingSpec{
 				Type: lokiv1.HashRingMemberList,
 				MemberList: &lokiv1.MemberListSpec{
-					BindNetworkType: lokiv1.MemberListPrivateNetwork,
+					InstanceAddrType: lokiv1.MemberListAnyIP,
 				},
 			},
 			Template: &lokiv1.LokiTemplateSpec{
@@ -113,7 +113,7 @@ func TestConfigureHashRingEnv_UsePrivateNetworks_WithCustomHashRingSpec(t *testi
 
 	for _, cs := range lokiContainers(t, opt) {
 		for _, c := range cs {
-			require.NotContains(t, c.Env, wantEnvVar, "contains envVar POD_IP for: %s", c.Name)
+			require.NotContains(t, c.Env, wantEnvVar, "contains envVar %s for: %s", gossipInstanceAddrEnvVarName, c.Name)
 		}
 	}
 }
@@ -128,7 +128,7 @@ func TestConfigureHashRingEnv_UsePublicNetworks(t *testing.T) {
 			HashRing: &lokiv1.HashRingSpec{
 				Type: lokiv1.HashRingMemberList,
 				MemberList: &lokiv1.MemberListSpec{
-					BindNetworkType: lokiv1.MemberListPublicNetwork,
+					InstanceAddrType: lokiv1.MemberListPodIP,
 				},
 			},
 			Template: &lokiv1.LokiTemplateSpec{
@@ -161,7 +161,7 @@ func TestConfigureHashRingEnv_UsePublicNetworks(t *testing.T) {
 	}
 
 	wantEnvVar := v1.EnvVar{
-		Name: gossipBindAddrEnvVarName,
+		Name: gossipInstanceAddrEnvVarName,
 		ValueFrom: &v1.EnvVarSource{
 			FieldRef: &v1.ObjectFieldSelector{
 				APIVersion: "v1",
@@ -172,7 +172,7 @@ func TestConfigureHashRingEnv_UsePublicNetworks(t *testing.T) {
 
 	for _, cs := range lokiContainers(t, opt) {
 		for _, c := range cs {
-			require.Contains(t, c.Env, wantEnvVar, "missing envVar POD_IP for: %s", c.Name)
+			require.Contains(t, c.Env, wantEnvVar, "missing envVar %s for: %s", gossipInstanceAddrEnvVarName, c.Name)
 		}
 	}
 }

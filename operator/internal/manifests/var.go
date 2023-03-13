@@ -19,7 +19,7 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
-	gossipBindAddrEnvVarName = "POD_IP"
+	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"

@@ -355,28 +355,28 @@ const (
 	HashRingMemberList HashRingType = "memberlist"
 )
 
-// MemberListNetworkType defines the type of pod network to use for advertising IPs to the ring.
-type MemberListNetworkType string
+// MemberListInstanceAddrType defines the type of pod network to use for advertising IPs to the ring.
+type MemberListInstanceAddrType string
 
 const (
-	// MemberListPrivateNetwork when using the private pod networks (RFC 1918 and RFC 6598)
-	MemberListPrivateNetwork MemberListNetworkType = "private"
-	// MemberListPublicNetwork when using the public pod networks, i.e will use status.podIP
-	MemberListPublicNetwork MemberListNetworkType = "public"
+	// MemberListAnyIP when using the first from any private network interfaces (RFC 1918 and RFC 6598).
+	MemberListAnyIP MemberListInstanceAddrType = "any"
+	// MemberListPodIP when using the public pod IP from the cluster's pod network.
+	MemberListPodIP MemberListInstanceAddrType = "podIP"
 )
 
 // MemberListSpec defines the configuration for the memberlist based hash ring.
 type MemberListSpec struct {
-	// BindNetworkType defines the type of network to use to advertise IPs to the ring.
-	// Defaults to the private network available to the current pod. Alternatively the
-	// pod public network can be used in case private networks (RFC 1918 and RFC 6598)
+	// InstanceAddrType defines the type of address to use to advertise to the ring.
+	// Defaults to the first address from any private network interfaces of the current pod.
+	// Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
 	// are not available.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:private","urn:alm:descriptor:com.tectonic.ui:select:public"},displayName="Hash Ring Type"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:private","urn:alm:descriptor:com.tectonic.ui:select:public"},displayName="Instance Address"
 	// +kubebuilder:default:=private
-	BindNetworkType MemberListNetworkType `json:"bindNetworkType"`
+	InstanceAddrType MemberListInstanceAddrType `json:"instanceAddrType"`
 }
 
 // HashRingSpec defines the hash ring configuration
