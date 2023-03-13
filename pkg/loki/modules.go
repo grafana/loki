@@ -471,6 +471,9 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.LegacyShutdownHandler)),
 	)
+	t.Server.HTTP.Methods("POST").Path("/ingester/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
+	)
 	t.Server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
