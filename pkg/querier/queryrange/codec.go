@@ -521,6 +521,18 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
+		case loghttp.ResultTypeScalar:
+			return &LokiPromResponse{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: resp.Status,
+					Data: queryrangebase.PrometheusData{
+						ResultType: loghttp.ResultTypeScalar,
+						Result:     toProtoScalar(resp.Data.Result.(loghttp.Scalar)),
+					},
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
+				},
+				Statistics: resp.Data.Statistics,
+			}, nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%s)", string(resp.Data.ResultType))
 		}
@@ -806,6 +818,19 @@ func toProtoVector(v loghttp.Vector) []queryrangebase.SampleStream {
 			Labels: logproto.FromMetricsToLabelAdapters(s.Metric),
 		})
 	}
+	return res
+}
+
+func toProtoScalar(v loghttp.Scalar) []queryrangebase.SampleStream {
+	res := make([]queryrangebase.SampleStream, 0, 1)
+
+	res = append(res, queryrangebase.SampleStream{
+		Samples: []logproto.LegacySample{{
+			Value:       float64(v.Value),
+			TimestampMs: v.Timestamp.UnixNano() / 1e6,
+		}},
+		Labels: nil,
+	})
 	return res
 }
 
