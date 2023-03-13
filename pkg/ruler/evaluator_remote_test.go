@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -55,7 +56,7 @@ func TestRemoteEvalQueryTimeout(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -91,7 +92,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -136,7 +137,7 @@ func TestRemoteEvalScalar(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -179,7 +180,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -237,7 +238,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -284,7 +285,7 @@ func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -307,7 +308,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -333,7 +334,7 @@ func TestRemoteEvalNon2xxResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -357,7 +358,7 @@ func TestRemoteEvalNonJSONResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -396,7 +397,7 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 		},
 	}
 
-	ev, err := NewRemoteEvaluator(cli, limits, log.Logger)
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	ctx := context.Background()
