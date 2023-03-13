@@ -242,7 +242,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	if err != nil {
 		r.metrics.failedEvals.WithLabelValues("error", orgID).Inc()
 
-		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
+		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "instant", ts, "response_time", time.Since(start).Seconds())
 		return nil, fmt.Errorf("remote query evaluation failed: %w", err)
 	}
 
@@ -261,7 +261,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 
 	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
 
-	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
+	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "instant", ts, "response_time", time.Since(start).Seconds())
 	return r.decodeResponse(ctx, resp, orgID)
 }
 
