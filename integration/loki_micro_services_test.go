@@ -135,7 +135,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		cliQueryFrontendLimited := client.New(tenantID, "", tQueryFrontend.HTTPURL(), queryLimitsPolicy)
 		cliQueryFrontendLimited.Now = now
 
-		_, err := cliQueryFrontend.LabelNames(context.Background())
+		_, err := cliQueryFrontendLimited.LabelNames(context.Background())
 		require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
 	})
 }
