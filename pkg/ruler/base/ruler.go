@@ -45,10 +45,6 @@ import (
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	supportedShardingAlgos      = []string{util.ShardingAlgoByGroup, util.ShardingAlgoByRule}
-
-	// Validation errors.
-	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
 )
 
 const (
