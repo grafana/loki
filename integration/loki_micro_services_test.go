@@ -10,6 +10,8 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
+
+	"github.com/grafana/loki/pkg/util/querylimits"
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
@@ -64,6 +66,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-querier.per-request-limits-enabled=true",
 		)
 		_ = clu.AddComponent(
 			"querier",
@@ -125,5 +128,14 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		resp, err := cliQueryFrontend.LabelValues(context.Background(), "job")
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"fake"}, resp)
+	})
+
+	t.Run("per-request-limits", func(t *testing.T) {
+		queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryLength": "1m"}`}})
+		cliQueryFrontendLimited := client.New(tenantID, "", tQueryFrontend.HTTPURL(), queryLimitsPolicy)
+		cliQueryFrontendLimited.Now = now
+
+		_, err := cliQueryFrontend.LabelNames(context.Background())
+		require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
 	})
 }
