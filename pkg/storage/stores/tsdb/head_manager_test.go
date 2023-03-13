@@ -443,7 +443,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 	require.Nil(t, w.Stop())
 
 	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: filepath.Join(dir, "fs_store")})
-	require.NoError(t, err)
+	require.Nil(t, err)
 
 	shipperCfg := indexshipper.Config{}
 	flagext.DefaultValues(&shipperCfg)
@@ -470,8 +470,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store, stop, err := NewStore(tc.store, shipperCfg, schemaCfg.Configs[0], schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
-			require.NoError(t, err)
+			store, stop, err := NewStore(tc.store, shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
+			require.Nil(t, err)
 
 			refs, err := store.GetChunkRefs(
 				context.Background(),
@@ -480,8 +480,8 @@ func TestBuildLegacyWALs(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 			)
 			require.Nil(t, err)
-
 			require.Equal(t, tc.expectedChunks, refs)
+
 			stop()
 		})
 	}

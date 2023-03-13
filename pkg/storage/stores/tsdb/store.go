@@ -82,8 +82,8 @@ var NewStore = func() newStoreFactoryFunc {
 			backupIndexWriter: backupIndexWriter,
 			logger:            logger,
 		}
-		err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg)
-		if err != nil {
+
+		if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
 			return nil, nil, err
 		}
 
