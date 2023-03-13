@@ -245,7 +245,7 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 
 func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
 	var instanceAddr string
-	if spec != nil && spec.Type == lokiv1.HashRingMemberList {
+	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.MemberListPodIP:
 			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)

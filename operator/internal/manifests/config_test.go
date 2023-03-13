@@ -189,7 +189,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 		wantOptions config.GossipRing
 	}{
 		{
-			desc: "default bind private network addr",
+			desc: "defaults",
 			spec: lokiv1.LokiStackSpec{},
 			wantOptions: config.GossipRing{
 				InstancePort:         9095,
@@ -198,7 +198,20 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 			},
 		},
 		{
-			desc: "user selected bind private network addr",
+			desc: "defaults with empty config",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected any instance addr",
 			spec: lokiv1.LokiStackSpec{
 				HashRing: &lokiv1.HashRingSpec{
 					Type: lokiv1.HashRingMemberList,
@@ -214,7 +227,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 			},
 		},
 		{
-			desc: "user selected bind public network addr",
+			desc: "user selected podIP instance addr",
 			spec: lokiv1.LokiStackSpec{
 				HashRing: &lokiv1.HashRingSpec{
 					Type: lokiv1.HashRingMemberList,

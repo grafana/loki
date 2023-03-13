@@ -8,7 +8,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-func TestConfigureHashRingEnv_UsePrivateNetworks_NoHashRingSpec(t *testing.T) {
+func TestConfigureHashRingEnv_UseDefaults_NoHashRingSpec(t *testing.T) {
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
@@ -60,7 +60,7 @@ func TestConfigureHashRingEnv_UsePrivateNetworks_NoHashRingSpec(t *testing.T) {
 	}
 }
 
-func TestConfigureHashRingEnv_UsePrivateNetworks_WithCustomHashRingSpec(t *testing.T) {
+func TestConfigureHashRingEnv_UseDefaults_WithCustomHashRingSpec(t *testing.T) {
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
@@ -118,7 +118,7 @@ func TestConfigureHashRingEnv_UsePrivateNetworks_WithCustomHashRingSpec(t *testi
 	}
 }
 
-func TestConfigureHashRingEnv_UsePublicNetworks(t *testing.T) {
+func TestConfigureHashRingEnv_UseInstanceAddrPodIP(t *testing.T) {
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",

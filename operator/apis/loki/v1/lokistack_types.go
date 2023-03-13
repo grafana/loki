@@ -355,14 +355,14 @@ const (
 	HashRingMemberList HashRingType = "memberlist"
 )
 
-// MemberListInstanceAddrType defines the type of pod network to use for advertising IPs to the ring.
-type MemberListInstanceAddrType string
+// InstanceAddrType defines the type of pod network to use for advertising IPs to the ring.
+type InstanceAddrType string
 
 const (
 	// MemberListAnyIP when using the first from any private network interfaces (RFC 1918 and RFC 6598).
-	MemberListAnyIP MemberListInstanceAddrType = "any"
+	MemberListAnyIP InstanceAddrType = "any"
 	// MemberListPodIP when using the public pod IP from the cluster's pod network.
-	MemberListPodIP MemberListInstanceAddrType = "podIP"
+	MemberListPodIP InstanceAddrType = "podIP"
 )
 
 // MemberListSpec defines the configuration for the memberlist based hash ring.
@@ -372,11 +372,10 @@ type MemberListSpec struct {
 	// Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
 	// are not available.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:any","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
-	// +kubebuilder:default:=any
-	InstanceAddrType MemberListInstanceAddrType `json:"instanceAddrType"`
+	InstanceAddrType InstanceAddrType `json:"instanceAddrType"`
 }
 
 // HashRingSpec defines the hash ring configuration
