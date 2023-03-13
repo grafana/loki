@@ -505,14 +505,18 @@ func (i *Ingester) running(ctx context.Context) error {
 	return serviceError
 }
 
-// Called after running exits, when Ingester transitions to Stopping state.
+// stopping is called when Ingester transitions to Stopping state.
+//
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 	var errs errUtil.MultiError
 	errs.Add(i.wal.Stop())
 
-	if i.flushOnShutdownSwitch.Get() {
+	shouldReleaseResources := i.releaseResources.Load()
+
+	shouldFlushOnShutdown := i.flushOnShutdownSwitch.Get() || shouldReleaseResources
+	if shouldFlushOnShutdown {
 		i.lifecycler.SetFlushOnShutdown(true)
 	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
@@ -526,10 +530,13 @@ func (i *Ingester) stopping(_ error) error {
 
 	i.streamRateCalculator.Stop()
 
-	// In case the flag to terminate on shutdown is set we need to mark the
-	// ingester service as "failed", so Loki will shut down entirely.
+	// In case the flag to terminate on shutdown is set or this instance is marked to release its resources,
+	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
+		return modules.ErrStopProcess
+	}
+	if shouldReleaseResources && errs.Err() == nil {
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
