@@ -680,7 +680,10 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryLimitsInterceptors] = []string{}
 
 		// Ensure query limits tripperware embeds the query frontend
-		// tripperware after it's been created.
+		// tripperware after it's been created. Any additional
+		// middleware/tripperware you want to add to the querier or
+		// frontend must happen inject a dependence on the query limits
+		// tripperware.
 		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
 
 		deps[Querier] = append(deps[Querier], QueryLimiter)
