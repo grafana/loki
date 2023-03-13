@@ -40,7 +40,6 @@ type store struct {
 type newStoreFactoryFunc func(
 	name string,
 	indexShipperCfg indexshipper.Config,
-	p config.PeriodConfig,
 	schemaCfg config.SchemaConfig,
 	f *fetcher.Fetcher,
 	objectClient client.ObjectClient,
@@ -60,7 +59,6 @@ var NewStore = func() newStoreFactoryFunc {
 	return func(
 		name string,
 		indexShipperCfg indexshipper.Config,
-		p config.PeriodConfig,
 		schemaCfg config.SchemaConfig,
 		f *fetcher.Fetcher,
 		objectClient client.ObjectClient,

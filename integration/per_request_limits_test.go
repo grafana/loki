@@ -15,7 +15,7 @@ import (
 )
 
 func TestPerRequestLimits(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(cluster.ConfigWithBoltDB(false))
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
