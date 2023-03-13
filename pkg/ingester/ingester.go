@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
@@ -666,7 +667,9 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
-	_, ctx := stats.NewContext(queryServer.Context())
+	ctx := queryServer.Context()
+	_, ctx = stats.NewContext(ctx)
+	_, ctx = analyze.NewContext(ctx)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {

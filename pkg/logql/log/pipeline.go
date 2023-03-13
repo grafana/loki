@@ -1,10 +1,15 @@
 package log
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 )
 
 // NoopStage is a stage that doesn't process a log line.
@@ -13,6 +18,7 @@ var NoopStage Stage = &noopStage{}
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
+	SetAnalyzeContext(ctx *analyze.Context)
 }
 
 // StreamPipeline transform and filter log lines and labels.
@@ -31,6 +37,7 @@ type StreamPipeline interface {
 type Stage interface {
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	RequiredLabelNames() []string
+	String() string
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
@@ -42,6 +49,18 @@ func NewNoopPipeline() Pipeline {
 
 type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
+}
+
+func (n noopPipeline) SetAnalyzeContext(ctx *analyze.Context) {
+	// TODO(chaudum)
+}
+
+func (n noopPipeline) String() string {
+	children := make([]string, 0, len(n.cache))
+	for k, v := range n.cache {
+		children = append(children, fmt.Sprintf("%d:%s", k, v))
+	}
+	return fmt.Sprintf("NoopPipeline{%s}", strings.Join(children, ","))
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -56,6 +75,10 @@ type noopStreamPipeline struct {
 
 func (n noopStreamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
 	return line, n.LabelsResult, true
+}
+
+func (n noopStreamPipeline) String() string {
+	return fmt.Sprintf("NoopStreamPipeline{%s}", n.LabelsResult.String())
 }
 
 func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsResult, bool) {
@@ -76,14 +99,24 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 
 type noopStage struct{}
 
+func (noopStage) String() string {
+	return "NoopStage"
+}
+
 func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
+
 func (noopStage) RequiredLabelNames() []string { return []string{} }
 
 type StageFunc struct {
+	name           string
 	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
+}
+
+func (fn StageFunc) String() string {
+	return fn.name
 }
 
 func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -97,6 +130,18 @@ func (fn StageFunc) RequiredLabelNames() []string {
 	return fn.requiredLabels
 }
 
+type analyzedStage struct {
+	Stage
+	ctx *analyze.Context
+}
+
+func (s *analyzedStage) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	start := time.Now()
+	res, match := s.Stage.Process(ts, line, lbs)
+	s.ctx.Observe(time.Since(start), match)
+	return res, match
+}
+
 // pipeline is a combinations of multiple stages.
 // It can also be reduced into a single stage for convenience.
 type pipeline struct {
@@ -104,7 +149,17 @@ type pipeline struct {
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
 
+	analyzeContext *analyze.Context
+
 	streamPipelines map[uint64]StreamPipeline
+}
+
+func (p *pipeline) String() string {
+	children := make([]string, 0, len(p.streamPipelines))
+	for k, v := range p.streamPipelines {
+		children = append(children, fmt.Sprintf("%d:%s", k, v))
+	}
+	return fmt.Sprintf("Pipeline{%s}", strings.Join(children, ","))
 }
 
 func (p *pipeline) Stages() []Stage {
@@ -130,6 +185,7 @@ func NewPipeline(stages []Stage) Pipeline {
 		stages:          stages,
 		baseBuilder:     NewBaseLabelsBuilder(),
 		streamPipelines: make(map[uint64]StreamPipeline),
+		//analyzeContext:  analyze.New("pipeline", 0, len(stages)),
 	}
 }
 
@@ -142,15 +198,39 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 	return &streamPipeline{stages, labelsBuilder}
 }
 
+func (p *pipeline) SetAnalyzeContext(ctx *analyze.Context) {
+	p.analyzeContext = ctx
+	for idx := range p.stages {
+		stageAnalyzeContext := analyze.New(p.stages[idx].String(), idx, 0)
+		p.analyzeContext.AddChild(stageAnalyzeContext)
+	}
+}
+
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
 	if res, ok := p.streamPipelines[hash]; ok {
 		return res
 	}
 
+	if p.analyzeContext != nil {
+		for idx := range p.stages {
+			p.stages[idx] = &analyzedStage{
+				Stage: p.stages[idx],
+				ctx:   p.analyzeContext.GetChild(idx),
+			}
+		}
+	}
 	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
 	p.streamPipelines[hash] = res
 	return res
+}
+
+func (p *streamPipeline) String() string {
+	children := make([]string, 0, len(p.stages))
+	for k, v := range p.stages {
+		children = append(children, fmt.Sprintf("%d:%+v", k, v))
+	}
+	return fmt.Sprintf("StreamPipeline{%s}", strings.Join(children, ","))
 }
 
 func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
@@ -198,6 +278,10 @@ func NewFilteringPipeline(f []PipelineFilter, p Pipeline) Pipeline {
 type filteringPipeline struct {
 	filters  []PipelineFilter
 	pipeline Pipeline
+}
+
+func (p *filteringPipeline) SetAnalyzeContext(ctx *analyze.Context) {
+	p.pipeline.SetAnalyzeContext(ctx)
 }
 
 func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -282,6 +366,7 @@ func ReduceStages(stages []Stage) Stage {
 		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
 	}
 	return StageFunc{
+		name: "ReduceStage",
 		process: func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 			var ok bool
 			for _, p := range stages {

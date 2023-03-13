@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
@@ -365,6 +367,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	if err != nil {
 		return nil, err
 	}
+	pipeline.SetAnalyzeContext(analyze.FromContext(ctx))
 
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
@@ -774,6 +777,7 @@ type QuerierQueryServer interface {
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
 	stats := stats.FromContext(ctx)
+	analyzeCtx := analyze.FromContext(ctx)
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -803,6 +807,9 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
+		fmt.Fprintln(os.Stderr, "--- sendBatches ---")
+		fmt.Fprintln(os.Stderr, analyzeCtx.String())
+		analyzeCtx.Reset()
 		stats.Reset()
 	}
 	return nil

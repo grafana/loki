@@ -184,6 +184,10 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
+func (lf *LineFormatter) String() string {
+	return "LineFormatter"
+}
+
 func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
 	lf.currentLine = line
@@ -344,6 +348,10 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
+func (lf *LabelsFormatter) String() string {
+	return "LabelsFormatter"
+}
+
 func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.currentLine = l
 	lf.currentTs = ts
@@ -407,9 +415,14 @@ func NewDecolorizer() (*Decolorizer, error) {
 	return &Decolorizer{}, nil
 }
 
+func (Decolorizer) String() string {
+	return "Decolorizer"
+}
+
 func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return ansiRegex.ReplaceAll(line, []byte{}), true
 }
+
 func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 
 // substring creates a substring of the given string.

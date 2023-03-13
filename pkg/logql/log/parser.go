@@ -54,6 +54,10 @@ func NewJSONParser() *JSONParser {
 	}
 }
 
+func (j *JSONParser) String() string {
+	return "JSONParser"
+}
+
 func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
@@ -220,6 +224,10 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	}, nil
 }
 
+func (r *RegexpParser) String() string {
+	return "RegexpParser"
+}
+
 func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
@@ -256,6 +264,10 @@ func NewLogfmtParser() *LogfmtParser {
 		dec:  logfmt.NewDecoder(nil),
 		keys: internedStringSet{},
 	}
+}
+
+func (l *LogfmtParser) String() string {
+	return "LogfmtParser"
 }
 
 func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -318,6 +330,10 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 	}, nil
 }
 
+func (l *PatternParser) String() string {
+	return "PatternParser"
+}
+
 func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
@@ -368,6 +384,10 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpres
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 	}, nil
+}
+
+func (l *LogfmtExpressionParser) String() string {
+	return "LogfmtExpressionParser"
 }
 
 func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -483,6 +503,10 @@ func pathsToString(paths []interface{}) []string {
 	return stingPaths
 }
 
+func (j *JSONExpressionParser) String() string {
+	return "JSONExpressionParser"
+}
+
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
@@ -562,6 +586,10 @@ func NewUnpackParser() *UnpackParser {
 }
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
+
+func (u *UnpackParser) String() string {
+	return "UnpackParser"
+}
 
 func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {

@@ -60,6 +60,10 @@ func (f *IPLineFilter) ToStage() Stage {
 	return f
 }
 
+func (f *IPLineFilter) String() string {
+	return "IPLineFilter"
+}
+
 // `Process` implements `Stage` interface
 func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, f.filterTy(line, f.ty)
