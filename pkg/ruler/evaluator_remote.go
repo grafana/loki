@@ -23,8 +23,11 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
@@ -42,21 +45,32 @@ const (
 	keepAlive        = time.Second * 10
 	keepAliveTimeout = time.Second * 5
 
-	serviceConfig = `{"loadBalancingPolicy": "round_robin"}`
-
+	serviceConfig     = `{"loadBalancingPolicy": "round_robin"}`
 	queryEndpointPath = "/loki/api/v1/query"
+	mimeTypeFormPost  = "application/x-www-form-urlencoded"
 
-	mimeTypeFormPost = "application/x-www-form-urlencoded"
+	EvalModeRemote = "remote"
 )
 
-const EvalModeRemote = "remote"
+var (
+	userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
+)
 
-var userAgent = fmt.Sprintf("loki-ruler/%s", build.Version)
+type metrics struct {
+	reqDurationSecs     *prometheus.HistogramVec
+	responseSizeBytes   *prometheus.HistogramVec
+	responseSizeSamples *prometheus.HistogramVec
+
+	successfulEvals *prometheus.CounterVec
+	failedEvals     *prometheus.CounterVec
+}
 
 type RemoteEvaluator struct {
 	client    httpgrpc.HTTPClient
 	overrides RulesLimits
 	logger    log.Logger
+
+	metrics *metrics
 }
 
 func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logger log.Logger) (*RemoteEvaluator, error) {
@@ -64,7 +78,45 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 		client:    client,
 		overrides: overrides,
 		logger:    logger,
+		metrics:   newMetrics(),
 	}, nil
+}
+
+func newMetrics() *metrics {
+	return &metrics{
+		reqDurationSecs: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "ruler_remote_eval",
+			Name:      "request_duration_seconds",
+			// 0.005000, 0.015000, 0.045000, 0.135000, 0.405000, 1.215000, 3.645000, 10.935000, 32.805000
+			Buckets: prometheus.ExponentialBuckets(0.005, 3, 9),
+		}, []string{"user"}),
+		responseSizeBytes: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "ruler_remote_eval",
+			Name:      "response_bytes",
+			// 32, 128, 512, 2K, 8K, 32K, 128K, 512K, 2M, 8M
+			Buckets: prometheus.ExponentialBuckets(32, 4, 10),
+		}, []string{"user"}),
+		responseSizeSamples: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "ruler_remote_eval",
+			Name:      "response_samples",
+			// 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144
+			Buckets: prometheus.ExponentialBuckets(1, 4, 10),
+		}, []string{"user"}),
+
+		successfulEvals: promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "ruler_remote_eval",
+			Name:      "success_total",
+		}, []string{"user"}),
+		failedEvals: promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "ruler_remote_eval",
+			Name:      "failure_total",
+		}, []string{"reason", "user"}),
+	}
 }
 
 type queryResponse struct {
@@ -89,6 +141,7 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 	for {
 		select {
 		case <-tCtx.Done():
+			r.metrics.failedEvals.WithLabelValues("timeout", orgID).Inc()
 			return nil, fmt.Errorf("remote rule evaluation exceeded deadline of %fs (defined by ruler_remote_evaluation_timeout): %w", timeout.Seconds(), tCtx.Err())
 		case res := <-ch:
 			return res.res, res.err
@@ -167,27 +220,39 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	start := time.Now()
 	resp, err := r.client.Handle(ctx, &req)
 
+	instrument.ObserveWithExemplar(ctx, r.metrics.reqDurationSecs.WithLabelValues(orgID), time.Since(start).Seconds())
+
+	if resp != nil {
+		instrument.ObserveWithExemplar(ctx, r.metrics.responseSizeBytes.WithLabelValues(orgID), float64(len(resp.Body)))
+	}
+
 	if err != nil {
+		r.metrics.failedEvals.WithLabelValues("error", orgID).Inc()
+
 		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
 		return nil, fmt.Errorf("remote query evaluation failed: %w", err)
 	}
 
 	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
-	//   i.e. critical alerts or recording rules producing crucial metrics series
+	//   i.e. critical alerts or recording rules producing crucial RemoteEvaluatorMetrics series
 	if resp.Code/100 != 2 {
+		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
 		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d: %s", resp.Code, string(resp.Body))
 	}
 
 	maxSize := r.overrides.RulerRemoteEvaluationMaxResponseSize(orgID)
 	if maxSize > 0 && int64(len(resp.Body)) >= maxSize {
+		r.metrics.failedEvals.WithLabelValues("max_size", orgID).Inc()
 		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
 	}
 
+	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
+
 	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "qs", query, "ts", ts, "response_time", time.Since(start).Seconds())
-	return r.decodeResponse(resp)
+	return r.decodeResponse(ctx, resp, orgID)
 }
 
-func (r *RemoteEvaluator) decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmodel.Result, error) {
+func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTTPResponse, orgID string) (*logqlmodel.Result, error) {
 	var decoded loghttp.QueryResponse
 	if err := json.NewDecoder(bytes.NewReader(resp.Body)).Decode(&decoded); err != nil {
 		return nil, fmt.Errorf("unexpected body encoding, not valid JSON: %w", err)
@@ -208,6 +273,8 @@ func (r *RemoteEvaluator) decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmod
 			})
 		}
 
+		instrument.ObserveWithExemplar(ctx, r.metrics.responseSizeSamples.WithLabelValues(orgID), float64(len(res)))
+
 		return &logqlmodel.Result{
 			Statistics: decoded.Data.Statistics,
 			Data:       res,
@@ -217,6 +284,8 @@ func (r *RemoteEvaluator) decodeResponse(resp *httpgrpc.HTTPResponse) (*logqlmod
 		scalar := decoded.Data.Result.(loghttp.Scalar)
 		res.T = scalar.Timestamp.Unix()
 		res.V = float64(scalar.Value)
+
+		instrument.ObserveWithExemplar(ctx, r.metrics.responseSizeSamples.WithLabelValues(orgID), 1)
 
 		return &logqlmodel.Result{
 			Statistics: decoded.Data.Statistics,
