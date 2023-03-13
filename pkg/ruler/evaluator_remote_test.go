@@ -2,9 +2,9 @@ package ruler
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"testing"
 	"time"
@@ -82,7 +82,8 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// generate a response of random bytes that's just too big for the max response size
 			var resp = make([]byte, exceededSize)
-			rand.Read(resp)
+			_, err = rand.Read(resp)
+			require.NoError(t, err)
 
 			return &httpgrpc.HTTPResponse{
 				Code:    http.StatusOK,
