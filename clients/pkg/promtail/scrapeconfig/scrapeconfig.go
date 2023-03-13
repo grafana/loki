@@ -251,7 +251,7 @@ type AzurelogTargetConfig struct {
 	// Labels optionally holds labels to associate with each log line.
 	Labels model.LabelSet `yaml:"labels"`
 
-	// UseIncomingTimestamp sets the timestamp to the incoming kafka messages
+	// UseIncomingTimestamp sets the timestamp to the incoming messages
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 
