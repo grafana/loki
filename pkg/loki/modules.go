@@ -997,7 +997,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 	case ruler.EvalModeRemote:
 		evaluator, err = ruler.NewRemoteEvaluator(&t.Cfg.Ruler.Evaluation, logger)
 	default:
-		return nil, fmt.Errorf("unknown rule evaluation mode %q", mode)
+		err = fmt.Errorf("unknown rule evaluation mode %q", mode)
 	}
 
 	if err != nil {

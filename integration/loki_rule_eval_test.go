@@ -30,14 +30,14 @@ func TestRemoteRuleEval(t *testing.T) {
 	testRuleEval(t, ruler.EvalModeRemote)
 }
 
-// the only way we can test rule evaluation in an integration test is to use the remote-write feature.
-// in this test we stub out a remote-write receiver and check that the expected data is sent to it.
-// both the local and the remote rule evaluation modes should produce the same result.
+// The only way we can test rule evaluation in an integration test is to use the remote-write feature.
+// In this test we stub out a remote-write receiver and check that the expected data is sent to it.
+// Both the local and the remote rule evaluation modes should produce the same result.
 func testRuleEval(t *testing.T, mode string) {
 	clu := cluster.New()
-	defer func() {
+	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())
-	}()
+	})
 
 	// initialise a write component and ingest some logs
 	tWrite := clu.AddComponent(

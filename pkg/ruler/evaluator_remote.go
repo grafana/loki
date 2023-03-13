@@ -140,11 +140,7 @@ func (q *remoteQuerier) Query(ctx context.Context, qs string, t time.Time) (*log
 	logger, ctx := spanlogger.NewWithLogger(ctx, q.logger, "ruler.remoteEvaluation.Query")
 	defer logger.Span.Finish()
 
-	res, err := q.query(ctx, qs, t, logger)
-	if err != nil {
-		return nil, err
-	}
-	return res, err
+	return q.query(ctx, qs, t, logger)
 }
 
 func (q *remoteQuerier) query(ctx context.Context, query string, ts time.Time, logger log.Logger) (*logqlmodel.Result, error) {
