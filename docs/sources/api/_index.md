@@ -629,7 +629,7 @@ POST /ingester/prepare_shutdown
 
 `/ingester/prepare_shutdown` will prepare the ingester to release resources on the next SIGTERM,
 where releasing resources means flushing data and unregistering from the ring.
-This endpoint supersede any YAML configurations and isn't necessary if the ingester is already
+This endpoint supersedes any YAML configurations and isn't necessary if the ingester is already
 configured to unregister from the ring or to flush on shutdown.
 
 ## Flush in-memory chunks and shut down
