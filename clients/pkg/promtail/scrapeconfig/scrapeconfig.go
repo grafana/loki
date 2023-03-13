@@ -41,6 +41,7 @@ type Config struct {
 	PushConfig        *PushTargetConfig          `mapstructure:"loki_push_api,omitempty" yaml:"loki_push_api,omitempty"`
 	WindowsConfig     *WindowsEventsTargetConfig `mapstructure:"windows_events,omitempty" yaml:"windows_events,omitempty"`
 	KafkaConfig       *KafkaTargetConfig         `mapstructure:"kafka,omitempty" yaml:"kafka,omitempty"`
+	AzurelogConfig    *AzurelogTargetConfig      `mapstructure:"azurelog,omitempty" yaml:"azurelog,omitempty"`
 	GelfConfig        *GelfTargetConfig          `mapstructure:"gelf,omitempty" yaml:"gelf,omitempty"`
 	CloudflareConfig  *CloudflareConfig          `mapstructure:"cloudflare,omitempty" yaml:"cloudflare,omitempty"`
 	HerokuDrainConfig *HerokuDrainTargetConfig   `mapstructure:"heroku_drain,omitempty" yaml:"heroku_drain,omitempty"`
@@ -244,6 +245,27 @@ type WindowsEventsTargetConfig struct {
 
 	// Labels optionally holds labels to associate with each log line.
 	Labels model.LabelSet `yaml:"labels"`
+}
+
+type AzurelogTargetConfig struct {
+	// Labels optionally holds labels to associate with each log line.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming kafka messages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// Event Hub Topics to consume (Required).
+	Topics []string `yaml:"topics"`
+
+	// Event Hub ConnectionString for authentication on Azure Cloud (Required).
+	ConnectionString string `yaml:"connection_string"`
+
+	// The list of brokers to connect to Event Hub (Required).
+	Brokers []string `yaml:"brokers"`
+
+	// The consumer group id.
+	GroupID string `yaml:"group_id"`
 }
 
 type KafkaTargetConfig struct {

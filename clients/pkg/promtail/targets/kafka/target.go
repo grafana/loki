@@ -4,16 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/relabel"
-
 	"github.com/Shopify/sarama"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 type runnableDroppedTarget struct {
@@ -25,7 +22,11 @@ func (d *runnableDroppedTarget) run() {
 	d.runFn()
 }
 
+// MessageHandler defines processing for each incoming message
+type MessageHandler func(message *sarama.ConsumerMessage, t KafkaTarget)
+
 type Target struct {
+	logger               log.Logger
 	discoveredLabels     model.LabelSet
 	lbs                  model.LabelSet
 	details              ConsumerDetails
@@ -34,17 +35,21 @@ type Target struct {
 	client               api.EntryHandler
 	relabelConfig        []*relabel.Config
 	useIncomingTimestamp bool
+	messageHandler       MessageHandler
 }
 
 func NewTarget(
+	logger log.Logger,
 	session sarama.ConsumerGroupSession,
 	claim sarama.ConsumerGroupClaim,
 	discoveredLabels, lbs model.LabelSet,
 	relabelConfig []*relabel.Config,
 	client api.EntryHandler,
 	useIncomingTimestamp bool,
+	messageHandler MessageHandler,
 ) *Target {
 	return &Target{
+		logger:               logger,
 		discoveredLabels:     discoveredLabels,
 		lbs:                  lbs,
 		details:              newDetails(session, claim),
@@ -53,41 +58,18 @@ func NewTarget(
 		client:               client,
 		relabelConfig:        relabelConfig,
 		useIncomingTimestamp: useIncomingTimestamp,
+		messageHandler:       messageHandler,
 	}
 }
-
-const (
-	defaultKafkaMessageKey  = "none"
-	labelKeyKafkaMessageKey = "__meta_kafka_message_key"
-)
 
 func (t *Target) run() {
 	defer t.client.Stop()
 	for message := range t.claim.Messages() {
-		mk := string(message.Key)
-		if len(mk) == 0 {
-			mk = defaultKafkaMessageKey
+		if t.messageHandler == nil {
+			messageHandler(message, t)
+			continue
 		}
-
-		// TODO: Possibly need to format after merging with discovered labels because we can specify multiple labels in source labels
-		// https://github.com/grafana/loki/pull/4745#discussion_r750022234
-		lbs := format([]labels.Label{{
-			Name:  labelKeyKafkaMessageKey,
-			Value: mk,
-		}}, t.relabelConfig)
-
-		out := t.lbs.Clone()
-		if len(lbs) > 0 {
-			out = out.Merge(lbs)
-		}
-		t.client.Chan() <- api.Entry{
-			Entry: logproto.Entry{
-				Line:      string(message.Value),
-				Timestamp: timestamp(t.useIncomingTimestamp, message.Timestamp),
-			},
-			Labels: out,
-		}
-		t.session.MarkMessage(message, "")
+		t.messageHandler(message, t)
 	}
 }
 
@@ -117,6 +99,26 @@ func (t *Target) Labels() model.LabelSet {
 // Details returns target-specific details.
 func (t *Target) Details() interface{} {
 	return t.details
+}
+
+func (t *Target) RelabelConfig() []*relabel.Config {
+	return t.relabelConfig
+}
+
+func (t *Target) Client() api.EntryHandler {
+	return t.client
+}
+
+func (t *Target) UseIncomingTimestamp() bool {
+	return t.useIncomingTimestamp
+}
+
+func (t *Target) Session() sarama.ConsumerGroupSession {
+	return t.session
+}
+
+func (t *Target) Logger() log.Logger {
+	return t.logger
 }
 
 type ConsumerDetails struct {
