@@ -57,6 +57,7 @@ import (
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
@@ -329,17 +330,6 @@ type Frontend interface {
 	CheckReady(_ context.Context) error
 }
 
-type CombinedLimits interface {
-	compactor.Limits
-	distributor.Limits
-	ingester.Limits
-	querier.Limits
-	queryrange.Limits
-	ruler.RulesLimits
-	scheduler.Limits
-	storage.StoreLimits
-}
-
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -353,7 +343,7 @@ type Loki struct {
 	Server                   *server.Server
 	InternalServer           *server.Server
 	ring                     *ring.Ring
-	Overrides                CombinedLimits
+	Overrides                limiter.CombinedLimits
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
@@ -658,7 +648,7 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, UsageReport, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
@@ -673,6 +663,24 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
 		MemberlistKV:             {Server},
+	}
+
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
+		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		deps[Querier] = append(deps[Querier], QueryLimiter)
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
+
+		deps[QueryLimiter] = []string{Overrides}
+		deps[QueryLimitsInterceptors] = []string{}
+		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
+
+		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
+			return err
+		}
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.

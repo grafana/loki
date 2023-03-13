@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

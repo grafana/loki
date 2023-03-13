@@ -198,6 +198,11 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		},
 	}
 
+	if opts.Stack.Template != nil && opts.Stack.Template.Gateway != nil {
+		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
+	}
+
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
 	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 
