@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -754,6 +755,67 @@ func TestSchemaConfig_ValidateBoltdb(t *testing.T) {
 	}
 }
 
+func TestTableRanges_TableInRange(t *testing.T) {
+	tableRanges := TableRanges{
+		TableRange{
+			Start: 1,
+			End:   10,
+			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			}},
+		},
+		TableRange{
+			Start: 11,
+			End:   20,
+			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+				Prefix: "index_foo_",
+				Period: 24 * time.Hour,
+			}},
+		},
+	}
+
+	for _, tc := range []struct {
+		tableNumber int64
+		tableName   string
+		expResp     bool
+		expError    error
+	}{
+		{
+			tableName: "index_1",
+			expResp:   true,
+		},
+		{
+			tableName: "index_foo_15",
+			expResp:   true,
+		},
+		// wrong prefix
+		{
+			tableName: "index_foo_5",
+		},
+		// wrong prefix
+		{
+			tableName: "index_15",
+		},
+		// invalid table name
+		{
+			tableName: "index_foo",
+			expError:  errInvalidTableName,
+		},
+	} {
+		t.Run(fmt.Sprintf("table %s", tc.tableName), func(t *testing.T) {
+			ok, err := tableRanges.TableInRange(tc.tableName)
+			require.Equal(t, tc.expResp, ok)
+
+			if tc.expError != nil {
+				require.ErrorIs(t, err, tc.expError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestTableRange_TableInRange(t *testing.T) {
 	tableRange := TableRange{
 		Start: 1,
@@ -773,12 +835,15 @@ func TestTableRange_TableInRange(t *testing.T) {
 			tableName: "index_1",
 			expResp:   true,
 		},
+		// out of range
 		{
 			tableName: "index_12",
 		},
+		// wrong prefix
 		{
 			tableName: "index_foo_5",
 		},
+		// invalid table name
 		{
 			tableName: "index_foo",
 			expError:  errInvalidTableName,
@@ -822,4 +887,100 @@ func TestTableRange_TableInRange(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestGetIndexStoreTableRanges(t *testing.T) {
+	now := model.Now()
+	schemaConfig := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:       DayTime{Time: now.Add(30 * 24 * time.Hour)},
+				IndexType:  BoltDBShipperType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v9",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+			{
+				From:       DayTime{Time: now.Add(20 * 24 * time.Hour)},
+				IndexType:  BoltDBShipperType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       DayTime{Time: now.Add(15 * 24 * time.Hour)},
+				IndexType:  TSDBType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       DayTime{Time: now.Add(10 * 24 * time.Hour)},
+				IndexType:  StorageTypeBigTable,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       DayTime{Time: now.Add(5 * 24 * time.Hour)},
+				IndexType:  TSDBType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+		},
+	}
+
+	require.Equal(t, TableRanges{
+		{
+			Start:        schemaConfig.Configs[0].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[1].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[0],
+		},
+		{
+			Start:        schemaConfig.Configs[1].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[1],
+		},
+	}, GetIndexStoreTableRanges(BoltDBShipperType, schemaConfig.Configs))
+
+	require.Equal(t, TableRanges{
+		{
+			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[3],
+		},
+	}, GetIndexStoreTableRanges(StorageTypeBigTable, schemaConfig.Configs))
+
+	require.Equal(t, TableRanges{
+		{
+			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[2],
+		},
+		{
+			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[4],
+		},
+	}, GetIndexStoreTableRanges(TSDBType, schemaConfig.Configs))
 }
