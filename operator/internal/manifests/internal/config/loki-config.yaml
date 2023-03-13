@@ -176,8 +176,9 @@ limits_config:
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: {{ .BindPort }}
   join_members:
-    - {{ .MembersDiscoveryAddr }}:{{ .InstancePort }}
+    - {{ .MembersDiscoveryAddr }}:{{ .BindPort }}
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s

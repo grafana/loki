@@ -34,7 +34,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -110,6 +110,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -204,7 +205,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -272,7 +274,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -348,6 +350,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -473,7 +476,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -547,7 +551,8 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -614,7 +619,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -690,6 +695,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -838,7 +844,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -953,7 +960,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -1029,6 +1036,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -1177,7 +1185,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -1293,7 +1302,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -1369,6 +1378,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -1530,7 +1540,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -1663,7 +1674,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -1747,6 +1758,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -1903,7 +1915,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -1978,7 +1991,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -2054,6 +2067,7 @@ limits_config:
   query_timeout: 2m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -2228,7 +2242,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -2378,7 +2393,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -2475,6 +2490,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -2637,7 +2653,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -2705,7 +2722,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -2781,6 +2798,7 @@ limits_config:
   query_timeout: 2m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -2983,7 +3001,8 @@ overrides:
 			Port: 9095,
 		},
 		GossipRing: GossipRing{
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{
@@ -3183,7 +3202,7 @@ common:
     heartbeat_period: 5s
     heartbeat_timeout: 1m
     instance_addr: ${HASH_RING_INSTANCE_ADDR}
-    instance_port: 7946
+    instance_port: 9095
 compactor:
   compaction_interval: 2h
   working_directory: /tmp/loki/compactor
@@ -3259,6 +3278,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
   max_join_backoff: 1m
@@ -3354,7 +3374,8 @@ overrides:
 		},
 		GossipRing: GossipRing{
 			InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
-			InstancePort:         7946,
+			InstancePort:         9095,
+			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
 		},
 		Querier: Address{

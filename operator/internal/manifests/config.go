@@ -258,7 +258,8 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) conf
 
 	return config.GossipRing{
 		InstanceAddr:         instanceAddr,
-		InstancePort:         gossipPort,
+		InstancePort:         grpcPort,
+		BindPort:             gossipPort,
 		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
 	}
 }

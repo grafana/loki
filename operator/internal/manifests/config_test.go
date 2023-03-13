@@ -192,7 +192,8 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 			desc: "default bind private network addr",
 			spec: lokiv1.LokiStackSpec{},
 			wantOptions: config.GossipRing{
-				InstancePort:         7946,
+				InstancePort:         9095,
+				BindPort:             7946,
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
@@ -207,7 +208,8 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				},
 			},
 			wantOptions: config.GossipRing{
-				InstancePort:         7946,
+				InstancePort:         9095,
+				BindPort:             7946,
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
@@ -223,7 +225,8 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 			},
 			wantOptions: config.GossipRing{
 				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
-				InstancePort:         7946,
+				InstancePort:         9095,
+				BindPort:             7946,
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
