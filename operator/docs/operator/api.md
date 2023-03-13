@@ -2020,13 +2020,13 @@ reconciled by the operator.</p>
 </tr></tbody>
 </table>
 
-## MemberListNetworkType { #loki-grafana-com-v1-MemberListNetworkType }
+## MemberListInstanceAddrType { #loki-grafana-com-v1-MemberListInstanceAddrType }
 (<code>string</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-MemberListSpec">MemberListSpec</a>)
 </p>
 <div>
-<p>MemberListNetworkType defines the type of pod network to use for advertising IPs to the ring.</p>
+<p>MemberListInstanceAddrType defines the type of pod network to use for advertising IPs to the ring.</p>
 </div>
 <table>
 <thead>
@@ -2035,11 +2035,11 @@ reconciled by the operator.</p>
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;private&#34;</p></td>
-<td><p>MemberListPrivateNetwork when using the private pod networks (RFC 1918 and RFC 6598)</p>
+<tbody><tr><td><p>&#34;any&#34;</p></td>
+<td><p>MemberListAnyIP when using the first from any private network interfaces (RFC 1918 and RFC 6598).</p>
 </td>
-</tr><tr><td><p>&#34;public&#34;</p></td>
-<td><p>MemberListPublicNetwork when using the public pod networks, i.e will use status.podIP</p>
+</tr><tr><td><p>&#34;podIP&#34;</p></td>
+<td><p>MemberListPodIP when using the public pod IP from the cluster&rsquo;s pod network.</p>
 </td>
 </tr></tbody>
 </table>
@@ -2061,17 +2061,17 @@ reconciled by the operator.</p>
 <tbody>
 <tr>
 <td>
-<code>bindNetworkType</code><br/>
+<code>instanceAddrType</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-MemberListNetworkType">
-MemberListNetworkType
+<a href="#loki-grafana-com-v1-MemberListInstanceAddrType">
+MemberListInstanceAddrType
 </a>
 </em>
 </td>
 <td>
-<p>BindNetworkType defines the type of network to use to advertise IPs to the ring.
-Defaults to the private network available to the current pod. Alternatively the
-pod public network can be used in case private networks (RFC 1918 and RFC 6598)
+<p>InstanceAddrType defines the type of address to use to advertise to the ring.
+Defaults to the first address from any private network interfaces of the current pod.
+Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
 are not available.</p>
 </td>
 </tr>

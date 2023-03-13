@@ -195,8 +195,8 @@ spec:
         displayName: Instance Address
         path: hashRing.memberlist.instanceAddrType
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:select:private
-        - urn:alm:descriptor:com.tectonic.ui:select:public
+        - urn:alm:descriptor:com.tectonic.ui:select:any
+        - urn:alm:descriptor:com.tectonic.ui:select:podIP
       - description: Type of hash ring implementation that should be used
         displayName: Type
         path: hashRing.type

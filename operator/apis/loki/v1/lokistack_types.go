@@ -374,8 +374,8 @@ type MemberListSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:private","urn:alm:descriptor:com.tectonic.ui:select:public"},displayName="Instance Address"
-	// +kubebuilder:default:=private
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:any","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
+	// +kubebuilder:default:=any
 	InstanceAddrType MemberListInstanceAddrType `json:"instanceAddrType"`
 }
 
