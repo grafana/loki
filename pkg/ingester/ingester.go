@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -220,6 +221,7 @@ type Ingester struct {
 	// loki process.
 	// This is set when calling the shutdown handler.
 	terminateOnShutdown bool
+	releaseResources    *atomic.Bool
 
 	// Only used by WAL & flusher to coordinate backpressure during replay.
 	replayController *replayController
@@ -259,6 +261,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
+		releaseResources:      atomic.NewBool(false),
 		streamRateCalculator:  NewStreamRateCalculator(),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
@@ -566,6 +569,18 @@ func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// PrepareShutdownHTTPHandler will handle the /prepare_shutdown endpoint.
+//
+// Internally, when triggered, this handler will configure the ingester service to release their resources whenever a SIGTERM is received.
+// Releasing resources meaning flushing data, deleting tokens, and removing itself from the ring.
+func (i *Ingester) PrepareShutdownHTTPHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		i.releaseResources.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 // ShutdownHandler handles a graceful shutdown of the ingester service and
