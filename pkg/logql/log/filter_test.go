@@ -84,7 +84,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 			d, err := newRegexpFilter(test.re, test.match)
 			require.NoError(t, err, "invalid regex")
 
-			f, err := parseRegexpFilter(test.re, test.match)
+			f, err := parseRegexpFilter(test.re, test.match, false)
 			require.NoError(t, err)
 
 			// if we don't expect simplification then the filter should be the same as the default one.
@@ -186,7 +186,7 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	s, err := parseRegexpFilter(re, match)
+	s, err := parseRegexpFilter(re, match, false)
 	if err != nil {
 		b.Fatal(err)
 	}

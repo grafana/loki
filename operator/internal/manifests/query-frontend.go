@@ -143,7 +143,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(opts.Stack.Template.QueryFrontend.Replicas),
+			Replicas: pointer.Int32(opts.Stack.Template.QueryFrontend.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
