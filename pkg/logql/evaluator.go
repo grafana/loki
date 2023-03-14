@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/go-logfmt/logfmt"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -67,6 +69,21 @@ type LiteralParams struct {
 	direction      logproto.Direction
 	limit          uint32
 	shards         []string
+}
+
+func (p LiteralParams) String() string {
+	sb := new(strings.Builder)
+	logfmt.NewEncoder(sb).EncodeKeyvals(
+		"query", p.qs,
+		"start", p.start.UTC(),
+		"end", p.end.UTC(),
+		"step", p.step,
+		"interval", p.interval,
+		"direction", p.direction,
+		"limit", p.limit,
+		"shards", fmt.Sprintf("[%s]", strings.Join(p.shards, ",")),
+	)
+	return sb.String()
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }

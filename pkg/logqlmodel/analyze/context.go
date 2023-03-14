@@ -2,9 +2,11 @@ package analyze
 
 import (
 	"context"
-	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"github.com/go-logfmt/logfmt"
 )
 
 type ctxKey int
@@ -12,9 +14,9 @@ type ctxKey int
 const analyzeKey ctxKey = 0
 
 type Context struct {
-	countIn  int           `json:"countIn,omitempty"`
-	countOut int           `json:"countOut,omitempty"`
-	duration time.Duration `json:"duration,omitempty"`
+	countIn  atomic.Int64 `json:"countIn,omitempty"`
+	countOut atomic.Int64 `json:"countOut,omitempty"`
+	duration atomic.Int64 `json:"duration,omitempty"`
 
 	name        string `json:"name,omitempty"`
 	description string `json:"description,omitempty"`
@@ -51,54 +53,62 @@ func (ctx *Context) GetChild(index int) *Context {
 	return nil
 }
 
-func (ctx *Context) GetCounts() (int, int) {
-	return ctx.countIn, ctx.countOut
+func (ctx *Context) GetCounts() (int64, int64) {
+	return ctx.countIn.Load(), ctx.countOut.Load()
 }
 
 func (ctx *Context) Observe(d time.Duration, match bool) {
-	ctx.countIn++
+	ctx.countIn.Add(1)
 	if match {
-		ctx.countOut++
+		ctx.countOut.Add(1)
 	}
-	ctx.duration += d
+	ctx.duration.Add(d.Nanoseconds())
 }
 
 func (ctx *Context) String() string {
-	e := new(strings.Builder)
-	fmt.Fprintf(e, ctx.baseString())
-	for _, child := range ctx.childContexts {
-		fmt.Fprintf(e, child.stringNested(1))
-	}
-	// janky, trim the final newline character for nice println usage
-	return e.String()[:e.Len()]
+	sb := new(strings.Builder)
+	ctx.stringNested(sb, 0)
+	return sb.String()
 }
 
-func (ctx *Context) baseString() string {
-	return fmt.Sprintf("AnalyzeContext{name=%s, desc=%s, in=%d, out=%d, duration=%s, index=%d}\n", ctx.name, ctx.description, ctx.countIn, ctx.countOut, ctx.duration, ctx.index)
-
+func (ctx *Context) baseString(sb *strings.Builder) {
+	sb.WriteString("AnalyzeContext")
+	sb.WriteString("{")
+	logfmt.NewEncoder(sb).EncodeKeyvals(
+		"name", ctx.name,
+		"desc", ctx.description,
+		"in", ctx.countIn.Load(),
+		"out", ctx.countOut.Load(),
+		"duration", time.Duration(ctx.duration.Load()),
+		"index", ctx.index,
+	)
+	sb.WriteString("}")
 }
 
-func (ctx *Context) stringNested(level int) string {
-	e := new(strings.Builder)
-	fmt.Fprintf(e, fmt.Sprintf("%s%s", strings.Repeat("\t", level), ctx.baseString()))
-	for _, child := range ctx.childContexts {
-		fmt.Fprintf(e, child.stringNested(level+1))
+func (ctx *Context) stringNested(sb *strings.Builder, level int) {
+	for i := 0; i < level; i++ {
+		sb.WriteString("\t")
 	}
-	return e.String()
+	ctx.baseString(sb)
+	sb.WriteString("\n")
+	for _, child := range ctx.childContexts {
+		child.stringNested(sb, level+1)
+	}
 }
 
 func (ctx *Context) Reset() {
-	ctx.countIn = 0
-	ctx.duration = 0
+	ctx.countIn.Store(0)
+	ctx.countOut.Store(0)
+	ctx.duration.Store(0)
 	for idx := range ctx.childContexts {
 		ctx.childContexts[idx].Reset()
 	}
 }
 
-func (ctx *Context) Set(d time.Duration, in, out int) {
-	ctx.duration = d
-	ctx.countIn = in
-	ctx.countOut = out
+func (ctx *Context) Set(d time.Duration, in, out int64) {
+	ctx.duration.Store(d.Nanoseconds())
+	ctx.countIn.Store(in)
+	ctx.countOut.Store(out)
 }
 
 func (ctx *Context) SetDescription(d string) {
@@ -111,9 +121,9 @@ func (ctx *Context) ToProto() *RemoteContext {
 		children[i] = c.ToProto()
 	}
 	return &RemoteContext{
-		CountIn:     int64(ctx.countIn),
-		CountOut:    int64(ctx.countOut),
-		Duration:    ctx.duration.String(),
+		CountIn:     ctx.countIn.Load(),
+		CountOut:    ctx.countOut.Load(),
+		Duration:    ctx.duration.Load(),
 		Index:       int32(ctx.index),
 		Description: ctx.description,
 		Name:        ctx.name,
@@ -135,22 +145,27 @@ func FromProto(c *RemoteContext) *Context {
 	for i, child := range c.Children {
 		children[i] = FromProto(child)
 	}
-	d, err := time.ParseDuration(c.Duration)
-	if err != nil {
-		fmt.Println("error parsing duration from string: ", c.Duration)
-	}
+	var countIn, countOut, duration atomic.Int64
+	countIn.Store(c.CountIn)
+	countOut.Store(c.CountOut)
+	duration.Store(c.Duration)
+
 	return &Context{
-		countOut:      int(c.CountOut),
-		countIn:       int(c.CountIn),
+		countIn:       countIn,
+		countOut:      countOut,
+		duration:      duration,
 		name:          c.Name,
 		description:   c.Description,
 		index:         int(c.Index),
-		duration:      d,
 		childContexts: children,
 	}
 }
 
 func NewContext(ctx context.Context, name, description *string) (*Context, context.Context) {
+	existing := FromContext(ctx)
+	if existing != nil {
+		return existing, ctx
+	}
 	n := "root"
 	d := ""
 	if name != nil {
@@ -160,17 +175,10 @@ func NewContext(ctx context.Context, name, description *string) (*Context, conte
 		d = *description
 	}
 	c := New(n, d, 0, 2)
-	return c, ToContext(c, ctx)
-}
-
-func ToContext(c *Context, ctx context.Context) context.Context {
-	return context.WithValue(ctx, analyzeKey, c)
+	return c, context.WithValue(ctx, analyzeKey, c)
 }
 
 func FromContext(ctx context.Context) *Context {
-	v, ok := ctx.Value(analyzeKey).(*Context)
-	if !ok {
-		return New("root", "", 0, 2)
-	}
+	v, _ := ctx.Value(analyzeKey).(*Context)
 	return v
 }

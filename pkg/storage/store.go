@@ -464,6 +464,10 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
+	// ac := analyze.FromContext(ctx)
+	// fmt.Fprintln(os.Stderr, "store", "set analyze context", ac)
+	// pipeline.SetAnalyzeContext(ac)
+
 	var chunkFilterer chunk.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)

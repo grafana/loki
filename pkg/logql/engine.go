@@ -5,12 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/go-kit/log"
@@ -213,8 +213,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
+	queryHash := HashedQuery(q.params.Query())
 	if q.logExecQuery {
-		queryHash := HashedQuery(q.params.Query())
 		if GetRangeType(q.params) == InstantType {
 			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
 		} else {
@@ -235,6 +235,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	d := fmt.Sprintf("{ query: %s, shard: %s}", q.params.Query(), q.params.Shards())
 
 	aCtx := analyze.FromContext(ctx)
+	if aCtx == nil {
+		aCtx, ctx = analyze.NewContext(ctx, &n, &d)
+	}
 	a := analyze.New(n, d, 0, 0)
 	aCtx.AddChild(a)
 	data, err := q.Eval(ctx)
@@ -289,13 +292,20 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
+		if pipeline, err := e.Pipeline(); err == nil {
+			ac := analyze.FromContext(ctx)
+			if !pipeline.SetAnalyzeContext(ac) {
+				level.Warn(q.logger).Log("msg", "analyze context already set")
+			}
+		} else {
+			level.Error(q.logger).Log("msg", "failed to get pipeline")
+		}
 		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
 		}
 		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
-		streams, err := readStreams(ctx, iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
-		return streams, err
+		return readStreams(ctx, iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
 	}

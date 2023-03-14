@@ -3,8 +3,8 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -68,6 +69,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	request, err := loghttp.ParseRangeQuery(r)
+	fmt.Fprintln(os.Stderr, "RangeQueryHandler", "from", request.Start.UTC(), "to", request.End.UTC())
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -94,7 +96,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// the query string and start/end could be in the context level there since here we've just
 	// got an indivudal shard for a already sharded/split query
 	n := "Querier Range Query"
-	d := fmt.Sprintf("{ query: %s, start: %s, end: %s, step: %s shard: %s}", params.Query(), params.Start(), params.End(), params.Step(), params.Interval(), params.Shards())
+	d := params.String()
 	_, ctx = analyze.NewContext(ctx, &n, &d)
 	result, err := query.Exec(ctx)
 	fmt.Println("exec is done:\n", analyze.FromContext(ctx).String())

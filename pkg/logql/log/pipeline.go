@@ -2,8 +2,10 @@ package log
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -18,7 +20,7 @@ var NoopStage Stage = &noopStage{}
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
-	SetAnalyzeContext(ctx *analyze.Context)
+	SetAnalyzeContext(ctx *analyze.Context) bool
 }
 
 // StreamPipeline transform and filter log lines and labels.
@@ -52,8 +54,8 @@ type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
 }
 
-func (n noopPipeline) SetAnalyzeContext(ctx *analyze.Context) {
-	// TODO(chaudum)
+func (n noopPipeline) SetAnalyzeContext(ctx *analyze.Context) bool {
+	return true
 }
 
 func (n noopPipeline) String() string {
@@ -161,6 +163,7 @@ type pipeline struct {
 	baseBuilder *BaseLabelsBuilder
 
 	analyzeContext *analyze.Context
+	mtx            sync.Mutex
 
 	streamPipelines map[uint64]StreamPipeline
 }
@@ -209,12 +212,20 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 	return &streamPipeline{stages, labelsBuilder}
 }
 
-func (p *pipeline) SetAnalyzeContext(ctx *analyze.Context) {
+func (p *pipeline) SetAnalyzeContext(ctx *analyze.Context) bool {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+
+	if p.analyzeContext != nil {
+		fmt.Fprintln(os.Stderr, "WARNING: analyze context already set")
+		return false
+	}
 	p.analyzeContext = ctx
 	for idx := range p.stages {
 		stageAnalyzeContext := analyze.New(p.stages[idx].String(), "", idx, 0)
 		p.analyzeContext.AddChild(stageAnalyzeContext)
 	}
+	return true
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -291,8 +302,8 @@ type filteringPipeline struct {
 	pipeline Pipeline
 }
 
-func (p *filteringPipeline) SetAnalyzeContext(ctx *analyze.Context) {
-	p.pipeline.SetAnalyzeContext(ctx)
+func (p *filteringPipeline) SetAnalyzeContext(ctx *analyze.Context) bool {
+	return p.pipeline.SetAnalyzeContext(ctx)
 }
 
 func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {

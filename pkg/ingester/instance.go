@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -366,7 +367,8 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	if err != nil {
 		return nil, err
 	}
-	pipeline.SetAnalyzeContext(analyze.FromContext(ctx))
+	ac := analyze.FromContext(ctx)
+	pipeline.SetAnalyzeContext(ac)
 
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
@@ -634,8 +636,8 @@ func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) er
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forMatchingStreams(
 	ctx context.Context,
-// ts denotes the beginning of the request
-// and is used to select the correct inverted index
+	// ts denotes the beginning of the request
+	// and is used to select the correct inverted index
 	ts time.Time,
 	matchers []*labels.Matcher,
 	shards *astmapper.ShardAnnotation,
@@ -803,13 +805,18 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if isDone(ctx) {
 			break
 		}
+
+		fmt.Fprintln(os.Stderr, "---------- sendBatches")
+		fmt.Fprintln(os.Stderr, analyzeCtx.String())
 		batch.Analyze = analyzeCtx.ToProto()
-		analyzeCtx.Reset()
+
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 
+		analyzeCtx.Reset()
 		stats.Reset()
+
 	}
 	return nil
 }
