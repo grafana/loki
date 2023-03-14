@@ -2,9 +2,13 @@ package azurelog
 
 import (
 	"errors"
+	"github.com/Shopify/sarama"
+	"github.com/go-kit/log"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 func Test_validateConfig(t *testing.T) {
@@ -78,6 +82,56 @@ func Test_validateConfig_error(t *testing.T) {
 			err := validateConfig(tt.cfg)
 			assert.Error(t, err)
 			assert.Equal(t, tt.err, err)
+		})
+	}
+}
+
+func Test_getConfig(t *testing.T) {
+	cfg := getConfig("myConnectionString")
+
+	assert.Equal(t, 30*time.Second, cfg.Net.DialTimeout)
+	assert.True(t, cfg.Net.SASL.Enable)
+	assert.Equal(t, "$ConnectionString", cfg.Net.SASL.User)
+	assert.Equal(t, "myConnectionString", cfg.Net.SASL.Password)
+	assert.Equal(t, sarama.SASLMechanism(sarama.SASLTypePlaintext), cfg.Net.SASL.Mechanism)
+
+	assert.True(t, cfg.Net.TLS.Enable)
+	assert.Equal(t, sarama.V1_0_0_0, cfg.Version)
+}
+
+func TestNewSyncer_errors(t *testing.T) {
+	logger := log.NewNopLogger()
+	reg := prometheus.DefaultRegisterer
+
+	tests := []struct {
+		name string
+		cfg  scrapeconfig.Config
+		err  error
+	}{
+		{
+			name: "error creating kafka client, missing password",
+			cfg: scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+				Brokers: []string{"some broker"},
+				Topics:  []string{"some topic"},
+				GroupID: "my groupID",
+			}},
+			err: errors.New("error creating kafka client: kafka: invalid configuration (Net.SASL.Password must not be empty when SASL is enabled)"),
+		},
+		{
+			name: "error creating kafka client, missing port in address",
+			cfg: scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+				Brokers:          []string{"some broker"},
+				Topics:           []string{"some topic"},
+				GroupID:          "my groupID",
+				ConnectionString: "some connection string",
+			}},
+			err: errors.New("error creating kafka client: kafka: client has run out of available brokers to talk to: dial tcp: address some broker: missing port in address"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewSyncer(reg, logger, tt.cfg, nil)
+			assert.Equal(t, err.Error(), tt.err.Error())
 		})
 	}
 }
