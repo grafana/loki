@@ -46,10 +46,6 @@ func TestRulesConfigMapSharding(t *testing.T) {
 	require.Len(t, cm_shards, 2)
 }
 
-func TestDeleteRulesConfigMaps(t *testing.T) {
-
-}
-
 func testOptions() *manifests.Options {
 	return &manifests.Options{
 		Tenants: manifests.Tenants{

@@ -14,11 +14,10 @@ import (
 // be split into multiple shards, and this function will return
 // the list of shards
 func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
-	l := commonLabels(opts.Name)
-
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
 	template := newConfigMapTemplate(opts, l)
 
-	shardedConfigMap := NewShardedConfigMap(template, RulesConfigMapName(opts.Namespace))
+	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Namespace))
 
 	for _, r := range opts.AlertingRules {
 		c, err := rules.MarshalAlertingRule(r)
@@ -26,7 +25,7 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 			return nil, err
 		}
 		key := fmt.Sprintf("%s___%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
-		shardedConfigMap.data[key] = c
+		shardedCM.data[key] = c
 	}
 
 	for _, r := range opts.RecordingRules {
@@ -35,11 +34,11 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 			return nil, err
 		}
 		key := fmt.Sprintf("%s___%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
-		shardedConfigMap.data[key] = c
+		shardedCM.data[key] = c
 	}
 
 	// If configmap size exceeds 1MB, split it into shards, identified by "prefix+index"
-	shards := shardedConfigMap.Shard(opts)
+	shards := shardedCM.Shard(opts)
 
 	return shards, nil
 }

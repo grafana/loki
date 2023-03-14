@@ -84,6 +84,7 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 		currentCM.Data[k] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)
+	opts.RulesConfigMapNames = append(opts.RulesConfigMapNames, currentCM.Name)
 
 	return cm.configMapShards
 }
