@@ -61,7 +61,7 @@ func validateConfig(cfg *scrapeconfig.Config) error {
 	}
 
 	if len(cfg.AzurelogConfig.Brokers) == 0 {
-		return errors.New("no event hubs bootstrap brokers defined")
+		return errors.New("no event hubs brokers defined")
 	}
 
 	if len(cfg.AzurelogConfig.Topics) == 0 {
@@ -69,7 +69,7 @@ func validateConfig(cfg *scrapeconfig.Config) error {
 	}
 
 	if cfg.AzurelogConfig.GroupID == "" {
-		cfg.KafkaConfig.GroupID = "promtail"
+		cfg.AzurelogConfig.GroupID = "promtail"
 	}
 	return nil
 }
