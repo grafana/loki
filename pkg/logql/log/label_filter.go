@@ -124,6 +124,13 @@ func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, 
 }
 func (NoopLabelFilter) RequiredLabelNames() []string { return []string{} }
 
+func (f NoopLabelFilter) String() string {
+	if f.Matcher != nil {
+		return f.Matcher.String()
+	}
+	return ""
+}
+
 // ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
 	if len(filters) == 0 {

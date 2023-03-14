@@ -3416,6 +3416,6 @@ func TestNoOpLabelToString(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, logExpr, l.String())
 
-	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	stages, err = l.(*PipelineExpr).MultiStages.stages()
 	require.Len(t, stages, 0)
 }
