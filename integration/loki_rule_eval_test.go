@@ -34,7 +34,7 @@ func TestRemoteRuleEval(t *testing.T) {
 // In this test we stub out a remote-write receiver and check that the expected data is sent to it.
 // Both the local and the remote rule evaluation modes should produce the same result.
 func testRuleEval(t *testing.T, mode string) {
-	clu := cluster.New()
+	clu := cluster.New(nil)
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())
 	})

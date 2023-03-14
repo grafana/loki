@@ -16,6 +16,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
@@ -24,6 +26,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -141,7 +144,11 @@ type Cluster struct {
 	waitGroup     sync.WaitGroup
 }
 
-func New() *Cluster {
+func New(logLevel level.Value) *Cluster {
+	if logLevel != nil {
+		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
+	}
+
 	wrapRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
