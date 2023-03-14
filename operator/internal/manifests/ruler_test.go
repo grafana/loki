@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -146,7 +147,9 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rulesCMShards)
 	require.Len(t, rulesCMShards, 2)
-
+	for _, name := range opts.RulesConfigMapNames {
+		println(name)
+	}
 	for _, shard := range rulesCMShards {
 		opts.RulesConfigMapNames = append(opts.RulesConfigMapNames, shard.Name)
 	}
@@ -157,9 +160,15 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 	vs := sts.Spec.Template.Spec.Volumes
 
 	var volumeNames []string
+	var volumeProjections []corev1.VolumeProjection
 	for _, v := range vs {
 		volumeNames = append(volumeNames, v.Name)
+		if v.Name == manifests.RulesStorageVolumeName() {
+			volumeProjections = append(volumeProjections, v.Projected.Sources...)
+		}
 	}
 
 	require.Len(t, volumeNames, 2)
+	require.Len(t, volumeProjections, 2)
+
 }
