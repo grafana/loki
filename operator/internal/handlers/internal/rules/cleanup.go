@@ -7,18 +7,17 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// RemoveRulesConfigMap removes the rules configmap/s if it/they exist(s).
+// RemoveRulesConfigMap removes the rules configmaps if any exists.
 func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
-	var rulesCmList corev1.ConfigMapList
-	err := c.List(ctx, &rulesCmList, &client.ListOptions{
-		Namespace: req.Namespace,
-	})
+	var rulesCmList v1.ConfigMapList
+
+	err := c.List(ctx, &rulesCmList, client.InNamespace(req.Namespace))
 	if err != nil {
 		return err
 	}

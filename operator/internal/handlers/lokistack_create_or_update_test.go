@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -80,7 +81,7 @@ var (
 			Kind: "ConfigMap",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack-rules",
+			Name:      "my-stack-rules-0",
 			Namespace: "some-ns",
 		},
 	}
@@ -1472,6 +1473,18 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 
 	k.DeleteStub = func(_ context.Context, o client.Object, _ ...client.DeleteOption) error {
 		assert.Equal(t, r.Namespace, o.GetNamespace())
+		return nil
+	}
+
+	k.ListStub = func(_ context.Context, list client.ObjectList, options ...client.ListOption) error {
+		switch list.(type) {
+		case *v1.ConfigMapList:
+			k.SetClientObjectList(list, &corev1.ConfigMapList{
+				Items: []corev1.ConfigMap{
+					rulesCM,
+				},
+			})
+		}
 		return nil
 	}
 
