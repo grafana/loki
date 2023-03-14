@@ -1,11 +1,19 @@
 ---
-title: Loki in Grafana
-description: Loki in Grafana
-weight: 15
+title: Visualize log data
+menuTitle: Visualize data
+description: Visualize your log data with Grafana
+
 aliases:
-    - /docs/loki/latest/getting-started/grafana/
+   - /docs/loki/latest/operations/grafana/
+   - /docs/loki/latest/visualize/grafana/
+   - /docs/loki/latest/getting-started/grafana/
+weight: 825
+keywords:
+   - visualize
+   - grafana
+   - dashboards
 ---
-# Loki in Grafana
+# Visualize log data
 
 [Grafana 6.0](/grafana/download/6.0.0) and more recent
 versions have built-in support for Grafana Loki.
