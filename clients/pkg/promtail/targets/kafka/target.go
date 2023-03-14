@@ -65,10 +65,6 @@ func NewTarget(
 func (t *Target) run() {
 	defer t.client.Stop()
 	for message := range t.claim.Messages() {
-		if t.messageHandler == nil {
-			messageHandler(message, t)
-			continue
-		}
 		t.messageHandler(message, t)
 	}
 }
