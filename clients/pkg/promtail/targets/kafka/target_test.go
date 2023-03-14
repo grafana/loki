@@ -156,7 +156,7 @@ func Test_TargetRun(t *testing.T) {
 					closed = true
 				},
 			)
-			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true, messageHandler)
+			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true, nil)
 
 			var wg sync.WaitGroup
 			wg.Add(1)

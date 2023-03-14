@@ -53,7 +53,7 @@ type TargetSyncer struct {
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
 	previousTopics []string
-	messageHandler MessageHandler
+	messageParser  MessageParser
 }
 
 // NewSyncerFromScrapeConfig creates TargetSyncer from scrape config
@@ -108,7 +108,7 @@ func NewSyncerFromScrapeConfig(
 		GroupID:              cfg.KafkaConfig.GroupID,
 	}
 
-	t, err := NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, messageHandler, cfg.KafkaConfig.Topics, targetSyncConfig)
+	t, err := NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, nil, cfg.KafkaConfig.Topics, targetSyncConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error starting kafka target: %w", err)
 	}
@@ -123,7 +123,7 @@ func NewSyncer(ctx context.Context,
 	pipeline *stages.Pipeline,
 	group sarama.ConsumerGroup,
 	client sarama.Client,
-	handler MessageHandler,
+	messageParser MessageParser,
 	topics []string,
 	cfg *TargetSyncerConfig,
 ) (*TargetSyncer, error) {
@@ -155,7 +155,7 @@ func NewSyncer(ctx context.Context,
 			ConsumerGroup: group,
 			logger:        logger,
 		},
-		messageHandler: handler,
+		messageParser: messageParser,
 	}
 
 	t.discoverer = t
@@ -354,7 +354,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		ts.cfg.RelabelConfigs,
 		ts.pipeline.Wrap(ts.client),
 		ts.cfg.UseIncomingTimestamp,
-		ts.messageHandler,
+		ts.messageParser,
 	)
 
 	return t, nil

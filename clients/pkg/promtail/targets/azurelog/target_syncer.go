@@ -47,7 +47,7 @@ func NewSyncer(
 		GroupID:              cfg.AzurelogConfig.GroupID,
 	}
 
-	t, err := kafka.NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, messageHandler, cfg.AzurelogConfig.Topics, targetSyncConfig)
+	t, err := kafka.NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, messageParser, cfg.AzurelogConfig.Topics, targetSyncConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error starting azurelog target: %w", err)
 	}
