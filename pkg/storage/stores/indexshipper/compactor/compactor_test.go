@@ -32,55 +32,6 @@ func dayFromTime(t model.Time) config.DayTime {
 
 var (
 	start     = model.Now().Add(-30 * 24 * time.Hour)
-	schemaCfg = config.SchemaConfig{
-		// we want to test over all supported schema.
-		Configs: []config.PeriodConfig{
-			{
-				From:       dayFromTime(start),
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-					Period: time.Hour * 24,
-				},
-				RowShards: 16,
-			},
-			{
-				From:       dayFromTime(start.Add(25 * time.Hour)),
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v10",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-					Period: time.Hour * 24,
-				},
-				RowShards: 16,
-			},
-			{
-				From:       dayFromTime(start.Add(73 * time.Hour)),
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-					Period: time.Hour * 24,
-				},
-				RowShards: 16,
-			},
-			{
-				From:       dayFromTime(start.Add(100 * time.Hour)),
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-					Period: time.Hour * 24,
-				},
-				RowShards: 16,
-			},
-		},
-	}
 )
 
 func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
