@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	"github.com/stretchr/testify/require"
 )
@@ -44,21 +44,21 @@ groups:
           severity: low
 `
 
-	a := lokiv1beta1.AlertingRule{
-		Spec: lokiv1beta1.AlertingRuleSpec{
-			Groups: []*lokiv1beta1.AlertingRuleGroup{
+	a := lokiv1.AlertingRule{
+		Spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "an-alert",
-					Interval: lokiv1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 					Limit:    2,
-					Rules: []*lokiv1beta1.AlertingRuleGroupSpec{
+					Rules: []*lokiv1.AlertingRuleGroupSpec{
 						{
 							Alert: "HighPercentageErrors",
 							Expr: `sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
   /
 sum(rate({app="foo", env="production"}[5m])) by (job)
   > 0.05`,
-							For: lokiv1beta1.PrometheusDuration("10m"),
+							For: lokiv1.PrometheusDuration("10m"),
 							Labels: map[string]string{
 								"severity":    "page",
 								"environment": "production",
@@ -74,7 +74,7 @@ sum(rate({app="foo", env="production"}[5m])) by (job)
   /
 sum(rate({app="foo", env="production"}[5m])) by (job)
   > 0.05`,
-							For: lokiv1beta1.PrometheusDuration("10m"),
+							For: lokiv1.PrometheusDuration("10m"),
 							Labels: map[string]string{
 								"severity":    "low",
 								"environment": "production",
@@ -114,14 +114,14 @@ groups:
         record: banana:requests:rate5m
 `
 
-	r := lokiv1beta1.RecordingRule{
-		Spec: lokiv1beta1.RecordingRuleSpec{
-			Groups: []*lokiv1beta1.RecordingRuleGroup{
+	r := lokiv1.RecordingRule{
+		Spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "a-recording",
-					Interval: lokiv1beta1.PrometheusDuration("2d"),
+					Interval: lokiv1.PrometheusDuration("2d"),
 					Limit:    1,
-					Rules: []*lokiv1beta1.RecordingRuleGroupSpec{
+					Rules: []*lokiv1.RecordingRuleGroupSpec{
 						{
 							Expr: `sum(
   rate({container="nginx"}[1m])
