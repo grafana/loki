@@ -19,9 +19,6 @@ var (
 	_ LabelFilterer = &DurationLabelFilter{}
 	_ LabelFilterer = &NumericLabelFilter{}
 	_ LabelFilterer = &StringLabelFilter{}
-
-	// NoopLabelFilter is a label filter that doesn't filter out any values.
-	NoopLabelFilter = noopLabelFilter{}
 )
 
 // LabelFilterType is an enum for label filtering types.
@@ -118,18 +115,26 @@ func (b *BinaryLabelFilter) String() string {
 	return sb.String()
 }
 
-type noopLabelFilter struct{}
+type NoopLabelFilter struct {
+	*labels.Matcher
+}
 
-func (noopLabelFilter) String() string { return "" }
-func (noopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
-func (noopLabelFilter) RequiredLabelNames() []string { return []string{} }
+func (NoopLabelFilter) RequiredLabelNames() []string { return []string{} }
+
+func (f NoopLabelFilter) String() string {
+	if f.Matcher != nil {
+		return f.Matcher.String()
+	}
+	return ""
+}
 
 // ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
 	if len(filters) == 0 {
-		return NoopLabelFilter
+		return &NoopLabelFilter{}
 	}
 	if len(filters) == 1 {
 		return filters[0]
@@ -340,7 +345,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 	}
 
 	if f == TrueFilter {
-		return NoopLabelFilter
+		return &NoopLabelFilter{m}
 	}
 
 	return &lineFilterLabelFilter{
