@@ -105,6 +105,13 @@ func (b *BinaryLabelFilter) RequiredLabelNames() []string {
 }
 
 func (b *BinaryLabelFilter) String() string {
+	switch NoopLabelFilter {
+	case b.Left:
+		return b.Right.String()
+	case b.Right:
+		return b.Left.String()
+	}
+
 	var sb strings.Builder
 	sb.WriteString("( ")
 	sb.WriteString(b.Left.String())

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -1765,4 +1766,21 @@ func Test_FailQuery(t *testing.T) {
 	// Empty parameter to json parser
 	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`)
 	require.NoError(t, err)
+}
+
+func Test_NoopLabelFilterShouldntPanicOnClone(t *testing.T) {
+	t.Parallel()
+	for _, query := range []string{
+		`count_over_time({job="gcplog"} | foo=~".*" | xyz="abc" [5m])`,
+		`count_over_time({job="gcplog"} | foo=~".*" bar="buzz" [5m])`,
+		`count_over_time({job="gcplog"} | foo="buzz" bar=~".*" [5m])`,
+		`count_over_time({job="gcplog"} | foo=~".*" bar=~".*" [5m])`,
+		`count_over_time({job="gcplog"} | foo=~".*" bar=~".*" | xyz="abc" [5m])`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(query)
+			require.NoError(t, err)
+			require.NotPanics(t, func() { clone(expr) })
+		})
+	}
 }

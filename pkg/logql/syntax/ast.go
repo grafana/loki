@@ -415,7 +415,11 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 }
 
 func (e *LabelFilterExpr) String() string {
-	return fmt.Sprintf("%s %s", OpPipe, e.LabelFilterer.String())
+	if s := e.LabelFilterer.String(); s != "" {
+		return fmt.Sprintf("%s %s", OpPipe, s)
+	}
+
+	return ""
 }
 
 type LineFmtExpr struct {
