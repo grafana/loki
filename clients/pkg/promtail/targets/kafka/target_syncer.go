@@ -127,12 +127,12 @@ func NewSyncer(ctx context.Context,
 	topics []string,
 	cfg *TargetSyncerConfig,
 ) (*TargetSyncer, error) {
-	ctx, cancel := context.WithCancel(ctx)
-
 	topicManager, err := newTopicManager(client, topics)
 	if err != nil {
 		return nil, fmt.Errorf("error creating topic manager: %w", err)
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
 
 	t := &TargetSyncer{
 		logger:       logger,
