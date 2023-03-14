@@ -318,7 +318,7 @@ func TestReduceAndLabelFilter(t *testing.T) {
 		filters []LabelFilterer
 		want    LabelFilterer
 	}{
-		{"empty", nil, NoopLabelFilter},
+		{"empty", nil, &NoopLabelFilter{}},
 		{"1", []LabelFilterer{NewBytesLabelFilter(LabelFilterEqual, "foo", 5)}, NewBytesLabelFilter(LabelFilterEqual, "foo", 5)},
 		{
 			"2",
