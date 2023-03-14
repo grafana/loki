@@ -144,8 +144,8 @@ type Cluster struct {
 	waitGroup     sync.WaitGroup
 }
 
-func New(enableLogging bool, logLevel level.Value) *Cluster {
-	if enableLogging && logLevel != nil {
+func New(logLevel level.Value) *Cluster {
+	if logLevel != nil {
 		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
 	}
 
