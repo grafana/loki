@@ -1,5 +1,6 @@
 ## Main
 
+- [8792](https://github.com/grafana/loki/pull/8792) **orenc1**: Improve documentation for LokiStack installation with ODF Object Storage
 - [8707](https://github.com/grafana/loki/pull/8707) **aminesnow**: Fix gateway's nodeSelector and tolerations
 - [8666](https://github.com/grafana/loki/pull/8666) **xperimental**: Fix version inconsistency in generated OpenShift bundle
 - [8578](https://github.com/grafana/loki/pull/8578) **xperimental**: Refactor status update to reduce API calls
