@@ -75,6 +75,8 @@ var tokens = map[string]int{
 
 	// drop labels
 	OpDrop: DROP,
+
+	OpExplain: EXPLAIN,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis

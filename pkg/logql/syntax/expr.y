@@ -11,6 +11,7 @@ import (
 
 %union{
   Expr                    Expr
+  ExplainExpr		  ExplainExpr
   Filter                  labels.MatchType
   Grouping                *Grouping
   Labels                  []string
@@ -75,6 +76,7 @@ import (
 %type <Labels>                labels
 %type <LogExpr>               logExpr
 %type <MetricExpr>            metricExpr
+%type <ExplainExpr>           explainExpr
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
@@ -127,7 +129,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE DROP
+                  DECOLORIZE DROP EXPLAIN
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -144,6 +146,7 @@ root: expr { exprlex.(*parser).expr = $1 };
 expr:
       logExpr                                      { $$ = $1 }
     | metricExpr                                   { $$ = $1 }
+    | explainExpr                                  { $$ = $1 }
     ;
 
 metricExpr:
@@ -161,6 +164,12 @@ logExpr:
     | selector pipelineExpr                       { $$ = newPipelineExpr(newMatcherExpr($1), $2)}
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
     ;
+
+explainExpr:
+      EXPLAIN logExpr    { $$ = newExplainExpr($2) }
+    | EXPLAIN metricExpr { $$ = newExplainExpr($2) }
+    ;
+
 
 logRangeExpr:
       selector RANGE                                                                        { $$ = newLogRange(newMatcherExpr($1), $2, nil, nil ) }

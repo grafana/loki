@@ -91,6 +91,24 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
+
+	// Analyse support
+	expr, _ := syntax.ParseExpr(params.Query())
+	switch e := expr.(type){
+	case syntax.ExplainExpr:
+		// create analyze context
+		params = logql.NewLiteralParams(
+			e.Inner.Pretty(0),
+			request.Start,
+			request.End,
+			request.Step,
+			request.Interval,
+			request.Direction,
+			request.Limit,
+			request.Shards,
+		)
+	}
+
 	query := q.engine.Query(params)
 	// here we should pull the context out of something we get from the frontend
 	// the query string and start/end could be in the context level there since here we've just

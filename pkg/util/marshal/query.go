@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -252,6 +253,18 @@ func encodeResult(v parser.Value, s *jsoniter.Stream) error {
 		}
 
 		encodeMatrix(m, s)
+	case loghttp.ResultTypeTrace:
+		t, ok := v.(logqlmodel.Trace)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for trace", t)
+		}
+		data, err := ptrace.NewJSONMarshaler().MarshalTraces(t.Model)
+		if err != nil {
+			return err
+		}
+		s.WriteRaw(string(data))
+
 
 	default:
 		s.WriteNil()
