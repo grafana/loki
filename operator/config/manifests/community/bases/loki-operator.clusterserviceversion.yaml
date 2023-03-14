@@ -78,6 +78,64 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
+    - description: AlertingRule is the Schema for the alertingrules API
+      displayName: AlertingRule
+      kind: AlertingRule
+      name: alertingrules.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: List of groups for alerting rules.
+        displayName: Groups
+        path: groups
+      - description: Interval defines the time interval between evaluation of the
+          given alerting rule.
+        displayName: Evaluation Interval
+        path: groups[0].interval
+      - description: Limit defines the number of alerts an alerting rule can produce.
+          0 is no limit.
+        displayName: Limit of firing alerts
+        path: groups[0].limit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Name of the alerting rule group. Must be unique within all alerting
+          rules.
+        displayName: Name
+        path: groups[0].name
+      - description: Rules defines a list of alerting rules
+        displayName: Rules
+        path: groups[0].rules
+      - description: The name of the alert. Must be a valid label value.
+        displayName: Name
+        path: groups[0].rules[0].alert
+      - description: Annotations to add to each alert.
+        displayName: Annotations
+        path: groups[0].rules[0].annotations
+      - description: The LogQL expression to evaluate. Every evaluation cycle this
+          is evaluated at the current time, and all resultant time series become pending/firing
+          alerts.
+        displayName: LogQL Expression
+        path: groups[0].rules[0].expr
+      - description: Alerts are considered firing once they have been returned for
+          this long. Alerts which have not yet fired for long enough are considered
+          pending.
+        displayName: Firing Threshold
+        path: groups[0].rules[0].for
+      - description: Labels to add to each alert.
+        displayName: Labels
+        path: groups[0].rules[0].labels
+      - description: TenantID of tenant where the alerting rules are evaluated in.
+        displayName: Tenant ID
+        path: tenantID
+      statusDescriptors:
+      - description: Conditions of the AlertingRule generation health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
       version: v1beta1
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
@@ -992,7 +1050,491 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
+    - description: RecordingRule is the Schema for the recordingrules API
+      displayName: RecordingRule
+      kind: RecordingRule
+      name: recordingrules.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: List of groups for recording rules.
+        displayName: Groups
+        path: groups
+      - description: Interval defines the time interval between evaluation of the
+          given recoding rule.
+        displayName: Evaluation Interval
+        path: groups[0].interval
+      - description: Limit defines the number of series a recording rule can produce.
+          0 is no limit.
+        displayName: Limit of produced series
+        path: groups[0].limit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Name of the recording rule group. Must be unique within all recording
+          rules.
+        displayName: Name
+        path: groups[0].name
+      - description: Rules defines a list of recording rules
+        displayName: Rules
+        path: groups[0].rules
+      - description: The LogQL expression to evaluate. Every evaluation cycle this
+          is evaluated at the current time, and all resultant time series become pending/firing
+          alerts.
+        displayName: LogQL Expression
+        path: groups[0].rules[0].expr
+      - description: The name of the time series to output to. Must be a valid metric
+          name.
+        displayName: Metric Name
+        path: groups[0].rules[0].record
+      - description: TenantID of tenant where the recording rules are evaluated in.
+        displayName: Tenant ID
+        path: tenantID
+      statusDescriptors:
+      - description: Conditions of the RecordingRule generation health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
       version: v1beta1
+    - description: RulerConfig is the Schema for the rulerconfigs API
+      displayName: RulerConfig
+      kind: RulerConfig
+      name: rulerconfigs.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: Defines alert manager configuration to notify on firing alerts.
+        displayName: Alert Manager Configuration
+        path: alertmanager
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: alertmanager.client
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Basic Authentication
+        path: alertmanager.client.basicAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The subject's password for the basic authentication configuration.
+        displayName: Password
+        path: alertmanager.client.basicAuth.password
+      - description: The subject's username for the basic authentication configuration.
+        displayName: Username
+        path: alertmanager.client.basicAuth.username
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
+        path: alertmanager.client.headerAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The credentials for the header authentication configuration.
+        displayName: Credentials
+        path: alertmanager.client.headerAuth.credentials
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
+        displayName: Credentials File
+        path: alertmanager.client.headerAuth.credentialsFile
+      - description: The authentication type for the header authentication configuration.
+        displayName: Type
+        path: alertmanager.client.headerAuth.type
+      - description: TLS configuration for reaching the alertmanager endpoints.
+        displayName: TLS
+        path: alertmanager.client.tls
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The CA certificate file path for the TLS configuration.
+        displayName: CA Path
+        path: alertmanager.client.tls.caPath
+      - description: The client-side certificate file path for the TLS configuration.
+        displayName: Cert Path
+        path: alertmanager.client.tls.certPath
+      - description: The client-side key file path for the TLS configuration.
+        displayName: Key Path
+        path: alertmanager.client.tls.keyPath
+      - description: The server name to validate in the alertmanager server certificates.
+        displayName: Server Name
+        path: alertmanager.client.tls.serverName
+      - description: Defines the configuration for DNS-based discovery of AlertManager
+          hosts.
+        displayName: DNS Discovery
+        path: alertmanager.discovery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Use DNS SRV records to discover Alertmanager hosts.
+        displayName: Enable SRV
+        path: alertmanager.discovery.enableSRV
+      - description: How long to wait between refreshing DNS resolutions of Alertmanager
+          hosts.
+        displayName: Refresh Interval
+        path: alertmanager.discovery.refreshInterval
+      - description: If enabled, then requests to Alertmanager use the v2 API.
+        displayName: Enable AlertManager V2 API
+        path: alertmanager.enableV2
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
+          URL is treated as a separate group in the configuration. Multiple Alertmanagers
+          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+        displayName: AlertManager Endpoints
+        path: alertmanager.endpoints
+      - description: Additional labels to add to all alerts.
+        displayName: Extra Alert Labels
+        path: alertmanager.externalLabels
+      - description: URL for alerts return path.
+        displayName: Alert External URL
+        path: alertmanager.externalUrl
+      - description: Defines the configuration for the notification queue to AlertManager
+          hosts.
+        displayName: Notification Queue
+        path: alertmanager.notificationQueue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Capacity of the queue for notifications to be sent to the Alertmanager.
+        displayName: Notification Queue Capacity
+        path: alertmanager.notificationQueue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum duration between alert and restored "for" state. This
+          is maintained only for alerts with configured "for" time greater than the
+          grace period.
+        displayName: Firing Grace Period
+        path: alertmanager.notificationQueue.forGracePeriod
+      - description: Max time to tolerate outage for restoring "for" state of alert.
+        displayName: Outage Tolerance
+        path: alertmanager.notificationQueue.forOutageTolerance
+      - description: Minimum amount of time to wait before resending an alert to Alertmanager.
+        displayName: Resend Delay
+        path: alertmanager.notificationQueue.resendDelay
+      - description: HTTP timeout duration when sending notifications to the Alertmanager.
+        displayName: Timeout
+        path: alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: alertmanager.relabelConfigs[0].targetLabel
+      - description: Interval on how frequently to evaluate rules.
+        displayName: Evaluation Interval
+        path: evaluationInterval
+      - description: Overrides defines the config overrides to be applied per-tenant.
+        displayName: Rate Limiting
+        path: overrides
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: overrides.alertmanager.client
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Basic Authentication
+        path: overrides.alertmanager.client.basicAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The subject's password for the basic authentication configuration.
+        displayName: Password
+        path: overrides.alertmanager.client.basicAuth.password
+      - description: The subject's username for the basic authentication configuration.
+        displayName: Username
+        path: overrides.alertmanager.client.basicAuth.username
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
+        path: overrides.alertmanager.client.headerAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The credentials for the header authentication configuration.
+        displayName: Credentials
+        path: overrides.alertmanager.client.headerAuth.credentials
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
+        displayName: Credentials File
+        path: overrides.alertmanager.client.headerAuth.credentialsFile
+      - description: The authentication type for the header authentication configuration.
+        displayName: Type
+        path: overrides.alertmanager.client.headerAuth.type
+      - description: TLS configuration for reaching the alertmanager endpoints.
+        displayName: TLS
+        path: overrides.alertmanager.client.tls
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The CA certificate file path for the TLS configuration.
+        displayName: CA Path
+        path: overrides.alertmanager.client.tls.caPath
+      - description: The client-side certificate file path for the TLS configuration.
+        displayName: Cert Path
+        path: overrides.alertmanager.client.tls.certPath
+      - description: The client-side key file path for the TLS configuration.
+        displayName: Key Path
+        path: overrides.alertmanager.client.tls.keyPath
+      - description: The server name to validate in the alertmanager server certificates.
+        displayName: Server Name
+        path: overrides.alertmanager.client.tls.serverName
+      - description: Defines the configuration for DNS-based discovery of AlertManager
+          hosts.
+        displayName: DNS Discovery
+        path: overrides.alertmanager.discovery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Use DNS SRV records to discover Alertmanager hosts.
+        displayName: Enable SRV
+        path: overrides.alertmanager.discovery.enableSRV
+      - description: How long to wait between refreshing DNS resolutions of Alertmanager
+          hosts.
+        displayName: Refresh Interval
+        path: overrides.alertmanager.discovery.refreshInterval
+      - description: If enabled, then requests to Alertmanager use the v2 API.
+        displayName: Enable AlertManager V2 API
+        path: overrides.alertmanager.enableV2
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
+          URL is treated as a separate group in the configuration. Multiple Alertmanagers
+          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+        displayName: AlertManager Endpoints
+        path: overrides.alertmanager.endpoints
+      - description: Additional labels to add to all alerts.
+        displayName: Extra Alert Labels
+        path: overrides.alertmanager.externalLabels
+      - description: URL for alerts return path.
+        displayName: Alert External URL
+        path: overrides.alertmanager.externalUrl
+      - description: Defines the configuration for the notification queue to AlertManager
+          hosts.
+        displayName: Notification Queue
+        path: overrides.alertmanager.notificationQueue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Capacity of the queue for notifications to be sent to the Alertmanager.
+        displayName: Notification Queue Capacity
+        path: overrides.alertmanager.notificationQueue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum duration between alert and restored "for" state. This
+          is maintained only for alerts with configured "for" time greater than the
+          grace period.
+        displayName: Firing Grace Period
+        path: overrides.alertmanager.notificationQueue.forGracePeriod
+      - description: Max time to tolerate outage for restoring "for" state of alert.
+        displayName: Outage Tolerance
+        path: overrides.alertmanager.notificationQueue.forOutageTolerance
+      - description: Minimum amount of time to wait before resending an alert to Alertmanager.
+        displayName: Resend Delay
+        path: overrides.alertmanager.notificationQueue.resendDelay
+      - description: HTTP timeout duration when sending notifications to the Alertmanager.
+        displayName: Timeout
+        path: overrides.alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: overrides.alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: overrides.alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: overrides.alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: overrides.alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: overrides.alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: overrides.alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: overrides.alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: overrides.alertmanager.relabelConfigs[0].targetLabel
+      - description: Interval on how frequently to poll for new rule definitions.
+        displayName: Poll Interval
+        path: pollInterval
+      - description: Defines a remote write endpoint to write recording rule metrics.
+        displayName: Remote Write Configuration
+        path: remoteWrite
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Defines the configuration for remote write client.
+        displayName: Client
+        path: remoteWrite.client
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Type of authorzation to use to access the remote write endpoint
+        displayName: Authorization Type
+        path: remoteWrite.client.authorization
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:basic
+        - urn:alm:descriptor:com.tectonic.ui:select:header
+      - description: Name of a secret in the namespace configured for authorization
+          secrets.
+        displayName: Authorization Secret Name
+        path: remoteWrite.client.authorizationSecretName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - description: Configure whether HTTP requests follow HTTP 3xx redirects.
+        displayName: Follow HTTP Redirects
+        path: remoteWrite.client.followRedirects
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Name of the remote write config, which if specified must be unique
+          among remote write configs.
+        displayName: Name
+        path: remoteWrite.client.name
+      - description: Optional proxy URL.
+        displayName: HTTP Proxy URL
+        path: remoteWrite.client.proxyUrl
+      - description: List of remote write relabel configurations.
+        displayName: Metric Relabel Configuration
+        path: remoteWrite.client.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: remoteWrite.client.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: remoteWrite.client.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: remoteWrite.client.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: remoteWrite.client.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: remoteWrite.client.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: remoteWrite.client.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: remoteWrite.client.relabelConfigs[0].targetLabel
+      - description: Timeout for requests to the remote write endpoint.
+        displayName: Remote Write Timeout
+        path: remoteWrite.client.timeout
+      - description: The URL of the endpoint to send samples to.
+        displayName: Endpoint
+        path: remoteWrite.client.url
+      - description: Enable remote-write functionality.
+        displayName: Enabled
+        path: remoteWrite.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Defines the configuration for remote write client queue.
+        displayName: Client Queue
+        path: remoteWrite.queue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Maximum time a sample will wait in buffer.
+        displayName: Batch Send Deadline
+        path: remoteWrite.queue.batchSendDeadline
+      - description: Number of samples to buffer per shard before we block reading
+          of more
+        displayName: Queue Capacity
+        path: remoteWrite.queue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Maximum retry delay.
+        displayName: Max BackOff Period
+        path: remoteWrite.queue.maxBackOffPeriod
+      - description: Maximum number of samples per send.
+        displayName: Maximum Shards per Send
+        path: remoteWrite.queue.maxSamplesPerSend
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Maximum number of shards, i.e. amount of concurrency.
+        displayName: Maximum Shards
+        path: remoteWrite.queue.maxShards
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Initial retry delay. Gets doubled for every retry.
+        displayName: Min BackOff Period
+        path: remoteWrite.queue.minBackOffPeriod
+      - description: Minimum number of shards, i.e. amount of concurrency.
+        displayName: Minimum Shards
+        path: remoteWrite.queue.minShards
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum period to wait between refreshing remote-write reconfigurations.
+        displayName: Min Refresh Period
+        path: remoteWrite.refreshPeriod
+      statusDescriptors:
+      - description: Conditions of the RulerConfig health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
     - description: RulerConfig is the Schema for the rulerconfigs API
       displayName: RulerConfig
       kind: RulerConfig

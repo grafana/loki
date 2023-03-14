@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
 	corev1 "k8s.io/api/core/v1"
@@ -180,7 +179,7 @@ func ConfigOptions(opt Options) config.Options {
 	}
 }
 
-func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
+func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfig {
 	if spec == nil {
 		return nil
 	}
@@ -247,7 +246,7 @@ func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManager
 	return conf
 }
 
-func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
+func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
 	if s == nil || rs == nil {
 		return nil
 	}
@@ -268,10 +267,10 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		switch cls.AuthorizationType {
-		case lokiv1beta1.BasicAuthorization:
+		case lokiv1.BasicAuthorization:
 			c.Client.BasicAuthUsername = rs.Username
 			c.Client.BasicAuthPassword = rs.Password
-		case lokiv1beta1.BearerAuthorization:
+		case lokiv1.BearerAuthorization:
 			c.Client.BearerToken = rs.BearerToken
 		}
 

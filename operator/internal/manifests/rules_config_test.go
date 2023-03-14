@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,16 +43,16 @@ func testOptions() *manifests.Options {
 				"tenant-b": {},
 			},
 		},
-		AlertingRules: []lokiv1beta1.AlertingRule{
+		AlertingRules: []lokiv1.AlertingRule{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "alerting-rules",
 					Namespace: "dev",
 					UID:       types.UID("alerts1"),
 				},
-				Spec: lokiv1beta1.AlertingRuleSpec{
+				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: "tenant-a",
-					Groups: []*lokiv1beta1.AlertingRuleGroup{
+					Groups: []*lokiv1.AlertingRuleGroup{
 						{
 							Name: "rule-a",
 						},
@@ -68,9 +68,9 @@ func testOptions() *manifests.Options {
 					Namespace: "prod",
 					UID:       types.UID("alerts2"),
 				},
-				Spec: lokiv1beta1.AlertingRuleSpec{
+				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: "tenant-a",
-					Groups: []*lokiv1beta1.AlertingRuleGroup{
+					Groups: []*lokiv1.AlertingRuleGroup{
 						{
 							Name: "rule-c",
 						},
@@ -81,16 +81,16 @@ func testOptions() *manifests.Options {
 				},
 			},
 		},
-		RecordingRules: []lokiv1beta1.RecordingRule{
+		RecordingRules: []lokiv1.RecordingRule{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "recording-rules",
 					Namespace: "dev",
 					UID:       types.UID("recs1"),
 				},
-				Spec: lokiv1beta1.RecordingRuleSpec{
+				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: "tenant-b",
-					Groups: []*lokiv1beta1.RecordingRuleGroup{
+					Groups: []*lokiv1.RecordingRuleGroup{
 						{
 							Name: "rule-a",
 						},
@@ -106,9 +106,9 @@ func testOptions() *manifests.Options {
 					Namespace: "prod",
 					UID:       types.UID("recs2"),
 				},
-				Spec: lokiv1beta1.RecordingRuleSpec{
+				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: "tenant-b",
-					Groups: []*lokiv1beta1.RecordingRuleGroup{
+					Groups: []*lokiv1.RecordingRuleGroup{
 						{
 							Name: "rule-c",
 						},

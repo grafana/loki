@@ -524,7 +524,6 @@ type RulerConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-rulerconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=rulerconfigs,verbs=create;update,versions=v1beta1,name=vrulerconfig.loki.grafana.com,admissionReviewVersions=v1
 
 // RulerConfig is the Schema for the rulerconfigs API
 //
@@ -671,6 +670,105 @@ func (src *RulerConfig) ConvertTo(dstRaw conversion.Hub) error {
 				RefreshInterval: v1.PrometheusDuration(src.Spec.AlertManagerSpec.DiscoverySpec.RefreshInterval),
 			}
 		}
+
+		if src.Spec.AlertManagerSpec.NotificationQueueSpec != nil {
+			dst.Spec.AlertManagerSpec.NotificationQueueSpec = &v1.AlertManagerNotificationQueueSpec{
+				Capacity:           src.Spec.AlertManagerSpec.NotificationQueueSpec.Capacity,
+				Timeout:            v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.Timeout),
+				ForOutageTolerance: v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForOutageTolerance),
+				ForGracePeriod:     v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForGracePeriod),
+				ResendDelay:        v1.PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ResendDelay),
+			}
+		}
+
+		if src.Spec.AlertManagerSpec.RelabelConfigs != nil {
+			dst.Spec.AlertManagerSpec.RelabelConfigs = make([]v1.RelabelConfig, len(src.Spec.AlertManagerSpec.RelabelConfigs))
+			for i, rc := range src.Spec.AlertManagerSpec.RelabelConfigs {
+				dst.Spec.AlertManagerSpec.RelabelConfigs[i] = v1.RelabelConfig{
+					SourceLabels: rc.SourceLabels,
+					Separator:    rc.Separator,
+					TargetLabel:  rc.TargetLabel,
+					Regex:        rc.Regex,
+					Modulus:      rc.Modulus,
+					Replacement:  rc.Replacement,
+					Action:       v1.RelabelActionType(rc.Action),
+				}
+			}
+		}
+	}
+
+	if src.Spec.Overrides != nil {
+		dst.Spec.Overrides = make(map[string]v1.RulerOverrides)
+		for k, v := range src.Spec.Overrides {
+			if v.AlertManagerOverrides != nil {
+				dst.Spec.Overrides[k] = v1.RulerOverrides{
+					AlertManagerOverrides: &v1.AlertManagerSpec{
+						ExternalURL:    v.AlertManagerOverrides.ExternalURL,
+						ExternalLabels: v.AlertManagerOverrides.ExternalLabels,
+						EnableV2:       v.AlertManagerOverrides.EnableV2,
+						Endpoints:      v.AlertManagerOverrides.Endpoints,
+					},
+				}
+
+				if v.AlertManagerOverrides.NotificationQueueSpec != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.NotificationQueueSpec = &v1.AlertManagerNotificationQueueSpec{
+						Capacity:           v.AlertManagerOverrides.NotificationQueueSpec.Capacity,
+						Timeout:            v1.PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.Timeout),
+						ForOutageTolerance: v1.PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.ForOutageTolerance),
+						ForGracePeriod:     v1.PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.ForGracePeriod),
+						ResendDelay:        v1.PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.ResendDelay),
+					}
+				}
+
+				if v.AlertManagerOverrides.RelabelConfigs != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.RelabelConfigs = make([]v1.RelabelConfig, len(v.AlertManagerOverrides.RelabelConfigs))
+					for i, rc := range v.AlertManagerOverrides.RelabelConfigs {
+						dst.Spec.Overrides[k].AlertManagerOverrides.RelabelConfigs[i] = v1.RelabelConfig{
+							SourceLabels: rc.SourceLabels,
+							Separator:    rc.Separator,
+							TargetLabel:  rc.TargetLabel,
+							Regex:        rc.Regex,
+							Modulus:      rc.Modulus,
+							Replacement:  rc.Replacement,
+							Action:       v1.RelabelActionType(rc.Action),
+						}
+					}
+				}
+
+				if v.AlertManagerOverrides.DiscoverySpec != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.DiscoverySpec = &v1.AlertManagerDiscoverySpec{
+						EnableSRV:       v.AlertManagerOverrides.EnableV2,
+						RefreshInterval: v1.PrometheusDuration(v.AlertManagerOverrides.DiscoverySpec.RefreshInterval),
+					}
+				}
+
+				if v.AlertManagerOverrides.Client != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.Client = &v1.AlertManagerClientConfig{}
+					if v.AlertManagerOverrides.Client.TLS != nil {
+						dst.Spec.Overrides[k].AlertManagerOverrides.Client.TLS = &v1.AlertManagerClientTLSConfig{
+							CAPath:     v.AlertManagerOverrides.Client.TLS.CAPath,
+							ServerName: v.AlertManagerOverrides.Client.TLS.ServerName,
+							CertPath:   v.AlertManagerOverrides.Client.TLS.CertPath,
+							KeyPath:    v.AlertManagerOverrides.Client.TLS.KeyPath,
+						}
+					}
+					if v.AlertManagerOverrides.Client.BasicAuth != nil {
+						dst.Spec.Overrides[k].AlertManagerOverrides.Client.BasicAuth = &v1.AlertManagerClientBasicAuth{
+							Username: v.AlertManagerOverrides.Client.BasicAuth.Username,
+							Password: v.AlertManagerOverrides.Client.BasicAuth.Password,
+						}
+					}
+					if v.AlertManagerOverrides.Client.HeaderAuth != nil {
+						dst.Spec.Overrides[k].AlertManagerOverrides.Client.HeaderAuth = &v1.AlertManagerClientHeaderAuth{
+							Type:            v.AlertManagerOverrides.Client.HeaderAuth.Type,
+							Credentials:     v.AlertManagerOverrides.Client.HeaderAuth.Credentials,
+							CredentialsFile: v.AlertManagerOverrides.Client.HeaderAuth.CredentialsFile,
+						}
+					}
+				}
+			}
+		}
+
 	}
 
 	return nil
@@ -682,6 +780,221 @@ func (dst *RulerConfig) ConvertFrom(srcRaw conversion.Hub) error {
 
 	dst.ObjectMeta = src.ObjectMeta
 	dst.Status.Conditions = src.Status.Conditions
+	dst.Spec.EvalutionInterval = PrometheusDuration(src.Spec.EvalutionInterval)
+	dst.Spec.PollInterval = PrometheusDuration(src.Spec.PollInterval)
+
+	if src.Spec.RemoteWriteSpec != nil {
+		dst.Spec.RemoteWriteSpec = &RemoteWriteSpec{
+			Enabled:       src.Spec.RemoteWriteSpec.Enabled,
+			RefreshPeriod: PrometheusDuration(src.Spec.RemoteWriteSpec.RefreshPeriod),
+		}
+
+		if src.Spec.RemoteWriteSpec.QueueSpec != nil {
+			dst.Spec.RemoteWriteSpec.QueueSpec = &RemoteWriteClientQueueSpec{
+				Capacity:          src.Spec.RemoteWriteSpec.QueueSpec.Capacity,
+				MaxShards:         src.Spec.RemoteWriteSpec.QueueSpec.MaxShards,
+				MinShards:         src.Spec.RemoteWriteSpec.QueueSpec.MinShards,
+				MaxSamplesPerSend: src.Spec.RemoteWriteSpec.QueueSpec.MaxSamplesPerSend,
+				BatchSendDeadline: PrometheusDuration(src.Spec.RemoteWriteSpec.QueueSpec.BatchSendDeadline),
+				MinBackOffPeriod:  PrometheusDuration(src.Spec.RemoteWriteSpec.QueueSpec.MinBackOffPeriod),
+				MaxBackOffPeriod:  PrometheusDuration(src.Spec.RemoteWriteSpec.QueueSpec.MaxBackOffPeriod),
+			}
+		}
+
+		if src.Spec.RemoteWriteSpec.ClientSpec != nil {
+			dst.Spec.RemoteWriteSpec.ClientSpec = &RemoteWriteClientSpec{
+				Name:                    src.Spec.RemoteWriteSpec.ClientSpec.Name,
+				URL:                     src.Spec.RemoteWriteSpec.ClientSpec.URL,
+				Timeout:                 PrometheusDuration(src.Spec.RemoteWriteSpec.ClientSpec.Timeout),
+				AuthorizationType:       RemoteWriteAuthType(src.Spec.RemoteWriteSpec.ClientSpec.AuthorizationType),
+				AuthorizationSecretName: src.Spec.RemoteWriteSpec.ClientSpec.AuthorizationSecretName,
+				AdditionalHeaders:       src.Spec.RemoteWriteSpec.ClientSpec.AdditionalHeaders,
+				ProxyURL:                src.Spec.RemoteWriteSpec.ClientSpec.ProxyURL,
+				FollowRedirects:         src.Spec.RemoteWriteSpec.ClientSpec.FollowRedirects,
+			}
+
+			if src.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs != nil {
+				dst.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs = make([]RelabelConfig, len(src.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs))
+				for i, c := range src.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs {
+					dst.Spec.RemoteWriteSpec.ClientSpec.RelabelConfigs[i] = RelabelConfig{
+						SourceLabels: c.SourceLabels,
+						Separator:    c.Separator,
+						TargetLabel:  c.TargetLabel,
+						Regex:        c.Regex,
+						Modulus:      c.Modulus,
+						Replacement:  c.Replacement,
+						Action:       RelabelActionType(c.Action),
+					}
+				}
+			}
+		}
+	}
+
+	if src.Spec.AlertManagerSpec != nil {
+		dst.Spec.AlertManagerSpec = &AlertManagerSpec{
+			ExternalURL:    src.Spec.AlertManagerSpec.ExternalURL,
+			ExternalLabels: src.Spec.AlertManagerSpec.ExternalLabels,
+			EnableV2:       src.Spec.AlertManagerSpec.EnableV2,
+			Endpoints:      src.Spec.AlertManagerSpec.Endpoints,
+		}
+
+		if src.Spec.AlertManagerSpec.NotificationQueueSpec != nil {
+			dst.Spec.AlertManagerSpec.NotificationQueueSpec = &AlertManagerNotificationQueueSpec{
+				Capacity:           src.Spec.AlertManagerSpec.NotificationQueueSpec.Capacity,
+				Timeout:            PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.Timeout),
+				ForOutageTolerance: PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForOutageTolerance),
+				ForGracePeriod:     PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForGracePeriod),
+				ResendDelay:        PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ResendDelay),
+			}
+		}
+
+		if src.Spec.AlertManagerSpec.RelabelConfigs != nil {
+			dst.Spec.AlertManagerSpec.RelabelConfigs = make([]RelabelConfig, len(src.Spec.AlertManagerSpec.RelabelConfigs))
+			for i, rc := range src.Spec.AlertManagerSpec.RelabelConfigs {
+				dst.Spec.AlertManagerSpec.RelabelConfigs[i] = RelabelConfig{
+					SourceLabels: rc.SourceLabels,
+					Separator:    rc.Separator,
+					TargetLabel:  rc.TargetLabel,
+					Regex:        rc.Regex,
+					Modulus:      rc.Modulus,
+					Replacement:  rc.Replacement,
+					Action:       RelabelActionType(rc.Action),
+				}
+			}
+		}
+
+		if src.Spec.AlertManagerSpec.Client != nil {
+			dst.Spec.AlertManagerSpec.Client = &AlertManagerClientConfig{}
+			if src.Spec.AlertManagerSpec.Client.BasicAuth != nil {
+				dst.Spec.AlertManagerSpec.Client.BasicAuth = &AlertManagerClientBasicAuth{
+					Username: src.Spec.AlertManagerSpec.Client.BasicAuth.Username,
+					Password: src.Spec.AlertManagerSpec.Client.BasicAuth.Password,
+				}
+			}
+			if src.Spec.AlertManagerSpec.Client.HeaderAuth != nil {
+				dst.Spec.AlertManagerSpec.Client.HeaderAuth = &AlertManagerClientHeaderAuth{
+					Type:            src.Spec.AlertManagerSpec.Client.HeaderAuth.Type,
+					Credentials:     src.Spec.AlertManagerSpec.Client.HeaderAuth.Credentials,
+					CredentialsFile: src.Spec.AlertManagerSpec.Client.HeaderAuth.CredentialsFile,
+				}
+			}
+
+			if src.Spec.AlertManagerSpec.Client.TLS != nil {
+				dst.Spec.AlertManagerSpec.Client.TLS = &AlertManagerClientTLSConfig{
+					CAPath:     src.Spec.AlertManagerSpec.Client.TLS.CAPath,
+					ServerName: src.Spec.AlertManagerSpec.Client.TLS.ServerName,
+					CertPath:   src.Spec.AlertManagerSpec.Client.TLS.CertPath,
+					KeyPath:    src.Spec.AlertManagerSpec.Client.TLS.KeyPath,
+				}
+			}
+		}
+
+		if src.Spec.AlertManagerSpec.DiscoverySpec != nil {
+			dst.Spec.AlertManagerSpec.DiscoverySpec = &AlertManagerDiscoverySpec{
+				EnableSRV:       src.Spec.AlertManagerSpec.DiscoverySpec.EnableSRV,
+				RefreshInterval: PrometheusDuration(src.Spec.AlertManagerSpec.DiscoverySpec.RefreshInterval),
+			}
+		}
+
+		if src.Spec.AlertManagerSpec.NotificationQueueSpec != nil {
+			dst.Spec.AlertManagerSpec.NotificationQueueSpec = &AlertManagerNotificationQueueSpec{
+				Capacity:           src.Spec.AlertManagerSpec.NotificationQueueSpec.Capacity,
+				Timeout:            PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.Timeout),
+				ForOutageTolerance: PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForOutageTolerance),
+				ForGracePeriod:     PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ForGracePeriod),
+				ResendDelay:        PrometheusDuration(src.Spec.AlertManagerSpec.NotificationQueueSpec.ResendDelay),
+			}
+		}
+
+		if src.Spec.AlertManagerSpec.RelabelConfigs != nil {
+			dst.Spec.AlertManagerSpec.RelabelConfigs = make([]RelabelConfig, len(src.Spec.AlertManagerSpec.RelabelConfigs))
+			for i, rc := range src.Spec.AlertManagerSpec.RelabelConfigs {
+				dst.Spec.AlertManagerSpec.RelabelConfigs[i] = RelabelConfig{
+					SourceLabels: rc.SourceLabels,
+					Separator:    rc.Separator,
+					TargetLabel:  rc.TargetLabel,
+					Regex:        rc.Regex,
+					Modulus:      rc.Modulus,
+					Replacement:  rc.Replacement,
+					Action:       RelabelActionType(rc.Action),
+				}
+			}
+		}
+	}
+
+	if src.Spec.Overrides != nil {
+		dst.Spec.Overrides = make(map[string]RulerOverrides)
+		for k, v := range src.Spec.Overrides {
+			if v.AlertManagerOverrides != nil {
+				dst.Spec.Overrides[k] = RulerOverrides{
+					AlertManagerOverrides: &AlertManagerSpec{
+						ExternalURL:    v.AlertManagerOverrides.ExternalURL,
+						ExternalLabels: v.AlertManagerOverrides.ExternalLabels,
+						EnableV2:       v.AlertManagerOverrides.EnableV2,
+						Endpoints:      v.AlertManagerOverrides.Endpoints,
+					},
+				}
+
+				if v.AlertManagerOverrides.NotificationQueueSpec != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.NotificationQueueSpec = &AlertManagerNotificationQueueSpec{
+						Capacity:           v.AlertManagerOverrides.NotificationQueueSpec.Capacity,
+						Timeout:            PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.Timeout),
+						ForOutageTolerance: PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.ForOutageTolerance),
+						ForGracePeriod:     PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.ForGracePeriod),
+						ResendDelay:        PrometheusDuration(v.AlertManagerOverrides.NotificationQueueSpec.ResendDelay),
+					}
+				}
+
+				if v.AlertManagerOverrides.RelabelConfigs != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.RelabelConfigs = make([]RelabelConfig, len(v.AlertManagerOverrides.RelabelConfigs))
+					for i, rc := range v.AlertManagerOverrides.RelabelConfigs {
+						dst.Spec.Overrides[k].AlertManagerOverrides.RelabelConfigs[i] = RelabelConfig{
+							SourceLabels: rc.SourceLabels,
+							Separator:    rc.Separator,
+							TargetLabel:  rc.TargetLabel,
+							Regex:        rc.Regex,
+							Modulus:      rc.Modulus,
+							Replacement:  rc.Replacement,
+							Action:       RelabelActionType(rc.Action),
+						}
+					}
+				}
+
+				if v.AlertManagerOverrides.DiscoverySpec != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.DiscoverySpec = &AlertManagerDiscoverySpec{
+						EnableSRV:       v.AlertManagerOverrides.EnableV2,
+						RefreshInterval: PrometheusDuration(v.AlertManagerOverrides.DiscoverySpec.RefreshInterval),
+					}
+				}
+
+				if v.AlertManagerOverrides.Client != nil {
+					dst.Spec.Overrides[k].AlertManagerOverrides.Client = &AlertManagerClientConfig{}
+					if v.AlertManagerOverrides.Client.TLS != nil {
+						dst.Spec.Overrides[k].AlertManagerOverrides.Client.TLS = &AlertManagerClientTLSConfig{
+							CAPath:     v.AlertManagerOverrides.Client.TLS.CAPath,
+							ServerName: v.AlertManagerOverrides.Client.TLS.ServerName,
+							CertPath:   v.AlertManagerOverrides.Client.TLS.CertPath,
+							KeyPath:    v.AlertManagerOverrides.Client.TLS.KeyPath,
+						}
+					}
+					if v.AlertManagerOverrides.Client.BasicAuth != nil {
+						dst.Spec.Overrides[k].AlertManagerOverrides.Client.BasicAuth = &AlertManagerClientBasicAuth{
+							Username: v.AlertManagerOverrides.Client.BasicAuth.Username,
+							Password: v.AlertManagerOverrides.Client.BasicAuth.Password,
+						}
+					}
+					if v.AlertManagerOverrides.Client.HeaderAuth != nil {
+						dst.Spec.Overrides[k].AlertManagerOverrides.Client.HeaderAuth = &AlertManagerClientHeaderAuth{
+							Type:            v.AlertManagerOverrides.Client.HeaderAuth.Type,
+							Credentials:     v.AlertManagerOverrides.Client.HeaderAuth.Credentials,
+							CredentialsFile: v.AlertManagerOverrides.Client.HeaderAuth.CredentialsFile,
+						}
+					}
+				}
+			}
+		}
+
+	}
 
 	return nil
 }

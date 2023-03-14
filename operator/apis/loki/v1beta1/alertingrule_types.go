@@ -107,9 +107,8 @@ type AlertingRuleStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-alertingrule,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=alertingrules,verbs=create;update,versions=v1beta1,name=valertingrule.loki.grafana.com,admissionReviewVersions=v1
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // AlertingRule is the Schema for the alertingrules API
 //

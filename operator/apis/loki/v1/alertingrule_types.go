@@ -107,6 +107,7 @@ type AlertingRuleStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:storageversion
 //+kubebuilder:webhook:path=/validate-loki-grafana-com-v1-alertingrule,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=alertingrules,verbs=create;update,versions=v1,name=valertingrule.loki.grafana.com,admissionReviewVersions=v1
 
 // AlertingRule is the Schema for the alertingrules API
