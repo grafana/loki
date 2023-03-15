@@ -2,13 +2,13 @@ package rules
 
 import (
 	"context"
-	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -17,19 +17,24 @@ import (
 func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
 	var rulesCmList v1.ConfigMapList
 
-	err := c.List(ctx, &rulesCmList, client.InNamespace(req.Namespace))
+	err := c.List(ctx, &rulesCmList, &client.ListOptions{
+		Namespace: req.Namespace,
+		LabelSelector: labels.SelectorFromSet(labels.Set{
+			"app.kubernetes.io/component": manifests.LabelRulerComponent,
+			"app.kuberentes.io/instance":  req.Name,
+		}),
+	})
+
 	if err != nil {
 		return err
 	}
 
 	for _, rulesCm := range rulesCmList.Items {
-		if strings.HasPrefix(rulesCm.Name, manifests.RulesConfigMapName(req.Name)) {
-			if err := c.Delete(ctx, &rulesCm, &client.DeleteOptions{}); err != nil {
-				return kverrors.Wrap(err, "failed to delete ConfigMap",
-					"name", rulesCm.Name,
-					"namespace", rulesCm.Namespace,
-				)
-			}
+		if err := c.Delete(ctx, &rulesCm, &client.DeleteOptions{}); err != nil {
+			return kverrors.Wrap(err, "failed to delete ConfigMap",
+				"name", rulesCm.Name,
+				"namespace", rulesCm.Namespace,
+			)
 		}
 	}
 
