@@ -6,22 +6,6 @@ metadata:
       [
         {
           "apiVersion": "loki.grafana.com/v1",
-          "kind": "LokiStack",
-          "metadata": {
-            "name": "lokistack-sample"
-          },
-          "spec": {
-            "size": "1x.small",
-            "storage": {
-              "secret": {
-                "name": "test"
-              }
-            },
-            "storageClassName": "standard"
-          }
-        },
-        {
-          "apiVersion": "loki.grafana.com/v1beta1",
           "kind": "AlertingRule",
           "metadata": {
             "name": "alertingrule-sample"
@@ -61,7 +45,23 @@ metadata:
           }
         },
         {
-          "apiVersion": "loki.grafana.com/v1beta1",
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "LokiStack",
+          "metadata": {
+            "name": "lokistack-sample"
+          },
+          "spec": {
+            "size": "1x.small",
+            "storage": {
+              "secret": {
+                "name": "test"
+              }
+            },
+            "storageClassName": "standard"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1",
           "kind": "RecordingRule",
           "metadata": {
             "name": "recordingrule-sample"
@@ -87,7 +87,7 @@ metadata:
           }
         },
         {
-          "apiVersion": "loki.grafana.com/v1beta1",
+          "apiVersion": "loki.grafana.com/v1",
           "kind": "RulerConfig",
           "metadata": {
             "name": "rulerconfig-sample"
@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-39f2856
-    createdAt: "2023-03-14T05:30:49Z"
+    createdAt: "2023-03-15T09:56:48Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -223,7 +223,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack
@@ -717,7 +717,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
     - description: RulerConfig is the Schema for the rulerconfigs API
       displayName: RulerConfig
       kind: RulerConfig
@@ -1153,7 +1153,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
   description: |-
     The Community Loki Operator provides Kubernetes native deployment and management of Loki and related logging components.
     The purpose of this project is to simplify and automate the configuration of a Loki based logging stack for Kubernetes clusters.
@@ -1577,9 +1577,45 @@ spec:
     - v1beta1
     containerPort: 443
     conversionCRDs:
+    - alertingrules.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: calertingrules.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
     - lokistacks.loki.grafana.com
     deploymentName: loki-operator-controller-manager
     generateName: clokistacks.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - recordingrules.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: crecordingrules.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - rulerconfigs.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: crulerconfigs.kb.io
     sideEffects: None
     targetPort: 9443
     type: ConversionWebhook
@@ -1594,7 +1630,7 @@ spec:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1603,7 +1639,7 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-alertingrule
+    webhookPath: /validate-loki-grafana-com-v1-alertingrule
   - admissionReviewVersions:
     - v1
     containerPort: 443
@@ -1634,7 +1670,7 @@ spec:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1643,7 +1679,7 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-recordingrule
+    webhookPath: /validate-loki-grafana-com-v1-recordingrule
   - admissionReviewVersions:
     - v1
     containerPort: 443
@@ -1654,7 +1690,7 @@ spec:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1663,4 +1699,4 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-rulerconfig
+    webhookPath: /validate-loki-grafana-com-v1-rulerconfig

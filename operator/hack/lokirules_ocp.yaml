@@ -1,5 +1,5 @@
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: AlertingRule
 metadata:
   name: loki-operator-dev
@@ -23,7 +23,7 @@ spec:
           annotations:
             summary: High Loki Operator Reconciliation Errors
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: RecordingRule
 metadata:
   name: loki-operator-dev

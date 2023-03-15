@@ -3,7 +3,7 @@ package openshift
 import (
 	"strings"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
@@ -22,17 +22,17 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	// Check if the LogQL parser can parse the rule expression
 	expr, err := syntax.ParseExpr(rawExpr)
 	if err != nil {
-		return lokiv1beta1.ErrParseLogQLExpression
+		return lokiv1.ErrParseLogQLExpression
 	}
 
 	sampleExpr, ok := expr.(syntax.SampleExpr)
 	if !ok {
-		return lokiv1beta1.ErrParseLogQLNotSample
+		return lokiv1.ErrParseLogQLNotSample
 	}
 
 	matchers := sampleExpr.Selector().Matchers()
 	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
-		return lokiv1beta1.ErrRuleMustMatchNamespace
+		return lokiv1.ErrRuleMustMatchNamespace
 	}
 
 	return nil

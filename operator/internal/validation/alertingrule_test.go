@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/stretchr/testify/require"
@@ -16,21 +16,21 @@ import (
 
 var att = []struct {
 	desc string
-	spec v1beta1.AlertingRuleSpec
+	spec lokiv1.AlertingRuleSpec
 	err  *apierrors.StatusError
 }{
 	{
 		desc: "valid spec",
-		spec: v1beta1.AlertingRuleSpec{
-			Groups: []*v1beta1.AlertingRuleGroup{
+		spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 					Limit:    10,
-					Rules: []*v1beta1.AlertingRuleGroupSpec{
+					Rules: []*lokiv1.AlertingRuleGroupSpec{
 						{
 							Alert: "first-alert",
-							For:   v1beta1.PrometheusDuration("10m"),
+							For:   lokiv1.PrometheusDuration("10m"),
 							Expr:  `sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)`,
 							Annotations: map[string]string{
 								"annot": "something",
@@ -41,7 +41,7 @@ var att = []struct {
 						},
 						{
 							Alert: "second-alert",
-							For:   v1beta1.PrometheusDuration("10m"),
+							For:   lokiv1.PrometheusDuration("10m"),
 							Expr:  `sum(rate({app="foo", env="stage"} |= "error" [5m])) by (job)`,
 							Annotations: map[string]string{
 								"env": "something",
@@ -54,12 +54,12 @@ var att = []struct {
 				},
 				{
 					Name:     "second",
-					Interval: v1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 					Limit:    10,
-					Rules: []*v1beta1.AlertingRuleGroupSpec{
+					Rules: []*lokiv1.AlertingRuleGroupSpec{
 						{
 							Alert: "third-alert",
-							For:   v1beta1.PrometheusDuration("10m"),
+							For:   lokiv1.PrometheusDuration("10m"),
 							Expr:  `sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)`,
 							Annotations: map[string]string{
 								"annot": "something",
@@ -70,7 +70,7 @@ var att = []struct {
 						},
 						{
 							Alert: "fourth-alert",
-							For:   v1beta1.PrometheusDuration("10m"),
+							For:   lokiv1.PrometheusDuration("10m"),
 							Expr:  `sum(rate({app="foo", env="stage"} |= "error" [5m])) by (job)`,
 							Annotations: map[string]string{
 								"env": "something",
@@ -86,15 +86,15 @@ var att = []struct {
 	},
 	{
 		desc: "not unique group names",
-		spec: v1beta1.AlertingRuleSpec{
-			Groups: []*v1beta1.AlertingRuleGroup{
+		spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 				},
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 				},
 			},
 		},
@@ -105,18 +105,18 @@ var att = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(1).Child("Name"),
 					"first",
-					v1beta1.ErrGroupNamesNotUnique.Error(),
+					lokiv1.ErrGroupNamesNotUnique.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "parse eval interval err",
-		spec: v1beta1.AlertingRuleSpec{
-			Groups: []*v1beta1.AlertingRuleGroup{
+		spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1mo"),
+					Interval: lokiv1.PrometheusDuration("1mo"),
 				},
 			},
 		},
@@ -127,22 +127,22 @@ var att = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Interval"),
 					"1mo",
-					v1beta1.ErrParseEvaluationInterval.Error(),
+					lokiv1.ErrParseEvaluationInterval.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "parse for interval err",
-		spec: v1beta1.AlertingRuleSpec{
-			Groups: []*v1beta1.AlertingRuleGroup{
+		spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.AlertingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.AlertingRuleGroupSpec{
 						{
 							Alert: "an-alert",
-							For:   v1beta1.PrometheusDuration("10years"),
+							For:   lokiv1.PrometheusDuration("10years"),
 							Expr:  `sum(rate({label="value"}[1m]))`,
 						},
 					},
@@ -156,19 +156,19 @@ var att = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("For"),
 					"10years",
-					v1beta1.ErrParseAlertForPeriod.Error(),
+					lokiv1.ErrParseAlertForPeriod.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "parse LogQL expression err",
-		spec: v1beta1.AlertingRuleSpec{
-			Groups: []*v1beta1.AlertingRuleGroup{
+		spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.AlertingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.AlertingRuleGroupSpec{
 						{
 							Expr: "this is not a valid expression",
 						},
@@ -183,19 +183,19 @@ var att = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
 					"this is not a valid expression",
-					v1beta1.ErrParseLogQLExpression.Error(),
+					lokiv1.ErrParseLogQLExpression.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "LogQL not sample-expression",
-		spec: v1beta1.AlertingRuleSpec{
-			Groups: []*v1beta1.AlertingRuleGroup{
+		spec: lokiv1.AlertingRuleSpec{
+			Groups: []*lokiv1.AlertingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.AlertingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.AlertingRuleGroupSpec{
 						{
 							Expr: `{message=~".+"}`,
 						},
@@ -210,7 +210,7 @@ var att = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
 					`{message=~".+"}`,
-					v1beta1.ErrParseLogQLNotSample.Error(),
+					lokiv1.ErrParseLogQLNotSample.Error(),
 				),
 			},
 		),
@@ -223,7 +223,7 @@ func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			l := &v1beta1.AlertingRule{
+			l := &lokiv1.AlertingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
@@ -248,7 +248,7 @@ func TestAlertingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			l := &v1beta1.AlertingRule{
+			l := &lokiv1.AlertingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
@@ -257,7 +257,7 @@ func TestAlertingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.AlertingRuleValidator{}
-			err := v.ValidateUpdate(ctx, &v1beta1.AlertingRule{}, l)
+			err := v.ValidateUpdate(ctx, &lokiv1.AlertingRule{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

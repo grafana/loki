@@ -1,9 +1,7 @@
-package v1beta1
+package v1
 
 import (
-	v1 "github.com/grafana/loki/operator/apis/loki/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/conversion"
 )
 
 // RecordingRuleSpec defines the desired state of RecordingRule
@@ -85,9 +83,10 @@ type RecordingRuleStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:unservedversion
-// +kubebuilder:subresource:status
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+//+kubebuilder:storageversion
+//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1-recordingrule,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=recordingrules,verbs=create;update,versions=v1,name=vrecordingrule.loki.grafana.com,admissionReviewVersions=v1
 
 // RecordingRule is the Schema for the recordingrules API
 //
@@ -113,72 +112,5 @@ func init() {
 	SchemeBuilder.Register(&RecordingRule{}, &RecordingRuleList{})
 }
 
-// ConvertTo converts this RecordingRule (v1beta1) to the Hub version (v1).
-func (src *RecordingRule) ConvertTo(dstRaw conversion.Hub) error {
-	dst := dstRaw.(*v1.RecordingRule)
-
-	dst.ObjectMeta = src.ObjectMeta
-	dst.Status.Conditions = src.Status.Conditions
-	dst.Spec.TenantID = src.Spec.TenantID
-
-	if src.Spec.Groups == nil {
-		return nil
-	}
-
-	dst.Spec.Groups = make([]*v1.RecordingRuleGroup, len(src.Spec.Groups))
-	for i, g := range src.Spec.Groups {
-
-		sRules := g.Rules
-		rules := make([]*v1.RecordingRuleGroupSpec, len(sRules))
-		for j, r := range sRules {
-			rules[j] = &v1.RecordingRuleGroupSpec{
-				Expr:   r.Expr,
-				Record: r.Record,
-			}
-		}
-
-		dst.Spec.Groups[i] = &v1.RecordingRuleGroup{
-			Name:     g.Name,
-			Interval: v1.PrometheusDuration(g.Interval),
-			Limit:    g.Limit,
-			Rules:    rules,
-		}
-	}
-
-	return nil
-}
-
-// ConvertFrom converts from the Hub version (v1) to this version (v1beta1).
-func (dst *RecordingRule) ConvertFrom(srcRaw conversion.Hub) error {
-	src := srcRaw.(*v1.RecordingRule)
-
-	dst.ObjectMeta = src.ObjectMeta
-	dst.Status.Conditions = src.Status.Conditions
-	dst.Spec.TenantID = src.Spec.TenantID
-
-	if src.Spec.Groups == nil {
-		return nil
-	}
-
-	dst.Spec.Groups = make([]*RecordingRuleGroup, len(src.Spec.Groups))
-	for i, g := range src.Spec.Groups {
-
-		sRules := g.Rules
-		rules := make([]*RecordingRuleGroupSpec, len(sRules))
-		for j, r := range sRules {
-			rules[j] = &RecordingRuleGroupSpec{
-				Expr:   r.Expr,
-				Record: r.Record,
-			}
-		}
-
-		dst.Spec.Groups[i] = &RecordingRuleGroup{
-			Name:     g.Name,
-			Interval: PrometheusDuration(g.Interval),
-			Limit:    g.Limit,
-			Rules:    rules,
-		}
-	}
-
-	return nil
-}
+// Hub declares the v1.RecordingRule as the hub CRD version.
+func (*RecordingRule) Hub() {}
