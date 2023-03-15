@@ -33,6 +33,22 @@ func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1.AlertingRule)
 					err.Error(),
 				))
 			}
+
+			if err := validateRuleLabels(rule.Labels); err != nil {
+				allErrs = append(allErrs, field.Invalid(
+					field.NewPath("spec", "groups").Index(i).Child("rules").Index(j).Child("labels"),
+					rule.Labels,
+					err.Error(),
+				))
+			}
+
+			if err := validateRuleAnnotations(rule.Annotations); err != nil {
+				allErrs = append(allErrs, field.Invalid(
+					field.NewPath("spec", "groups").Index(i).Child("rules").Index(j).Child("annotations"),
+					rule.Annotations,
+					err.Error(),
+				))
+			}
 		}
 	}
 
