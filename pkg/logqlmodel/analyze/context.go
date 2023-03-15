@@ -148,6 +148,9 @@ func New(name, description string, index int, size int) *Context {
 }
 
 func FromProto(c *RemoteContext) *Context {
+	if c == nil {
+		return nil
+	}
 	children := make([]*Context, len(c.Children))
 	for i, child := range c.Children {
 		children[i] = FromProto(child)
