@@ -156,7 +156,7 @@ func Test_TargetRun(t *testing.T) {
 					closed = true
 				},
 			)
-			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true, noopParser{})
+			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true, noopMessageParser{})
 
 			var wg sync.WaitGroup
 			wg.Add(1)

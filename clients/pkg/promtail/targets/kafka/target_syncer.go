@@ -108,7 +108,7 @@ func NewSyncerFromScrapeConfig(
 		GroupID:              cfg.KafkaConfig.GroupID,
 	}
 
-	t, err := NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, noopParser{}, cfg.KafkaConfig.Topics, targetSyncConfig)
+	t, err := NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, noopMessageParser{}, cfg.KafkaConfig.Topics, targetSyncConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error starting kafka target: %w", err)
 	}

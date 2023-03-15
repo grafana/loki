@@ -2,8 +2,8 @@ package kafka
 
 import "github.com/Shopify/sarama"
 
-type noopParser struct{}
+type noopMessageParser struct{}
 
-func (n noopParser) Parse(message *sarama.ConsumerMessage) ([]string, error) {
+func (n noopMessageParser) Parse(message *sarama.ConsumerMessage) ([]string, error) {
 	return []string{string(message.Value)}, nil
 }
