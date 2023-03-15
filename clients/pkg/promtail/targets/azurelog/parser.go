@@ -21,7 +21,7 @@ func messageParser(message *sarama.ConsumerMessage) ([]string, error) {
 		return nil, err
 	}
 
-	var result []string
+	result := make([]string, 0, len(data.Records))
 	for _, m := range data.Records {
 		result = append(result, string(m))
 	}
