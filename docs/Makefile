@@ -1,22 +1,12 @@
-PODMAN := $(shell if command -v podman >/dev/null 2>&1; then echo podman; else echo docker; fi)
-IMAGE := grafana/docs-base:latest
+.DEFAULT_GOAL: help
+
+# Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
+.PHONY: help
+help: ## Display this help.
+help:
+	@awk 'BEGIN {FS = ": ##"; printf "Usage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\.\-\/%]+: ##/ { printf "  %-45s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
 BUILD_IN_CONTAINER ?= true
-
-.PHONY: pull
-pull:
-	$(PODMAN) pull ${IMAGE}
-
-.PHONY: docs
-docs: pull
-	$(PODMAN) run  --rm -it -v ${PWD}/sources:/hugo/content/docs/loki/latest -p 3002:3002 $(IMAGE)
-
-.PHONY: docs-next
-docs-next: pull
-	$(PODMAN) run  --rm -it -v ${PWD}/sources:/hugo/content/docs/loki/next -p 3002:3002 $(IMAGE)
-
-.PHONY: docs-test
-docs-test: pull
-	$(PODMAN) run --rm -it -v ${PWD}/sources:/hugo/content/docs/loki/latest -p 3002:3002 $(IMAGE) /bin/bash -c 'make prod'
 
 sources/installation/helm/reference.md: ../production/helm/loki/reference.md.gotmpl
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -28,3 +18,7 @@ else
 	helm-docs -c ../production/helm/ -t reference.md.gotmpl -o reference.md
 endif
 	mv "$(basename $<)" "$@"
+
+docs: sources/installation/helm/reference.md
+
+include docs.mk
