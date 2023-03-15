@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/strings/slices"
 )
 
 // AlertingRuleValidator does extended-validation of AlertingRule resources for Openshift-based deployments.
-func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1beta1.AlertingRule) field.ErrorList {
+func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1.AlertingRule) field.ErrorList {
 	var allErrs field.ErrorList
 
 	// Check tenant matches expected value
