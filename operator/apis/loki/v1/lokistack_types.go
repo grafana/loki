@@ -359,10 +359,10 @@ const (
 type InstanceAddrType string
 
 const (
-	// MemberListAnyIP when using the first from any private network interfaces (RFC 1918 and RFC 6598).
-	MemberListAnyIP InstanceAddrType = "any"
-	// MemberListPodIP when using the public pod IP from the cluster's pod network.
-	MemberListPodIP InstanceAddrType = "podIP"
+	// InstanceAddrDefault when using the first from any private network interfaces (RFC 1918 and RFC 6598).
+	InstanceAddrDefault InstanceAddrType = "default"
+	// InstanceAddrPodIP when using the public pod IP from the cluster's pod network.
+	InstanceAddrPodIP InstanceAddrType = "podIP"
 )
 
 // MemberListSpec defines the configuration for the memberlist based hash ring.
@@ -374,7 +374,7 @@ type MemberListSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:any","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:default","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
 	InstanceAddrType InstanceAddrType `json:"instanceAddrType"`
 }
 
@@ -729,7 +729,7 @@ type LokiStackSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Hash Ring"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Hash Ring"
 	HashRing *HashRingSpec `json:"hashRing,omitempty"`
 
 	// Storage defines the spec for the object storage endpoint to store logs.

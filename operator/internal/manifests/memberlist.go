@@ -40,21 +40,25 @@ func BuildLokiGossipRingService(stackName string) *corev1.Service {
 
 func configureHashRingEnv(p *corev1.PodSpec, opts Options) error {
 	resetProxyVar(p, gossipInstanceAddrEnvVarName)
+	hashRing := opts.Stack.HashRing
 
-	if opts.Stack.HashRing == nil {
+	if hashRing == nil {
 		return nil
 	}
 
-	if opts.Stack.HashRing.Type != lokiv1.HashRingMemberList {
+	if hashRing.Type != lokiv1.HashRingMemberList {
 		return nil
 	}
 
-	if opts.Stack.HashRing.MemberList == nil {
+	if hashRing.MemberList == nil {
 		return nil
 	}
 
-	if opts.Stack.HashRing.MemberList.InstanceAddrType == lokiv1.MemberListAnyIP {
+	switch hashRing.MemberList.InstanceAddrType {
+	case "", lokiv1.InstanceAddrDefault:
 		return nil
+	default:
+		// Proceed with appending env var
 	}
 
 	src := corev1.Container{

@@ -70,7 +70,7 @@ func TestConfigureHashRingEnv_UseDefaults_WithCustomHashRingSpec(t *testing.T) {
 			HashRing: &lokiv1.HashRingSpec{
 				Type: lokiv1.HashRingMemberList,
 				MemberList: &lokiv1.MemberListSpec{
-					InstanceAddrType: lokiv1.MemberListAnyIP,
+					InstanceAddrType: lokiv1.InstanceAddrDefault,
 				},
 			},
 			Template: &lokiv1.LokiTemplateSpec{
@@ -128,7 +128,7 @@ func TestConfigureHashRingEnv_UseInstanceAddrPodIP(t *testing.T) {
 			HashRing: &lokiv1.HashRingSpec{
 				Type: lokiv1.HashRingMemberList,
 				MemberList: &lokiv1.MemberListSpec{
-					InstanceAddrType: lokiv1.MemberListPodIP,
+					InstanceAddrType: lokiv1.InstanceAddrPodIP,
 				},
 			},
 			Template: &lokiv1.LokiTemplateSpec{

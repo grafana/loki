@@ -247,9 +247,9 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) conf
 	var instanceAddr string
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
-		case lokiv1.MemberListPodIP:
+		case lokiv1.InstanceAddrPodIP:
 			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
-		case lokiv1.MemberListAnyIP:
+		case lokiv1.InstanceAddrDefault:
 			// Do nothing use loki defaults
 		default:
 			// Do nothing use loki defaults

@@ -216,7 +216,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				HashRing: &lokiv1.HashRingSpec{
 					Type: lokiv1.HashRingMemberList,
 					MemberList: &lokiv1.MemberListSpec{
-						InstanceAddrType: lokiv1.MemberListAnyIP,
+						InstanceAddrType: lokiv1.InstanceAddrDefault,
 					},
 				},
 			},
@@ -232,7 +232,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				HashRing: &lokiv1.HashRingSpec{
 					Type: lokiv1.HashRingMemberList,
 					MemberList: &lokiv1.MemberListSpec{
-						InstanceAddrType: lokiv1.MemberListPodIP,
+						InstanceAddrType: lokiv1.InstanceAddrPodIP,
 					},
 				},
 			},

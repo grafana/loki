@@ -273,6 +273,8 @@ spec:
       - description: HashRing defines the spec for the distributed hash ring configuration.
         displayName: Hash Ring
         path: hashRing
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
@@ -283,7 +285,7 @@ spec:
         displayName: Instance Address
         path: hashRing.memberlist.instanceAddrType
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:select:any
+        - urn:alm:descriptor:com.tectonic.ui:select:default
         - urn:alm:descriptor:com.tectonic.ui:select:podIP
       - description: Type of hash ring implementation that should be used
         displayName: Type
