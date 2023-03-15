@@ -1130,11 +1130,11 @@ int32
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;any&#34;</p></td>
-<td><p>MemberListAnyIP when using the first from any private network interfaces (RFC 1918 and RFC 6598).</p>
+<tbody><tr><td><p>&#34;default&#34;</p></td>
+<td><p>InstanceAddrDefault when using the first from any private network interfaces (RFC 1918 and RFC 6598).</p>
 </td>
 </tr><tr><td><p>&#34;podIP&#34;</p></td>
-<td><p>MemberListPodIP when using the public pod IP from the cluster&rsquo;s pod network.</p>
+<td><p>InstanceAddrPodIP when using the public pod IP from the cluster&rsquo;s pod network.</p>
 </td>
 </tr></tbody>
 </table>
