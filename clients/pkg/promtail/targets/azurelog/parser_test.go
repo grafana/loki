@@ -12,11 +12,13 @@ import (
 var functionAppLogsMessageBody string
 
 func Test_parseMessage(t *testing.T) {
+	messageParser := eventHubMessageParser(parseMessage)
+
 	message := &sarama.ConsumerMessage{
 		Value: []byte(functionAppLogsMessageBody),
 	}
 
-	lines, err := parseMessage(message)
+	lines, err := messageParser(message)
 	assert.NoError(t, err)
 	assert.Len(t, lines, 2)
 

@@ -10,6 +10,12 @@ type eventHubMessage struct {
 	Records []json.RawMessage `json:"records"`
 }
 
+type eventHubMessageParser func(message *sarama.ConsumerMessage) ([]string, error)
+
+func (f eventHubMessageParser) Parse(message *sarama.ConsumerMessage) ([]string, error) {
+	return f(message)
+}
+
 func parseMessage(message *sarama.ConsumerMessage) ([]string, error) {
 	// fix json as mentioned here:
 	// https://learn.microsoft.com/en-us/answers/questions/1001797/invalid-json-logs-produced-for-function-apps?fbclid=IwAR3pK8Nj60GFBtKemqwfpiZyf3rerjowPH_j_qIuNrw_uLDesYvC4mTkfgs
