@@ -348,7 +348,7 @@ Following 2 compactor configs that were defined as command line arguments in jso
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
-# Supported types: gcs, s3, azure, swift, filesystem.
+# Supported types: gcs, s3, azure, swift, cos, filesystem.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 ```

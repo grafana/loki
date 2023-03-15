@@ -774,7 +774,7 @@ The `ruler` block configures the Loki ruler.
 # options instead.
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
-  # local, bos)
+  # local, bos, cos)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = ""]
 
@@ -801,6 +801,10 @@ storage:
   # Configures backend rule storage for Swift.
   # The CLI flags prefix for this block configuration is: ruler.storage
   [swift: <swift_storage_config>]
+
+  # Configures backend rule storage for IBM Cloud Object Storage (COS).
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [cos: <cos_storage_config>]
 
   # Configures backend rule storage for a local file system directory.
   local:
@@ -1743,6 +1747,9 @@ boltdb:
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
 
+# The cos_storage_config block configures the connection to IBM Cloud Object Storage.
+[cos: <cos_storage_config>]
+
 grpc_store:
   # Hostname or IP of the gRPC store instance.
   # CLI flag: -grpc-store.server-address
@@ -1807,7 +1814,7 @@ boltdb_shipper:
   [active_index_directory: <string> | default = ""]
 
   # Shared store for keeping index files. Supported types: gcs, s3, azure,
-  # filesystem
+  # cos, filesystem
   # CLI flag: -boltdb.shipper.shared-store
   [shared_store: <string> | default = ""]
 
@@ -1871,7 +1878,7 @@ tsdb_shipper:
   [active_index_directory: <string> | default = ""]
 
   # Shared store for keeping index files. Supported types: gcs, s3, azure,
-  # filesystem
+  # cos, filesystem
   # CLI flag: -tsdb.shipper.shared-store
   [shared_store: <string> | default = ""]
 
@@ -1965,7 +1972,7 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos.
+# azure, swift, filesystem, bos, cos.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -2917,6 +2924,11 @@ storage:
   # The CLI flags prefix for this block configuration is: common.storage
   [swift: <swift_storage_config>]
 
+  # The cos_storage_config block configures the connection to IBM Cloud
+  # Object Storage backend.
+  # The CLI flags prefix for this block configuration is: common.storage
+  [cos: <cos_storage_config>]
+
   filesystem:
     # Directory to store chunks in.
     # CLI flag: -common.storage.filesystem.chunk-directory
@@ -3814,6 +3826,78 @@ backoff_config:
 
   # Maximum number of times to retry when s3 get Object
   # CLI flag: -s3.max-retries
+  [max_retries: <int> | default = 5]
+```
+
+### cos_storage_config
+
+The `cos_storage_config` block configures the connection to IBM Cloud Object Storage. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common.storage`
+- `ruler.storage`
+
+&nbsp;
+
+```yaml
+
+# Set this to `true` to force the request to use path-style addressing.
+# CLI flag: -cos.force-path-style
+[forcepathstyle: <boolean> | default = false]
+
+# Comma separated list of bucket names to evenly distribute chunks over.
+# CLI flag: -cos.buckets
+[bucketnames: <string> | default = ""]
+
+# COS Endpoint to connect to.
+# CLI flag: -cos.endpoint
+[endpoint: <string> | default = ""]
+
+# IBM Cloud region to use.
+# CLI flag: -cos.region
+[region: <string> | default = ""]
+
+# COS HMAC Access Key ID
+# CLI flag: -cos.access-key-id
+[access_key_id: <string> | default = ""]
+
+# COS HMAC Secret Access Key
+# CLI flag: -cos.secret-access-key
+[secret_access_key: <string> | default = ""]
+
+# IBM Cloud IAM APIKEY
+# CLI flag: -cos.api-key
+[api_key: <string> | default = ""]
+
+# COS service instance ID
+# CLI flag: -cos.service-instance-id
+[service_instance_id: <string> | default = ""]
+
+# IBM Cloud IAM endpoint for authentication
+# CLI flag: -cos.auth-endpoint"
+[auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  # CLI flag: -cos.http.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's response
+  # headers after fully writing the request.
+  # CLI flag: -cos.http.response-header-timeout
+  [response_header_timeout: <duration> | default = 0s]
+
+# Configures back off when COS get Object.
+backoff_config:
+  # Minimum backoff time when COS get Object
+  # CLI flag: -cos.min-backoff
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum backoff time when COS get Object
+  # CLI flag: -cos.max-backoff
+  [max_period: <duration> | default = 3s]
+
+  # Maximum number of times to retry when COS get Object
+  # CLI flag: -cos.max-retries
   [max_retries: <int> | default = 5]
 ```
 

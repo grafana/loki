@@ -333,3 +333,55 @@ storage_config:
       kms_key_id: 0987dcba-09fe-87dc-65ba-ab0987654321
 ```
 
+
+## 11-IBM-Cloud-Object-Storage-Config-With-HMAC.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. HMAC will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucket_names: <bucket>
+    endpoint: <endpoint>
+    region: <region>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
+```
+
+
+## 12-IBM-Cloud-Object-Storage-Config-With-APIKey.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. APIKey will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    api_key: <api_key_to_authenticate_with_cos>
+    service_instance_id: <cos_service_instance_id>
+    auth_endpoint: <iam_endpoint_for_authentication>
+```
