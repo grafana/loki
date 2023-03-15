@@ -235,7 +235,7 @@ services:
   grafana:
     logging:
       <<: *logging
-    image: grafana/grafana
+    image: jeschkies/grafana:hackathon-eli5
     depends_on:
       - query-frontend
       - querier
