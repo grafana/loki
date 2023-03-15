@@ -807,15 +807,19 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			break
 		}
 
-		fmt.Fprintln(os.Stderr, "---------- sendBatches")
-		fmt.Fprintln(os.Stderr, analyzeCtx.String())
-		batch.Analyze = analyzeCtx.ToProto()
+		if analyzeCtx != nil {
+			fmt.Fprintln(os.Stderr, "---------- sendBatches")
+			fmt.Fprintln(os.Stderr, analyzeCtx.String())
+			batch.Analyze = analyzeCtx.ToProto()
+		}
 
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 
-		analyzeCtx.Reset()
+		if analyzeCtx != nil {
+			analyzeCtx.Reset()
+		}
 		stats.Reset()
 
 	}

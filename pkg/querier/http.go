@@ -118,16 +118,16 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		n := "Querier Range Query"
 		d := params.String()
 		_, ctx = analyze.NewContext(ctx, &n, &d)
+		fmt.Println("Set analize context")
 	}
 
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 
 	// Check analysis
-	analyzeContext := analyze.FromContext(ctx)
-	if analyzeContext != nil {
+	if ac := analyze.FromContext(ctx); ac != nil {
 		fmt.Println("query.Exec(ctx) is done:")
-		fmt.Println(analyzeContext.String())
+		fmt.Println(ac.String())
 		// TODO: transform analysis to logqlmodel.Trace
 		result.Data = logqlmodel.Trace{
 			Model: pdata.NewTraces(),

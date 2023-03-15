@@ -231,14 +231,13 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	analyzeCtx := analyze.FromContext(ctx)
-	if analyzeCtx != nil {
+	if ac := analyze.FromContext(ctx); ac != nil {
 		// panic("analyzeCtx must not be nil")
 		// aCtx, ctx = analyze.NewContext(ctx, &n, &d)
 		n := "Engine Exec"
 		d := q.params.String()
 		a := analyze.New(n, d, 0, 0)
-		analyzeCtx.AddChild(a)
+		ac.AddChild(a)
 	}
 
 	data, err := q.Eval(ctx)
