@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -152,6 +153,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 			"params", newParams)
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
+			if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
+				return nil, err
+			}
 			return nil, err
 		}
 
@@ -166,6 +170,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 			"params", params)
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
+			if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
+				return nil, err
+			}
 			return nil, err
 		}
 

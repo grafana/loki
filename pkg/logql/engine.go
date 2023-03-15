@@ -279,6 +279,9 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 
 	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
+			return nil, err
+		}
 		return nil, err
 	}
 
@@ -302,6 +305,9 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		}
 		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {
+			if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
+				return nil, err
+			}
 			return nil, err
 		}
 		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)

@@ -139,10 +139,16 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
+			serverutil.WriteError(err, w)
+		}
 		serverutil.WriteError(err, w)
 		return
 	}
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+		if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
+			serverutil.WriteError(err, w)
+		}
 		serverutil.WriteError(err, w)
 		return
 	}
