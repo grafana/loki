@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"math"
 	"sort"
 	"strings"
@@ -230,6 +231,12 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
+	n := "Engine Exec"
+	d := fmt.Sprintf("{ query: %s, shard: %s}", q.params.Query(), q.params.Shards())
+
+	aCtx := analyze.FromContext(ctx)
+	a := analyze.New(n, d, 0, 0)
+	aCtx.AddChild(a)
 	data, err := q.Eval(ctx)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
@@ -286,9 +293,8 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
+		streams, err := readStreams(ctx, iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
@@ -464,13 +470,24 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
+func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
+	aCtx := analyze.FromContext(ctx)
+	childAdded := false
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
+		a := i.Analyze()
+		// somehow we need a nicer way to say "I want to add this at the currently most low level"
+		// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
+		if aCtx.GetChild(0) != nil {
+			aCtx = aCtx.GetChild(0)
+		}
+		aCtx.AddChildRecursively(&a)
+
+		childAdded = true
 		labels, entry := i.Labels(), i.Entry()
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
@@ -498,6 +515,14 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
+	if !childAdded {
+		// somehow we need a nicer way to say "I want to add this at the currently most low level"
+		// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
+		if aCtx.GetChild(0) != nil {
+			aCtx = aCtx.GetChild(0)
+		}
+		aCtx.AddChild(analyze.New("Ingester Shard Query", "no results", 0, 0))
+	}
 	return result, i.Error()
 }
 

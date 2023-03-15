@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"sort"
 	"time"
 
@@ -334,6 +335,10 @@ func newLogBatchIterator(
 		cancel:             cancel,
 		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
 	}, nil
+}
+
+func (it *logBatchIterator) Analyze() analyze.Context {
+	return *analyze.New("logBatchIterator", "to be implemented", 0, 0)
 }
 
 func (it *logBatchIterator) Labels() string {

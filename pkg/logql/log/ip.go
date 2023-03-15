@@ -64,6 +64,10 @@ func (f *IPLineFilter) String() string {
 	return "IPLineFilter"
 }
 
+func (f *IPLineFilter) Description() string {
+	return fmt.Sprintf("{ip: %s, type: %s}", f.ip, f.ty)
+}
+
 // `Process` implements `Stage` interface
 func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, f.filterTy(line, f.ty)
@@ -150,6 +154,16 @@ func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilde
 
 // `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
 func (f *IPLabelFilter) String() string {
+	eq := "=" // LabelFilterEqual -> "==", we don't want in string representation of ip label filter.
+	if f.ty == LabelFilterNotEqual {
+		eq = LabelFilterNotEqual.String()
+	}
+
+	return fmt.Sprintf("%s%sip(%q)", f.label, eq, f.pattern) // label filter
+}
+
+// `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
+func (f *IPLabelFilter) Description() string {
 	eq := "=" // LabelFilterEqual -> "==", we don't want in string representation of ip label filter.
 	if f.ty == LabelFilterNotEqual {
 		eq = LabelFilterNotEqual.String()

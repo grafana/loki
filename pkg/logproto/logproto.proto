@@ -5,6 +5,7 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/logqlmodel/analyze/context.proto";
 import "pkg/push/push.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
@@ -93,6 +94,7 @@ message QueryResponse {
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  analyze.RemoteContext analyze = 3 [(gogoproto.nullable) = true];
 }
 
 message SampleQueryResponse {

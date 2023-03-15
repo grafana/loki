@@ -669,7 +669,8 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// initialize stats collection for ingester queries.
 	ctx := queryServer.Context()
 	_, ctx = stats.NewContext(ctx)
-	_, ctx = analyze.NewContext(ctx)
+	n := "IngesterQuery"
+	_, ctx = analyze.NewContext(ctx, &req.Selector, &n)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -684,7 +685,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if err != nil {
 		return err
 	}
-
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Selector,
@@ -710,7 +710,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if batchLimit == 0 {
 		batchLimit = -1
 	}
-
 	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 

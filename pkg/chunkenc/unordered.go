@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"io"
 	"math"
 	"time"
@@ -264,9 +265,18 @@ func (hb *unorderedHeadBlock) Iterator(
 		return iter.NoopIterator
 	}
 	streamsResult := make([]logproto.Stream, 0, len(streams))
+	totalSamples := 0
+
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
+		totalSamples += len(stream.Entries)
 	}
+	a := analyze.FromContext(ctx)
+	// todo(we should record the real duration and the actual samples out from the last child
+	// in should also be the real amount of entries returned by the original query to the ingester
+	in, _ := a.GetChild(0).GetCounts()
+	a.Set(time.Second, in, totalSamples)
+
 	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
@@ -316,9 +326,12 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		return iter.NoopIterator
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
+	totalSamples := 0
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
+		totalSamples += len(s.Samples)
 	}
+	fmt.Println("total Samples: ", totalSamples)
 	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)

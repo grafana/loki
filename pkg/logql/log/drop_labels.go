@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -11,14 +12,16 @@ type DropLabels struct {
 }
 
 type DropLabel struct {
-	Matcher *labels.Matcher
-	Name    string
+	Matcher     *labels.Matcher
+	Name        string
+	description string
 }
 
 func NewDropLabel(matcher *labels.Matcher, name string) DropLabel {
 	return DropLabel{
-		Matcher: matcher,
-		Name:    name,
+		Matcher:     matcher,
+		Name:        name,
+		description: fmt.Sprintf("{name%s, value%s}", matcher.Name, matcher.Value),
 	}
 }
 
@@ -28,6 +31,10 @@ func NewDropLabels(dl []DropLabel) *DropLabels {
 
 func (dl *DropLabels) String() string {
 	return "DropLabels"
+}
+
+func (dl *DropLabels) Description() string {
+	return "drop labels"
 }
 
 func (dl *DropLabels) Process(ts int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {

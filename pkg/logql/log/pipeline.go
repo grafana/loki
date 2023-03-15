@@ -38,6 +38,7 @@ type Stage interface {
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	RequiredLabelNames() []string
 	String() string
+	Description() string
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
@@ -103,6 +104,10 @@ func (noopStage) String() string {
 	return "NoopStage"
 }
 
+func (noopStage) Description() string {
+	return ""
+}
+
 func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
@@ -111,12 +116,17 @@ func (noopStage) RequiredLabelNames() []string { return []string{} }
 
 type StageFunc struct {
 	name           string
+	description    string
 	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
 }
 
 func (fn StageFunc) String() string {
 	return fn.name
+}
+
+func (fn StageFunc) Description() string {
+	return fn.description
 }
 
 func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -139,6 +149,7 @@ func (s *analyzedStage) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]by
 	start := time.Now()
 	res, match := s.Stage.Process(ts, line, lbs)
 	s.ctx.Observe(time.Since(start), match)
+	s.ctx.SetDescription(s.Stage.Description())
 	return res, match
 }
 
@@ -201,7 +212,7 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 func (p *pipeline) SetAnalyzeContext(ctx *analyze.Context) {
 	p.analyzeContext = ctx
 	for idx := range p.stages {
-		stageAnalyzeContext := analyze.New(p.stages[idx].String(), idx, 0)
+		stageAnalyzeContext := analyze.New(p.stages[idx].String(), "", idx, 0)
 		p.analyzeContext.AddChild(stageAnalyzeContext)
 	}
 }

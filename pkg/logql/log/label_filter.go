@@ -63,17 +63,23 @@ type LabelFilterer interface {
 }
 
 type BinaryLabelFilter struct {
-	Left  LabelFilterer
-	Right LabelFilterer
-	and   bool
+	description string
+	Left        LabelFilterer
+	Right       LabelFilterer
+	and         bool
+}
+
+func (b BinaryLabelFilter) Description() string {
+	return b.String()
 }
 
 // NewAndLabelFilter creates a new LabelFilterer from a and binary operation of two LabelFilterer.
 func NewAndLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilter {
 	return &BinaryLabelFilter{
-		Left:  left,
-		Right: right,
-		and:   true,
+		description: fmt.Sprintf("%s and: %b %s", left.Description(), right.Description()),
+		Left:        left,
+		Right:       right,
+		and:         true,
 	}
 }
 
@@ -120,7 +126,8 @@ func (b *BinaryLabelFilter) String() string {
 
 type noopLabelFilter struct{}
 
-func (noopLabelFilter) String() string { return "" }
+func (noopLabelFilter) String() string      { return "" }
+func (noopLabelFilter) Description() string { return "" }
 func (noopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
@@ -145,6 +152,10 @@ type BytesLabelFilter struct {
 	Name  string
 	Value uint64
 	Type  LabelFilterType
+}
+
+func (b BytesLabelFilter) Description() string {
+	return fmt.Sprintf("{name %s, value %s, type%s}", b.Name, b.Value, b.Type)
 }
 
 // NewBytesLabelFilter creates a new label filterer which parses bytes string representation (1KB) from the value of the named label
@@ -212,6 +223,10 @@ type DurationLabelFilter struct {
 	Type  LabelFilterType
 }
 
+func (b DurationLabelFilter) Description() string {
+	return fmt.Sprintf("{name %s, value %s, type%s}", b.Name, b.Value, b.Type)
+}
+
 // NewDurationLabelFilter creates a new label filterer which parses duration string representation (5s)
 // from the value of the named label and compares it with the given d value.
 func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *DurationLabelFilter {
@@ -272,6 +287,10 @@ type NumericLabelFilter struct {
 	err   error
 }
 
+func (b NumericLabelFilter) Description() string {
+	return fmt.Sprintf("{name %s, value %s, type%s}", b.Name, b.Value, b.Type)
+}
+
 // NewNumericLabelFilter creates a new label filterer which parses float64 string representation (5.2)
 // from the value of the named label and compares it with the given f value.
 func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLabelFilter {
@@ -330,6 +349,10 @@ type StringLabelFilter struct {
 	*labels.Matcher
 }
 
+func (b StringLabelFilter) Description() string {
+	return fmt.Sprintf("{name %s, value %s, type%s}", b.Name, b.Value, b.Type)
+}
+
 // NewStringLabelFilter creates a new label filterer which compares string label.
 // This is the only LabelFilterer that can filter out the __error__ label.
 // Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
@@ -361,6 +384,10 @@ func (s *StringLabelFilter) RequiredLabelNames() []string {
 type lineFilterLabelFilter struct {
 	*labels.Matcher
 	filter Filterer
+}
+
+func (s *lineFilterLabelFilter) Description() string {
+	return s.filter.ToStage().Description()
 }
 
 func (s *lineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {

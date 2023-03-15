@@ -158,7 +158,8 @@ func init() {
 
 type LineFormatter struct {
 	*template.Template
-	buf *bytes.Buffer
+	description string
+	buf         *bytes.Buffer
 
 	currentLine []byte
 	currentTs   int64
@@ -167,7 +168,8 @@ type LineFormatter struct {
 // NewFormatter creates a new log line formatter from a given text template.
 func NewFormatter(tmpl string) (*LineFormatter, error) {
 	lf := &LineFormatter{
-		buf: bytes.NewBuffer(make([]byte, 4096)),
+		description: tmpl,
+		buf:         bytes.NewBuffer(make([]byte, 4096)),
 	}
 
 	functions := addLineAndTimestampFunctions(func() string {
@@ -186,6 +188,10 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 
 func (lf *LineFormatter) String() string {
 	return "LineFormatter"
+}
+
+func (lf *LineFormatter) Description() string {
+	return lf.description
 }
 
 func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -291,11 +297,16 @@ type labelFormatter struct {
 }
 
 type LabelsFormatter struct {
-	formats []labelFormatter
-	buf     *bytes.Buffer
+	formats     []labelFormatter
+	description string
+	buf         *bytes.Buffer
 
 	currentLine []byte
 	currentTs   int64
+}
+
+func (lf LabelsFormatter) Description() string {
+	return lf.description
 }
 
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
@@ -329,6 +340,13 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		formats = append(formats, toAdd)
 	}
 	lf.formats = formats
+	lf.description = func() string {
+		e := new(strings.Builder)
+		for _, f := range lf.formats {
+			fmt.Fprintf(e, f.Name, f.Value)
+		}
+		return e.String()
+	}()
 	return lf, nil
 }
 
@@ -417,6 +435,10 @@ func NewDecolorizer() (*Decolorizer, error) {
 
 func (Decolorizer) String() string {
 	return "Decolorizer"
+}
+
+func (Decolorizer) Description() string {
+	return ""
 }
 
 func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {

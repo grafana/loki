@@ -3,6 +3,7 @@ package iter
 import (
 	"container/heap"
 	"context"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"io"
 	"math"
 	"sync"
@@ -18,12 +19,14 @@ import (
 type EntryIterator interface {
 	Iterator
 	Entry() logproto.Entry
+	Analyze() analyze.Context
 }
 
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int
 	stream logproto.Stream
+	c      analyze.Context
 }
 
 // NewStreamIterator iterates over entries in a stream.
@@ -32,6 +35,11 @@ func NewStreamIterator(stream logproto.Stream) EntryIterator {
 		i:      -1,
 		stream: stream,
 	}
+}
+
+func (i *streamIterator) Analyze() analyze.Context {
+	return i.c
+	//return *analyze.New("streamIterator", "to be implemented", 0, 0)
 }
 
 func (i *streamIterator) Next() bool {
@@ -114,9 +122,10 @@ type mergeEntryIterator struct {
 
 	// buffer of entries to be returned by Next()
 	// We buffer entries with the same timestamp to correctly dedupe them.
-	buffer    []entryWithLabels
-	currEntry entryWithLabels
-	errs      []error
+	buffer      []entryWithLabels
+	currEntry   entryWithLabels
+	currAnalyze analyze.Context
+	errs        []error
 }
 
 // NewMergeEntryIterator returns a new iterator which uses a heap to merge together entries for multiple iterators and deduplicate entries if any.
@@ -137,6 +146,10 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 	result.buffer = make([]entryWithLabels, 0, len(is))
 	result.pushBuffer = make([]EntryIterator, 0, len(is))
 	return result
+}
+
+func (i *mergeEntryIterator) Analyze() analyze.Context {
+	return i.currAnalyze
 }
 
 // prefetch iterates over all inner iterators to merge together, calls Next() on
@@ -199,6 +212,7 @@ func (i *mergeEntryIterator) Next() bool {
 		i.currEntry.Entry = i.heap.Peek().Entry()
 		i.currEntry.labels = i.heap.Peek().Labels()
 		i.currEntry.streamHash = i.heap.Peek().StreamHash()
+		i.currAnalyze = i.heap.Peek().Analyze()
 
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
@@ -328,9 +342,10 @@ func (i *mergeEntryIterator) Len() int {
 }
 
 type entrySortIterator struct {
-	tree      *loser.Tree[sortFields, EntryIterator]
-	currEntry entryWithLabels
-	errs      []error
+	tree        *loser.Tree[sortFields, EntryIterator]
+	currEntry   entryWithLabels
+	currAnalyze analyze.Context
+	errs        []error
 }
 
 // NewSortEntryIterator returns a new EntryIterator that sorts entries by timestamp (depending on the direction) the input iterators.
@@ -417,7 +432,12 @@ func (i *entrySortIterator) Next() bool {
 	i.currEntry.Entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
+	i.currAnalyze = next.Analyze()
 	return true
+}
+
+func (i *entrySortIterator) Analyze() analyze.Context {
+	return i.currAnalyze
 }
 
 func (i *entrySortIterator) Entry() logproto.Entry {
@@ -463,10 +483,11 @@ func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.D
 }
 
 type queryClientIterator struct {
-	client    logproto.Querier_QueryClient
-	direction logproto.Direction
-	err       error
-	curr      EntryIterator
+	client      logproto.Querier_QueryClient
+	direction   logproto.Direction
+	err         error
+	curr        EntryIterator
+	currAnalyze *analyze.Context
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
@@ -489,9 +510,14 @@ func (i *queryClientIterator) Next() bool {
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
 		i.curr = NewQueryResponseIterator(batch, i.direction)
+		i.currAnalyze = analyze.FromProto(batch.Analyze)
 	}
 
 	return true
+}
+
+func (i *queryClientIterator) Analyze() analyze.Context {
+	return *i.currAnalyze
 }
 
 func (i *queryClientIterator) Entry() logproto.Entry {
@@ -513,8 +539,9 @@ func (i *queryClientIterator) Close() error {
 }
 
 type nonOverlappingIterator struct {
-	iterators []EntryIterator
-	curr      EntryIterator
+	iterators   []EntryIterator
+	curr        EntryIterator
+	currAnalyze analyze.Context
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
@@ -535,10 +562,16 @@ func (i *nonOverlappingIterator) Next() bool {
 		if i.curr != nil {
 			i.curr.Close()
 		}
+		i.currAnalyze = i.iterators[0].Analyze()
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
+
 	}
 
 	return true
+}
+
+func (i *nonOverlappingIterator) Analyze() analyze.Context {
+	return i.currAnalyze
 }
 
 func (i *nonOverlappingIterator) Entry() logproto.Entry {
@@ -675,6 +708,10 @@ func (i *reverseIterator) Next() bool {
 	return true
 }
 
+func (i *reverseIterator) Analyze() analyze.Context {
+	return *analyze.New("reverseIterator", "to be implemented", 0, 0)
+}
+
 func (i *reverseIterator) Entry() logproto.Entry {
 	return i.cur.Entry
 }
@@ -728,6 +765,10 @@ func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 	}
 
 	return iter, nil
+}
+
+func (i *reverseEntryIterator) Analyze() analyze.Context {
+	return *analyze.New("reverseEntryIterator", "to be implemented", 0, 0)
 }
 
 func (i *reverseEntryIterator) load() {
@@ -825,8 +866,10 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 type peekingEntryIterator struct {
 	iter EntryIterator
 
-	cache *entryWithLabels
-	next  *entryWithLabels
+	cache        *entryWithLabels
+	next         *entryWithLabels
+	cacheAnalyze analyze.Context
+	nextAnalyze  analyze.Context
 }
 
 // PeekingEntryIterator is an entry iterator that can look ahead an entry
@@ -851,10 +894,15 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 		next.labels = cache.labels
 	}
 	return &peekingEntryIterator{
-		iter:  iter,
-		cache: cache,
-		next:  next,
+		iter:        iter,
+		cache:       cache,
+		next:        next,
+		nextAnalyze: iter.Analyze(),
 	}
+}
+
+func (it *peekingEntryIterator) Analyze() analyze.Context {
+	return it.nextAnalyze
 }
 
 // Next implements `EntryIterator`
@@ -863,6 +911,7 @@ func (it *peekingEntryIterator) Next() bool {
 		it.next.Entry = it.cache.Entry
 		it.next.labels = it.cache.labels
 		it.next.streamHash = it.cache.streamHash
+		it.nextAnalyze = it.cacheAnalyze
 		it.cacheNext()
 		return true
 	}
@@ -875,6 +924,7 @@ func (it *peekingEntryIterator) cacheNext() {
 		it.cache.Entry = it.iter.Entry()
 		it.cache.labels = it.iter.Labels()
 		it.cache.streamHash = it.iter.StreamHash()
+		it.cacheAnalyze = it.iter.Analyze()
 		return
 	}
 	// nothing left removes the cached entry

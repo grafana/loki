@@ -1,6 +1,9 @@
 package iter
 
-import "github.com/grafana/loki/pkg/logproto"
+import (
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
+)
 
 // Iterator iterates over data in time-order.
 type Iterator interface {
@@ -19,10 +22,11 @@ type noOpIterator struct{}
 
 var NoopIterator = noOpIterator{}
 
-func (noOpIterator) Next() bool              { return false }
-func (noOpIterator) Error() error            { return nil }
-func (noOpIterator) Labels() string          { return "" }
-func (noOpIterator) StreamHash() uint64      { return 0 }
-func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }
-func (noOpIterator) Sample() logproto.Sample { return logproto.Sample{} }
-func (noOpIterator) Close() error            { return nil }
+func (noOpIterator) Next() bool               { return false }
+func (noOpIterator) Analyze() analyze.Context { return *analyze.New("noOpIterator", "", 0, 0) }
+func (noOpIterator) Error() error             { return nil }
+func (noOpIterator) Labels() string           { return "" }
+func (noOpIterator) StreamHash() uint64       { return 0 }
+func (noOpIterator) Entry() logproto.Entry    { return logproto.Entry{} }
+func (noOpIterator) Sample() logproto.Sample  { return logproto.Sample{} }
+func (noOpIterator) Close() error             { return nil }

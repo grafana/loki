@@ -352,7 +352,8 @@ func containsLower(line, substr []byte) bool {
 
 func (l containsFilter) ToStage() Stage {
 	return StageFunc{
-		name: "ContainsFilter",
+		name:        "ContainsFilter",
+		description: l.String(),
 		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, l.Filter(line)
 		},

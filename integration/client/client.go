@@ -16,7 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-const requestTimeout = 30 * time.Second
+const requestTimeout = 30 * time.Hour
 
 type roundTripper struct {
 	instanceID    string

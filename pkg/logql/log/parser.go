@@ -58,6 +58,10 @@ func (j *JSONParser) String() string {
 	return "JSONParser"
 }
 
+func (j *JSONParser) Description() string {
+	return ""
+}
+
 func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
@@ -228,6 +232,10 @@ func (r *RegexpParser) String() string {
 	return "RegexpParser"
 }
 
+func (r *RegexpParser) Description() string {
+	return fmt.Sprintf("%s", r.regex)
+}
+
 func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
@@ -255,6 +263,10 @@ func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
 type LogfmtParser struct {
 	dec  *logfmt.Decoder
 	keys internedStringSet
+}
+
+func (l *LogfmtParser) Description() string {
+	return ""
 }
 
 // NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
@@ -334,6 +346,10 @@ func (l *PatternParser) String() string {
 	return "PatternParser"
 }
 
+func (l *PatternParser) Description() string {
+	return "implement"
+}
+
 func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
@@ -360,6 +376,11 @@ type LogfmtExpressionParser struct {
 	expressions map[string][]interface{}
 	dec         *logfmt.Decoder
 	keys        internedStringSet
+	description string
+}
+
+func (l *LogfmtExpressionParser) Description() string {
+	return l.description
 }
 
 func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpressionParser, error) {
@@ -383,6 +404,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpres
 		expressions: paths,
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
+		description: fmt.Sprintf("%s", expressions),
 	}, nil
 }
 
@@ -461,9 +483,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	ids   []string
-	paths [][]string
-	keys  internedStringSet
+	ids         []string
+	paths       [][]string
+	keys        internedStringSet
+	description string
+}
+
+func (j *JSONExpressionParser) Description() string {
+	return j.description
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -484,9 +511,10 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}
 
 	return &JSONExpressionParser{
-		ids:   ids,
-		paths: paths,
-		keys:  internedStringSet{},
+		ids:         ids,
+		paths:       paths,
+		keys:        internedStringSet{},
+		description: fmt.Sprintf("%s", expressions),
 	}, nil
 }
 
@@ -589,6 +617,10 @@ func (UnpackParser) RequiredLabelNames() []string { return []string{} }
 
 func (u *UnpackParser) String() string {
 	return "UnpackParser"
+}
+
+func (u *UnpackParser) Description() string {
+	return ""
 }
 
 func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {

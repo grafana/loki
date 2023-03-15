@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package analyze;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/grafana/loki/pkg/logqlmodel/analyze";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message RemoteContext {
+  int64 countIn = 1 [(gogoproto.jsontag) = "countIn"];
+  int64 countOut = 2 [(gogoproto.jsontag) = "countOut"];
+  string duration = 3 [(gogoproto.jsontag) = "duration"];
+  string name = 4 [(gogoproto.jsontag) = "name"];
+  string description = 5 [(gogoproto.jsontag) = "description"];
+  int32 index = 6 [(gogoproto.jsontag) = "index"];
+  repeated RemoteContext children = 7 [(gogoproto.jsontag) = "children"];
+}
+

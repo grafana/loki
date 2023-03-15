@@ -2,6 +2,7 @@ package iter
 
 import (
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 )
 
 type CacheEntryIterator interface {
@@ -36,6 +37,10 @@ func (it *cachedIterator) Reset() {
 	it.curr = -1
 }
 
+func (it *cachedIterator) Analyze() analyze.Context {
+	return *analyze.New("streamIterator", "to be implemented", 0, 0)
+}
+
 func (it *cachedIterator) Wrapped() EntryIterator {
 	return it.wrapped
 }
@@ -44,6 +49,7 @@ func (it *cachedIterator) consumeWrapped() bool {
 	if it.Wrapped() == nil {
 		return false
 	}
+	// todo, fix and pass a real context, maybe one that's stored on the iterator object?
 	ok := it.Wrapped().Next()
 	// we're done with the base iterator.
 	if !ok {
@@ -141,6 +147,7 @@ func (it *cachedSampleIterator) consumeWrapped() bool {
 	if it.Wrapped() == nil {
 		return false
 	}
+	// todo, fix and pass a real context, maybe one that's stored on the iterator object?
 	ok := it.Wrapped().Next()
 	// we're done with the base iterator.
 	if !ok {

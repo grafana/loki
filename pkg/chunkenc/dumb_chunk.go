@@ -2,6 +2,7 @@ package chunkenc
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"io"
 	"sort"
 	"time"
@@ -131,6 +132,10 @@ type dumbChunkIterator struct {
 	direction logproto.Direction
 	i         int
 	entries   []logproto.Entry
+}
+
+func (i *dumbChunkIterator) Analyze() analyze.Context {
+	return *analyze.New("dumbChunkIterator", "to be implemented", 0, 0)
 }
 
 func (i *dumbChunkIterator) Next() bool {

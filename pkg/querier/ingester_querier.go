@@ -114,7 +114,8 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 
 	iterators := make([]iter.EntryIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), params.Direction)
+		r := resps[i].response.(logproto.Querier_QueryClient)
+		iterators[i] = iter.NewQueryClientIterator(r, params.Direction)
 	}
 	return iterators, nil
 }

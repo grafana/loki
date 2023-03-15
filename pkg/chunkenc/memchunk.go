@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -1274,6 +1275,10 @@ type entryBufferedIterator struct {
 
 func (e *entryBufferedIterator) Entry() logproto.Entry {
 	return e.cur
+}
+
+func (e *entryBufferedIterator) Analyze() analyze.Context {
+	return *analyze.New("entryBufferedIterator", "to be implemented", 0, 0)
 }
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }

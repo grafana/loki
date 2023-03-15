@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -635,8 +634,8 @@ func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) er
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forMatchingStreams(
 	ctx context.Context,
-	// ts denotes the beginning of the request
-	// and is used to select the correct inverted index
+// ts denotes the beginning of the request
+// and is used to select the correct inverted index
 	ts time.Time,
 	matchers []*labels.Matcher,
 	shards *astmapper.ShardAnnotation,
@@ -804,12 +803,12 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if isDone(ctx) {
 			break
 		}
+		batch.Analyze = analyzeCtx.ToProto()
+		analyzeCtx.Reset()
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "--- sendBatches ---")
-		fmt.Fprintln(os.Stderr, analyzeCtx.String())
-		analyzeCtx.Reset()
+
 		stats.Reset()
 	}
 	return nil
