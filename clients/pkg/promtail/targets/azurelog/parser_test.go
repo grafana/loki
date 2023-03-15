@@ -18,7 +18,7 @@ func Test_parseMessage(t *testing.T) {
 		Value: []byte(functionAppLogsMessageBody),
 	}
 
-	lines, err := messageParser(message)
+	lines, err := messageParser.Parse(message)
 	assert.NoError(t, err)
 	assert.Len(t, lines, 2)
 
