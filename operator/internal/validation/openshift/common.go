@@ -1,15 +1,21 @@
 package openshift
 
 import (
+	"regexp"
 	"strings"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
 const (
+	severityLabelName = "severity"
+
+	summaryAnnotationName     = "summary"
+	descriptionAnnotationName = "description"
+
 	namespaceLabelName        = "kubernetes_namespace_name"
 	namespaceOpenshiftLogging = "openshift-logging"
 
@@ -18,21 +24,23 @@ const (
 	tenantInfrastructure = "infrastructure"
 )
 
+var severityRe = regexp.MustCompile("^critical|warning|info$")
+
 func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	// Check if the LogQL parser can parse the rule expression
 	expr, err := syntax.ParseExpr(rawExpr)
 	if err != nil {
-		return lokiv1beta1.ErrParseLogQLExpression
+		return lokiv1.ErrParseLogQLExpression
 	}
 
 	sampleExpr, ok := expr.(syntax.SampleExpr)
 	if !ok {
-		return lokiv1beta1.ErrParseLogQLNotSample
+		return lokiv1.ErrParseLogQLNotSample
 	}
 
 	matchers := sampleExpr.Selector().Matchers()
 	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
-		return lokiv1beta1.ErrRuleMustMatchNamespace
+		return lokiv1.ErrRuleMustMatchNamespace
 	}
 
 	return nil
@@ -60,4 +68,31 @@ func tenantForNamespace(namespace string) []string {
 	}
 
 	return []string{tenantApplication}
+}
+
+func validateRuleLabels(labels map[string]string) error {
+	value, found := labels[severityLabelName]
+	if !found {
+		return lokiv1.ErrSeverityLabelMissing
+	}
+
+	if !severityRe.MatchString(value) {
+		return lokiv1.ErrSeverityLabelInvalid
+	}
+
+	return nil
+}
+
+func validateRuleAnnotations(annotations map[string]string) error {
+	value, found := annotations[summaryAnnotationName]
+	if !found || value == "" {
+		return lokiv1.ErrSummaryAnnotationMissing
+	}
+
+	value, found = annotations[descriptionAnnotationName]
+	if !found || value == "" {
+		return lokiv1.ErrDescriptionAnnotationMissing
+	}
+
+	return nil
 }

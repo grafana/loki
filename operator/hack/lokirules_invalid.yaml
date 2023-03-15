@@ -1,4 +1,4 @@
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: AlertingRule
 metadata:
   name: lokistack-dev
@@ -20,7 +20,7 @@ spec:
           expr: 'broken expr'
           for: "brokenFor"
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: RecordingRule
 metadata:
   name: lokistack-dev

@@ -6,22 +6,6 @@ metadata:
       [
         {
           "apiVersion": "loki.grafana.com/v1",
-          "kind": "LokiStack",
-          "metadata": {
-            "name": "lokistack-sample"
-          },
-          "spec": {
-            "size": "1x.small",
-            "storage": {
-              "secret": {
-                "name": "test"
-              }
-            },
-            "storageClassName": "standard"
-          }
-        },
-        {
-          "apiVersion": "loki.grafana.com/v1beta1",
           "kind": "AlertingRule",
           "metadata": {
             "name": "alertingrule-sample"
@@ -61,7 +45,23 @@ metadata:
           }
         },
         {
-          "apiVersion": "loki.grafana.com/v1beta1",
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "LokiStack",
+          "metadata": {
+            "name": "lokistack-sample"
+          },
+          "spec": {
+            "size": "1x.small",
+            "storage": {
+              "secret": {
+                "name": "test"
+              }
+            },
+            "storageClassName": "standard"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1",
           "kind": "RecordingRule",
           "metadata": {
             "name": "recordingrule-sample"
@@ -87,7 +87,7 @@ metadata:
           }
         },
         {
-          "apiVersion": "loki.grafana.com/v1beta1",
+          "apiVersion": "loki.grafana.com/v1",
           "kind": "RulerConfig",
           "metadata": {
             "name": "rulerconfig-sample"
@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-03-14T05:30:51Z"
+    createdAt: "2023-03-15T10:50:48Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -236,7 +236,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack
@@ -730,7 +730,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
     - description: RulerConfig is the Schema for the rulerconfigs API
       displayName: RulerConfig
       kind: RulerConfig
@@ -1166,7 +1166,7 @@ spec:
         path: conditions
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
-      version: v1beta1
+      version: v1
   description: |
     The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
     ## Prerequisites and Requirements
@@ -1593,9 +1593,45 @@ spec:
     - v1beta1
     containerPort: 443
     conversionCRDs:
+    - alertingrules.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: calertingrules.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
     - lokistacks.loki.grafana.com
     deploymentName: loki-operator-controller-manager
     generateName: clokistacks.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - recordingrules.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: crecordingrules.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - rulerconfigs.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: crulerconfigs.kb.io
     sideEffects: None
     targetPort: 9443
     type: ConversionWebhook
@@ -1610,7 +1646,7 @@ spec:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1619,7 +1655,7 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-alertingrule
+    webhookPath: /validate-loki-grafana-com-v1-alertingrule
   - admissionReviewVersions:
     - v1
     containerPort: 443
@@ -1650,7 +1686,7 @@ spec:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1659,7 +1695,7 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-recordingrule
+    webhookPath: /validate-loki-grafana-com-v1-recordingrule
   - admissionReviewVersions:
     - v1
     containerPort: 443
@@ -1670,7 +1706,7 @@ spec:
     - apiGroups:
       - loki.grafana.com
       apiVersions:
-      - v1beta1
+      - v1
       operations:
       - CREATE
       - UPDATE
@@ -1679,4 +1715,4 @@ spec:
     sideEffects: None
     targetPort: 9443
     type: ValidatingAdmissionWebhook
-    webhookPath: /validate-loki-grafana-com-v1beta1-rulerconfig
+    webhookPath: /validate-loki-grafana-com-v1-rulerconfig
