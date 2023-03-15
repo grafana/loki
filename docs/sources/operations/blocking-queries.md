@@ -9,7 +9,7 @@ In certain situations, you may not be able to control the queries being sent to 
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
 your service.
 
-You can block queries using [per-tenant overrides]({{<relref "../configuration/#runtime-configuration-file">}}), like so:
+You can block queries using [per-tenant overrides]({{<relref "../configure/#runtime-configuration-file">}}), like so:
 
 ```yaml
 overrides:

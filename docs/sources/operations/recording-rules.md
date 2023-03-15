@@ -7,7 +7,7 @@ description: Working with recording rules.
 
 Recording rules are evaluated by the `ruler` component. Each `ruler` acts as its own `querier`, in the sense that it
 executes queries against the store without using the `query-frontend` or `querier` components. It will respect all query
-[limits]({{< relref "../configuration/#limits_config" >}}) put in place for the `querier`.
+[limits]({{< relref "../configure/#limits_config" >}}) put in place for the `querier`.
 
 Loki's implementation of recording rules largely reuses Prometheus' code.
 
@@ -49,7 +49,7 @@ excessively large due to truncation.
 
 ## Scaling
 
-See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/operators-guide/configuring/configuring-hash-rings/) for scaling the ruler using a ring.
+See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/operators-guide/configure/configure-hash-rings/) for scaling the ruler using a ring.
 
 Note: the `ruler` shards by rule _group_, not by individual rules. This is an artifact of the fact that Prometheus
 recording rules need to run in order since one recording rule can reuse another - but this is not possible in Loki.
@@ -70,8 +70,8 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here]({{<relref "../configuration/#ruler">}})
-have [override options]({{<relref "../configuration/#limits_config">}}) (which can be also applied at runtime!).
+a per-tenant basis. Most of the configuration options [defined here]({{<relref "../configure/#ruler">}})
+have [override options]({{<relref "../configure/#limits_config">}}) (which can be also applied at runtime!).
 
 ### Tuning
 

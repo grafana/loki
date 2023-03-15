@@ -1,8 +1,14 @@
 ---
-title: Examples
+title: Loki configuration examples
+menuTItle:
 description: Loki Configuration Examples
+aliases:
+ - /docs/loki/latest/configuration/examples/
+ - /docs/loki/latest/configure/examples/
+weight:
+keywords:
 ---
- # Examples
+ # Loki configuration examples
 
 ## alibaba-cloud-storage-config.yaml
 

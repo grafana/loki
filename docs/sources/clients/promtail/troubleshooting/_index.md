@@ -12,7 +12,7 @@ adopted trade-offs.
 Promtail can be configured to print log stream entries instead of sending them to Loki.
 This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot Promtail log parsing.
 
-In dry run mode, Promtail still support reading from a [positions]({{<relref "../configuration#positions">}}) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
+In dry run mode, Promtail still support reading from a [positions]({{<relref "../configuration/#positions">}}) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
 
 To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
 
@@ -197,7 +197,7 @@ from there. This means that if new log entries have been read and pushed to the
 ingester between the last sync period and the crash, these log entries will be
 sent again to the ingester on Promtail restart.
 
-If Loki is not configured to [accept out-of-order writes]({{<relref "../../../configuration/#accept-out-of-order-writes">}}), Loki will reject all log lines received in
+If Loki is not configured to [accept out-of-order writes]({{<relref "../../../configure/#accept-out-of-order-writes">}}), Loki will reject all log lines received in
 what it perceives is out of
 order. If Promtail happens to
 crash, it may re-send log lines that were sent prior to the crash. The default

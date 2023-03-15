@@ -1,6 +1,6 @@
 ---
 description: Describes parameters used to configure Grafana Loki.
-menuTitle: Configuration parameters
+menuTitle: Configure
 title: Grafana Loki configuration parameters
 weight: 500
 ---

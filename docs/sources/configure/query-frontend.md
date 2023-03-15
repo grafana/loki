@@ -1,8 +1,14 @@
 ---
-title: Query Frontend
+title: Query frontend
+menuTItle:
 description: Kubernetes Query Frontend Example
+aliases:
+ - /docs/loki/latest/configuration/query-frontend/
+ - /docs/loki/latest/configure/query-frontend/
+weight:
+keywords:
 ---
-# Query Frontend
+# Query frontend
 
 ## Disclaimer
 

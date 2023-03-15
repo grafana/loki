@@ -15,9 +15,9 @@ Until Loki 2.0, index data was stored in a separate index.
 
 Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call Single Store Loki.
 This index type only requires one store, the object store, for both the index and chunks.
-More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
+More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md">}}).
 
-Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
+Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md">}}).
 
 ## Implementations - Chunks
 
@@ -54,7 +54,7 @@ Single-Store refers to the using object storage as the storage medium for both L
 
 #### tsdb (recommended)
 
-Starting in Loki v2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+Starting in Loki v2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb">}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
 
 #### BoltDB (deprecated)
 
@@ -143,13 +143,13 @@ table_manager:
     inactive_read_throughput: <int> | Default = 300
 ```
 
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration]({{<relref "../configuration/#table_manager">}}) in the `table_manager` block documentation for more information.
+Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration]({{<relref "../configure/#table_manager">}}) in the `table_manager` block documentation for more information.
 
 ## Upgrading Schemas
 
 When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query & merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
 
-First, you'll want to create a new [period_config]({{<relref "../configuration#period_config">}}) entry in your [schema_config]({{<relref "../configuration#schema_config">}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
+First, you'll want to create a new [period_config]({{<relref "../configure/#period_config">}}) entry in your [schema_config]({{<relref "../configure/#schema_config">}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
 As an example, let's say it's 2020-07-14 and we want to start using the `v11` schema on the 20th:
 ```yaml

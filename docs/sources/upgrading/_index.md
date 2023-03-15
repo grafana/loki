@@ -147,7 +147,7 @@ So if you run Loki behind some proxy with different authorization policies to re
 
 Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
 As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
-we're deprecating it and moving it to [Limits Config](/docs/loki/latest/configuration/#limits_config) `limits_config.query_timeout` with same default values.
+we're deprecating it and moving it to [`limits_config.query_timeout`]({{< relref "../configure/#limits_config">}})  with same default values.
 
 #### `fifocache` has been renamed
 
@@ -230,7 +230,7 @@ The `gcp_push_target_parsing_errors_total` GCP Push Target metrics has been adde
 
 #### Windows event logs: now correctly includes `user_data`
 
-The contents of the `user_data` field was erroneously set to the same value as `event_data` in previous versions. This was fixed in [#7461](https://github.com/grafana/loki/pull/7461) and log queries relying on this broken behaviour may be impacted.
+The contents of the `user_data` field was erroneously set to the same value as `event_data` in previous versions. This was fixed in [#7461](https://github.com/grafana/loki/pull/7461) and log queries relying on this broken behavior may be impacted.
 
 ## 2.6.0
 
@@ -238,7 +238,7 @@ The contents of the `user_data` field was erroneously set to the same value as `
 
 #### Implementation of unwrapped `rate` aggregation changed
 
-The implementation of the `rate()` aggregation function changed back to the previous implemention prior to [#5013](https://github.com/grafana/loki/pulls/5013).
+The implementation of the `rate()` aggregation function changed back to the previous implementation prior to [#5013](https://github.com/grafana/loki/pulls/5013).
 This means that the rate per second is calculated based on the sum of the extracted values, instead of the average increase over time.
 
 If you want the extracted values to be treated as [Counter](https://prometheus.io/docs/concepts/metric_types/#counter) metric, you should use the new `rate_counter()` aggregation function, which calculates the per-second average rate of increase of the vector.
@@ -329,7 +329,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs]({{< relref "../clients/promtail/stages/metrics/#counter" >}})
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -845,7 +845,7 @@ If you happen to have `results_cache.max_freshness` set please use `limits_confi
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration/#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration/#pipeline_stages">}}) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
@@ -1169,7 +1169,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../configuration#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config]({{< relref "../configure/#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
