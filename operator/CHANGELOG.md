@@ -1,6 +1,7 @@
 ## Main
 
 - [8748](https://github.com/grafana/loki/pull/8748) **periklis**: Add alertingrule tenant id label for all rules
+- [8743](https://github.com/grafana/loki/pull/8743) **periklis**: Add alerting style guide validation
 - [8192](https://github.com/grafana/loki/pull/8192) **jotak**: Allow multiple matchers for multi-tenancy with Network tenant (OpenShift)
 - [8800](https://github.com/grafana/loki/pull/8800) **aminesnow**: Promote AlertingRules, RecordingRules and RulerConfig from v1beta1 to v1
 - [8792](https://github.com/grafana/loki/pull/8792) **orenc1**: Improve documentation for LokiStack installation with ODF Object Storage
