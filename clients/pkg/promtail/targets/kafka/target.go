@@ -6,6 +6,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -25,7 +26,7 @@ func (d *runnableDroppedTarget) run() {
 }
 
 // MessageParser defines parsing for each incoming message
-type MessageParser func(logger log.Logger, message *sarama.ConsumerMessage) []string
+type MessageParser func(message *sarama.ConsumerMessage) ([]string, error)
 
 type Target struct {
 	logger               log.Logger
@@ -89,12 +90,15 @@ func (t *Target) run() {
 			out = out.Merge(lbs)
 		}
 
-		var logLines []string
+		logLines := []string{string(message.Value)}
 
 		if t.messageParser != nil {
-			logLines = t.messageParser(t.logger, message)
-		} else {
-			logLines = []string{string(message.Value)}
+			ll, err := t.messageParser(message)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "message parsing error", "err", err)
+			} else {
+				logLines = ll
+			}
 		}
 
 		for _, logLine := range logLines {
