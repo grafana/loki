@@ -139,21 +139,21 @@ func testOptions_withSharding() *manifests.Options {
 	// that should result in sharding the rules ConfigMap
 	// In this case, each Alerting rule amounts to 598 bytes of ConfigMap data
 	// and 2000 of them will be split into 2 shards
-	var alertingRules []lokiv1beta1.AlertingRule
+	var alertingRules []lokiv1.AlertingRule
 
 	for i := 0; i < 2000; i++ {
-		alertingRules = append(alertingRules, lokiv1beta1.AlertingRule{
+		alertingRules = append(alertingRules, lokiv1.AlertingRule{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "alerting-rules",
 				Namespace: "dev",
 				UID:       types.UID(fmt.Sprintf("alerts%d", i)),
 			},
-			Spec: lokiv1beta1.AlertingRuleSpec{
+			Spec: lokiv1.AlertingRuleSpec{
 				TenantID: "tenant-a",
-				Groups: []*lokiv1beta1.AlertingRuleGroup{
+				Groups: []*lokiv1.AlertingRuleGroup{
 					{
 						Name: "rule-a",
-						Rules: []*lokiv1beta1.AlertingRuleGroupSpec{
+						Rules: []*lokiv1.AlertingRuleGroupSpec{
 							{
 								Alert: fmt.Sprintf("test%d", i),
 								Expr: `|

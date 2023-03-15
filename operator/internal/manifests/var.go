@@ -41,6 +41,7 @@ const (
 	configVolumeName       = "config"
 	rulesStorageVolumeName = "rules"
 	storageVolumeName      = "storage"
+	rulePartsSeparator     = "___"
 
 	walDirectory          = "/tmp/wal"
 	dataDirectory         = "/tmp/loki"

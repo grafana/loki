@@ -34,12 +34,16 @@ func NewShardedConfigMap(template *corev1.ConfigMap, namePrefix string) *Sharded
 func (cm *ShardedConfigMap) newConfigMapShard(index int) *corev1.ConfigMap {
 	newShardCM := cm.template.DeepCopy()
 	newShardCM.Data = make(map[string]string)
-	newShardCM.Name = makeShardConfigMapName(newShardCM.Name, index)
+	newShardCM.Name = shardConfigMapName(newShardCM.Name, index)
 	return newShardCM
 }
 
-func makeShardConfigMapName(prefix string, index int) string {
+func shardConfigMapName(prefix string, index int) string {
 	return fmt.Sprintf("%s-%d", prefix, index)
+}
+
+func extractTenantID(ruleName string) string {
+	return strings.Split(ruleName, rulePartsSeparator)[0]
 }
 
 func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
@@ -64,13 +68,13 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 			currentCMSize = 0
 			currentCM = cm.newConfigMapShard(currentCMIndex)
 		}
-		// extract tenantID from the key
-		// to later match to the tenant when mounting to the pod
-		tenantID := strings.Split(k, "___")[0]
+		// extract tenantID from the key to later match it
+		// to the tenant when mounting to the pod
+		tenantID := extractTenantID(k)
 
 		// add the current configMap name to the rule file name
 		// this is also to help mount rule files to the pod
-		ruleFileName := fmt.Sprintf("%s___%s", currentCM.Name, k)
+		ruleFileName := fmt.Sprintf("%s%s%s", currentCM.Name, rulePartsSeparator, k)
 
 		if tenant, ok := opts.Tenants.Configs[tenantID]; ok {
 			tenant.RuleFiles = append(tenant.RuleFiles, ruleFileName)
@@ -80,7 +84,7 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 		currentCMSize += dataSize
 
 		// remove the tenantID from the file name
-		k = strings.Split(k, "___")[1]
+		k = strings.Split(k, rulePartsSeparator)[1]
 		currentCM.Data[k] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)

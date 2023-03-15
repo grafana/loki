@@ -80,54 +80,29 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		})
 	}
 
-	volumes := []corev1.Volume{
-		{
-			Name: configVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					DefaultMode: &defaultConfigMapMode,
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: lokiConfigMapName(opts.Name),
+	podSpec := corev1.PodSpec{
+		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Volumes: []corev1.Volume{
+			{
+				Name: configVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						DefaultMode: &defaultConfigMapMode,
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: lokiConfigMapName(opts.Name),
+						},
+					},
+				},
+			},
+			{
+				Name: rulesStorageVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					Projected: &corev1.ProjectedVolumeSource{
+						Sources: volumeProjections,
 					},
 				},
 			},
 		},
-		{
-			Name: rulesStorageVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				Projected: &corev1.ProjectedVolumeSource{
-					Sources: volumeProjections,
-				},
-			},
-		},
-	}
-
-	volumeMounts := []corev1.VolumeMount{
-		{
-			Name:      configVolumeName,
-			ReadOnly:  false,
-			MountPath: config.LokiConfigMountDir,
-		},
-		{
-			Name:      walVolumeName,
-			ReadOnly:  false,
-			MountPath: walDirectory,
-		},
-		{
-			Name:      storageVolumeName,
-			ReadOnly:  false,
-			MountPath: dataDirectory,
-		},
-		{
-			Name:      rulesStorageVolumeName,
-			ReadOnly:  false,
-			MountPath: rulesStorageDirectory,
-		},
-	}
-
-	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
-		Volumes:  volumes,
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
@@ -161,7 +136,28 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						Protocol:      protocolTCP,
 					},
 				},
-				VolumeMounts:             volumeMounts,
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      configVolumeName,
+						ReadOnly:  false,
+						MountPath: config.LokiConfigMountDir,
+					},
+					{
+						Name:      walVolumeName,
+						ReadOnly:  false,
+						MountPath: walDirectory,
+					},
+					{
+						Name:      storageVolumeName,
+						ReadOnly:  false,
+						MountPath: dataDirectory,
+					},
+					{
+						Name:      rulesStorageVolumeName,
+						ReadOnly:  false,
+						MountPath: rulesStorageDirectory,
+					},
+				},
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
@@ -356,12 +352,13 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 
 	for tenantID, tenant := range tenants {
 		for _, rule := range tenant.RuleFiles {
-			// rule file name is in the format cmName___tenantID___ruleName
-			shard_name := strings.Split(rule, "___")[0]
-			if shard_name == configMapName {
+			ruleParts := strings.Split(rule, rulePartsSeparator)
+			shardName := ruleParts[0]
+			if shardName == configMapName {
+				filename := ruleParts[2]
 				items = append(items, corev1.KeyToPath{
-					Key:  strings.Split(rule, "___")[2],
-					Path: fmt.Sprintf("%s/%s", tenantID, strings.Split(rule, "___")[2]),
+					Key:  filename,
+					Path: fmt.Sprintf("%s/%s", tenantID, filename),
 				})
 			}
 		}

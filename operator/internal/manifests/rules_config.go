@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // RulesConfigMap returns a ConfigMap resource that contains
@@ -24,7 +25,7 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := fmt.Sprintf("%s___%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
+		key := newRuleFileName(opts, r.Spec.TenantID, r.Namespace, r.Name, r.UID)
 		shardedCM.data[key] = c
 	}
 
@@ -33,7 +34,7 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := fmt.Sprintf("%s___%s-%s-%s.yaml", r.Spec.TenantID, r.Namespace, r.Name, r.UID)
+		key := newRuleFileName(opts, r.Spec.TenantID, r.Namespace, r.Name, r.UID)
 		shardedCM.data[key] = c
 	}
 
@@ -56,4 +57,8 @@ func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap 
 		},
 		Data: make(map[string]string),
 	}
+}
+
+func newRuleFileName(opts *Options, tenantID, namespace, ruleName string, uid types.UID) string {
+	return fmt.Sprintf("%s%s%s-%s-%s.yaml", tenantID, rulePartsSeparator, namespace, ruleName, uid)
 }
