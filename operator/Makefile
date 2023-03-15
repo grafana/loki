@@ -259,7 +259,7 @@ olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kube
 	$(error Set variable REGISTRY_BASE to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
-	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG)
+	$(OPERATOR_SDK) run bundle -n $(LOKI_OPERATOR_NS) --install-mode AllNamespaces $(BUNDLE_IMG) --security-context-config restricted
 endif
 
 .PHONY: olm-upgrade

@@ -434,7 +434,7 @@ func (c *Client) GetRules(ctx context.Context) (*RulesResponse, error) {
 	resp := RulesResponse{}
 	err = json.Unmarshal(buf, &resp)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response data: %w", err)
+		return nil, fmt.Errorf("error parsing response data %q: %w", buf, err)
 	}
 
 	return &resp, err

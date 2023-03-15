@@ -15,7 +15,7 @@ import (
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
-	clu := cluster.New(cluster.ConfigWithBoltDB(false))
+	clu := cluster.New(cluster.ConfigWithBoltDB(false), nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -131,7 +131,7 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			storage.ResetBoltDBIndexClientsWithShipper()
-			clu := cluster.New(template)
+			clu := cluster.New(template, nil)
 			defer func() {
 				storage.ResetBoltDBIndexClientsWithShipper()
 				assert.NoError(t, clu.Cleanup())

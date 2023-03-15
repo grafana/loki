@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
+	rulerbase "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -19,7 +19,7 @@ import (
 func TestInvalidRemoteWriteConfig(t *testing.T) {
 	// if remote-write is not enabled, validation fails
 	cfg := Config{
-		Config: ruler.Config{},
+		Config: rulerbase.Config{},
 		RemoteWrite: RemoteWriteConfig{
 			Enabled: false,
 		},
@@ -28,7 +28,7 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 
 	// if no remote-write URL is configured, validation fails
 	cfg = Config{
-		Config: ruler.Config{},
+		Config: rulerbase.Config{},
 		RemoteWrite: RemoteWriteConfig{
 			Enabled: true,
 			Client: &config.RemoteWriteConfig{
@@ -46,7 +46,10 @@ func TestNonMetricQuery(t *testing.T) {
 	require.Nil(t, err)
 
 	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log.Logger)
-	queryFunc := engineQueryFunc(engine, overrides, fakeChecker{}, "fake")
+	eval, err := NewLocalEvaluator(&EvaluationConfig{Mode: EvalModeLocal}, engine, log.Logger)
+	require.NoError(t, err)
+
+	queryFunc := engineQueryFunc(eval, overrides, fakeChecker{}, "fake")
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")

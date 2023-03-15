@@ -1090,6 +1090,87 @@ remote_write:
   # -limits.per-user-override-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
+
+# Configuration for rule evaluation.
+evaluation:
+  # The evaluation mode for the ruler. Can be either 'local' or 'remote'. If set
+  # to 'local', the ruler will evaluate rules locally. If set to 'remote', the
+  # ruler will evaluate rules remotely. If unset, the ruler will evaluate rules
+  # locally.
+  # CLI flag: -ruler.evaluation.mode
+  [mode: <string> | default = "local"]
+
+  query_frontend:
+    # GRPC listen address of the query-frontend(s). Must be a DNS address
+    # (prefixed with dns:///) to enable client side load balancing.
+    # CLI flag: -ruler.evaluation.query-frontend.address
+    [address: <string> | default = ""]
+
+    # Set to true if query-frontend connection requires TLS.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
+    [tls_enabled: <boolean> | default = false]
+
+    # Path to the client certificate file, which will be used for authenticating
+    # with the server. Also requires the key path to be configured.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key file for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Path to the CA certificates file to validate server certificate against.
+    # If not set, the host's root CA certificates are used.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
+
+    # Override the default cipher suite list (separated by commas). Allowed
+    # values:
+    # 
+    # Secure Ciphers:
+    # - TLS_RSA_WITH_AES_128_CBC_SHA
+    # - TLS_RSA_WITH_AES_256_CBC_SHA
+    # - TLS_RSA_WITH_AES_128_GCM_SHA256
+    # - TLS_RSA_WITH_AES_256_GCM_SHA384
+    # - TLS_AES_128_GCM_SHA256
+    # - TLS_AES_256_GCM_SHA384
+    # - TLS_CHACHA20_POLY1305_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+    # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+    # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+    # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+    # 
+    # Insecure Ciphers:
+    # - TLS_RSA_WITH_RC4_128_SHA
+    # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+    # - TLS_RSA_WITH_AES_128_CBC_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+    # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+    # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+    # CLI flag: -ruler.evaluation.query-frontend.tls-cipher-suites
+    [tls_cipher_suites: <string> | default = ""]
+
+    # Override the default minimum TLS version. Allowed values: VersionTLS10,
+    # VersionTLS11, VersionTLS12, VersionTLS13
+    # CLI flag: -ruler.evaluation.query-frontend.tls-min-version
+    [tls_min_version: <string> | default = ""]
 ```
 
 ### ingester_client

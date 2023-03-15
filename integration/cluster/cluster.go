@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -15,14 +16,19 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/integration/util"
+
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -88,28 +94,18 @@ querier:
 query_scheduler:
   max_outstanding_requests_per_tenant: 2048
 
-
-{{if .remoteWriteUrls}}
 ruler:
-  wal:
-    dir: {{.rulerWALPath}}
-  storage:
-    type: local
-    local:
-      directory: {{.rulesPath}}
-  rule_path: {{.sharedDataPath}}/rule
   enable_api: true
   ring:
     kvstore:
       store: inmemory
-  remote_write:
-    enabled: true
-    clients:
-      remote_client1:
-        url: {{index .remoteWriteUrls 0}}/api/v1/write
-      remote_client2:
-        url: {{index .remoteWriteUrls 1}}/api/v1/write
-{{end}}
+  wal:
+    dir: {{.sharedDataPath}}/ruler-wal
+  storage:
+    type: local
+    local:
+      directory: {{.sharedDataPath}}/rules
+  rule_path: {{.sharedDataPath}}/prom-rule
 `
 
 	schemaConfigHeader = `
@@ -152,21 +148,6 @@ schema_config:
       index:
         prefix: index_
         period: 24h
-`
-
-	rulesConfig = `
-groups:
-- name: always-firing
-  interval: 1s
-  rules:
-  - alert: fire
-    expr: |
-      1 > 0
-    for: 0m
-    labels:
-      severity: warning
-    annotations:
-      summary: test
 `
 )
 
@@ -231,7 +212,11 @@ type Cluster struct {
 	overridesFile string
 }
 
-func New(configTmpl *template.Template) *Cluster {
+func New(configTmpl *template.Template, logLevel level.Value) *Cluster {
+	if logLevel != nil {
+		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
+	}
+
 	wrapRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
@@ -337,15 +322,18 @@ type Component struct {
 	flags   []string
 
 	configFile    string
+	extraConfigs  []string
 	overridesFile string
 	dataPath      string
-	rulerWALPath  string
-	rulesPath     string
-	RulesTenant   string
 
-	running         bool
-	wg              sync.WaitGroup
-	RemoteWriteUrls []string
+	running bool
+	wg      sync.WaitGroup
+}
+
+// ClusterSharedPath returns the path to the shared directory between all components in the cluster.
+// This path will be removed once the cluster is stopped.
+func (c *Component) ClusterSharedPath() string {
+	return c.cluster.sharedPath
 }
 
 // component should be restarted if it's already running for the new flags to take effect
@@ -359,6 +347,14 @@ func (c *Component) HTTPURL() string {
 
 func (c *Component) GRPCURL() string {
 	return fmt.Sprintf("localhost:%s", port(c.loki.Server.GRPCListenAddr().String()))
+}
+
+func (c *Component) WithExtraConfig(cfg string) {
+	if c.running {
+		panic("cannot set extra config after component is running")
+	}
+
+	c.extraConfigs = append(c.extraConfigs, cfg)
 }
 
 func port(addr string) string {
@@ -379,48 +375,12 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
 
-	if len(c.RemoteWriteUrls) > 0 {
-		c.rulesPath, err = os.MkdirTemp(c.cluster.sharedPath, "rules")
-		if err != nil {
-			return fmt.Errorf("error creating rules path: %w", err)
-		}
-
-		fakeDir, err := os.MkdirTemp(c.rulesPath, "fake")
-		if err != nil {
-			return fmt.Errorf("error creating rules/fake path: %w", err)
-		}
-
-		s := strings.Split(fakeDir, "/")
-		c.RulesTenant = s[len(s)-1]
-
-		c.rulerWALPath, err = os.MkdirTemp(c.cluster.sharedPath, "ruler-wal")
-		if err != nil {
-			return fmt.Errorf("error creating ruler-wal path: %w", err)
-		}
-
-		rulesConfigFile, err := os.CreateTemp(fakeDir, "rules*.yaml")
-		if err != nil {
-			return fmt.Errorf("error creating rules config file: %w", err)
-		}
-
-		if _, err = rulesConfigFile.Write([]byte(rulesConfig)); err != nil {
-			return fmt.Errorf("error writing to rules config file: %w", err)
-		}
-
-		rulesConfigFile.Close()
+	mergedConfig, err := c.MergedConfig()
+	if err != nil {
+		return fmt.Errorf("error getting merged config: %w", err)
 	}
 
-	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
-	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
-
-	if err := c.cluster.configTmpl.Execute(configFile, map[string]interface{}{
-		"dataPath":              c.dataPath,
-		"sharedDataPath":        c.cluster.sharedPath,
-		"rulesPath":             c.rulesPath,
-		"rulerWALPath":          c.rulerWALPath,
-		"curPeriodStart":        periodStart.String(),
-		"additionalPeriodStart": additionalPeriodStart.String(),
-	}); err != nil {
+	if err := os.WriteFile(configFile.Name(), mergedConfig, 0644); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -429,6 +389,37 @@ func (c *Component) writeConfig() error {
 	}
 	c.configFile = configFile.Name()
 	return nil
+}
+
+// MergedConfig merges the base config template with any additional config that has been provided
+func (c *Component) MergedConfig() ([]byte, error) {
+	var sb bytes.Buffer
+
+	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
+	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
+
+	if err := c.cluster.configTmpl.Execute(&sb, map[string]interface{}{
+		"dataPath":              c.dataPath,
+		"sharedDataPath":        c.cluster.sharedPath,
+		"curPeriodStart":        periodStart.String(),
+		"additionalPeriodStart": additionalPeriodStart.String(),
+	}); err != nil {
+		return nil, fmt.Errorf("error writing config file: %w", err)
+	}
+
+	merger := util.NewYAMLMerger()
+	merger.AddFragment(sb.Bytes())
+
+	for _, extra := range c.extraConfigs {
+		merger.AddFragment([]byte(extra))
+	}
+
+	merged, err := merger.Merge()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal merged config to YAML: %w", err)
+	}
+
+	return merged, nil
 }
 
 func (c *Component) run() error {
@@ -519,12 +510,6 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 	}
 	if c.dataPath != "" {
 		dirs = append(dirs, c.dataPath)
-	}
-	if c.rulerWALPath != "" {
-		dirs = append(dirs, c.rulerWALPath)
-	}
-	if c.rulesPath != "" {
-		dirs = append(dirs, c.rulesPath)
 	}
 
 	return files, dirs
