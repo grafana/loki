@@ -110,6 +110,8 @@ limits_config:
 ...
 ```
 
+**NOTE:** You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
+
 Per tenant retention can be defined using the `/etc/overrides.yaml` files. For example:
 
 ```yaml
@@ -117,7 +119,7 @@ overrides:
     "29":
         retention_period: 168h
         retention_stream:
-        - selector: '{namespace="prod"}'
+        - selector: '{namespace="prod", container=~"(nginx|loki)"}'
           priority: 2
           period: 336h
         - selector: '{container="loki"}'
@@ -125,7 +127,7 @@ overrides:
           period: 72h
     "30":
         retention_stream:
-        - selector: '{container="nginx"}'
+        - selector: '{container="nginx", level="debug"}'
           priority: 1
           period: 24h
 ```
