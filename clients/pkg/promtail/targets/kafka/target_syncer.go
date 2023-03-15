@@ -316,11 +316,6 @@ func (ts *TargetSyncer) DroppedTargets() []target.Target {
 	return ts.getDroppedTargets()
 }
 
-// Logger returns injected logger
-func (ts *TargetSyncer) Logger() log.Logger {
-	return ts.logger
-}
-
 // NewTarget creates a new targets based on the current kafka claim and group session.
 func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 	discoveredLabels := model.LabelSet{
