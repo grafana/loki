@@ -107,17 +107,28 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 			request.Limit,
 			request.Shards,
 		)
+		// here we should pull the context out of something we get from the frontend
+		// the query string and start/end could be in the context level there since here we've just
+		// got an indivudal shard for a already sharded/split query
+		n := "Querier Range Query"
+		d := params.String()
+		_, ctx = analyze.NewContext(ctx, &n, &d)
 	}
 
 	query := q.engine.Query(params)
-	// here we should pull the context out of something we get from the frontend
-	// the query string and start/end could be in the context level there since here we've just
-	// got an indivudal shard for a already sharded/split query
-	n := "Querier Range Query"
-	d := params.String()
-	_, ctx = analyze.NewContext(ctx, &n, &d)
 	result, err := query.Exec(ctx)
-	fmt.Println("exec is done:\n", analyze.FromContext(ctx).String())
+
+	// Check analysis
+	if analysis := analyze.FromContext(ctx); analysis != nil {
+		fmt.Println("exec is done:\n", analyze.FromContext(ctx).String())
+		// TODO: transform analysis to logqlmodel.Trace
+		result.Data = logqlmodel.Trace{}//???
+		if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+	}
+
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
