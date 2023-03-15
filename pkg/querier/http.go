@@ -93,7 +93,11 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Analyse support
-	expr, _ := syntax.ParseExpr(params.Query())
+	expr, err := syntax.ParseExpr(params.Query())
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
 	switch e := expr.(type){
 	case syntax.ExplainExpr:
 		// create analyze context
