@@ -674,12 +674,27 @@ func (t *Loki) setupModuleManager() error {
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
 
-		deps[Querier] = append(deps[Querier], QueryLimiter)
-		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
-
+		// Ensure query limiter embeds overrides after they've been
+		// created.
 		deps[QueryLimiter] = []string{Overrides}
 		deps[QueryLimitsInterceptors] = []string{}
+
+		// Ensure query limits tripperware embeds the query frontend
+		// tripperware after it's been created. Any additional
+		// middleware/tripperware you want to add to the querier or
+		// frontend must happen inject a dependence on the query limits
+		// tripperware.
 		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
+
+		deps[Querier] = append(deps[Querier], QueryLimiter)
+
+		// The frontend receives a tripperware. Make sure it uses the
+		// wrapped one.
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
+
+		// query frontend tripperware uses t.Overrides. Make sure it
+		// uses the one wrapped by query limiter.
+		deps[QueryFrontendTripperware] = append(deps[QueryFrontendTripperware], QueryLimiter)
 
 		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
 			return err
