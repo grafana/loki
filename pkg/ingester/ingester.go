@@ -670,7 +670,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	ctx := queryServer.Context()
 	_, ctx = stats.NewContext(ctx)
 	n := "IngesterQuery"
-	_, ctx = analyze.NewContext(ctx, &req.Selector, &n)
+	_, ctx = analyze.NewContext(ctx, &n, &req.Selector)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {

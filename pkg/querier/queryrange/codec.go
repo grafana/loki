@@ -859,15 +859,23 @@ func (p paramsRangeWrapper) End() time.Time {
 func (p paramsRangeWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
+
 func (p paramsRangeWrapper) Interval() time.Duration {
 	return time.Duration(p.GetInterval() * 1e6)
 }
+
 func (p paramsRangeWrapper) Direction() logproto.Direction {
 	return p.GetDirection()
 }
+
 func (p paramsRangeWrapper) Limit() uint32 { return p.LokiRequest.Limit }
+
 func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+func (p paramsRangeWrapper) String() string {
+	return "paramsRangeWrapper"
 }
 
 type paramsInstantWrapper struct {
@@ -898,6 +906,10 @@ func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsInstantWrapper) String() string {
+	return "paramsRangeWrapper"
+}
+
 type paramsSeriesWrapper struct {
 	*LokiSeriesRequest
 }
@@ -926,6 +938,10 @@ func (p paramsSeriesWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsSeriesWrapper) String() string {
+	return "paramsSeriesWrapper"
+}
+
 type paramsLabelNamesWrapper struct {
 	*LokiLabelNamesRequest
 }
@@ -952,6 +968,10 @@ func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
 func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 }
 func (p paramsLabelNamesWrapper) Shards() []string {
 	return make([]string, 0)
+}
+
+func (p paramsLabelNamesWrapper) String() string {
+	return "paramsLabelNamesWrapper"
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {

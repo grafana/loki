@@ -66,6 +66,9 @@ func (ctx *Context) Observe(d time.Duration, match bool) {
 }
 
 func (ctx *Context) String() string {
+	if ctx == nil {
+		return "nil"
+	}
 	sb := new(strings.Builder)
 	ctx.stringNested(sb, 0)
 	return sb.String()
@@ -76,11 +79,9 @@ func (ctx *Context) baseString(sb *strings.Builder) {
 	sb.WriteString("{")
 	logfmt.NewEncoder(sb).EncodeKeyvals(
 		"name", ctx.name,
-		"desc", ctx.description,
 		"in", ctx.countIn.Load(),
 		"out", ctx.countOut.Load(),
 		"duration", time.Duration(ctx.duration.Load()),
-		"index", ctx.index,
 	)
 	sb.WriteString("}")
 }
@@ -97,6 +98,9 @@ func (ctx *Context) stringNested(sb *strings.Builder, level int) {
 }
 
 func (ctx *Context) Reset() {
+	if ctx == nil {
+		return
+	}
 	ctx.countIn.Store(0)
 	ctx.countOut.Store(0)
 	ctx.duration.Store(0)
@@ -116,6 +120,9 @@ func (ctx *Context) SetDescription(d string) {
 }
 
 func (ctx *Context) ToProto() *RemoteContext {
+	if ctx == nil {
+		return nil
+	}
 	children := make([]*RemoteContext, len(ctx.childContexts))
 	for i, c := range ctx.childContexts {
 		children[i] = c.ToProto()

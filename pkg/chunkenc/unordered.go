@@ -271,11 +271,12 @@ func (hb *unorderedHeadBlock) Iterator(
 		streamsResult = append(streamsResult, *stream)
 		totalSamples += len(stream.Entries)
 	}
-	a := analyze.FromContext(ctx)
-	// todo(we should record the real duration and the actual samples out from the last child
-	// in should also be the real amount of entries returned by the original query to the ingester
-	in, _ := a.GetChild(0).GetCounts()
-	a.Set(time.Second, in, int64(totalSamples))
+	if a := analyze.FromContext(ctx); a != nil {
+		// todo(we should record the real duration and the actual samples out from the last child
+		// in should also be the real amount of entries returned by the original query to the ingester
+		in, _ := a.GetChild(0).GetCounts()
+		a.Set(time.Second, in, int64(totalSamples))
+	}
 
 	return iter.NewStreamsIterator(streamsResult, direction)
 }

@@ -231,15 +231,16 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	n := "Engine Exec"
-	d := fmt.Sprintf("{ query: %s, shard: %s}", q.params.Query(), q.params.Shards())
-
-	aCtx := analyze.FromContext(ctx)
-	if aCtx == nil {
-		aCtx, ctx = analyze.NewContext(ctx, &n, &d)
+	analyzeCtx := analyze.FromContext(ctx)
+	if analyzeCtx != nil {
+		// panic("analyzeCtx must not be nil")
+		// aCtx, ctx = analyze.NewContext(ctx, &n, &d)
+		n := "Engine Exec"
+		d := q.params.String()
+		a := analyze.New(n, d, 0, 0)
+		analyzeCtx.AddChild(a)
 	}
-	a := analyze.New(n, d, 0, 0)
-	aCtx.AddChild(a)
+
 	data, err := q.Eval(ctx)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
@@ -292,9 +293,9 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
-		if pipeline, err := e.Pipeline(); err == nil {
+		if pipeline, err := e.Pipeline(); err != nil {
 			ac := analyze.FromContext(ctx)
-			if !pipeline.SetAnalyzeContext(ac) {
+			if ac != nil && !pipeline.SetAnalyzeContext(ac) {
 				level.Warn(q.logger).Log("msg", "analyze context already set")
 			}
 		} else {
@@ -489,15 +490,17 @@ func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir log
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		a := i.Analyze()
-		// somehow we need a nicer way to say "I want to add this at the currently most low level"
-		// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
-		if aCtx.GetChild(0) != nil {
-			aCtx = aCtx.GetChild(0)
-		}
-		aCtx.AddChildRecursively(&a)
+		if aCtx != nil {
+			a := i.Analyze()
+			// somehow we need a nicer way to say "I want to add this at the currently most low level"
+			// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
+			if aCtx.GetChild(0) != nil {
+				aCtx = aCtx.GetChild(0)
+			}
+			aCtx.AddChildRecursively(&a)
 
-		childAdded = true
+			childAdded = true
+		}
 		labels, entry := i.Labels(), i.Entry()
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
@@ -525,7 +528,7 @@ func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir log
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	if !childAdded {
+	if aCtx != nil && !childAdded {
 		// somehow we need a nicer way to say "I want to add this at the currently most low level"
 		// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
 		if aCtx.GetChild(0) != nil {

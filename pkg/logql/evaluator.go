@@ -39,6 +39,8 @@ type Params interface {
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
+
+	String() string
 }
 
 func NewLiteralParams(

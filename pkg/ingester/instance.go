@@ -367,8 +367,9 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	if err != nil {
 		return nil, err
 	}
-	ac := analyze.FromContext(ctx)
-	pipeline.SetAnalyzeContext(ac)
+	if ac := analyze.FromContext(ctx); ac != nil {
+		pipeline.SetAnalyzeContext(ac)
+	}
 
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
