@@ -70,6 +70,10 @@ func (e *PipelineExpr) Pretty(level int) string {
 	return s
 }
 
+func (e ExplainExpr) Pretty(level int) string {
+	return e.Inner.Pretty(level)
+}
+
 // e.g: `|= "error" != "memcache" |= ip("192.168.0.1")`
 // NOTE: here `ip` is Op in this expression.
 func (e *LineFilterExpr) Pretty(level int) string {

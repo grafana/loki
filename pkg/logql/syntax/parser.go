@@ -106,6 +106,8 @@ func validateExpr(expr Expr) error {
 		return validateSampleExpr(e)
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
+	case ExplainExpr:
+		return validateExpr(e.Inner)
 	default:
 		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}

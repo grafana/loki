@@ -67,6 +67,7 @@ const (
 	ResultTypeScalar = "scalar"
 	ResultTypeVector = "vector"
 	ResultTypeMatrix = "matrix"
+	ResultTypeTrace  = "trace"
 )
 
 // ResultValue interface mimics the promql.Value interface

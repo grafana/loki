@@ -211,6 +211,33 @@ func (e *PipelineExpr) HasFilter() bool {
 	return false
 }
 
+type ExplainExpr struct {
+	Inner Expr
+	implicit
+}
+
+func newExplainExpr(inner Expr) ExplainExpr {
+	return ExplainExpr{
+		Inner: inner,
+	}
+}
+
+func (e ExplainExpr) Shardable() bool {
+	return e.Inner.Shardable()
+}
+
+func (e ExplainExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString("explain ")
+	sb.WriteString(e.Inner.String())
+	return sb.String()
+}
+
+func (e ExplainExpr) Walk(f WalkFn) {
+	f(e)
+	e.Inner.Walk(f)
+}
+
 type LineFilterExpr struct {
 	Left  *LineFilterExpr
 	Ty    labels.MatchType
@@ -810,6 +837,8 @@ const (
 
 	// drop labels
 	OpDrop = "drop"
+
+	OpExplain = "explain"
 )
 
 func IsComparisonOperator(op string) bool {

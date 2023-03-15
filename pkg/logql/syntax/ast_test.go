@@ -66,6 +66,13 @@ func Test_logSelectorExpr_String(t *testing.T) {
 	}
 }
 
+func Test_ExplainExpr(t *testing.T) {
+	input := `explain({foo="bar", bar!="baz"} != "bip" !~ ".+bop")`
+	expr, err := ParseExprWithoutValidation(input)
+	require.NoError(t, err)
+	require.IsType(t, ExplainExpr{}, expr)
+}
+
 func Test_SampleExpr_String(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []string{
