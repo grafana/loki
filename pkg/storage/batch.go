@@ -337,8 +337,8 @@ func newLogBatchIterator(
 	}, nil
 }
 
-func (it *logBatchIterator) Analyze() analyze.Context {
-	return *analyze.New("logBatchIterator", "to be implemented", 0, 0)
+func (it *logBatchIterator) Analyze() *analyze.Context {
+	return analyze.New("logBatchIterator", "to be implemented", 0, 0)
 }
 
 func (it *logBatchIterator) Labels() string {

@@ -19,14 +19,14 @@ import (
 type EntryIterator interface {
 	Iterator
 	Entry() logproto.Entry
-	Analyze() analyze.Context
+	Analyze() *analyze.Context
 }
 
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int
 	stream logproto.Stream
-	c      analyze.Context
+	c      *analyze.Context
 }
 
 // NewStreamIterator iterates over entries in a stream.
@@ -37,7 +37,7 @@ func NewStreamIterator(stream logproto.Stream) EntryIterator {
 	}
 }
 
-func (i *streamIterator) Analyze() analyze.Context {
+func (i *streamIterator) Analyze() *analyze.Context {
 	return i.c
 	//return *analyze.New("streamIterator", "to be implemented", 0, 0)
 }
@@ -124,7 +124,7 @@ type mergeEntryIterator struct {
 	// We buffer entries with the same timestamp to correctly dedupe them.
 	buffer      []entryWithLabels
 	currEntry   entryWithLabels
-	currAnalyze analyze.Context
+	currAnalyze *analyze.Context
 	errs        []error
 }
 
@@ -148,7 +148,7 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 	return result
 }
 
-func (i *mergeEntryIterator) Analyze() analyze.Context {
+func (i *mergeEntryIterator) Analyze() *analyze.Context {
 	return i.currAnalyze
 }
 
@@ -344,7 +344,7 @@ func (i *mergeEntryIterator) Len() int {
 type entrySortIterator struct {
 	tree        *loser.Tree[sortFields, EntryIterator]
 	currEntry   entryWithLabels
-	currAnalyze analyze.Context
+	currAnalyze *analyze.Context
 	errs        []error
 }
 
@@ -436,7 +436,7 @@ func (i *entrySortIterator) Next() bool {
 	return true
 }
 
-func (i *entrySortIterator) Analyze() analyze.Context {
+func (i *entrySortIterator) Analyze() *analyze.Context {
 	return i.currAnalyze
 }
 
@@ -516,8 +516,8 @@ func (i *queryClientIterator) Next() bool {
 	return true
 }
 
-func (i *queryClientIterator) Analyze() analyze.Context {
-	return *i.currAnalyze
+func (i *queryClientIterator) Analyze() *analyze.Context {
+	return i.currAnalyze
 }
 
 func (i *queryClientIterator) Entry() logproto.Entry {
@@ -541,7 +541,7 @@ func (i *queryClientIterator) Close() error {
 type nonOverlappingIterator struct {
 	iterators   []EntryIterator
 	curr        EntryIterator
-	currAnalyze analyze.Context
+	currAnalyze *analyze.Context
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
@@ -570,7 +570,7 @@ func (i *nonOverlappingIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingIterator) Analyze() analyze.Context {
+func (i *nonOverlappingIterator) Analyze() *analyze.Context {
 	return i.currAnalyze
 }
 
@@ -708,8 +708,8 @@ func (i *reverseIterator) Next() bool {
 	return true
 }
 
-func (i *reverseIterator) Analyze() analyze.Context {
-	return *analyze.New("reverseIterator", "to be implemented", 0, 0)
+func (i *reverseIterator) Analyze() *analyze.Context {
+	return analyze.New("reverseIterator", "to be implemented", 0, 0)
 }
 
 func (i *reverseIterator) Entry() logproto.Entry {
@@ -767,8 +767,8 @@ func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 	return iter, nil
 }
 
-func (i *reverseEntryIterator) Analyze() analyze.Context {
-	return *analyze.New("reverseEntryIterator", "to be implemented", 0, 0)
+func (i *reverseEntryIterator) Analyze() *analyze.Context {
+	return analyze.New("reverseEntryIterator", "to be implemented", 0, 0)
 }
 
 func (i *reverseEntryIterator) load() {
@@ -868,8 +868,8 @@ type peekingEntryIterator struct {
 
 	cache        *entryWithLabels
 	next         *entryWithLabels
-	cacheAnalyze analyze.Context
-	nextAnalyze  analyze.Context
+	cacheAnalyze *analyze.Context
+	nextAnalyze  *analyze.Context
 }
 
 // PeekingEntryIterator is an entry iterator that can look ahead an entry
@@ -901,7 +901,7 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	}
 }
 
-func (it *peekingEntryIterator) Analyze() analyze.Context {
+func (it *peekingEntryIterator) Analyze() *analyze.Context {
 	return it.nextAnalyze
 }
 

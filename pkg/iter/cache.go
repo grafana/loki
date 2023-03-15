@@ -37,8 +37,8 @@ func (it *cachedIterator) Reset() {
 	it.curr = -1
 }
 
-func (it *cachedIterator) Analyze() analyze.Context {
-	return *analyze.New("streamIterator", "to be implemented", 0, 0)
+func (it *cachedIterator) Analyze() *analyze.Context {
+	return analyze.New("streamIterator", "to be implemented", 0, 0)
 }
 
 func (it *cachedIterator) Wrapped() EntryIterator {

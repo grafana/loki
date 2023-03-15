@@ -502,7 +502,11 @@ func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir log
 			if aCtx.GetChild(0) != nil {
 				aCtx = aCtx.GetChild(0)
 			}
-			aCtx.AddChildRecursively(&a)
+
+			// TODO: remove check once we only anaylyze when aCtx != nil
+			if a != nil {
+				aCtx.AddChildRecursively(a)
+			}
 
 			childAdded = true
 		}

@@ -134,8 +134,8 @@ type dumbChunkIterator struct {
 	entries   []logproto.Entry
 }
 
-func (i *dumbChunkIterator) Analyze() analyze.Context {
-	return *analyze.New("dumbChunkIterator", "to be implemented", 0, 0)
+func (i *dumbChunkIterator) Analyze() *analyze.Context {
+	return analyze.New("dumbChunkIterator", "to be implemented", 0, 0)
 }
 
 func (i *dumbChunkIterator) Next() bool {

@@ -23,7 +23,7 @@ type noOpIterator struct{}
 var NoopIterator = noOpIterator{}
 
 func (noOpIterator) Next() bool               { return false }
-func (noOpIterator) Analyze() analyze.Context { return *analyze.New("noOpIterator", "", 0, 0) }
+func (noOpIterator) Analyze() *analyze.Context { return analyze.New("noOpIterator", "", 0, 0) }
 func (noOpIterator) Error() error             { return nil }
 func (noOpIterator) Labels() string           { return "" }
 func (noOpIterator) StreamHash() uint64       { return 0 }

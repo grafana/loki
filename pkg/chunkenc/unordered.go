@@ -274,8 +274,11 @@ func (hb *unorderedHeadBlock) Iterator(
 	if a := analyze.FromContext(ctx); a != nil {
 		// todo(we should record the real duration and the actual samples out from the last child
 		// in should also be the real amount of entries returned by the original query to the ingester
-		in, _ := a.GetChild(0).GetCounts()
-		a.Set(time.Second, in, int64(totalSamples))
+		c := a.GetChild(0)
+		if c != nil {
+			in, _ := a.GetChild(0).GetCounts()
+			a.Set(time.Second, in, int64(totalSamples))
+		}
 	}
 
 	return iter.NewStreamsIterator(streamsResult, direction)

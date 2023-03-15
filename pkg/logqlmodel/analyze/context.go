@@ -120,9 +120,6 @@ func (ctx *Context) SetDescription(d string) {
 }
 
 func (ctx *Context) ToProto() *RemoteContext {
-	if ctx == nil {
-		return nil
-	}
 	children := make([]*RemoteContext, len(ctx.childContexts))
 	for i, c := range ctx.childContexts {
 		children[i] = c.ToProto()
@@ -150,7 +147,7 @@ func New(name, description string, index int, size int) *Context {
 func FromProto(c *RemoteContext) *Context {
 	if c == nil {
 		return nil
-	}
+	} 
 	children := make([]*Context, len(c.Children))
 	for i, child := range c.Children {
 		children[i] = FromProto(child)
