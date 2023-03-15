@@ -18,6 +18,761 @@ This Document contains the types introduced by the Loki Operator to be consumed 
 </div>
 <b>Resource Types:</b>
 
+## AlertManagerClientBasicAuth { #loki-grafana-com-v1-AlertManagerClientBasicAuth }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerClientConfig">AlertManagerClientConfig</a>)
+</p>
+<div>
+<p>AlertManagerClientBasicAuth defines the basic authentication configuration for reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>username</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The subject&rsquo;s username for the basic authentication configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>password</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The subject&rsquo;s password for the basic authentication configuration.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerClientConfig { #loki-grafana-com-v1-AlertManagerClientConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerSpec">AlertManagerSpec</a>)
+</p>
+<div>
+<p>AlertManagerClientConfig defines the client configuration for reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>tls</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerClientTLSConfig">
+AlertManagerClientTLSConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLS configuration for reaching the alertmanager endpoints.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>headerAuth</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerClientHeaderAuth">
+AlertManagerClientHeaderAuth
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Header authentication configuration for reaching the alertmanager endpoints.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>basicAuth</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerClientBasicAuth">
+AlertManagerClientBasicAuth
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Basic authentication configuration for reaching the alertmanager endpoints.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerClientHeaderAuth { #loki-grafana-com-v1-AlertManagerClientHeaderAuth }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerClientConfig">AlertManagerClientConfig</a>)
+</p>
+<div>
+<p>AlertManagerClientHeaderAuth defines the header configuration reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>type</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The authentication type for the header authentication configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentials</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The credentials for the header authentication configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentialsFile</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The credentials file for the Header authentication configuration. It is mutually exclusive with <code>credentials</code>.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerClientTLSConfig { #loki-grafana-com-v1-AlertManagerClientTLSConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerClientConfig">AlertManagerClientConfig</a>)
+</p>
+<div>
+<p>AlertManagerClientTLSConfig defines the TLS configuration for reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>caPath</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The CA certificate file path for the TLS configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>serverName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The server name to validate in the alertmanager server certificates.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>certPath</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The client-side certificate file path for the TLS configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyPath</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The client-side key file path for the TLS configuration.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerDiscoverySpec { #loki-grafana-com-v1-AlertManagerDiscoverySpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerSpec">AlertManagerSpec</a>)
+</p>
+<div>
+<p>AlertManagerDiscoverySpec defines the configuration to use DNS resolution for AlertManager hosts.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>enableSRV</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Use DNS SRV records to discover Alertmanager hosts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>refreshInterval</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>How long to wait between refreshing DNS resolutions of Alertmanager hosts.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerNotificationQueueSpec { #loki-grafana-com-v1-AlertManagerNotificationQueueSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerSpec">AlertManagerSpec</a>)
+</p>
+<div>
+<p>AlertManagerNotificationQueueSpec defines the configuration for AlertManager notification settings.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>capacity</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Capacity of the queue for notifications to be sent to the Alertmanager.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>timeout</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>HTTP timeout duration when sending notifications to the Alertmanager.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>forOutageTolerance</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Max time to tolerate outage for restoring &ldquo;for&rdquo; state of alert.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>forGracePeriod</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Minimum duration between alert and restored &ldquo;for&rdquo; state. This is maintained
+only for alerts with configured &ldquo;for&rdquo; time greater than the grace period.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>resendDelay</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Minimum amount of time to wait before resending an alert to Alertmanager.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerSpec { #loki-grafana-com-v1-AlertManagerSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RulerConfigSpec">RulerConfigSpec</a>, <a href="#loki-grafana-com-v1-RulerOverrides">RulerOverrides</a>)
+</p>
+<div>
+<p>AlertManagerSpec defines the configuration for ruler&rsquo;s alertmanager connectivity.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>externalUrl</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>URL for alerts return path.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>externalLabels</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Additional labels to add to all alerts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>enableV2</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>If enabled, then requests to Alertmanager use the v2 API.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>endpoints</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<p>List of AlertManager URLs to send notifications to. Each Alertmanager URL is treated as
+a separate group in the configuration. Multiple Alertmanagers in HA per group can be
+supported by using DNS resolution (See EnableDNSDiscovery).</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>discovery</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerDiscoverySpec">
+AlertManagerDiscoverySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Defines the configuration for DNS-based discovery of AlertManager hosts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>notificationQueue</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerNotificationQueueSpec">
+AlertManagerNotificationQueueSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Defines the configuration for the notification queue to AlertManager hosts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>relabelConfigs</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RelabelConfig">
+[]RelabelConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>List of alert relabel configurations.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>client</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerClientConfig">
+AlertManagerClientConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Client configuration for reaching the alertmanager endpoint.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertingRule { #loki-grafana-com-v1-AlertingRule }
+<div>
+<p>AlertingRule is the Schema for the alertingrules API</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>metadata</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#objectmeta-v1-meta">
+Kubernetes meta/v1.ObjectMeta
+</a>
+</em>
+</td>
+<td>
+Refer to the Kubernetes API documentation for the fields of the
+<code>metadata</code> field.
+</td>
+</tr>
+<tr>
+<td>
+<code>spec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertingRuleSpec">
+AlertingRuleSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>status</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertingRuleStatus">
+AlertingRuleStatus
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertingRuleGroup { #loki-grafana-com-v1-AlertingRuleGroup }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertingRuleSpec">AlertingRuleSpec</a>)
+</p>
+<div>
+<p>AlertingRuleGroup defines a group of Loki alerting rules.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the alerting rule group. Must be unique within all alerting rules.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>interval</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Interval defines the time interval between evaluation of the given
+alerting rule.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>limit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Limit defines the number of alerts an alerting rule can produce. 0 is no limit.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rules</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertingRuleGroupSpec">
+[]*AlertingRuleGroupSpec
+</a>
+</em>
+</td>
+<td>
+<p>Rules defines a list of alerting rules</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertingRuleGroupSpec { #loki-grafana-com-v1-AlertingRuleGroupSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertingRuleGroup">AlertingRuleGroup</a>)
+</p>
+<div>
+<p>AlertingRuleGroupSpec defines the spec for a Loki alerting rule.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>alert</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The name of the alert. Must be a valid label value.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>expr</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>The LogQL expression to evaluate. Every evaluation cycle this is
+evaluated at the current time, and all resultant time series become
+pending/firing alerts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>for</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Alerts are considered firing once they have been returned for this long.
+Alerts which have not yet fired for long enough are considered pending.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>annotations</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Annotations to add to each alert.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>labels</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Labels to add to each alert.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertingRuleSpec { #loki-grafana-com-v1-AlertingRuleSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertingRule">AlertingRule</a>)
+</p>
+<div>
+<p>AlertingRuleSpec defines the desired state of AlertingRule</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>tenantID</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>TenantID of tenant where the alerting rules are evaluated in.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>groups</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertingRuleGroup">
+[]*AlertingRuleGroup
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>List of groups for alerting rules.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertingRuleStatus { #loki-grafana-com-v1-AlertingRuleStatus }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertingRule">AlertingRule</a>)
+</p>
+<div>
+<p>AlertingRuleStatus defines the observed state of AlertingRule</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>conditions</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#condition-v1-meta">
+[]Kubernetes meta/v1.Condition
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Conditions of the AlertingRule generation health.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## AuthenticationSpec { #loki-grafana-com-v1-AuthenticationSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
@@ -734,7 +1489,7 @@ are degraded or the cluster cannot connect to object storage.</p>
 <td><p>ConditionFailed defines the condition that components in the Loki deployment failed to roll out.</p>
 </td>
 </tr><tr><td><p>&#34;Pending&#34;</p></td>
-<td><p>ConditionPending defines the conditioin that some or all components are in pending state.</p>
+<td><p>ConditionPending defines the condition that some or all components are in pending state.</p>
 </td>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>
@@ -1553,7 +2308,8 @@ string
 <td>
 <em>(Optional)</em>
 <p>Key is the data key of a ConfigMap containing a CA certificate.
-It needs to be in the same namespace as the LokiStack custom resource.</p>
+It needs to be in the same namespace as the LokiStack custom resource.
+If empty, it defaults to &ldquo;service-ca.crt&rdquo;.</p>
 </td>
 </tr>
 <tr>
@@ -1564,7 +2320,6 @@ string
 </em>
 </td>
 <td>
-<em>(Optional)</em>
 <p>CA is the name of a ConfigMap containing a CA certificate.
 It needs to be in the same namespace as the LokiStack custom resource.</p>
 </td>
@@ -1603,6 +2358,15 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </p>
 <div>
 <p>PodStatusMap defines the type for mapping pod status to pod name.</p>
+</div>
+
+## PrometheusDuration { #loki-grafana-com-v1-PrometheusDuration }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerDiscoverySpec">AlertManagerDiscoverySpec</a>, <a href="#loki-grafana-com-v1-AlertManagerNotificationQueueSpec">AlertManagerNotificationQueueSpec</a>, <a href="#loki-grafana-com-v1-AlertingRuleGroup">AlertingRuleGroup</a>, <a href="#loki-grafana-com-v1-AlertingRuleGroupSpec">AlertingRuleGroupSpec</a>, <a href="#loki-grafana-com-v1-RecordingRuleGroup">RecordingRuleGroup</a>, <a href="#loki-grafana-com-v1-RemoteWriteClientQueueSpec">RemoteWriteClientQueueSpec</a>, <a href="#loki-grafana-com-v1-RemoteWriteClientSpec">RemoteWriteClientSpec</a>, <a href="#loki-grafana-com-v1-RemoteWriteSpec">RemoteWriteSpec</a>, <a href="#loki-grafana-com-v1-RulerConfigSpec">RulerConfigSpec</a>)
+</p>
+<div>
+<p>PrometheusDuration defines the type for Prometheus durations.</p>
 </div>
 
 ## QueryLimitSpec { #loki-grafana-com-v1-QueryLimitSpec }
@@ -1668,6 +2432,696 @@ string
 <td>
 <em>(Optional)</em>
 <p>Timeout when querying ingesters or storage during the execution of a query request.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RecordingRule { #loki-grafana-com-v1-RecordingRule }
+<div>
+<p>RecordingRule is the Schema for the recordingrules API</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>metadata</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#objectmeta-v1-meta">
+Kubernetes meta/v1.ObjectMeta
+</a>
+</em>
+</td>
+<td>
+Refer to the Kubernetes API documentation for the fields of the
+<code>metadata</code> field.
+</td>
+</tr>
+<tr>
+<td>
+<code>spec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RecordingRuleSpec">
+RecordingRuleSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>status</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RecordingRuleStatus">
+RecordingRuleStatus
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RecordingRuleGroup { #loki-grafana-com-v1-RecordingRuleGroup }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RecordingRuleSpec">RecordingRuleSpec</a>)
+</p>
+<div>
+<p>RecordingRuleGroup defines a group of Loki  recording rules.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the recording rule group. Must be unique within all recording rules.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>interval</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Interval defines the time interval between evaluation of the given
+recoding rule.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>limit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Limit defines the number of series a recording rule can produce. 0 is no limit.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rules</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RecordingRuleGroupSpec">
+[]*RecordingRuleGroupSpec
+</a>
+</em>
+</td>
+<td>
+<p>Rules defines a list of recording rules</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RecordingRuleGroupSpec { #loki-grafana-com-v1-RecordingRuleGroupSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RecordingRuleGroup">RecordingRuleGroup</a>)
+</p>
+<div>
+<p>RecordingRuleGroupSpec defines the spec for a Loki recording rule.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>record</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The name of the time series to output to. Must be a valid metric name.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>expr</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>The LogQL expression to evaluate. Every evaluation cycle this is
+evaluated at the current time, and all resultant time series become
+pending/firing alerts.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RecordingRuleSpec { #loki-grafana-com-v1-RecordingRuleSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RecordingRule">RecordingRule</a>)
+</p>
+<div>
+<p>RecordingRuleSpec defines the desired state of RecordingRule</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>tenantID</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>TenantID of tenant where the recording rules are evaluated in.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>groups</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RecordingRuleGroup">
+[]*RecordingRuleGroup
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>List of groups for recording rules.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RecordingRuleStatus { #loki-grafana-com-v1-RecordingRuleStatus }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RecordingRule">RecordingRule</a>)
+</p>
+<div>
+<p>RecordingRuleStatus defines the observed state of RecordingRule</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>conditions</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#condition-v1-meta">
+[]Kubernetes meta/v1.Condition
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Conditions of the RecordingRule generation health.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RelabelActionType { #loki-grafana-com-v1-RelabelActionType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RelabelConfig">RelabelConfig</a>)
+</p>
+<div>
+<p>RelabelActionType defines the enumeration type for RelabelConfig actions.</p>
+</div>
+
+## RelabelConfig { #loki-grafana-com-v1-RelabelConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AlertManagerSpec">AlertManagerSpec</a>, <a href="#loki-grafana-com-v1-RemoteWriteClientSpec">RemoteWriteClientSpec</a>)
+</p>
+<div>
+<p>RelabelConfig allows dynamic rewriting of the label set, being applied to samples before ingestion.
+It defines <code>&lt;metric_relabel_configs&gt;</code> and <code>&lt;alert_relabel_configs&gt;</code> sections of Prometheus configuration.
+More info: <a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs">https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs</a></p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>sourceLabels</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<p>The source labels select values from existing labels. Their content is concatenated
+using the configured separator and matched against the configured regular expression
+for the replace, keep, and drop actions.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>separator</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Separator placed between concatenated source label values. default is &lsquo;;&rsquo;.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>targetLabel</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Label to which the resulting value is written in a replace action.
+It is mandatory for replace actions. Regex capture groups are available.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Regular expression against which the extracted value is matched. Default is &lsquo;(.*)&rsquo;</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>modulus</code><br/>
+<em>
+uint64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Modulus to take of the hash of the source label values.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>replacement</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Replacement value against which a regex replace is performed if the
+regular expression matches. Regex capture groups are available. Default is &lsquo;$1&rsquo;</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>action</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RelabelActionType">
+RelabelActionType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Action to perform based on regex matching. Default is &lsquo;replace&rsquo;</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RemoteWriteAuthType { #loki-grafana-com-v1-RemoteWriteAuthType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RemoteWriteClientSpec">RemoteWriteClientSpec</a>)
+</p>
+<div>
+<p>RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;basic&#34;</p></td>
+<td><p>BasicAuthorization defines the remote write client to use HTTP basic authorization.</p>
+</td>
+</tr><tr><td><p>&#34;bearer&#34;</p></td>
+<td><p>BearerAuthorization defines the remote write client to use HTTP bearer authorization.</p>
+</td>
+</tr></tbody>
+</table>
+
+## RemoteWriteClientQueueSpec { #loki-grafana-com-v1-RemoteWriteClientQueueSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RemoteWriteSpec">RemoteWriteSpec</a>)
+</p>
+<div>
+<p>RemoteWriteClientQueueSpec defines the configuration of the remote write client queue.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>capacity</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Number of samples to buffer per shard before we block reading of more</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxShards</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Maximum number of shards, i.e. amount of concurrency.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>minShards</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Minimum number of shards, i.e. amount of concurrency.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxSamplesPerSend</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Maximum number of samples per send.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>batchSendDeadline</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Maximum time a sample will wait in buffer.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>minBackOffPeriod</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Initial retry delay. Gets doubled for every retry.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxBackOffPeriod</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Maximum retry delay.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RemoteWriteClientSpec { #loki-grafana-com-v1-RemoteWriteClientSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RemoteWriteSpec">RemoteWriteSpec</a>)
+</p>
+<div>
+<p>RemoteWriteClientSpec defines the configuration of the remote write client.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the remote write config, which if specified must be unique among remote write configs.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>url</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>The URL of the endpoint to send samples to.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>timeout</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Timeout for requests to the remote write endpoint.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>authorization</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RemoteWriteAuthType">
+RemoteWriteAuthType
+</a>
+</em>
+</td>
+<td>
+<p>Type of authorzation to use to access the remote write endpoint</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>authorizationSecretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of a secret in the namespace configured for authorization secrets.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>additionalHeaders</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Additional HTTP headers to be sent along with each remote write request.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>relabelConfigs</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RelabelConfig">
+[]RelabelConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>List of remote write relabel configurations.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>proxyUrl</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Optional proxy URL.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>followRedirects</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Configure whether HTTP requests follow HTTP 3xx redirects.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RemoteWriteSpec { #loki-grafana-com-v1-RemoteWriteSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RulerConfigSpec">RulerConfigSpec</a>)
+</p>
+<div>
+<p>RemoteWriteSpec defines the configuration for ruler&rsquo;s remote_write connectivity.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>enabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Enable remote-write functionality.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>refreshPeriod</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Minimum period to wait between refreshing remote-write reconfigurations.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>client</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RemoteWriteClientSpec">
+RemoteWriteClientSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Defines the configuration for remote write client.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>queue</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RemoteWriteClientQueueSpec">
+RemoteWriteClientQueueSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Defines the configuration for remote write client queue.</p>
 </td>
 </tr>
 </tbody>
@@ -1873,6 +3327,211 @@ string
 </em>
 </td>
 <td>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RulerConfig { #loki-grafana-com-v1-RulerConfig }
+<div>
+<p>RulerConfig is the Schema for the rulerconfigs API</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>metadata</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#objectmeta-v1-meta">
+Kubernetes meta/v1.ObjectMeta
+</a>
+</em>
+</td>
+<td>
+Refer to the Kubernetes API documentation for the fields of the
+<code>metadata</code> field.
+</td>
+</tr>
+<tr>
+<td>
+<code>spec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RulerConfigSpec">
+RulerConfigSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>status</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RulerConfigStatus">
+RulerConfigStatus
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RulerConfigSpec { #loki-grafana-com-v1-RulerConfigSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RulerConfig">RulerConfig</a>)
+</p>
+<div>
+<p>RulerConfigSpec defines the desired state of Ruler</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>evaluationInterval</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Interval on how frequently to evaluate rules.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>pollInterval</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PrometheusDuration">
+PrometheusDuration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Interval on how frequently to poll for new rule definitions.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>alertmanager</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerSpec">
+AlertManagerSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Defines alert manager configuration to notify on firing alerts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>remoteWrite</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RemoteWriteSpec">
+RemoteWriteSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Defines a remote write endpoint to write recording rule metrics.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>overrides</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RulerOverrides">
+map[string]github.com/grafana/loki/operator/apis/loki/v1.RulerOverrides
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Overrides defines the config overrides to be applied per-tenant.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RulerConfigStatus { #loki-grafana-com-v1-RulerConfigStatus }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RulerConfig">RulerConfig</a>)
+</p>
+<div>
+<p>RulerConfigStatus defines the observed state of RulerConfig</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>conditions</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#condition-v1-meta">
+[]Kubernetes meta/v1.Condition
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Conditions of the RulerConfig health.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RulerOverrides { #loki-grafana-com-v1-RulerOverrides }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-RulerConfigSpec">RulerConfigSpec</a>)
+</p>
+<div>
+<p>RulerOverrides defines the overrides applied per-tenant.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>alertmanager</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-AlertManagerSpec">
+AlertManagerSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AlertManagerOverrides defines the overrides to apply to the alertmanager config.</p>
 </td>
 </tr>
 </tbody>
@@ -2108,6 +3767,228 @@ AuthorizationSpec
 </div>
 <b>Resource Types:</b>
 
+## AlertManagerClientBasicAuth { #loki-grafana-com-v1beta1-AlertManagerClientBasicAuth }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerClientConfig">AlertManagerClientConfig</a>)
+</p>
+<div>
+<p>AlertManagerClientBasicAuth defines the basic authentication configuration for reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>username</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The subject&rsquo;s username for the basic authentication configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>password</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The subject&rsquo;s password for the basic authentication configuration.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerClientConfig { #loki-grafana-com-v1beta1-AlertManagerClientConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerSpec">AlertManagerSpec</a>)
+</p>
+<div>
+<p>AlertManagerClientConfig defines the client configuration for reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>tls</code><br/>
+<em>
+<a href="#loki-grafana-com-v1beta1-AlertManagerClientTLSConfig">
+AlertManagerClientTLSConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLS configuration for reaching the alertmanager endpoints.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>headerAuth</code><br/>
+<em>
+<a href="#loki-grafana-com-v1beta1-AlertManagerClientHeaderAuth">
+AlertManagerClientHeaderAuth
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Header authentication configuration for reaching the alertmanager endpoints.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>basicAuth</code><br/>
+<em>
+<a href="#loki-grafana-com-v1beta1-AlertManagerClientBasicAuth">
+AlertManagerClientBasicAuth
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Basic authentication configuration for reaching the alertmanager endpoints.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerClientHeaderAuth { #loki-grafana-com-v1beta1-AlertManagerClientHeaderAuth }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerClientConfig">AlertManagerClientConfig</a>)
+</p>
+<div>
+<p>AlertManagerClientHeaderAuth defines the header configuration reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>type</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The authentication type for the header authentication configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentials</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The credentials for the header authentication configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>credentialsFile</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The credentials file for the Header authentication configuration. It is mutually exclusive with <code>credentials</code>.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AlertManagerClientTLSConfig { #loki-grafana-com-v1beta1-AlertManagerClientTLSConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerClientConfig">AlertManagerClientConfig</a>)
+</p>
+<div>
+<p>AlertManagerClientTLSConfig defines the TLS configuration for reaching alertmanager endpoints.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>caPath</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The CA certificate file path for the TLS configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>serverName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The server name to validate in the alertmanager server certificates.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>certPath</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The client-side certificate file path for the TLS configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyPath</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The client-side key file path for the TLS configuration.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## AlertManagerDiscoverySpec { #loki-grafana-com-v1beta1-AlertManagerDiscoverySpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-AlertManagerSpec">AlertManagerSpec</a>)
@@ -2241,7 +4122,7 @@ PrometheusDuration
 
 ## AlertManagerSpec { #loki-grafana-com-v1beta1-AlertManagerSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfigSpec">RulerConfigSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfigSpec">RulerConfigSpec</a>, <a href="#loki-grafana-com-v1beta1-RulerOverrides">RulerOverrides</a>)
 </p>
 <div>
 <p>AlertManagerSpec defines the configuration for ruler&rsquo;s alertmanager connectivity.</p>
@@ -2343,6 +4224,20 @@ AlertManagerNotificationQueueSpec
 <td>
 <em>(Optional)</em>
 <p>List of alert relabel configurations.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>client</code><br/>
+<em>
+<a href="#loki-grafana-com-v1beta1-AlertManagerClientConfig">
+AlertManagerClientConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Client configuration for reaching the alertmanager endpoint.</p>
 </td>
 </tr>
 </tbody>
@@ -2855,7 +4750,8 @@ int32
 </p>
 <div>
 <p>LimitsSpec defines the spec for limits applied at ingestion or query
-path across the cluster or per tenant.</p>
+path across the cluster or per tenant.
+It also defines the per-tenant configuration overrides.</p>
 </div>
 <table>
 <thead>
@@ -2890,7 +4786,7 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>Tenants defines the limits applied per tenant.</p>
+<p>Tenants defines the limits and overrides applied per tenant.</p>
 </td>
 </tr>
 </tbody>
@@ -2901,7 +4797,7 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
 (<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-LimitsSpec">LimitsSpec</a>)
 </p>
 <div>
-<p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
+<p>LimitsTemplateSpec defines the limits and overrides applied per-tenant.</p>
 </div>
 <table>
 <thead>
@@ -3420,7 +5316,7 @@ LimitsSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>Limits defines the limits to be applied to log stream processing.</p>
+<p>Limits defines the per-tenant limits to be applied to log stream processing and the per-tenant the config overrides.</p>
 </td>
 </tr>
 <tr>
@@ -5100,6 +6996,20 @@ RemoteWriteSpec
 <p>Defines a remote write endpoint to write recording rule metrics.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>overrides</code><br/>
+<em>
+<a href="#loki-grafana-com-v1beta1-RulerOverrides">
+map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.RulerOverrides
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Overrides defines the config overrides to be applied per-tenant.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -5130,6 +7040,38 @@ RemoteWriteSpec
 <td>
 <em>(Optional)</em>
 <p>Conditions of the RulerConfig health.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## RulerOverrides { #loki-grafana-com-v1beta1-RulerOverrides }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1beta1-RulerConfigSpec">RulerConfigSpec</a>)
+</p>
+<div>
+<p>RulerOverrides defines the overrides applied per-tenant.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>alertmanager</code><br/>
+<em>
+<a href="#loki-grafana-com-v1beta1-AlertManagerSpec">
+AlertManagerSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AlertManagerOverrides defines the overrides to apply to the alertmanager config.</p>
 </td>
 </tr>
 </tbody>

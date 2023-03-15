@@ -2,20 +2,20 @@ package rules
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"gopkg.in/yaml.v2"
 )
 
 type alertingRuleSpec struct {
-	Groups []*lokiv1beta1.AlertingRuleGroup `json:"groups"`
+	Groups []*lokiv1.AlertingRuleGroup `json:"groups"`
 }
 
 type recordingRuleSpec struct {
-	Groups []*lokiv1beta1.RecordingRuleGroup `json:"groups"`
+	Groups []*lokiv1.RecordingRuleGroup `json:"groups"`
 }
 
 // MarshalAlertingRule returns the alerting rule groups marshaled into YAML or an error.
-func MarshalAlertingRule(a lokiv1beta1.AlertingRule) (string, error) {
+func MarshalAlertingRule(a lokiv1.AlertingRule) (string, error) {
 	ar := alertingRuleSpec{
 		Groups: a.Spec.Groups,
 	}
@@ -29,7 +29,7 @@ func MarshalAlertingRule(a lokiv1beta1.AlertingRule) (string, error) {
 }
 
 // MarshalRecordingRule returns the recording rule groups marshaled into YAML or an error.
-func MarshalRecordingRule(a lokiv1beta1.RecordingRule) (string, error) {
+func MarshalRecordingRule(a lokiv1.RecordingRule) (string, error) {
 	ar := recordingRuleSpec{
 		Groups: a.Spec.Groups,
 	}
