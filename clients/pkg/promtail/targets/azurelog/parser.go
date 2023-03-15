@@ -7,7 +7,7 @@ import (
 )
 
 type eventHubMessage struct {
-	Records []any `json:"records"`
+	Records []json.RawMessage `json:"records"`
 }
 
 func messageParser(message *sarama.ConsumerMessage) ([]string, error) {
@@ -23,12 +23,7 @@ func messageParser(message *sarama.ConsumerMessage) ([]string, error) {
 
 	var result []string
 	for _, m := range data.Records {
-		b, err := json.Marshal(m)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, string(b))
+		result = append(result, string(m))
 	}
 
 	return result, nil
