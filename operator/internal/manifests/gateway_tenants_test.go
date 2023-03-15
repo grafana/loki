@@ -523,6 +523,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.package=lokistack",
+										"--opa.matcher=SrcK8S_Namespace,DstK8S_Namespace",
+										"--opa.matcher-op=or",
 										`--openshift.mappings=network=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
@@ -625,6 +627,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.package=lokistack",
+										"--opa.matcher=SrcK8S_Namespace,DstK8S_Namespace",
+										"--opa.matcher-op=or",
 										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
