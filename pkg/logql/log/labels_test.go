@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 
@@ -159,4 +160,45 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 		lbs.String(),
 		res.String(),
 	)
+}
+
+func BenchmarkLFU(b *testing.B) {
+	keys := [][]byte{
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+		[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20"),
+	}
+	createNew := func() (string, bool) { return "value", true }
+
+	cache := NewLFU()
+	//cache := internedStringSet{}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, result = cache.Get(keys[i%len(keys)], createNew)
+		//_, result = cache.Get(keys[i%LFUSize], createNew)
+	}
+}
+
+func TestLFU(b *testing.T) {
+	keys := [][]byte{[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5"), []byte("6"), []byte("7"), []byte("8"), []byte("9"), []byte("10"), []byte("11"), []byte("12"), []byte("13"), []byte("14"), []byte("15"), []byte("16"), []byte("17"), []byte("18"), []byte("19"), []byte("20")}
+	cache := NewLFU()
+
+	for i := 0; i < 40; i++ {
+		createNew := func() (string, bool) { return fmt.Sprintf("value %d", i), true }
+		_, result = cache.Get(keys[i%len(keys)], createNew)
+
+		if i%2 == 0 {
+			_, result = cache.Get(keys[i%len(keys)], createNew)
+		}
+
+		if i == 10 {
+			fmt.Println("break here")
+		}
+	}
+	fmt.Println("break here")
 }

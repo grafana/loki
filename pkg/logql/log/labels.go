@@ -1,6 +1,7 @@
 package log
 
 import (
+	"math"
 	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -8,7 +9,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-const MaxInternedStrings = 1024
+const (
+	MaxInternedStrings = 1024
+	LFUSize            = 2
+)
 
 var EmptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 
@@ -460,4 +464,71 @@ func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (st
 		ok bool
 	}{s: new, ok: ok}
 	return new, ok
+}
+
+type entry struct {
+	count int
+	index int
+	s     string
+	ok    bool
+}
+
+type lfu struct {
+	entries        map[string]*entry
+	lastRemovedIdx int
+	es             []*entry
+}
+
+func NewLFU() *lfu {
+	return &lfu{
+		entries:        make(map[string]*entry, LFUSize),
+		es:             make([]*entry, 0, LFUSize),
+		lastRemovedIdx: -1,
+	}
+}
+
+func (c *lfu) Get(data []byte, createNew func() (string, bool)) (string, bool) {
+	s, ok := c.entries[string(data)]
+	if ok {
+		c.es[s.index].count += 1
+		return s.s, s.ok
+	}
+
+	new, ok := createNew()
+	if len(c.entries) >= LFUSize {
+		minUsed := c.min()
+		c.lastRemovedIdx = minUsed
+		delete(c.entries, c.es[minUsed].s)
+	}
+
+	entry := &entry{s: new, ok: ok}
+	c.entries[string(data)] = entry
+
+	if c.lastRemovedIdx >= 0 {
+		entry.index = c.lastRemovedIdx
+		c.es[c.lastRemovedIdx] = entry
+		c.lastRemovedIdx = -1
+	} else {
+		entry.index = len(c.es)
+		c.es = append(c.es, entry)
+	}
+
+	return new, ok
+}
+
+func (c *lfu) min() int {
+	var minEntry int
+	count := math.MaxInt
+	for i := range c.es {
+		e := c.es[i]
+		if e.count == 0 {
+			// Short circuit, nothing can be used less than 0 times
+			return i
+		}
+
+		if e.count < count {
+			minEntry = i
+		}
+	}
+	return minEntry
 }
