@@ -7,7 +7,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
