@@ -11,12 +11,12 @@ import (
 //go:embed testdata/function_app_logs_message.txt
 var functionAppLogsMessageBody string
 
-func Test_messageParser(t *testing.T) {
+func Test_parseMessage(t *testing.T) {
 	message := &sarama.ConsumerMessage{
 		Value: []byte(functionAppLogsMessageBody),
 	}
 
-	lines, err := messageParser(message)
+	lines, err := parseMessage(message)
 	assert.NoError(t, err)
 	assert.Len(t, lines, 2)
 
