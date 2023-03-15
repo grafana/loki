@@ -79,6 +79,7 @@ func (ctx *Context) baseString(sb *strings.Builder) {
 	sb.WriteString("{")
 	logfmt.NewEncoder(sb).EncodeKeyvals(
 		"name", ctx.name,
+		"desc", ctx.description,
 		"in", ctx.countIn.Load(),
 		"out", ctx.countOut.Load(),
 		"duration", time.Duration(ctx.duration.Load()),
@@ -147,7 +148,7 @@ func New(name, description string, index int, size int) *Context {
 func FromProto(c *RemoteContext) *Context {
 	if c == nil {
 		return nil
-	} 
+	}
 	children := make([]*Context, len(c.Children))
 	for i, child := range c.Children {
 		children[i] = FromProto(child)

@@ -19,6 +19,7 @@ var NoopStage Stage = &noopStage{}
 
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
+	fmt.Stringer
 	ForStream(labels labels.Labels) StreamPipeline
 	SetAnalyzeContext(ctx *analyze.Context) bool
 }
@@ -26,6 +27,7 @@ type Pipeline interface {
 // StreamPipeline transform and filter log lines and labels.
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
+	fmt.Stringer
 	BaseLabels() LabelsResult
 	// Process processes a log line and returns the transformed line and the labels.
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
@@ -37,9 +39,9 @@ type StreamPipeline interface {
 // A Stage implementation should never mutate the line passed, but instead either
 // return the line unchanged or allocate a new line.
 type Stage interface {
+	fmt.Stringer
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	RequiredLabelNames() []string
-	String() string
 	Description() string
 }
 
@@ -151,7 +153,7 @@ func (s *analyzedStage) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]by
 	start := time.Now()
 	res, match := s.Stage.Process(ts, line, lbs)
 	s.ctx.Observe(time.Since(start), match)
-	s.ctx.SetDescription(s.Stage.Description())
+	//s.ctx.SetDescription(s.Description())
 	return res, match
 }
 
@@ -220,11 +222,11 @@ func (p *pipeline) SetAnalyzeContext(ctx *analyze.Context) bool {
 		fmt.Fprintln(os.Stderr, "WARNING: analyze context already set")
 		return false
 	}
-	p.analyzeContext = ctx
 	for idx := range p.stages {
 		stageAnalyzeContext := analyze.New(p.stages[idx].String(), "", idx, 0)
-		p.analyzeContext.AddChild(stageAnalyzeContext)
+		ctx.AddChild(stageAnalyzeContext)
 	}
+	p.analyzeContext = ctx
 	return true
 }
 
@@ -302,6 +304,10 @@ type filteringPipeline struct {
 	pipeline Pipeline
 }
 
+func (p *filteringPipeline) String() string {
+	return p.pipeline.String()
+}
+
 func (p *filteringPipeline) SetAnalyzeContext(ctx *analyze.Context) bool {
 	return p.pipeline.SetAnalyzeContext(ctx)
 }
@@ -342,6 +348,10 @@ type streamFilter struct {
 type filteringStreamPipeline struct {
 	filters  []streamFilter
 	pipeline StreamPipeline
+}
+
+func (sp *filteringStreamPipeline) String() string {
+	return sp.pipeline.String()
 }
 
 func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {

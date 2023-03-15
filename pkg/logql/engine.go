@@ -231,13 +231,12 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	if ac := analyze.FromContext(ctx); ac != nil {
-		// panic("analyzeCtx must not be nil")
-		// aCtx, ctx = analyze.NewContext(ctx, &n, &d)
+	analyzeCtx := analyze.FromContext(ctx)
+	if analyzeCtx != nil {
 		n := "Engine Exec"
 		d := q.params.String()
 		a := analyze.New(n, d, 0, 0)
-		ac.AddChild(a)
+		analyzeCtx.AddChild(a)
 	}
 
 	data, err := q.Eval(ctx)
@@ -295,13 +294,16 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
-		if pipeline, err := e.Pipeline(); err != nil {
-			ac := analyze.FromContext(ctx)
-			if ac != nil && !pipeline.SetAnalyzeContext(ac) {
-				level.Warn(q.logger).Log("msg", "analyze context already set")
-			}
-		} else {
+		pipeline, err := e.Pipeline()
+		if err != nil {
 			level.Error(q.logger).Log("msg", "failed to get pipeline")
+		} else {
+			ac := analyze.FromContext(ctx)
+			if ac != nil {
+				pipelineCtx := analyze.New("Pipeline", "for evaluator iterator", 0, 0)
+				ac.AddChild(pipelineCtx)
+				pipeline.SetAnalyzeContext(pipelineCtx)
+			}
 		}
 		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {

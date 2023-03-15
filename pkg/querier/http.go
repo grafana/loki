@@ -118,7 +118,6 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		n := "Querier Range Query"
 		d := params.String()
 		_, ctx = analyze.NewContext(ctx, &n, &d)
-		fmt.Println("Set analize context")
 	}
 
 	query := q.engine.Query(params)

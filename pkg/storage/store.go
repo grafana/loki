@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -464,9 +465,11 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	// ac := analyze.FromContext(ctx)
-	// fmt.Fprintln(os.Stderr, "store", "set analyze context", ac)
-	// pipeline.SetAnalyzeContext(ac)
+	if ac := analyze.FromContext(ctx); ac != nil {
+		pipelineCtx := analyze.New("Pipeline", "for log batch iterator", 0, 0)
+		ac.AddChild(pipelineCtx)
+		pipeline.SetAnalyzeContext(pipelineCtx)
+	}
 
 	var chunkFilterer chunk.Filterer
 	if s.chunkFilterer != nil {
