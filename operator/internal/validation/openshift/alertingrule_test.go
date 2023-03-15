@@ -284,7 +284,7 @@ func TestAlertingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:     field.ErrorTypeInvalid,
-					Field:    "Spec.Groups[0].Rules[0].Labels",
+					Field:    "spec.groups[0].rules[0].labels",
 					BadValue: nilMap,
 					Detail:   lokiv1.ErrSeverityLabelMissing.Error(),
 				},
@@ -320,7 +320,7 @@ func TestAlertingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:  field.ErrorTypeInvalid,
-					Field: "Spec.Groups[0].Rules[0].Labels",
+					Field: "spec.groups[0].rules[0].labels",
 					BadValue: map[string]string{
 						severityLabelName: "page",
 					},
@@ -357,7 +357,7 @@ func TestAlertingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:  field.ErrorTypeInvalid,
-					Field: "Spec.Groups[0].Rules[0].Annotations",
+					Field: "spec.groups[0].rules[0].annotations",
 					BadValue: map[string]string{
 						descriptionAnnotationName: "alert description",
 					},
@@ -394,7 +394,7 @@ func TestAlertingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:  field.ErrorTypeInvalid,
-					Field: "Spec.Groups[0].Rules[0].Annotations",
+					Field: "spec.groups[0].rules[0].annotations",
 					BadValue: map[string]string{
 						summaryAnnotationName: "alert summary",
 					},
