@@ -41,7 +41,7 @@ func NewTargetManager(
 // Ready returns true if at least one Kafka target is active.
 func (tm *TargetManager) Ready() bool {
 	for _, t := range tm.targetSyncers {
-		if len(t.getActiveTargets()) > 0 {
+		if len(t.ActiveTargets()) > 0 {
 			return true
 		}
 	}
@@ -59,7 +59,7 @@ func (tm *TargetManager) Stop() {
 func (tm *TargetManager) ActiveTargets() map[string][]target.Target {
 	result := make(map[string][]target.Target, len(tm.targetSyncers))
 	for k, v := range tm.targetSyncers {
-		result[k] = v.getActiveTargets()
+		result[k] = v.ActiveTargets()
 	}
 	return result
 }
@@ -67,7 +67,7 @@ func (tm *TargetManager) ActiveTargets() map[string][]target.Target {
 func (tm *TargetManager) AllTargets() map[string][]target.Target {
 	result := make(map[string][]target.Target, len(tm.targetSyncers))
 	for k, v := range tm.targetSyncers {
-		result[k] = append(v.getActiveTargets(), v.getDroppedTargets()...)
+		result[k] = append(v.ActiveTargets(), v.DroppedTargets()...)
 	}
 	return result
 }
