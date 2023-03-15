@@ -137,7 +137,7 @@ func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, 
 
 	maxQueryLength := c.limits.MaxQueryLength(ctx, userID)
 	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
-		return false, errors.QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength))
+		return false, errors.QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), model.Time(maxQueryLength)))
 	}
 
 	now := model.Now()
