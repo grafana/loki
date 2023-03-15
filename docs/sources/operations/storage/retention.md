@@ -111,7 +111,7 @@ limits_config:
 ...
 ```
 
-**NOTE:** only label matchers can be used in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
+**NOTE:** You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
 
 Per tenant retention can be defined using the `/etc/overrides.yaml` files. For example:
 
