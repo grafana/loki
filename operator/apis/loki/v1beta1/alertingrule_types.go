@@ -108,6 +108,7 @@ type AlertingRuleStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:unservedversion
 // +kubebuilder:subresource:status
 
 // AlertingRule is the Schema for the alertingrules API

@@ -85,8 +85,9 @@ type RecordingRuleStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:unservedversion
+// +kubebuilder:subresource:status
 
 // RecordingRule is the Schema for the recordingrules API
 //

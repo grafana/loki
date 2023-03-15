@@ -522,8 +522,9 @@ type RulerConfigStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:unservedversion
+// +kubebuilder:subresource:status
 
 // RulerConfig is the Schema for the rulerconfigs API
 //
