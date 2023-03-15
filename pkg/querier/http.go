@@ -36,6 +36,7 @@ import (
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
+	"go.opentelemetry.io/collector/model/pdata"
 )
 
 const (
@@ -98,7 +99,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
-	switch e := expr.(type){
+	switch e := expr.(type) {
 	case syntax.ExplainExpr:
 		// create analyze context
 		params = logql.NewLiteralParams(
@@ -123,10 +124,14 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := query.Exec(ctx)
 
 	// Check analysis
-	if analysis := analyze.FromContext(ctx); analysis != nil {
-		fmt.Println("exec is done:\n", analyze.FromContext(ctx).String())
+	analyzeContext := analyze.FromContext(ctx)
+	if analyzeContext != nil {
+		fmt.Println("query.Exec(ctx) is done:")
+		fmt.Println(analyzeContext.String())
 		// TODO: transform analysis to logqlmodel.Trace
-		result.Data = logqlmodel.Trace{}//???
+		result.Data = logqlmodel.Trace{
+			Model: pdata.NewTraces(),
+		}
 		if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 			serverutil.WriteError(err, w)
 			return

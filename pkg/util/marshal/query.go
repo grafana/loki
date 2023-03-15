@@ -263,8 +263,7 @@ func encodeResult(v parser.Value, s *jsoniter.Stream) error {
 		if err != nil {
 			return err
 		}
-		s.WriteRaw(string(data))
-
+		s.Write(data)
 
 	default:
 		s.WriteNil()
