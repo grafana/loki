@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,9 +16,11 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -742,4 +745,65 @@ func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return schemaCfg, true
+}
+
+func (c *Compactor) simulateRetention(ctx context.Context, interval model.Duration) (bool, error) {
+	const (
+		targetSize = 1500 * 1024
+		blockSize  = 256 * 1024
+	)
+
+	labelsBuilder := labels.NewBuilder(labels.FromStrings("foo", "bar"))
+	labelsBuilder.Set(labels.MetricName, "logs")
+	lbs := labelsBuilder.Labels(nil)
+
+	ref := retention.ChunkRef{
+		UserID:  []byte("fake"),
+		From:    model.Now(), // irrelevant.
+		Through: model.Now(),
+	}
+
+	// expected = 2592000000000000
+	newNow := model.Now().Add(time.Duration(interval))
+
+	e := retention.ChunkEntry{ChunkRef: ref, Labels: lbs}
+	expired, _ := c.expirationChecker.Expired(e, newNow)
+	return expired, nil
+}
+
+func (c *Compactor) SimulateRetentionHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, err := tenant.TenantID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	params := r.URL.Query()
+	period := params.Get("period")
+	if period == "" {
+		http.Error(w, errors.New("missing required param 'since'").Error(), http.StatusBadRequest)
+		return
+	}
+
+	interval, err := model.ParseDuration(period)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	deleted, err := c.simulateRetention(ctx, interval)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	wouldBeDeleted := "false"
+	if deleted {
+		wouldBeDeleted = "true"
+	}
+	if err := json.NewEncoder(w).Encode(map[string]string{"would_be_deleted": wouldBeDeleted, "from_period": period}); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
+		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
+	}
 }
