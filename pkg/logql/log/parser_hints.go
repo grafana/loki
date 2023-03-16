@@ -1,6 +1,8 @@
 package log
 
 import (
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"k8s.io/utils/strings/slices"
 	"strings"
 )
 
@@ -25,11 +27,14 @@ type ParserHint interface {
 	//		 sum(rate({app="foo"} | json [5m]))
 	// We don't need to extract any labels from the log line.
 	NoLabels() bool
+	// CountError returns true when parsing errors were specifically requested
+	PreserveError() bool
 }
 
 type parserHint struct {
-	noLabels       bool
-	requiredLabels []string
+	noLabels            bool
+	requiredLabels      []string
+	shouldPreserveError bool
 }
 
 func (p *parserHint) ShouldExtract(key string) bool {
@@ -61,6 +66,10 @@ func (p *parserHint) NoLabels() bool {
 	return p.noLabels
 }
 
+func (p *parserHint) PreserveError() bool {
+	return p.shouldPreserveError
+}
+
 // newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
@@ -68,9 +77,10 @@ func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	hints = appendLabelHints(hints, groups...)
 	hints = appendLabelHints(hints, metricLabelName)
 	hints = uniqueString(hints)
+
 	if noLabels {
 		if len(hints) > 0 {
-			return &parserHint{requiredLabels: hints}
+			return &parserHint{requiredLabels: hints, shouldPreserveError: slices.Contains(hints, logqlmodel.ErrorLabel)}
 		}
 		return &parserHint{noLabels: true}
 	}
@@ -80,7 +90,7 @@ func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return noParserHints
 	}
-	return &parserHint{requiredLabels: hints}
+	return &parserHint{requiredLabels: hints, shouldPreserveError: slices.Contains(hints, logqlmodel.ErrorLabel)}
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
