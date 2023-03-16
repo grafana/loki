@@ -2,7 +2,6 @@ package log
 
 import (
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"k8s.io/utils/strings/slices"
 	"strings"
 )
 
@@ -80,7 +79,7 @@ func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 
 	if noLabels {
 		if len(hints) > 0 {
-			return &parserHint{requiredLabels: hints, shouldPreserveError: slices.Contains(hints, logqlmodel.ErrorLabel)}
+			return &parserHint{requiredLabels: hints, shouldPreserveError: containsError(hints)}
 		}
 		return &parserHint{noLabels: true}
 	}
@@ -90,7 +89,16 @@ func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return noParserHints
 	}
-	return &parserHint{requiredLabels: hints, shouldPreserveError: slices.Contains(hints, logqlmodel.ErrorLabel)}
+	return &parserHint{requiredLabels: hints, shouldPreserveError: containsError(hints)}
+}
+
+func containsError(hints []string) bool {
+	for _, s := range hints {
+		if s == logqlmodel.ErrorLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
