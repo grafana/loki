@@ -13,7 +13,7 @@ import (
 )
 
 func TestSimpleScalable_IngestQuery(t *testing.T) {
-	clu := cluster.New(cluster.ConfigWithBoltDB(false), nil)
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()

@@ -35,7 +35,7 @@ import (
 var (
 	wrapRegistryOnce sync.Once
 
-	baseConfigTemplate = `
+	configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
 server:
@@ -106,73 +106,8 @@ ruler:
     local:
       directory: {{.sharedDataPath}}/rules
   rule_path: {{.sharedDataPath}}/prom-rule
-`
-
-	schemaConfigHeader = `
-schema_config:
-  configs:`
-
-	boltDBShipperSchemaConfigTemplate = `
-    - from: {{.curPeriodStart}}
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-`
-	additionalBoltDBShipperSchemaConfigTemplate = `
-    - from: {{.additionalPeriodStart}}
-      store: boltdb-shipper
-      object_store: store-1
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-`
-
-	tsdbShipperSchemaConfigTemplate = `
-    - from: {{.curPeriodStart}}
-      store: tsdb
-      object_store: filesystem
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-`
-	additionalTSDBShipperSchemaConfigTemplate = `
-    - from: {{.additionalPeriodStart}}
-      store: tsdb
-      object_store: store-1
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-`
+`))
 )
-
-func ConfigWithBoltDB(additionalPeriod bool) *template.Template {
-	schemaConfig := schemaConfigHeader
-	if additionalPeriod {
-		schemaConfig += additionalBoltDBShipperSchemaConfigTemplate
-	}
-	schemaConfig += boltDBShipperSchemaConfigTemplate
-
-	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfig))
-}
-
-func ConfigWithTSDB(additionalPeriod bool) *template.Template {
-	schemaConfig := schemaConfigHeader
-	if additionalPeriod {
-		schemaConfig += additionalTSDBShipperSchemaConfigTemplate
-	}
-	schemaConfig += tsdbShipperSchemaConfigTemplate
-	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfig))
-}
-
-func ConfigWithBoltDBAndTSDB() *template.Template {
-	return template.Must(template.New("").Parse(baseConfigTemplate + schemaConfigHeader + additionalBoltDBShipperSchemaConfigTemplate + tsdbShipperSchemaConfigTemplate))
-}
 
 func wrapRegistry() {
 	wrapRegistryOnce.Do(func() {
@@ -204,15 +139,15 @@ func (w *wrappedRegisterer) MustRegister(collectors ...prometheus.Collector) {
 }
 
 type Cluster struct {
-	configTmpl    *template.Template
 	sharedPath    string
 	components    []*Component
 	waitGroup     sync.WaitGroup
 	initedAt      model.Time
+	periodCfgs    []string
 	overridesFile string
 }
 
-func New(configTmpl *template.Template, logLevel level.Value) *Cluster {
+func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	if logLevel != nil {
 		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
 	}
@@ -230,12 +165,17 @@ func New(configTmpl *template.Template, logLevel level.Value) *Cluster {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
 
-	return &Cluster{
-		configTmpl:    configTmpl,
+	cluster := &Cluster{
 		sharedPath:    sharedPath,
 		initedAt:      model.Now(),
 		overridesFile: overridesFile,
 	}
+
+	for _, opt := range opts {
+		opt(cluster)
+	}
+
+	return cluster
 }
 
 func (c *Cluster) Run() error {
@@ -398,17 +338,32 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
 	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
 
-	if err := c.cluster.configTmpl.Execute(&sb, map[string]interface{}{
-		"dataPath":              c.dataPath,
-		"sharedDataPath":        c.cluster.sharedPath,
-		"curPeriodStart":        periodStart.String(),
-		"additionalPeriodStart": additionalPeriodStart.String(),
+	if err := configTemplate.Execute(&sb, map[string]interface{}{
+		"dataPath":       c.dataPath,
+		"sharedDataPath": c.cluster.sharedPath,
 	}); err != nil {
 		return nil, fmt.Errorf("error writing config file: %w", err)
 	}
 
 	merger := util.NewYAMLMerger()
 	merger.AddFragment(sb.Bytes())
+
+	// default to using boltdb index
+	if len(c.cluster.periodCfgs) == 0 {
+		c.cluster.periodCfgs = []string{boltDBShipperSchemaConfigTemplate}
+	}
+
+	for _, periodCfg := range c.cluster.periodCfgs {
+		var buf bytes.Buffer
+		if err := template.Must(template.New("schema").Parse(periodCfg)).
+			Execute(&buf, map[string]interface{}{
+				"curPeriodStart":        periodStart.String(),
+				"additionalPeriodStart": additionalPeriodStart.String(),
+			}); err != nil {
+			return nil, errors.New("error building schema_config")
+		}
+		merger.AddFragment(buf.Bytes())
+	}
 
 	for _, extra := range c.extraConfigs {
 		merger.AddFragment([]byte(extra))

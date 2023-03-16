@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"testing"
-	"text/template"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
-	clu := cluster.New(cluster.ConfigWithBoltDB(false), nil)
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -124,14 +123,15 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 }
 
 func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
-	for name, template := range map[string]*template.Template{
-		"boltdb-index":    cluster.ConfigWithBoltDB(true),
-		"tsdb-index":      cluster.ConfigWithTSDB(true),
-		"boltdb-and-tsdb": cluster.ConfigWithBoltDBAndTSDB(),
+	for name, opt := range map[string]func(c *cluster.Cluster){
+		"boltdb-index":    cluster.WithAdditionalBoltDB,
+		"tsdb-index":      cluster.WithAdditionalTSDB,
+		"boltdb-and-tsdb": cluster.WithBoltDBAndTSDB,
 	} {
 		t.Run(name, func(t *testing.T) {
 			storage.ResetBoltDBIndexClientsWithShipper()
-			clu := cluster.New(template, nil)
+			clu := cluster.New(nil, opt)
+
 			defer func() {
 				storage.ResetBoltDBIndexClientsWithShipper()
 				assert.NoError(t, clu.Cleanup())
