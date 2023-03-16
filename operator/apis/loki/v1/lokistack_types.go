@@ -921,5 +921,5 @@ func init() {
 	SchemeBuilder.Register(&LokiStack{}, &LokiStackList{})
 }
 
-// Hub declares the v1beta1.LokiStack as the hub CRD version.
+// Hub declares the v1.LokiStack as the hub CRD version.
 func (*LokiStack) Hub() {}
