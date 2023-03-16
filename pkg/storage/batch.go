@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"sort"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
