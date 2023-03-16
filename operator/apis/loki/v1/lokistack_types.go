@@ -356,6 +356,8 @@ const (
 )
 
 // InstanceAddrType defines the type of pod network to use for advertising IPs to the ring.
+//
+// +kubebuilder:validation:Enum=default;podIP
 type InstanceAddrType string
 
 const (
@@ -375,7 +377,7 @@ type MemberListSpec struct {
 	// +optional
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:default","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
-	InstanceAddrType InstanceAddrType `json:"instanceAddrType"`
+	InstanceAddrType InstanceAddrType `json:"instanceAddrType,omitempty"`
 }
 
 // HashRingSpec defines the hash ring configuration
