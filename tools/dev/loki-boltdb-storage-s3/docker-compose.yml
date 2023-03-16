@@ -66,7 +66,7 @@ services:
   grafana:
     logging:
       <<: *logging
-    image: jeschkies/grafana:hackathon-eli5-c640cae281
+    image: jeschkies/grafana:hackathon-eli5-3e75e8497d
     depends_on:
       - loki
     environment:
