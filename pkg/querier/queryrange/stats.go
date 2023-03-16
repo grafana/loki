@@ -50,7 +50,7 @@ func recordQueryMetrics(data *queryData) {
 	case queryTypeLog, queryTypeMetric:
 		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
 	case queryTypeLabel:
-		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.status, *data.statistics)
+		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, strings.Join(data.match, ","), data.status, *data.statistics)
 	case queryTypeSeries:
 		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
 	default:
@@ -175,6 +175,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				switch r := req.(type) {
 				case *LokiLabelNamesRequest:
 					data.label = getLabelNameFromLabelsQuery(r.Path)
+					data.match = []string{r.GetQuery()}
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}

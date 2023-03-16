@@ -119,6 +119,7 @@ message LabelRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = true
   ];
+  string query = 5;
 }
 
 message LabelResponse {

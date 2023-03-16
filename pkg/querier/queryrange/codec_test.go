@@ -80,6 +80,15 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			StartTs: start,
 			EndTs:   end,
 		}, false},
+		{"label_values", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiLabelNamesRequest{
+			Path:    "/label/test/values",
+			StartTs: start,
+			EndTs:   end,
+			Query:   `{foo="bar"}`,
+		}, false},
 		{"index_stats", func() (*http.Request, error) {
 			return LokiCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
