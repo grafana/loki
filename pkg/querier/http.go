@@ -115,9 +115,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		// here we should pull the context out of something we get from the frontend
 		// the query string and start/end could be in the context level there since here we've just
 		// got an indivudal shard for a already sharded/split query
-		n := "Querier Range Query"
-		d := params.String()
-		_, ctx = analyze.NewContext(ctx, &n, &d)
+		_, ctx = analyze.NewContext(ctx, "Querier RangeQuery", params.String())
 	}
 
 	query := q.engine.Query(params)

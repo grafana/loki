@@ -218,20 +218,15 @@ func FromProto(c *RemoteContext) *Context {
 	}
 }
 
-func NewContext(ctx context.Context, name, description *string) (*Context, context.Context) {
+func NewContext(ctx context.Context, name, description string) (*Context, context.Context) {
 	existing := FromContext(ctx)
 	if existing != nil {
 		return existing, ctx
 	}
-	n := "root"
-	d := ""
-	if name != nil {
-		n = *name
+	if name == "" {
+		name = "root"
 	}
-	if description != nil {
-		d = *description
-	}
-	c := New(n, d, 0, 2)
+	c := New(name, description, 0, 2)
 	return c, context.WithValue(ctx, analyzeKey, c)
 }
 

@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -370,6 +371,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		pipelineCtx := analyze.New("Pipeline", "for stream iterator", 0, 0)
 		ac.AddChild(pipelineCtx)
 		pipeline.SetAnalyzeContext(pipelineCtx)
+		fmt.Fprintln(os.Stderr, ac)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -809,6 +811,8 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 
 		if analyzeCtx != nil {
+			fmt.Fprintln(os.Stderr, "send batch")
+			fmt.Fprintln(os.Stderr, analyzeCtx)
 			batch.Analyze = analyzeCtx.ToProto()
 		}
 

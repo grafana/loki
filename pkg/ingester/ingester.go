@@ -669,8 +669,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// initialize stats collection for ingester queries.
 	ctx := queryServer.Context()
 	_, ctx = stats.NewContext(ctx)
-	n := "IngesterQuery"
-	_, ctx = analyze.NewContext(ctx, &n, &req.Selector)
+	_, ctx = analyze.NewContext(ctx, "Ingester Query", req.Selector)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {

@@ -3,11 +3,14 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"github.com/grafana/loki/pkg/logqlmodel/analyze"
+	"fmt"
 	"io"
 	"math"
+	"os"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -511,6 +514,8 @@ func (i *queryClientIterator) Next() bool {
 		stats.JoinIngesters(ctx, batch.Stats)
 		i.curr = NewQueryResponseIterator(batch, i.direction)
 		i.currAnalyze = analyze.FromProto(batch.Analyze)
+		fmt.Fprintln(os.Stderr, "queryClientIterator")
+		fmt.Fprintln(os.Stderr, i.currAnalyze)
 	}
 
 	return true
