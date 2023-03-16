@@ -2,7 +2,9 @@ package querier
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -571,8 +573,28 @@ func analysisToTraces(ac *analyze.Context) pdata.Traces {
 	traces := pdata.NewTraces()
 	resource := traces.ResourceSpans().AppendEmpty()
 	ispans := resource.InstrumentationLibrarySpans().AppendEmpty()
+	ispans.InstrumentationLibrary().SetName("root")
 	span := ispans.Spans().AppendEmpty()
-	span.SetName("querier")
+	addChildSpans(ac.ChildContexts, span)
 
 	return traces
+}
+
+func addChildSpans(children []*analyze.Context, parent pdata.Span) {
+	for idx := range children {
+		child := children[idx]
+		span := pdata.NewSpan()
+		span.SetSpanID(generateSpanID())
+		span.SetName(child.Name)
+		span.SetParentSpanID(parent.ParentSpanID())
+
+		addChildSpans(child.ChildContexts, span)
+	}
+}
+
+func generateSpanID() pdata.SpanID {
+	i := rand.Int63()
+	b := [8]byte{}
+	binary.LittleEndian.PutUint64(b[:], uint64(i))
+	return pdata.NewSpanID(b)
 }

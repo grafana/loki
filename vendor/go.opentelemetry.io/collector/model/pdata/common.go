@@ -64,12 +64,12 @@ func (avt AttributeValueType) String() string {
 // value representation. For the same reason passing by value and calling setters
 // will modify the original, e.g.:
 //
-//   func f1(val AttributeValue) { val.SetIntVal(234) }
-//   func f2() {
-//       v := NewAttributeValueString("a string")
-//       f1(v)
-//       _ := v.Type() // this will return AttributeValueTypeInt
-//   }
+//	func f1(val AttributeValue) { val.SetIntVal(234) }
+//	func f2() {
+//	    v := NewAttributeValueString("a string")
+//	    f1(v)
+//	    _ := v.Type() // this will return AttributeValueTypeInt
+//	}
 //
 // Important: zero-initialized instance is not valid for use. All AttributeValue functions below must
 // be called only on instances that are created via NewAttributeValue+ functions.
@@ -386,7 +386,8 @@ func newAttributeMap(orig *[]otlpcommon.KeyValue) AttributeMap {
 // with values from the given map[string]string.
 //
 // Returns the same instance to allow nicer code like:
-//   assert.EqualValues(t, NewAttributeMap().InitFromMap(map[string]AttributeValue{...}), actual)
+//
+//	assert.EqualValues(t, NewAttributeMap().InitFromMap(map[string]AttributeValue{...}), actual)
 func (am AttributeMap) InitFromMap(attrMap map[string]AttributeValue) AttributeMap {
 	if len(attrMap) == 0 {
 		*am.orig = []otlpcommon.KeyValue(nil)
@@ -610,7 +611,8 @@ func (am AttributeMap) UpsertBool(k string, v bool) {
 
 // Sort sorts the entries in the AttributeMap so two instances can be compared.
 // Returns the same instance to allow nicer code like:
-//   assert.EqualValues(t, expected.Sort(), actual.Sort())
+//
+//	assert.EqualValues(t, expected.Sort(), actual.Sort())
 func (am AttributeMap) Sort() AttributeMap {
 	// Intention is to move the nil values at the end.
 	sort.SliceStable(*am.orig, func(i, j int) bool {
@@ -631,9 +633,9 @@ func (am AttributeMap) Len() int {
 //
 // Example:
 //
-//   sm.Range(func(k string, v AttributeValue) bool {
-//       ...
-//   })
+//	sm.Range(func(k string, v AttributeValue) bool {
+//	    ...
+//	})
 func (am AttributeMap) Range(f func(k string, v AttributeValue) bool) {
 	for i := range *am.orig {
 		kv := &(*am.orig)[i]
@@ -688,7 +690,8 @@ func newStringMap(orig *[]otlpcommon.StringKeyValue) StringMap {
 // with values from the given map[string]string.
 //
 // Returns the same instance to allow nicer code like:
-//   assert.EqualValues(t, NewStringMap().InitFromMap(map[string]string{...}), actual)
+//
+//	assert.EqualValues(t, NewStringMap().InitFromMap(map[string]string{...}), actual)
 func (sm StringMap) InitFromMap(attrMap map[string]string) StringMap {
 	if len(attrMap) == 0 {
 		*sm.orig = []otlpcommon.StringKeyValue(nil)
@@ -783,9 +786,9 @@ func (sm StringMap) Len() int {
 //
 // Example:
 //
-//   sm.Range(func(k string, v StringValue) bool {
-//       ...
-//   })
+//	sm.Range(func(k string, v StringValue) bool {
+//	    ...
+//	})
 func (sm StringMap) Range(f func(k string, v string) bool) {
 	for i := range *sm.orig {
 		skv := &(*sm.orig)[i]
@@ -824,7 +827,8 @@ func (sm StringMap) get(k string) (*otlpcommon.StringKeyValue, bool) {
 
 // Sort sorts the entries in the StringMap so two instances can be compared.
 // Returns the same instance to allow nicer code like:
-//   assert.EqualValues(t, expected.Sort(), actual.Sort())
+//
+//	assert.EqualValues(t, expected.Sort(), actual.Sort())
 func (sm StringMap) Sort() StringMap {
 	sort.SliceStable(*sm.orig, func(i, j int) bool {
 		// Intention is to move the nil values at the end.
