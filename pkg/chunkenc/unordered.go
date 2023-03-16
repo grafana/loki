@@ -281,7 +281,7 @@ func (hb *unorderedHeadBlock) Iterator(
 		}
 	}
 
-	return iter.NewStreamsIterator(streamsResult, direction)
+	return iter.NewStreamsIterator(ctx, streamsResult, direction)
 }
 
 // nolint:unused

@@ -92,7 +92,7 @@ outer:
 		}
 	}
 
-	return iter.NewSortEntryIterator(streamIters, req.Direction), nil
+	return iter.NewSortEntryIterator(ctx, streamIters, req.Direction), nil
 }
 
 func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {

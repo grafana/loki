@@ -352,6 +352,7 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	ac, ctx := analyze.NewDetachedContext(ctx, "Query", "instance.Query()")
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -366,7 +367,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	if err != nil {
 		return nil, err
 	}
-	if ac := analyze.FromContext(ctx); ac != nil {
+	if ac != nil {
 		pipelineCtx := analyze.New("Pipeline", "inmemory", 0, 0)
 		ac.AddChild(pipelineCtx)
 		pipeline.SetAnalyzeContext(pipelineCtx)
@@ -398,7 +399,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	return iter.NewSortEntryIterator(iters, req.Direction), nil
+	return iter.NewSortEntryIterator(ctx, iters, req.Direction), nil
 }
 
 func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {

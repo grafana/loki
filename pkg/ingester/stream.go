@@ -525,7 +525,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 	if ordered {
 		return iter.NewNonOverlappingIterator(iterators), nil
 	}
-	return iter.NewSortEntryIterator(iterators, direction), nil
+	return iter.NewSortEntryIterator(ctx, iterators, direction), nil
 }
 
 // Returns an SampleIterator.

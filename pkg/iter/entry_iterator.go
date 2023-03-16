@@ -3,6 +3,7 @@ package iter
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -134,7 +135,7 @@ type mergeEntryIterator struct {
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
 // If you don't need to deduplicate entries, use `NewSortEntryIterator` instead.
 func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
-	ac, ctx := analyze.InheritContext(ctx, "MergeEntryInterator", "NewMergeEntryInterator()")
+	ac, ctx := analyze.InheritContext(ctx, "MergeEntryInterator", fmt.Sprintf("len=%d", len(is)))
 	result := &mergeEntryIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
@@ -364,7 +365,7 @@ type entrySortIterator struct {
 // The iterator only order entries across given `is` iterators, it does not sort entries within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
 // When timestamp is equal, the iterator sorts samples by their label alphabetically.
-func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
+func NewSortEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) EntryIterator {
 	if len(is) == 0 {
 		return NoopIterator
 	}
@@ -372,7 +373,9 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 		return is[0]
 	}
 	maxVal, less := treeLess(direction)
-	result := &entrySortIterator{}
+	result := &entrySortIterator{
+		currAnalyze: analyze.FromContext(ctx),
+	}
 	result.tree = loser.New(is, maxVal, sortFieldsAt, less, result.closeEntry)
 	return result
 }
@@ -444,7 +447,6 @@ func (i *entrySortIterator) Next() bool {
 	i.currEntry.Entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
-	i.currAnalyze = next.Analyze()
 	return true
 }
 
@@ -481,17 +483,17 @@ func (i *entrySortIterator) Close() error {
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream
-func NewStreamsIterator(streams []logproto.Stream, direction logproto.Direction) EntryIterator {
+func NewStreamsIterator(ctx context.Context, streams []logproto.Stream, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(streams))
 	for i := range streams {
 		is = append(is, NewStreamIterator(streams[i]))
 	}
-	return NewSortEntryIterator(is, direction)
+	return NewSortEntryIterator(ctx, is, direction)
 }
 
 // NewQueryResponseIterator returns an iterator over a QueryResponse.
-func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
-	return NewStreamsIterator(resp.Streams, direction)
+func NewQueryResponseIterator(ctx context.Context, resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
+	return NewStreamsIterator(ctx, resp.Streams, direction)
 }
 
 type queryClientIterator struct {
@@ -504,7 +506,7 @@ type queryClientIterator struct {
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
 func NewQueryClientIterator(ctx context.Context, client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
-	ac, _ := analyze.InheritContext(ctx, "QUeryClientIterator", "NewQueryClientIterator()")
+	ac, _ := analyze.InheritContext(ctx, "QueryClientIterator", "NewQueryClientIterator()")
 	return &queryClientIterator{
 		client:      client,
 		direction:   direction,
@@ -523,7 +525,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
-		i.curr = NewQueryResponseIterator(batch, i.direction)
+		i.curr = NewQueryResponseIterator(ctx, batch, i.direction)
 		i.currAnalyze.Merge(analyze.FromProto(batch.Analyze))
 	}
 

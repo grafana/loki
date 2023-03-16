@@ -819,7 +819,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if ordered {
 			it = iter.NewNonOverlappingIterator(blockItrs)
 		} else {
-			it = iter.NewSortEntryIterator(blockItrs, direction)
+			it = iter.NewSortEntryIterator(ctx, blockItrs, direction)
 		}
 
 		return iter.NewTimeRangedIterator(
@@ -852,7 +852,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	if ordered {
 		return iter.NewNonOverlappingIterator(blockItrs), nil
 	}
-	return iter.NewSortEntryIterator(blockItrs, direction), nil
+	return iter.NewSortEntryIterator(ctx, blockItrs, direction), nil
 }
 
 // Iterator implements Chunk.
@@ -1048,7 +1048,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(streamsResult, direction)
+	return iter.NewStreamsIterator(ctx, streamsResult, direction)
 }
 
 func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {

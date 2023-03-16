@@ -63,7 +63,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 		iters[i] = NewTenantEntryIterator(iter, id)
 		i++
 	}
-	return iter.NewSortEntryIterator(iters, params.Direction), nil
+	return iter.NewSortEntryIterator(ctx, iters, params.Direction), nil
 }
 
 func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {

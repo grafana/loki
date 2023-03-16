@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"sort"
 	"time"
+
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -314,6 +315,8 @@ type logBatchIterator struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	pipeline syntax.Pipeline
+
+	ac *analyze.Context
 }
 
 func newLogBatchIterator(
@@ -329,16 +332,18 @@ func newLogBatchIterator(
 	chunkFilterer chunk.Filterer,
 ) (iter.EntryIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
+	// ac, ctx := analyze.InheritContext(ctx, "LogBatchIterator", "storage.newLogBatchIterator()")
 	return &logBatchIterator{
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
+		ac:                 analyze.FromContext(ctx),
 		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
 
 func (it *logBatchIterator) Analyze() *analyze.Context {
-	return analyze.New("logBatchIterator", "to be implemented", 0, 0)
+	return it.ac
 }
 
 func (it *logBatchIterator) Labels() string {
@@ -410,7 +415,7 @@ func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator
 	if len(iters) == 1 {
 		return iters[0], nil
 	}
-	return iter.NewSortEntryIterator(iters, it.direction), nil
+	return iter.NewSortEntryIterator(it.ctx, iters, it.direction), nil
 }
 
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
@@ -453,7 +458,8 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 		result = append(result, iter.NewNonOverlappingIterator(iterators))
 	}
 
-	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
+	_, ctx := analyze.NewDetachedContext(it.ctx, "LazyChunkIterator", "ignore")
+	return iter.NewMergeEntryIterator(ctx, result, it.direction), nil
 }
 
 type sampleBatchIterator struct {
