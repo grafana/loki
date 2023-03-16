@@ -14,7 +14,7 @@ groups:
         for: "15m"
         labels:
           severity: "critical"
-      - alert: "LokiRequestPanics",
+      - alert: "LokiRequestPanics"
         annotations:
           message: |
             {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
