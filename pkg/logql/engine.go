@@ -231,14 +231,6 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	analyzeCtx := analyze.FromContext(ctx)
-	if analyzeCtx != nil {
-		n := "Engine Exec"
-		d := q.params.String()
-		a := analyze.New(n, d, 0, 0)
-		analyzeCtx.AddChild(a)
-	}
-
 	data, err := q.Eval(ctx)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
@@ -276,6 +268,13 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
+	var ac *analyze.Context
+	analyzeCtx := analyze.FromContext(ctx)
+	if analyzeCtx != nil {
+		ac = analyze.New("Exec", q.params.String(), 0, 0)
+		analyzeCtx.AddChild(ac)
+	}
+
 	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid memory address or nil pointer dereference") {
@@ -298,7 +297,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		if err != nil {
 			level.Error(q.logger).Log("msg", "failed to get pipeline")
 		} else {
-			ac := analyze.FromContext(ctx)
+			//ac := analyze.FromContext(ctx)
 			if ac != nil {
 				pipelineCtx := analyze.New("Pipeline", "for evaluator iterator", 0, 0)
 				// somehow we need a nicer way to say "I want to add this at the currently most low level"
@@ -496,27 +495,27 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
-	aCtx := analyze.FromContext(ctx)
-	childAdded := false
+	// aCtx := analyze.FromContext(ctx)
+	// childAdded := false
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		if aCtx != nil {
-			a := i.Analyze()
-			// somehow we need a nicer way to say "I want to add this at the currently most low level"
-			// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
-			if aCtx.GetChild(0) != nil {
-				aCtx = aCtx.GetChild(0)
-			}
+		// if aCtx != nil {
+		// 	a := i.Analyze()
+		// 	// somehow we need a nicer way to say "I want to add this at the currently most low level"
+		// 	// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
+		// 	if aCtx.GetChild(0) != nil {
+		// 		aCtx = aCtx.GetChild(0)
+		// 	}
 
-			// TODO: remove check once we only anaylyze when aCtx != nil
-			if a != nil {
-				aCtx.AddChildRecursively(a)
-			}
+		// 	// TODO: remove check once we only anaylyze when aCtx != nil
+		// 	if a != nil {
+		// 		aCtx.AddChildRecursively(a)
+		// 	}
 
-			childAdded = true
-		}
+		// 	childAdded = true
+		// }
 		labels, entry := i.Labels(), i.Entry()
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
@@ -544,14 +543,21 @@ func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir log
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	if aCtx != nil && !childAdded {
-		// somehow we need a nicer way to say "I want to add this at the currently most low level"
-		// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
-		if aCtx.GetChild(0) != nil {
-			aCtx = aCtx.GetChild(0)
-		}
-		aCtx.AddChild(analyze.New("Ingester Shard Query", "no results", 0, 0))
+
+	a := i.Analyze()
+	if a != nil {
+		aCtx := analyze.FromContext(ctx)
+		aCtx.AddChild(a)
 	}
+
+	// if aCtx != nil && !childAdded {
+	// 	// somehow we need a nicer way to say "I want to add this at the currently most low level"
+	// 	// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
+	// 	if aCtx.GetChild(0) != nil {
+	// 		aCtx = aCtx.GetChild(0)
+	// 	}
+	// 	aCtx.AddChild(analyze.New("Ingester Shard Query", "no results", 0, 0))
+	// }
 	return result, i.Error()
 }
 

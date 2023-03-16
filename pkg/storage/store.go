@@ -466,7 +466,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	}
 
 	if ac := analyze.FromContext(ctx); ac != nil {
-		pipelineCtx := analyze.New("Pipeline", "for log batch iterator", 0, 0)
+		pipelineCtx := analyze.New("Pipeline", "store", 0, 0)
 		ac.AddChild(pipelineCtx)
 		pipeline.SetAnalyzeContext(pipelineCtx)
 	}

@@ -194,6 +194,26 @@ func New(name, description string, index int, size int) *Context {
 	}
 }
 
+func (a *Context) Merge(b *Context) {
+	if b == nil {
+		return
+	}
+	for idx := 0; idx < len(b.childContexts); idx++ {
+		aChild := a.GetChild(idx)
+		if aChild == nil {
+			a.AddChild(b.GetChild(idx))
+		} else {
+			a.GetChild(idx).Merge(b.GetChild(idx))
+		}
+	}
+	a.name = b.name
+	a.description = b.description
+	a.index = b.index
+	a.countIn.Add(b.countIn.Load())
+	a.countOut.Add(b.countOut.Load())
+	a.duration.Add(b.duration.Load())
+}
+
 func FromProto(c *RemoteContext) *Context {
 	if c == nil {
 		return nil

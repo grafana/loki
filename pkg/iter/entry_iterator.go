@@ -3,10 +3,8 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"io"
 	"math"
-	"os"
 	"sync"
 	"time"
 
@@ -125,10 +123,10 @@ type mergeEntryIterator struct {
 
 	// buffer of entries to be returned by Next()
 	// We buffer entries with the same timestamp to correctly dedupe them.
-	buffer      []entryWithLabels
-	currEntry   entryWithLabels
-	currAnalyze *analyze.Context
-	errs        []error
+	buffer         []entryWithLabels
+	currEntry      entryWithLabels
+	parentAnalysis *analyze.Context
+	errs           []error
 }
 
 // NewMergeEntryIterator returns a new iterator which uses a heap to merge together entries for multiple iterators and deduplicate entries if any.
@@ -148,11 +146,20 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 
 	result.buffer = make([]entryWithLabels, 0, len(is))
 	result.pushBuffer = make([]EntryIterator, 0, len(is))
+
+	result.parentAnalysis = analyze.New("MergeEntryIterator", "", 0, len(is))
+	for idx := range is {
+		child := is[idx].Analyze()
+		if child != nil {
+			result.parentAnalysis.AddChild(child)
+		}
+	}
+
 	return result
 }
 
 func (i *mergeEntryIterator) Analyze() *analyze.Context {
-	return i.currAnalyze
+	return i.parentAnalysis
 }
 
 // prefetch iterates over all inner iterators to merge together, calls Next() on
@@ -215,7 +222,6 @@ func (i *mergeEntryIterator) Next() bool {
 		i.currEntry.Entry = i.heap.Peek().Entry()
 		i.currEntry.labels = i.heap.Peek().Labels()
 		i.currEntry.streamHash = i.heap.Peek().StreamHash()
-		i.currAnalyze = i.heap.Peek().Analyze()
 
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
@@ -496,8 +502,9 @@ type queryClientIterator struct {
 // NewQueryClientIterator returns an iterator over a QueryClient.
 func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
-		client:    client,
-		direction: direction,
+		client:      client,
+		direction:   direction,
+		currAnalyze: analyze.New("placeholder", "placeholder", 0, 0),
 	}
 }
 
@@ -513,9 +520,7 @@ func (i *queryClientIterator) Next() bool {
 		}
 		stats.JoinIngesters(ctx, batch.Stats)
 		i.curr = NewQueryResponseIterator(batch, i.direction)
-		i.currAnalyze = analyze.FromProto(batch.Analyze)
-		fmt.Fprintln(os.Stderr, "queryClientIterator")
-		fmt.Fprintln(os.Stderr, i.currAnalyze)
+		i.currAnalyze.Merge(analyze.FromProto(batch.Analyze))
 	}
 
 	return true

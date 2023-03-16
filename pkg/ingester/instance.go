@@ -368,7 +368,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 	if ac := analyze.FromContext(ctx); ac != nil {
-		pipelineCtx := analyze.New("Pipeline", "for stream iterator", 0, 0)
+		pipelineCtx := analyze.New("Pipeline", "inmemory", 0, 0)
 		ac.AddChild(pipelineCtx)
 		pipeline.SetAnalyzeContext(pipelineCtx)
 		fmt.Fprintln(os.Stderr, ac)
