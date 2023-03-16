@@ -26,7 +26,7 @@ type ParserHint interface {
 	//		 sum(rate({app="foo"} | json [5m]))
 	// We don't need to extract any labels from the log line.
 	NoLabels() bool
-	// CountError returns true when parsing errors were specifically requested
+	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
 }
 
