@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
@@ -137,6 +138,8 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+
+	_, ctx = analyze.InheritContext(ctx, "SelectLogs", "SingleTenantQuerier")
 
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {

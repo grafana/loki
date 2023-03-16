@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/analyze"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -104,6 +105,8 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 }
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
+	//_, ctx = analyze.InheritContext(ctx, "SelectLogs", "IngesterQuerier")
+	_, ctx = analyze.NewDetachedContext(ctx, "SelectLogs", "IngesterQuerier")
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
 		return client.Query(ctx, params.QueryRequest)
@@ -115,7 +118,7 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 	iterators := make([]iter.EntryIterator, len(resps))
 	for i := range resps {
 		r := resps[i].response.(logproto.Querier_QueryClient)
-		iterators[i] = iter.NewQueryClientIterator(r, params.Direction)
+		iterators[i] = iter.NewQueryClientIterator(ctx, r, params.Direction)
 	}
 	return iterators, nil
 }

@@ -436,6 +436,9 @@ func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logpro
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	// ac, ctx := analyze.InheritContext(ctx, "SelectLogs", "Store")
+	ac, ctx := analyze.NewDetachedContext(ctx, "SelectLogs", "Store")
+
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
@@ -465,7 +468,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	if ac := analyze.FromContext(ctx); ac != nil {
+	if ac != nil {
 		pipelineCtx := analyze.New("Pipeline", "store", 0, 0)
 		ac.AddChild(pipelineCtx)
 		pipeline.SetAnalyzeContext(pipelineCtx)

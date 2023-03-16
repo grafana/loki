@@ -134,6 +134,7 @@ type mergeEntryIterator struct {
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
 // If you don't need to deduplicate entries, use `NewSortEntryIterator` instead.
 func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
+	ac, ctx := analyze.InheritContext(ctx, "MergeEntryInterator", "NewMergeEntryInterator()")
 	result := &mergeEntryIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
@@ -147,11 +148,13 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 	result.buffer = make([]entryWithLabels, 0, len(is))
 	result.pushBuffer = make([]EntryIterator, 0, len(is))
 
-	result.parentAnalysis = analyze.New("MergeEntryIterator", "", 0, len(is))
-	for idx := range is {
-		child := is[idx].Analyze()
-		if child != nil {
-			result.parentAnalysis.AddChild(child)
+	if ac != nil {
+		result.parentAnalysis = ac
+		for idx := range is {
+			child := is[idx].Analyze()
+			if child != nil {
+				result.parentAnalysis.AddChild(child)
+			}
 		}
 	}
 
@@ -500,11 +503,12 @@ type queryClientIterator struct {
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+func NewQueryClientIterator(ctx context.Context, client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+	ac, _ := analyze.InheritContext(ctx, "QUeryClientIterator", "NewQueryClientIterator()")
 	return &queryClientIterator{
 		client:      client,
 		direction:   direction,
-		currAnalyze: analyze.New("placeholder", "placeholder", 0, 0),
+		currAnalyze: ac,
 	}
 }
 

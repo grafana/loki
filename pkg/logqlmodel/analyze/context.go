@@ -239,18 +239,36 @@ func FromProto(c *RemoteContext) *Context {
 }
 
 func NewContext(ctx context.Context, name, description string) (*Context, context.Context) {
-	existing := FromContext(ctx)
-	if existing != nil {
-		return existing, ctx
+	currCtx := FromContext(ctx)
+	if currCtx != nil {
+		panic("analyze context already set")
 	}
-	if name == "" {
-		name = "root"
+
+	newCtx := New(name, description, 0, 2)
+	return newCtx, context.WithValue(ctx, analyzeKey, newCtx)
+}
+
+func InheritContext(ctx context.Context, name, description string) (*Context, context.Context) {
+	currCtx := FromContext(ctx)
+	if currCtx == nil {
+		return currCtx, ctx
 	}
-	c := New(name, description, 0, 2)
-	return c, context.WithValue(ctx, analyzeKey, c)
+
+	newCtx := New(name, description, 0, 2)
+	currCtx.AddChild(newCtx)
+	return newCtx, context.WithValue(ctx, analyzeKey, newCtx)
+}
+
+func NewDetachedContext(ctx context.Context, name, description string) (*Context, context.Context) {
+	newCtx := New(name, description, 0, 2)
+	return newCtx, context.WithValue(ctx, analyzeKey, newCtx)
 }
 
 func FromContext(ctx context.Context) *Context {
 	v, _ := ctx.Value(analyzeKey).(*Context)
 	return v
+}
+
+func HasContext(ctx context.Context) bool {
+	return FromContext(ctx) != nil
 }

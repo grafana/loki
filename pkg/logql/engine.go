@@ -268,12 +268,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
-	var ac *analyze.Context
-	analyzeCtx := analyze.FromContext(ctx)
-	if analyzeCtx != nil {
-		ac = analyze.New("Exec", q.params.String(), 0, 0)
-		analyzeCtx.AddChild(ac)
-	}
+	ac, ctx := analyze.InheritContext(ctx, "Eval", q.params.Query())
 
 	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
@@ -297,15 +292,9 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		if err != nil {
 			level.Error(q.logger).Log("msg", "failed to get pipeline")
 		} else {
-			//ac := analyze.FromContext(ctx)
 			if ac != nil {
 				pipelineCtx := analyze.New("Pipeline", "for evaluator iterator", 0, 0)
-				// somehow we need a nicer way to say "I want to add this at the currently most low level"
-				// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
-				if ac.GetChild(0) != nil {
-					ac = ac.GetChild(0)
-				}
-				ac.AddChild(pipelineCtx)
+				//ac.AddChild(pipelineCtx)
 				pipeline.SetAnalyzeContext(pipelineCtx)
 			}
 		}
@@ -544,11 +533,11 @@ func readStreams(ctx context.Context, i iter.EntryIterator, size uint32, dir log
 	}
 	sort.Sort(result)
 
-	a := i.Analyze()
-	if a != nil {
-		aCtx := analyze.FromContext(ctx)
-		aCtx.AddChild(a)
-	}
+	// a := i.Analyze()
+	// if a != nil {
+	// 	aCtx := analyze.FromContext(ctx)
+	// 	aCtx.AddChild(a)
+	// }
 
 	// if aCtx != nil && !childAdded {
 	// 	// somehow we need a nicer way to say "I want to add this at the currently most low level"

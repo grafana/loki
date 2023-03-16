@@ -991,6 +991,7 @@ func (b block) MaxTime() int64 {
 }
 
 func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
+	_, ctx = analyze.InheritContext(ctx, "HeadBlock", "headBlock.Iterator()")
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -1051,6 +1052,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 }
 
 func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
+	_, ctx = analyze.InheritContext(ctx, "HeadBlock", "headBlock.SampleIterator()")
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -1132,6 +1134,7 @@ type bufferedIterator struct {
 func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
+	//_, _ = analyze.InheritContext(ctx, "BufferedIterator", "memchunk.newBufferedIterator()")
 	return &bufferedIterator{
 		stats:     stats,
 		origBytes: b,
@@ -1259,6 +1262,7 @@ func (si *bufferedIterator) close() {
 }
 
 func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
+	//_, ctx = analyze.InheritContext(ctx, "EntryBufferedIterator", "memchunk.newEntryIterator()")
 	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b),
 		pipeline:         pipeline,
@@ -1278,7 +1282,7 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 }
 
 func (e *entryBufferedIterator) Analyze() *analyze.Context {
-	return analyze.New("entryBufferedIterator", "to be implemented", 0, 0)
+	return nil
 }
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
@@ -1300,6 +1304,7 @@ func (e *entryBufferedIterator) Next() bool {
 }
 
 func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, extractor log.StreamSampleExtractor) iter.SampleIterator {
+	_, ctx = analyze.InheritContext(ctx, "SampleBufferedIterator", "memchunk.newSampleIterator()")
 	it := &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b),
 		extractor:        extractor,
