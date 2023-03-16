@@ -343,6 +343,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 		Path:    "/loki/api/v1/labels/__name__/values",
 		StartTs: start,
 		EndTs:   end,
+		Query:   `{foo="bar"}`,
 	}
 	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -350,12 +351,14 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
 	req, err = LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, toEncode.Query, req.(*LokiLabelNamesRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 }
 
