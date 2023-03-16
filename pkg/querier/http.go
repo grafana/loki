@@ -127,6 +127,9 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	if ac := analyze.FromContext(ctx); ac != nil {
 		fmt.Println("query.Exec(ctx) is done:")
 		fmt.Println(ac.String())
+		ac.Update()
+		fmt.Println("UPDATED: query.Exec(ctx) is done:")
+		fmt.Println(ac.String())
 		// TODO: transform analysis to logqlmodel.Trace
 		result.Data = logqlmodel.Trace{
 			Model: pdata.NewTraces(),

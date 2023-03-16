@@ -301,6 +301,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 			ac := analyze.FromContext(ctx)
 			if ac != nil {
 				pipelineCtx := analyze.New("Pipeline", "for evaluator iterator", 0, 0)
+				// somehow we need a nicer way to say "I want to add this at the currently most low level"
+				// or highest index, for now for my test case I can hardcode this to 0 but that's janky AF
+				if ac.GetChild(0) != nil {
+					ac = ac.GetChild(0)
+				}
 				ac.AddChild(pipelineCtx)
 				pipeline.SetAnalyzeContext(pipelineCtx)
 			}

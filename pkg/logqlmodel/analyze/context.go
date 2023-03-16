@@ -50,6 +50,9 @@ func (ctx *Context) GetChild(index int) *Context {
 	if len(ctx.childContexts) > index {
 		return ctx.childContexts[index]
 	}
+	if index == -1 {
+		return ctx.childContexts[len(ctx.childContexts)-1]
+	}
 	return nil
 }
 
@@ -58,11 +61,16 @@ func (ctx *Context) GetCounts() (int64, int64) {
 }
 
 func (ctx *Context) Observe(d time.Duration, match bool) {
+	ctx.IncCounts(match)
+	//ctx.parent.IncCounts(match)
+	ctx.duration.Add(d.Nanoseconds())
+}
+
+func (ctx *Context) IncCounts(match bool) {
 	ctx.countIn.Add(1)
 	if match {
 		ctx.countOut.Add(1)
 	}
-	ctx.duration.Add(d.Nanoseconds())
 }
 
 func (ctx *Context) String() string {
@@ -114,6 +122,47 @@ func (ctx *Context) Set(d time.Duration, in, out int64) {
 	ctx.duration.Store(d.Nanoseconds())
 	ctx.countIn.Store(in)
 	ctx.countOut.Store(out)
+}
+
+// update recursively walks a context and updates countIn and countOut
+// countIn should be the countIn for the total nested child[0] and
+// countOut should be the countOut of the total nested child[:len(child)]
+func (ctx *Context) Update() {
+	l := len(ctx.childContexts)
+	if l == 0 {
+		return
+	}
+	in, out, dur := int64(0), int64(0), int64(0)
+
+	// Because of the way we've written the current structure we have to
+	// special case "multiple children which don't have children themselves"
+	// these are the pipeline stages within the logs portion of a query
+	if l >= 1 && len(ctx.childContexts[0].childContexts) == 0 {
+		//d := time.Second
+		in = ctx.childContexts[0].countIn.Load()
+		out = ctx.childContexts[l-1].countOut.Load()
+		for _, c := range ctx.childContexts {
+			dur += c.duration.Load()
+		}
+		ctx.countIn.Store(in)
+		ctx.countOut.Store(out)
+		ctx.duration.Store(dur)
+		return
+	}
+
+	// here we would have an execution stages which has multiple children,
+	// which themselves have at least one child
+	// OR
+	// an execution stage with a single child which also has at least one child
+	for _, c := range ctx.childContexts {
+		c.Update()
+		in += c.countIn.Load()
+		out += c.countOut.Load()
+		dur += c.duration.Load()
+	}
+	ctx.countIn.Store(in)
+	ctx.countOut.Store(out)
+	ctx.duration.Store(dur)
 }
 
 func (ctx *Context) SetDescription(d string) {

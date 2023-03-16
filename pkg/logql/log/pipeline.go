@@ -222,6 +222,11 @@ func (p *pipeline) SetAnalyzeContext(ctx *analyze.Context) bool {
 		fmt.Fprintln(os.Stderr, "WARNING: analyze context already set")
 		return false
 	}
+
+	// TODO: (callum) decide if want to keep this behaviour, where a pipeline stage creates the
+	// new analyze contexts for it's stages. IMO this is currently a bug because we end up with a nested
+	// context with all empty stage countIn/countOut instead of populating it with the result from the ingester
+	// I think the stages later creating their own context and adding themselves as children is enough
 	for idx := range p.stages {
 		stageAnalyzeContext := analyze.New(p.stages[idx].String(), "", idx, 0)
 		ctx.AddChild(stageAnalyzeContext)
