@@ -473,8 +473,8 @@ func NewLabelsTripperware(
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		// queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		// // Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
-		// // This is because the labels API is an index-only operation.
+		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
+		// This is because the labels API is an index-only operation.
 		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
 	}
 
