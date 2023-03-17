@@ -24,6 +24,9 @@ jobs:
               exit 1
           fi
 
+      - name: Lint Yaml
+        run: make helm-lint
+
       - name: Lint Code Base
         uses: docker://github/super-linter:v3.12.0
         env:
