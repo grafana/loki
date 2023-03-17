@@ -3,34 +3,162 @@ package azurelog
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
+	"time"
+
 	"github.com/Shopify/sarama"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
-type eventHubMessage struct {
+type azureMonitorResourceLogs struct {
 	Records []json.RawMessage `json:"records"`
 }
 
-type eventHubMessageParser func(message *sarama.ConsumerMessage) ([]string, error)
-
-func (f eventHubMessageParser) Parse(message *sarama.ConsumerMessage) ([]string, error) {
-	return f(message)
+// azureMonitorResourceLog used to unmarshal common schema for Azure resource logs
+// https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema
+type azureMonitorResourceLog struct {
+	Time     string `json:"time"`
+	Category string `json:"category"`
 }
 
-func parseMessage(message *sarama.ConsumerMessage) ([]string, error) {
-	// fix json as mentioned here:
-	// https://learn.microsoft.com/en-us/answers/questions/1001797/invalid-json-logs-produced-for-function-apps?fbclid=IwAR3pK8Nj60GFBtKemqwfpiZyf3rerjowPH_j_qIuNrw_uLDesYvC4mTkfgs
-	body := bytes.ReplaceAll(message.Value, []byte(`'`), []byte(`"`))
+type eventHubMessageParser struct {
+	allowCustomPayload bool
+}
 
-	data := &eventHubMessage{}
-	err := json.Unmarshal(body, data)
-	if err != nil {
+func (e *eventHubMessageParser) Parse(message *sarama.ConsumerMessage, labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
+	messageTime := time.Now()
+	if useIncomingTimestamp {
+		messageTime = message.Timestamp
+	}
+
+	data, err := e.tryUnmarshal(message.Value)
+	if err != nil || len(data.Records) == 0 {
+		if e.allowCustomPayload {
+			return []api.Entry{e.entryWithCustomPayload(message.Value, labelSet, messageTime)}, nil
+		}
+
+		return []api.Entry{}, err
+	}
+
+	return e.processRecords(labelSet, relabels, useIncomingTimestamp, data.Records, messageTime)
+}
+
+// tryUnmarshal tries to unmarshal raw message data, in case of error tries to fix it and unmarshal fixed data.
+// If both attempts fail, return the initial unmarshal error.
+func (e *eventHubMessageParser) tryUnmarshal(message []byte) (*azureMonitorResourceLogs, error) {
+	data := &azureMonitorResourceLogs{}
+	err := json.Unmarshal(message, data)
+	if err == nil {
+		return data, nil
+	}
+
+	// try fix json as mentioned here:
+	// https://learn.microsoft.com/en-us/answers/questions/1001797/invalid-json-logs-produced-for-function-apps?fbclid=IwAR3pK8Nj60GFBtKemqwfpiZyf3rerjowPH_j_qIuNrw_uLDesYvC4mTkfgs
+	body := bytes.ReplaceAll(message, []byte(`'`), []byte(`"`))
+	if json.Unmarshal(body, data) != nil {
+		// return original error
 		return nil, err
 	}
 
-	result := make([]string, 0, len(data.Records))
-	for _, m := range data.Records {
-		result = append(result, string(m))
+	return data, nil
+}
+
+func (e *eventHubMessageParser) entryWithCustomPayload(body []byte, labelSet model.LabelSet, messageTime time.Time) api.Entry {
+	return api.Entry{
+		Labels: labelSet,
+		Entry: logproto.Entry{
+			Timestamp: messageTime,
+			Line:      string(body),
+		},
+	}
+}
+
+// handle the case when message is a valid json with a key `records`. It can be either a custom payload or a resource log.
+func (e *eventHubMessageParser) processRecords(labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool, records []json.RawMessage, messageTime time.Time) ([]api.Entry, error) {
+	result := make([]api.Entry, 0, len(records))
+	for _, m := range records {
+		entry, err := e.parseRecord(m, labelSet, relabels, useIncomingTimestamp, messageTime)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, entry)
 	}
 
 	return result, nil
+}
+
+// parseRecord parses a single value from the "records" in the original message.
+// It can also handle a case when the record contains custom data and doesn't match the schema for Azure resource logs.
+func (e *eventHubMessageParser) parseRecord(record []byte, labelSet model.LabelSet, relabelConfig []*relabel.Config, useIncomingTimestamp bool, messageTime time.Time) (api.Entry, error) {
+	logRecord := &azureMonitorResourceLog{}
+	err := json.Unmarshal(record, logRecord)
+	if err != nil {
+		if e.allowCustomPayload {
+			return e.entryWithCustomPayload(record, labelSet, messageTime), nil
+		}
+
+		return api.Entry{}, err
+	}
+
+	logLabels := e.getLabels(logRecord, relabelConfig)
+	ts := e.getTime(messageTime, useIncomingTimestamp, logRecord)
+
+	return api.Entry{
+		Labels: labelSet.Merge(logLabels),
+		Entry: logproto.Entry{
+			Timestamp: ts,
+			Line:      string(record),
+		},
+	}, nil
+}
+
+func (e *eventHubMessageParser) getTime(messageTime time.Time, useIncomingTimestamp bool, logRecord *azureMonitorResourceLog) time.Time {
+	if !useIncomingTimestamp || logRecord.Time == "" {
+		return messageTime
+	}
+
+	recordTime, err := time.Parse(time.RFC3339, logRecord.Time)
+	if err != nil {
+		return messageTime
+	}
+
+	return recordTime
+}
+
+func (e *eventHubMessageParser) getLabels(logRecord *azureMonitorResourceLog, relabelConfig []*relabel.Config) model.LabelSet {
+	lbs := labels.Labels{
+		{
+			Name:  "__azurelog_category",
+			Value: logRecord.Category,
+		},
+	}
+
+	var processed labels.Labels
+	// apply relabeling
+	if len(relabelConfig) > 0 {
+		processed, _ = relabel.Process(lbs, relabelConfig...)
+	} else {
+		processed = lbs
+	}
+
+	// final labelset that will be sent to loki
+	resultLabels := make(model.LabelSet)
+	for _, lbl := range processed {
+		// ignore internal labels
+		if strings.HasPrefix(lbl.Name, "__") {
+			continue
+		}
+		// ignore invalid labels
+		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
+			continue
+		}
+		resultLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	return resultLabels
 }

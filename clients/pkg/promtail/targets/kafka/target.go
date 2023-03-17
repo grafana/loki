@@ -13,7 +13,6 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 type runnableDroppedTarget struct {
@@ -27,7 +26,7 @@ func (d *runnableDroppedTarget) run() {
 
 // MessageParser defines parsing for each incoming message
 type MessageParser interface {
-	Parse(message *sarama.ConsumerMessage) ([]string, error)
+	Parse(message *sarama.ConsumerMessage, labels model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error)
 }
 
 type Target struct {
@@ -92,18 +91,12 @@ func (t *Target) run() {
 			out = out.Merge(lbs)
 		}
 
-		logLines, err := t.messageParser.Parse(message)
+		entries, err := t.messageParser.Parse(message, out, t.relabelConfig, t.useIncomingTimestamp)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "message parsing error", "err", err)
 		} else {
-			for _, logLine := range logLines {
-				t.client.Chan() <- api.Entry{
-					Entry: logproto.Entry{
-						Line:      logLine,
-						Timestamp: timestamp(t.useIncomingTimestamp, message.Timestamp),
-					},
-					Labels: out,
-				}
+			for _, entry := range entries {
+				t.client.Chan() <- entry
 			}
 		}
 

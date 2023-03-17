@@ -1,9 +1,24 @@
 package kafka
 
-import "github.com/Shopify/sarama"
+import (
+	"github.com/Shopify/sarama"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/relabel"
+
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 type noopMessageParser struct{}
 
-func (n noopMessageParser) Parse(message *sarama.ConsumerMessage) ([]string, error) {
-	return []string{string(message.Value)}, nil
+func (n noopMessageParser) Parse(message *sarama.ConsumerMessage, labels model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
+	return []api.Entry{
+		{
+			Labels: labels,
+			Entry: logproto.Entry{
+				Timestamp: timestamp(useIncomingTimestamp, message.Timestamp),
+				Line:      string(message.Value),
+			},
+		},
+	}, nil
 }
