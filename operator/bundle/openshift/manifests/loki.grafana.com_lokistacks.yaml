@@ -67,6 +67,9 @@ spec:
                           from any private network interfaces of the current pod.
                           Alternatively the public pod IP can be used in case private
                           networks (RFC 1918 and RFC 6598) are not available.
+                        enum:
+                        - default
+                        - podIP
                         type: string
                     type: object
                   type:
