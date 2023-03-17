@@ -334,7 +334,7 @@ storage_config:
 ```
 
 
-## 11-COS-HMAC-Example
+## 11-COS-HMAC-Example.yaml
 
 ```yaml
 
@@ -360,7 +360,7 @@ storage_config:
 ```
 
 
-## 12-COS-APIKey-Example
+## 12-COS-APIKey-Example.yaml
 
 ```yaml
 
