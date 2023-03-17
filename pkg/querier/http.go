@@ -574,8 +574,13 @@ func analysisToTraces(ac *analyze.Context) pdata.Traces {
 
 	traceID := generateTraceID()
 	traces := pdata.NewTraces()
-	resource := traces.ResourceSpans().AppendEmpty()
-	ispans := resource.InstrumentationLibrarySpans().AppendEmpty()
+	resourceSpan := traces.ResourceSpans().AppendEmpty()
+	resourceSpanAttr := resourceSpan.Resource().Attributes()
+	resourceSpanAttr.InsertString("service.name", "Loki")
+	resourceSpanAttr.InsertString("type", "range query")
+	resourceSpanAttr.InsertString("description", ac.Description)
+
+	ispans := resourceSpan.InstrumentationLibrarySpans().AppendEmpty()
 	ispans.InstrumentationLibrary().SetName("loki")
 	span := ispans.Spans().AppendEmpty()
 	span.SetName("root")
@@ -597,9 +602,9 @@ func addChildSpans(children []*analyze.Context, parent pdata.Span, ispans pdata.
 		span.SetStartTimestamp(pdata.TimestampFromTime(start))
 		span.SetEndTimestamp(pdata.TimestampFromTime(start.Add(child.Duration())))
 		attrs := span.Attributes()
-		attrs.Insert("In", pdata.NewAttributeValueInt(child.CountIn()))
-		attrs.Insert("Out", pdata.NewAttributeValueInt(child.CountOut()))
-		attrs.Insert("Description", pdata.NewAttributeValueString(child.Description))
+		attrs.Insert("in", pdata.NewAttributeValueInt(child.CountIn()))
+		attrs.Insert("out", pdata.NewAttributeValueInt(child.CountOut()))
+		attrs.Insert("description", pdata.NewAttributeValueString(child.Description))
 		addChildSpans(child.ChildContexts, span, ispans, start)
 	}
 }

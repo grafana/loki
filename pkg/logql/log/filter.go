@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -183,8 +184,13 @@ func (a andFilters) Filter(line []byte) bool {
 }
 
 func (a andFilters) ToStage() Stage {
+	stages := new(strings.Builder)
+	for _, f := range a.filters {
+		stages.WriteString(f.ToStage().String())
+		stages.WriteString(",")
+	}
 	return StageFunc{
-		name: "AndFilters",
+		name: fmt.Sprintf("AndFilters(%s)", stages),
 		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
 		},
