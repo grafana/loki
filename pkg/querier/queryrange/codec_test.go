@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	strings "strings"
 	"testing"
 	"time"
@@ -360,6 +361,28 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
 	require.Equal(t, toEncode.Query, req.(*LokiLabelNamesRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+}
+
+func Test_codec_labels_DecodeRequest(t *testing.T) {
+	ctx := context.Background()
+	u, err := url.Parse(`/loki/api/v1/labels/__name__/values?query={foo="bar"}`)
+	require.NoError(t, err)
+
+	r := &http.Request{URL: u}
+	req, err := LokiCodec.DecodeRequest(context.TODO(), r, nil)
+	require.NoError(t, err)
+	// require.Equal(t, "toEncode.StartTs", req.(*LokiLabelNamesRequest).StartTs)
+	// require.Equal(t, "", req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+
+	got, err := LokiCodec.EncodeRequest(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, ctx, got.Context())
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	// require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	// require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 }
 
 func Test_codec_index_stats_EncodeRequest(t *testing.T) {

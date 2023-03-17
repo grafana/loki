@@ -336,7 +336,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		}
 		return req.WithContext(ctx), nil
 	case *LokiLabelNamesRequest:
-		level.Info(util_log.Logger).Log("msg", "ENCODE CODEC", "name", request.GetPath(), "match", request.GetQuery())
+		level.Info(util_log.Logger).Log("msg", "ENCODE CODEC", "name", request.GetPath(), "query", request.GetQuery())
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
