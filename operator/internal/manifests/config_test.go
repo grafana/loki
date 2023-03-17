@@ -182,6 +182,84 @@ func randomConfigOptions() manifests.Options {
 	}
 }
 
+func TestConfigOptions_GossipRingConfig(t *testing.T) {
+	tt := []struct {
+		desc        string
+		spec        lokiv1.LokiStackSpec
+		wantOptions config.GossipRing
+	}{
+		{
+			desc: "defaults",
+			spec: lokiv1.LokiStackSpec{},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "defaults with empty config",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected any instance addr",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						InstanceAddrType: lokiv1.InstanceAddrDefault,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected podIP instance addr",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						InstanceAddrType: lokiv1.InstanceAddrPodIP,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			inOpt := manifests.Options{
+				Name:      "my-stack",
+				Namespace: "my-ns",
+				Stack:     tc.spec,
+			}
+			options := manifests.ConfigOptions(inOpt)
+			require.Equal(t, tc.wantOptions, options.GossipRing)
+		})
+	}
+}
+
 func TestConfigOptions_RetentionConfig(t *testing.T) {
 	tt := []struct {
 		desc        string

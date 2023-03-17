@@ -11,6 +11,7 @@
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
 .PHONY: k3d-loki k3d-enterprise-logs k3d-down
+.PHONY: helm-test helm-lint
 
 SHELL = /usr/bin/env bash -o pipefail
 
@@ -160,7 +161,7 @@ cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 ###############
-# Helm-Test #
+# Helm #
 ###############
 .PHONY: production/helm/loki/src/helm-test/helm-test
 helm-test: production/helm/loki/src/helm-test/helm-test
@@ -168,6 +169,9 @@ helm-test: production/helm/loki/src/helm-test/helm-test
 # Package Helm tests but do not run them.
 production/helm/loki/src/helm-test/helm-test:
 	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
+
+helm-lint:
+	$(MAKE) -BC production/helm/loki lint
 
 #################
 # Loki-QueryTee #
