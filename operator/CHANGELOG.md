@@ -1,5 +1,6 @@
 ## Main
 
+- [8672](https://github.com/grafana/loki/pull/8672) **periklis**: Add support for memberlist bind network configuration
 - [8748](https://github.com/grafana/loki/pull/8748) **periklis**: Add alertingrule tenant id label for all rules
 - [8743](https://github.com/grafana/loki/pull/8743) **periklis**: Add alerting style guide validation
 - [8192](https://github.com/grafana/loki/pull/8192) **jotak**: Allow multiple matchers for multi-tenancy with Network tenant (OpenShift)
