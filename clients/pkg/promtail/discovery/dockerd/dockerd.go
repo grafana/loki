@@ -198,7 +198,6 @@ func (d *DockerDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, er
 	if err != nil {
 		return nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
-
 	for _, c := range containers {
 		commonLabels := map[string]string{
 			dockerLabelContainerID:          c.ID,
@@ -281,7 +280,6 @@ func (d *DockerDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, er
 
 		}
 	}
-
 	return []*targetgroup.Group{tg}, nil
 }
 
