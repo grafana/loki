@@ -14,15 +14,27 @@ type ctxKey int
 const analyzeKey ctxKey = 0
 
 type Context struct {
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+
 	countIn  atomic.Int64 `json:"countIn,omitempty"`
 	countOut atomic.Int64 `json:"countOut,omitempty"`
 	duration atomic.Int64 `json:"duration,omitempty"`
-
-	Name        string `json:"name,omitempty"`
-	description string `json:"description,omitempty"`
-	index       int    `json:"index,omitempty"`
+	index    int          `json:"index,omitempty"`
 
 	ChildContexts []*Context `json:"children,omitempty"`
+}
+
+func (ctx *Context) CountIn() int64 {
+	return ctx.countIn.Load()
+}
+
+func (ctx *Context) CountOut() int64 {
+	return ctx.countOut.Load()
+}
+
+func (ctx *Context) Duration() time.Duration {
+	return time.Duration(ctx.duration.Load())
 }
 
 func (ctx *Context) AddChild(child *Context) {
@@ -37,7 +49,7 @@ func (ctx *Context) AddChildRecursively(child *Context) {
 		countIn:     child.countIn,
 		countOut:    child.countOut,
 		Name:        child.Name,
-		description: child.description,
+		Description: child.Description,
 		duration:    child.duration,
 	}
 	for _, c := range child.ChildContexts {
@@ -87,7 +99,7 @@ func (ctx *Context) baseString(sb *strings.Builder) {
 	sb.WriteString("{")
 	logfmt.NewEncoder(sb).EncodeKeyvals(
 		"name", ctx.Name,
-		"desc", ctx.description,
+		"desc", ctx.Description,
 		"in", ctx.countIn.Load(),
 		"out", ctx.countOut.Load(),
 		"duration", time.Duration(ctx.duration.Load()),
@@ -166,7 +178,7 @@ func (ctx *Context) Update() {
 }
 
 func (ctx *Context) SetDescription(d string) {
-	ctx.description = d
+	ctx.Description = d
 }
 
 func (ctx *Context) ToProto() *RemoteContext {
@@ -179,7 +191,7 @@ func (ctx *Context) ToProto() *RemoteContext {
 		CountOut:    ctx.countOut.Load(),
 		Duration:    ctx.duration.Load(),
 		Index:       int32(ctx.index),
-		Description: ctx.description,
+		Description: ctx.Description,
 		Name:        ctx.Name,
 		Children:    children,
 	}
@@ -189,7 +201,7 @@ func New(name, description string, index int, size int) *Context {
 	return &Context{
 		Name:          name,
 		index:         index,
-		description:   description,
+		Description:   description,
 		ChildContexts: make([]*Context, 0, size),
 	}
 }
@@ -207,7 +219,7 @@ func (a *Context) Merge(b *Context) {
 		}
 	}
 	a.Name = b.Name
-	a.description = b.description
+	a.Description = b.Description
 	a.index = b.index
 	a.countIn.Add(b.countIn.Load())
 	a.countOut.Add(b.countOut.Load())
@@ -232,7 +244,7 @@ func FromProto(c *RemoteContext) *Context {
 		countOut:      countOut,
 		duration:      duration,
 		Name:          c.Name,
-		description:   c.Description,
+		Description:   c.Description,
 		index:         int(c.Index),
 		ChildContexts: children,
 	}

@@ -570,26 +570,45 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 }
 
 func analysisToTraces(ac *analyze.Context) pdata.Traces {
+	now := time.Now()
+
+	traceID := generateTraceID()
 	traces := pdata.NewTraces()
 	resource := traces.ResourceSpans().AppendEmpty()
 	ispans := resource.InstrumentationLibrarySpans().AppendEmpty()
-	ispans.InstrumentationLibrary().SetName("root")
+	ispans.InstrumentationLibrary().SetName("loki")
 	span := ispans.Spans().AppendEmpty()
-	addChildSpans(ac.ChildContexts, span)
+	span.SetName("root")
+	span.SetTraceID(pdata.TraceID(traceID))
+	span.SetSpanID(generateSpanID())
+	addChildSpans(ac.ChildContexts, span, ispans, now)
 
 	return traces
 }
 
-func addChildSpans(children []*analyze.Context, parent pdata.Span) {
+func addChildSpans(children []*analyze.Context, parent pdata.Span, ispans pdata.InstrumentationLibrarySpans, start time.Time) {
 	for idx := range children {
 		child := children[idx]
-		span := pdata.NewSpan()
+		span := ispans.Spans().AppendEmpty()
 		span.SetSpanID(generateSpanID())
 		span.SetName(child.Name)
 		span.SetParentSpanID(parent.SpanID())
-
-		addChildSpans(child.ChildContexts, span)
+		span.SetTraceID(parent.TraceID())
+		span.SetStartTimestamp(pdata.TimestampFromTime(start))
+		span.SetEndTimestamp(pdata.TimestampFromTime(start.Add(child.Duration())))
+		attrs := span.Attributes()
+		attrs.Insert("In", pdata.NewAttributeValueInt(child.CountIn()))
+		attrs.Insert("Out", pdata.NewAttributeValueInt(child.CountOut()))
+		attrs.Insert("Description", pdata.NewAttributeValueString(child.Description))
+		addChildSpans(child.ChildContexts, span, ispans, start)
 	}
+}
+
+func generateTraceID() pdata.TraceID {
+	b := [16]byte{}
+	binary.LittleEndian.PutUint64(b[:8], uint64(rand.Int63()))
+	binary.LittleEndian.PutUint64(b[8:], uint64(rand.Int63()))
+	return pdata.NewTraceID(b)
 }
 
 func generateSpanID() pdata.SpanID {
