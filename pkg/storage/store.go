@@ -450,7 +450,9 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	}
 
 	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+		a := analyze.New("noOp", "no chunks matching the SelectLogParms", 0, 0)
+		ac.AddChild(a)
+		return iter.NewNoOpIteratorWithCtx(ac), nil
 	}
 
 	expr, err := req.LogSelector()
@@ -494,7 +496,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	}
 
 	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopIterator{}, nil
 	}
 
 	expr, err := req.Expr()

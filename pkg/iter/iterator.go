@@ -18,15 +18,32 @@ type Iterator interface {
 	Close() error
 }
 
-type noOpIterator struct{}
+type noOpIterator struct {
+	a *analyze.Context
+}
 
-var NoopIterator = noOpIterator{}
+type NoopIterator struct {
+	noOpIterator
+}
 
-func (noOpIterator) Next() bool               { return false }
-func (noOpIterator) Analyze() *analyze.Context { return analyze.New("noOpIterator", "", 0, 0) }
-func (noOpIterator) Error() error             { return nil }
-func (noOpIterator) Labels() string           { return "" }
-func (noOpIterator) StreamHash() uint64       { return 0 }
-func (noOpIterator) Entry() logproto.Entry    { return logproto.Entry{} }
-func (noOpIterator) Sample() logproto.Sample  { return logproto.Sample{} }
-func (noOpIterator) Close() error             { return nil }
+func NewNoOpIteratorWithCtx(a *analyze.Context) NoopIterator {
+	return NoopIterator{
+		noOpIterator{
+			a: a,
+		},
+	}
+}
+
+func (noOpIterator) Next() bool { return false }
+func (n noOpIterator) Analyze() *analyze.Context {
+	if n.a == nil {
+		return analyze.New("noOpIterator", "", 0, 0)
+	}
+	return n.a
+}
+func (noOpIterator) Error() error            { return nil }
+func (noOpIterator) Labels() string          { return "" }
+func (noOpIterator) StreamHash() uint64      { return 0 }
+func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }
+func (noOpIterator) Sample() logproto.Sample { return logproto.Sample{} }
+func (noOpIterator) Close() error            { return nil }

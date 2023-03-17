@@ -367,7 +367,7 @@ type entrySortIterator struct {
 // When timestamp is equal, the iterator sorts samples by their label alphabetically.
 func NewSortEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) EntryIterator {
 	if len(is) == 0 {
-		return NoopIterator
+		return NoopIterator{}
 	}
 	if len(is) == 1 {
 		return is[0]
@@ -561,9 +561,10 @@ type nonOverlappingIterator struct {
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(iterators []EntryIterator) EntryIterator {
+func NewNonOverlappingIterator(ctx context.Context, iterators []EntryIterator) EntryIterator {
 	return &nonOverlappingIterator{
-		iterators: iterators,
+		iterators:   iterators,
+		currAnalyze: analyze.FromContext(ctx),
 	}
 }
 

@@ -59,7 +59,7 @@ func TestSimpleScalable_IngestQuery(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cliRead.RunRangeQuery(context.Background(), `{job="fake"} |= "lineA"`)
+		resp, err := cliRead.RunRangeQuery(context.Background(), `explain({job="fake"} |= "lineA" | logfmt)`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 

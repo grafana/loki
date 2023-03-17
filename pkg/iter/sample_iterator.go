@@ -362,7 +362,7 @@ type sortSampleIterator struct {
 // When timestamp is equal, the iterator sorts samples by their label alphabetically.
 func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 	if len(is) == 0 {
-		return NoopIterator
+		return NoopIterator{}
 	}
 	if len(is) == 1 {
 		return is[0]

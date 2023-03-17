@@ -46,7 +46,7 @@ func (c *LazyChunk) Iterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopIterator{}, nil
 	}
 	its := make([]iter.EntryIterator, 0, len(blocks))
 
@@ -85,7 +85,7 @@ func (c *LazyChunk) Iterator(
 
 	if direction == logproto.FORWARD {
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its),
+			iter.NewNonOverlappingIterator(ctx, its),
 			from,
 			through,
 		), nil
@@ -106,7 +106,7 @@ func (c *LazyChunk) Iterator(
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewNonOverlappingIterator(its), nil
+	return iter.NewNonOverlappingIterator(ctx, its), nil
 }
 
 // SampleIterator returns an sample iterator.
@@ -126,7 +126,7 @@ func (c *LazyChunk) SampleIterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopIterator{}, nil
 	}
 	its := make([]iter.SampleIterator, 0, len(blocks))
 

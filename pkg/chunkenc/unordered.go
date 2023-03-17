@@ -262,7 +262,7 @@ func (hb *unorderedHeadBlock) Iterator(
 	)
 
 	if len(streams) == 0 {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	streamsResult := make([]logproto.Stream, 0, len(streams))
 	totalSamples := 0
@@ -327,7 +327,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	)
 
 	if len(series) == 0 {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	totalSamples := 0

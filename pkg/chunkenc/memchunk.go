@@ -817,7 +817,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 		var it iter.EntryIterator
 		if ordered {
-			it = iter.NewNonOverlappingIterator(blockItrs)
+			it = iter.NewNonOverlappingIterator(ctx, blockItrs)
 		} else {
 			it = iter.NewSortEntryIterator(ctx, blockItrs, direction)
 		}
@@ -850,7 +850,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(blockItrs), nil
+		return iter.NewNonOverlappingIterator(ctx, blockItrs), nil
 	}
 	return iter.NewSortEntryIterator(ctx, blockItrs, direction), nil
 }
@@ -962,14 +962,14 @@ type encBlock struct {
 
 func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
 	if len(b.b) == 0 {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	return newSampleIterator(ctx, getReaderPool(b.enc), b.b, extractor)
 }
@@ -993,7 +993,7 @@ func (b block) MaxTime() int64 {
 func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	_, ctx = analyze.InheritContext(ctx, "HeadBlock", "headBlock.Iterator()")
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 
 	stats := stats.FromContext(ctx)
@@ -1042,7 +1042,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	}
 
 	if len(streams) == 0 {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	streamsResult := make([]logproto.Stream, 0, len(streams))
 	for _, stream := range streams {
@@ -1054,7 +1054,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	_, ctx = analyze.InheritContext(ctx, "HeadBlock", "headBlock.SampleIterator()")
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
@@ -1090,7 +1090,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 	}
 
 	if len(series) == 0 {
-		return iter.NoopIterator
+		return iter.NoopIterator{}
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {

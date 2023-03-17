@@ -455,9 +455,8 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		result = append(result, iter.NewNonOverlappingIterator(iterators))
+		result = append(result, iter.NewNonOverlappingIterator(it.ctx, iterators))
 	}
-
 	_, ctx := analyze.NewDetachedContext(it.ctx, "LazyChunkIterator", "ignore")
 	return iter.NewMergeEntryIterator(ctx, result, it.direction), nil
 }
