@@ -622,6 +622,17 @@ backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
+### Tell ingester to release all resources on next SIGTERM
+
+```
+POST /ingester/prepare_shutdown
+```
+
+`/ingester/prepare_shutdown` will prepare the ingester to release resources on the next SIGTERM signal,
+where releasing resources means flushing data and unregistering from the ingester ring.
+This endpoint supersedes any YAML configurations and isn't necessary if the ingester is already
+configured to unregister from the ring or to flush on shutdown.
+
 ## Flush in-memory chunks and shut down
 
 ```
