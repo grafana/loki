@@ -143,10 +143,7 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: config.Address{
-			FQDN: fqdn(BuildLokiGossipRingService(opt.Name).GetName(), opt.Namespace),
-			Port: gossipPort,
-		},
+		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing),
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
@@ -244,6 +241,27 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 	}
 
 	return conf
+}
+
+func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
+	var instanceAddr string
+	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
+		switch spec.MemberList.InstanceAddrType {
+		case lokiv1.InstanceAddrPodIP:
+			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+		case lokiv1.InstanceAddrDefault:
+			// Do nothing use loki defaults
+		default:
+			// Do nothing use loki defaults
+		}
+	}
+
+	return config.GossipRing{
+		InstanceAddr:         instanceAddr,
+		InstancePort:         grpcPort,
+		BindPort:             gossipPort,
+		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+	}
 }
 
 func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
