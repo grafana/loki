@@ -357,6 +357,7 @@ storage_config:
     region: <region>
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
+
 ```
 
 
@@ -384,4 +385,5 @@ storage_config:
     api_key: <api_key_to_authenticate_with_cos>
     service_instance_id: <cos_service_instance_id>
     auth_endpoint: <iam_endpoint_for_authentication>
+
 ```
