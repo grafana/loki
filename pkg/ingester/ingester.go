@@ -700,6 +700,8 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			return err
 		}
 		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
+	} else {
+		analyze.FromContext(ctx).AddChild(it.Analyze())
 	}
 
 	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
