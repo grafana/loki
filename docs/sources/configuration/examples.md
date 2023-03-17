@@ -334,7 +334,7 @@ storage_config:
 ```
 
 
-## 11-IBM-Cloud-Object-Storage-Config-With-HMAC.yaml
+## 11-COS-HMAC-Example.yaml
 
 ```yaml
 
@@ -352,7 +352,7 @@ schema_config:
 
 storage_config:
   cos:
-    bucket_names: <bucket>
+    bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
     region: <region>
     access_key_id: <access_key_id>
@@ -360,7 +360,7 @@ storage_config:
 ```
 
 
-## 12-IBM-Cloud-Object-Storage-Config-With-APIKey.yaml
+## 12-COS-APIKey-Example
 
 ```yaml
 
