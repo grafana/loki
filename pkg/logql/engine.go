@@ -264,7 +264,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	tenants, _ := tenant.TenantIDs(ctx)
 	timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
 	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
-
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 

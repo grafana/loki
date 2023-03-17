@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"unicode/utf8"
 
 	"github.com/buger/jsonparser"
@@ -67,6 +66,9 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
+		if lbs.ParserLabelHints().PreserveError() {
+			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		}
 		return line, true
 	}
 	return line, true
@@ -291,6 +293,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
 		lbs.SetErrorDetails(l.dec.Err().Error())
+		if lbs.ParserLabelHints().PreserveError() {
+			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		}
 		return line, true
 	}
 	return line, true
@@ -433,6 +438,9 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
 		lbs.SetErrorDetails(l.dec.Err().Error())
+		if lbs.ParserLabelHints().PreserveError() {
+			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		}
 		return line, true
 	}
 
@@ -442,14 +450,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	expressions map[string][]interface{}
-
-	keys internedStringSet
+	ids   []string
+	paths [][]string
+	keys  internedStringSet
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
-	paths := make(map[string][]interface{})
-
+	var ids []string
+	var paths [][]string
 	for _, exp := range expressions {
 		path, err := jsonexpr.Parse(exp.Expression, false)
 		if err != nil {
@@ -460,13 +468,28 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 
-		paths[exp.Identifier] = path
+		ids = append(ids, exp.Identifier)
+		paths = append(paths, pathsToString(path))
 	}
 
 	return &JSONExpressionParser{
-		expressions: paths,
-		keys:        internedStringSet{},
+		ids:   ids,
+		paths: paths,
+		keys:  internedStringSet{},
 	}, nil
+}
+
+func pathsToString(paths []interface{}) []string {
+	stingPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		switch v := p.(type) {
+		case int:
+			stingPaths = append(stingPaths, fmt.Sprintf("[%d]", v))
+		case string:
+			stingPaths = append(stingPaths, v)
+		}
+	}
+	return stingPaths
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -474,13 +497,28 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		return line, true
 	}
 
-	if !jsoniter.ConfigFastest.Valid(line) {
+	// Check that the line starts correctly
+	// the parser will pass an error if other
+	// parts of the line are malformed
+	if !isValidJSONStart(line) {
 		lbs.SetErr(errJSON)
+		if lbs.ParserLabelHints().PreserveError() {
+			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		}
 		return line, true
 	}
 
-	for identifier, paths := range j.expressions {
-		result := jsoniter.ConfigFastest.Get(line, paths...).ToString()
+	var matches int
+	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
+		if err != nil {
+			lbs.SetErr(errJSON)
+			if lbs.ParserLabelHints().PreserveError() {
+				lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+			}
+			return
+		}
+
+		identifier := j.ids[idx]
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
 			if lbs.BaseHas(identifier) {
 				identifier = identifier + duplicateSuffix
@@ -488,9 +526,35 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return identifier, true
 		})
 
-		lbs.Set(key, result)
+		switch typ {
+		case jsonparser.Null:
+			lbs.Set(key, "")
+		default:
+			lbs.Set(key, unsafeGetString(data))
+		}
+
+		matches++
+	}, j.paths...)
+
+	// Ensure there's a label for every value
+	if matches < len(j.ids) {
+		for _, id := range j.ids {
+			if _, ok := lbs.Get(id); !ok {
+				lbs.Set(id, "")
+			}
+		}
 	}
+
 	return line, true
+}
+
+func isValidJSONStart(data []byte) bool {
+	switch data[0] {
+	case '"', '{', '[':
+		return true
+	default:
+		return false
+	}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -518,38 +582,45 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-	u.lbsBuffer = u.lbsBuffer[:0]
-	it := jsoniter.ConfigFastest.BorrowIterator(line)
-	defer jsoniter.ConfigFastest.ReturnIterator(it)
 
-	entry, err := u.unpack(it, line, lbs)
+	u.lbsBuffer = u.lbsBuffer[:0]
+	entry, err := u.unpack(line, lbs)
 	if err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
+		if lbs.ParserLabelHints().PreserveError() {
+			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		}
 		return line, true
 	}
 	return entry, true
 }
 
-func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBuilder) ([]byte, error) {
+func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) {
 	// we only care about object and values.
-	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
+	if entry[0] != '{' {
 		return nil, errUnexpectedJSONObject
 	}
+
 	var isPacked bool
-	_ = it.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
-		switch iter.WhatIsNext() {
-		case jsoniter.StringValue:
-			// we only unpack map[string]string. Anything else is skipped.
-			if field == logqlmodel.PackedEntryKey {
-				// todo(ctovena): we should just reslice the original line since the property is contiguous
-				// but jsoniter doesn't allow us to do this right now.
-				// https://github.com/buger/jsonparser might do a better job at this.
-				entry = []byte(iter.ReadString())
+	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
+		switch typ {
+		case jsonparser.String:
+			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
+				// Inlined bytes escape to save allocs
+				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
+				bU, err := jsonparser.Unescape(value, stackbuf[:])
+				if err != nil {
+					return err
+				}
+
+				entry = bU
 				isPacked = true
-				return true
+				return nil
 			}
-			key, ok := u.keys.Get(unsafeGetBytes(field), func() (string, bool) {
+
+			key, ok := u.keys.Get(key, func() (string, bool) {
+				field := unsafeGetString(key)
 				if !lbs.ParserLabelHints().ShouldExtract(field) {
 					return "", false
 				}
@@ -559,20 +630,22 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 				return field, true
 			})
 			if !ok {
-				iter.Skip()
-				return true
+				return nil
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, key, iter.ReadString())
+			u.lbsBuffer = append(u.lbsBuffer, key, unescapeJSONString(value))
 		default:
-			iter.Skip()
+			return nil
 		}
-		return true
+
+		return nil
 	})
-	if it.Error != nil && it.Error != io.EOF {
-		return nil, it.Error
+
+	if err != nil {
+		return nil, err
 	}
+
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {

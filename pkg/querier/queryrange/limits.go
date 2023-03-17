@@ -140,7 +140,6 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	// Clamp the time range based on the max query lookback.
-
 	lookbackCapture := func(id string) time.Duration { return l.MaxQueryLookback(ctx, id) }
 	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
 		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
