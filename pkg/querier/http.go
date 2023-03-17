@@ -199,9 +199,6 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	level.Info(logger).Log("msg", "PARSED LABEL QUERY", "name", req.Name, "query", req.Query)
-
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
 	defer timer.ObserveDuration()
 
