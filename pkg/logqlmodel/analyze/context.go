@@ -18,15 +18,15 @@ type Context struct {
 	countOut atomic.Int64 `json:"countOut,omitempty"`
 	duration atomic.Int64 `json:"duration,omitempty"`
 
-	name        string `json:"name,omitempty"`
+	Name        string `json:"name,omitempty"`
 	description string `json:"description,omitempty"`
 	index       int    `json:"index,omitempty"`
 
-	childContexts []*Context `json:"children,omitempty"`
+	ChildContexts []*Context `json:"children,omitempty"`
 }
 
 func (ctx *Context) AddChild(child *Context) {
-	ctx.childContexts = append(ctx.childContexts, child)
+	ctx.ChildContexts = append(ctx.ChildContexts, child)
 }
 
 // walks the contexts children recursively and adds them
@@ -36,22 +36,22 @@ func (ctx *Context) AddChildRecursively(child *Context) {
 	newCtx := Context{
 		countIn:     child.countIn,
 		countOut:    child.countOut,
-		name:        child.name,
+		Name:        child.Name,
 		description: child.description,
 		duration:    child.duration,
 	}
-	for _, c := range child.childContexts {
+	for _, c := range child.ChildContexts {
 		newCtx.AddChildRecursively(c)
 	}
 	ctx.AddChild(&newCtx)
 }
 
 func (ctx *Context) GetChild(index int) *Context {
-	if len(ctx.childContexts) > index {
-		return ctx.childContexts[index]
+	if len(ctx.ChildContexts) > index {
+		return ctx.ChildContexts[index]
 	}
 	if index == -1 {
-		return ctx.childContexts[len(ctx.childContexts)-1]
+		return ctx.ChildContexts[len(ctx.ChildContexts)-1]
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func (ctx *Context) baseString(sb *strings.Builder) {
 	sb.WriteString("AnalyzeContext")
 	sb.WriteString("{")
 	logfmt.NewEncoder(sb).EncodeKeyvals(
-		"name", ctx.name,
+		"name", ctx.Name,
 		"desc", ctx.description,
 		"in", ctx.countIn.Load(),
 		"out", ctx.countOut.Load(),
@@ -101,7 +101,7 @@ func (ctx *Context) stringNested(sb *strings.Builder, level int) {
 	}
 	ctx.baseString(sb)
 	sb.WriteString("\n")
-	for _, child := range ctx.childContexts {
+	for _, child := range ctx.ChildContexts {
 		child.stringNested(sb, level+1)
 	}
 }
@@ -113,8 +113,8 @@ func (ctx *Context) Reset() {
 	ctx.countIn.Store(0)
 	ctx.countOut.Store(0)
 	ctx.duration.Store(0)
-	for idx := range ctx.childContexts {
-		ctx.childContexts[idx].Reset()
+	for idx := range ctx.ChildContexts {
+		ctx.ChildContexts[idx].Reset()
 	}
 }
 
@@ -128,7 +128,7 @@ func (ctx *Context) Set(d time.Duration, in, out int64) {
 // countIn should be the countIn for the total nested child[0] and
 // countOut should be the countOut of the total nested child[:len(child)]
 func (ctx *Context) Update() {
-	l := len(ctx.childContexts)
+	l := len(ctx.ChildContexts)
 	if l == 0 {
 		return
 	}
@@ -137,11 +137,11 @@ func (ctx *Context) Update() {
 	// Because of the way we've written the current structure we have to
 	// special case "multiple children which don't have children themselves"
 	// these are the pipeline stages within the logs portion of a query
-	if l >= 1 && len(ctx.childContexts[0].childContexts) == 0 {
+	if l >= 1 && len(ctx.ChildContexts[0].ChildContexts) == 0 {
 		//d := time.Second
-		in = ctx.childContexts[0].countIn.Load()
-		out = ctx.childContexts[l-1].countOut.Load()
-		for _, c := range ctx.childContexts {
+		in = ctx.ChildContexts[0].countIn.Load()
+		out = ctx.ChildContexts[l-1].countOut.Load()
+		for _, c := range ctx.ChildContexts {
 			dur += c.duration.Load()
 		}
 		ctx.countIn.Store(in)
@@ -154,7 +154,7 @@ func (ctx *Context) Update() {
 	// which themselves have at least one child
 	// OR
 	// an execution stage with a single child which also has at least one child
-	for _, c := range ctx.childContexts {
+	for _, c := range ctx.ChildContexts {
 		c.Update()
 		in += c.countIn.Load()
 		out += c.countOut.Load()
@@ -170,8 +170,8 @@ func (ctx *Context) SetDescription(d string) {
 }
 
 func (ctx *Context) ToProto() *RemoteContext {
-	children := make([]*RemoteContext, len(ctx.childContexts))
-	for i, c := range ctx.childContexts {
+	children := make([]*RemoteContext, len(ctx.ChildContexts))
+	for i, c := range ctx.ChildContexts {
 		children[i] = c.ToProto()
 	}
 	return &RemoteContext{
@@ -180,17 +180,17 @@ func (ctx *Context) ToProto() *RemoteContext {
 		Duration:    ctx.duration.Load(),
 		Index:       int32(ctx.index),
 		Description: ctx.description,
-		Name:        ctx.name,
+		Name:        ctx.Name,
 		Children:    children,
 	}
 }
 
 func New(name, description string, index int, size int) *Context {
 	return &Context{
-		name:          name,
+		Name:          name,
 		index:         index,
 		description:   description,
-		childContexts: make([]*Context, 0, size),
+		ChildContexts: make([]*Context, 0, size),
 	}
 }
 
@@ -198,7 +198,7 @@ func (a *Context) Merge(b *Context) {
 	if b == nil {
 		return
 	}
-	for idx := 0; idx < len(b.childContexts); idx++ {
+	for idx := 0; idx < len(b.ChildContexts); idx++ {
 		aChild := a.GetChild(idx)
 		if aChild == nil {
 			a.AddChild(b.GetChild(idx))
@@ -206,7 +206,7 @@ func (a *Context) Merge(b *Context) {
 			a.GetChild(idx).Merge(b.GetChild(idx))
 		}
 	}
-	a.name = b.name
+	a.Name = b.Name
 	a.description = b.description
 	a.index = b.index
 	a.countIn.Add(b.countIn.Load())
@@ -231,10 +231,10 @@ func FromProto(c *RemoteContext) *Context {
 		countIn:       countIn,
 		countOut:      countOut,
 		duration:      duration,
-		name:          c.Name,
+		Name:          c.Name,
 		description:   c.Description,
 		index:         int(c.Index),
-		childContexts: children,
+		ChildContexts: children,
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
-	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/model/otlp"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -259,7 +259,7 @@ func encodeResult(v parser.Value, s *jsoniter.Stream) error {
 		if !ok {
 			return fmt.Errorf("unexpected type %T for trace", t)
 		}
-		data, err := ptrace.NewJSONMarshaler().MarshalTraces(t.Model)
+		data, err := otlp.NewJSONTracesMarshaler().MarshalTraces(t.Model)
 		if err != nil {
 			return err
 		}

@@ -38,4 +38,4 @@
 // * Encoding: Common interfaces for serializing/deserializing bytes from/to protocol-specific data models.
 // * Translation: Common interfaces for translating protocol-specific data models from/to pdata types.
 // * Marshaling: Common higher level APIs that do both encoding and translation of bytes and data model if going directly pdata types to bytes.
-package pdata // import "go.opentelemetry.io/collector/model/pdata"
+package pdata

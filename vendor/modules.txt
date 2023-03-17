@@ -1373,26 +1373,20 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.opentelemetry.io/collector/model v0.50.0
-## explicit; go 1.17
+# go.opentelemetry.io/collector/model v0.31.0
+## explicit; go 1.16
+go.opentelemetry.io/collector/model/internal
+go.opentelemetry.io/collector/model/internal/data
+go.opentelemetry.io/collector/model/internal/data/protogen/collector/logs/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/collector/metrics/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/collector/trace/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/common/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/logs/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/metrics/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/resource/v1
+go.opentelemetry.io/collector/model/internal/data/protogen/trace/v1
+go.opentelemetry.io/collector/model/otlp
 go.opentelemetry.io/collector/model/pdata
-# go.opentelemetry.io/collector/pdata v0.50.0
-## explicit; go 1.17
-go.opentelemetry.io/collector/pdata/internal
-go.opentelemetry.io/collector/pdata/internal/data
-go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/metrics/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/trace/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/resource/v1
-go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1
-go.opentelemetry.io/collector/pdata/internal/otlp
-go.opentelemetry.io/collector/pdata/pcommon
-go.opentelemetry.io/collector/pdata/plog
-go.opentelemetry.io/collector/pdata/pmetric
-go.opentelemetry.io/collector/pdata/ptrace
 # go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.37.0
 ## explicit; go 1.18
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
