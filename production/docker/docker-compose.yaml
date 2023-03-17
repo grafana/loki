@@ -52,6 +52,7 @@ services:
       [
         '--log.level=debug',
         '--config.file=/etc/prometheus/prometheus.yml',
+        '--enable-feature=remote-write-receiver',
         '--query.lookback-delta=30s'
       ]
     networks:
@@ -126,7 +127,7 @@ services:
       #  - SYS_PTRACE
       #security_opt:
       #  - apparmor=unconfined
-    command: "-config.file=/etc/loki/loki.yaml -target=read"
+    command: "-config.file=/etc/loki/loki.yaml -target=read -legacy-read-mode=false"
     networks:
       - loki
     restart: always
@@ -149,6 +150,28 @@ services:
       # security_opt:
       #   - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=write"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+
+  loki-backend:
+    image: grafana/loki:2.7.3
+    volumes:
+      - ./config:/etc/loki/
+      - ./rules:/etc/loki/rules
+    ports:
+      - "3100"
+      - "7946"
+      # uncomment to use interactive debugging
+      #- "60000-60002:40000" # makes the replicas available on ports 50000, 50001, 50002
+      # cap_add:
+      #   - SYS_PTRACE
+      # security_opt:
+      #   - apparmor=unconfined
+    command: "-config.file=/etc/loki/loki.yaml -target=backend -legacy-read-mode=false -log.level=debug"
     networks:
       - loki
     restart: always

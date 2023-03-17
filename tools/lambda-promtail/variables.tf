@@ -5,13 +5,13 @@ variable "write_address" {
 }
 
 variable "bucket_names" {
-  type        = list(string)
+  type        = set(string)
   description = "List of S3 bucket names to create Event Notifications for."
   default     = []
 }
 
 variable "log_group_names" {
-  type        = list(string)
+  type        = set(string)
   description = "List of CloudWatch Log Group names to create Subscription Filters for."
   default     = []
 }
@@ -67,9 +67,9 @@ variable "extra_labels" {
 }
 
 variable "omit_extra_labels_prefix" {
-  type        = string
+  type        = bool
   description = "Whether or not to omit the prefix `__extra_` from extra labels defined in the variable `extra_labels`."
-  default     = "false"
+  default     = false
 }
 
 variable "batch_size" {
@@ -92,7 +92,7 @@ variable "lambda_vpc_security_groups" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "kms key arn for encryp env vars."
+  description = "kms key arn for encrypting env vars."
   default     = ""
 }
 
@@ -103,7 +103,7 @@ variable "skip_tls_verify" {
 }
 
 variable "kinesis_stream_name" {
-  type        = list(string)
+  type        = set(string)
   description = "Enter kinesis name if kinesis stream is configured as event source in lambda."
   default     = []
 }

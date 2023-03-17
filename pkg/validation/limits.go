@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -237,8 +238,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when shuffle-sharding is enabled in the ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).")
-	_ = l.RetentionPeriod.Set("744h")
-	f.Var(&l.RetentionPeriod, "store.retention", "Retention to apply for the store, if the retention is enabled on the compactor side.")
+	_ = l.RetentionPeriod.Set("0s")
+	f.Var(&l.RetentionPeriod, "store.retention", "Retention period to apply to stored data, only applies if retention_enabled is true in the compactor config. As of version 2.8.0, a zero value of 0 or 0s disables retention. In previous releases, Loki did not properly honor a zero value to disable retention and a really large value should be used instead.")
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Feature renamed to 'runtime configuration'; flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML).")
@@ -414,7 +415,7 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
-func (o *Overrides) MaxQueryLength(userID string) time.Duration {
+func (o *Overrides) MaxQueryLength(ctx context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
 }
 
@@ -423,7 +424,7 @@ func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int { return 0 }
 
 // MaxQueryLength returns the limit of the series of metric queries.
-func (o *Overrides) MaxQuerySeries(userID string) int {
+func (o *Overrides) MaxQuerySeries(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
@@ -439,13 +440,13 @@ func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
 
 // TSDBMaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel for TSDB schemas.
-func (o *Overrides) TSDBMaxQueryParallelism(userID string) int {
+func (o *Overrides) TSDBMaxQueryParallelism(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).TSDBMaxQueryParallelism
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
-func (o *Overrides) MaxQueryParallelism(userID string) int {
+func (o *Overrides) MaxQueryParallelism(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
 }
 
@@ -460,7 +461,7 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 }
 
 // MaxStreamsMatchersPerQuery returns the limit to number of streams matchers per query.
-func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
+func (o *Overrides) MaxStreamsMatchersPerQuery(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
 }
 
@@ -475,7 +476,7 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
-func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
+func (o *Overrides) MaxConcurrentTailRequests(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxConcurrentTailRequests
 }
 
@@ -490,20 +491,20 @@ func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
-func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
+func (o *Overrides) MaxEntriesLimitPerQuery(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
-func (o *Overrides) QueryTimeout(userID string) time.Duration {
+func (o *Overrides) QueryTimeout(ctx context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
 }
 
-func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
+func (o *Overrides) MaxCacheFreshness(ctx context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
 }
 
 // MaxQueryLookback returns the max lookback period of queries.
-func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
+func (o *Overrides) MaxQueryLookback(ctx context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
 }
 
@@ -645,7 +646,7 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
-func (o *Overrides) BlockedQueries(userID string) []*validation.BlockedQuery {
+func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
 }
 

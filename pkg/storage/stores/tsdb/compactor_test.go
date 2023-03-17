@@ -691,6 +691,24 @@ func TestCompactedIndex(t *testing.T) {
 				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
 			},
 		},
+		"__name__ label should get dropped while indexing chunks": {
+			addChunks: []chunk.Chunk{
+				{
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(nil),
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(12), testCtx.shiftTableStart(12))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+			},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
 		"add some chunks out of table interval to a stream": {
 			addChunks: []chunk.Chunk{
 				{

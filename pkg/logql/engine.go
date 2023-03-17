@@ -262,8 +262,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	tenants, _ := tenant.TenantIDs(ctx)
-	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
-
+	timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
@@ -299,7 +299,7 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	blocker := newQueryBlocker(ctx, q)
 
 	for _, tenant := range tenants {
-		if blocker.isBlocked(tenant) {
+		if blocker.isBlocked(ctx, tenant) {
 			QueriesBlocked.WithLabelValues(tenant).Inc()
 			return true
 		}
@@ -332,7 +332,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if err != nil {
 		return nil, err
 	}
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
@@ -430,7 +431,10 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 	}
 
 	if GetRangeType(q.params) == InstantType {
-		return s, nil
+		return promql.Vector{promql.Sample{
+			Point:  promql.Point{T: q.params.Start().UnixMilli(), V: value},
+			Metric: labels.Labels{},
+		}}, nil
 	}
 
 	return PopulateMatrixFromScalar(s, q.params), nil

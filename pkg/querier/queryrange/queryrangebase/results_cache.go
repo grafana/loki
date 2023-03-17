@@ -231,7 +231,8 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, s.limits.MaxCacheFreshness)
+	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)

@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.1"
+"v1.6.2"
 </pre>
 </td>
 		</tr>
@@ -803,9 +803,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }}"
+"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1054,9 +1054,9 @@ See values.yaml
 		<tr>
 			<td>gateway.nginxConfig.httpSnippet</td>
 			<td>string</td>
-			<td>Allows appending custom configuration to the http block</td>
+			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1938,6 +1938,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.tenants</td>
+			<td>list</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
@@ -2413,9 +2422,9 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.interval</td>
 			<td>string</td>
-			<td>ServiceMonitor scrape interval</td>
+			<td>ServiceMonitor scrape interval Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at least 1/4 rate interval.</td>
 			<td><pre lang="json">
-null
+"15s"
 </pre>
 </td>
 		</tr>
