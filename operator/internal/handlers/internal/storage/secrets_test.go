@@ -366,8 +366,8 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			name: "missing access_key_id",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint":    []byte("here"),
-					"bucket": []byte("this,that"),
+					"endpoint": []byte("here"),
+					"bucket":   []byte("this,that"),
 				},
 			},
 			wantErr: true,
@@ -377,7 +377,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":      []byte("here"),
-					"bucket":   []byte("this,that"),
+					"bucket":        []byte("this,that"),
 					"access_key_id": []byte("id"),
 				},
 			},
@@ -388,7 +388,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
-					"bucket":       []byte("this,that"),
+					"bucket":            []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"secret_access_key": []byte("secret"),
 				},
