@@ -111,7 +111,7 @@ func TestLogLabelsQuery(t *testing.T) {
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
+			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
