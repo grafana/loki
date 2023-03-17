@@ -57,19 +57,17 @@ type RequestQueue struct {
 	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
 	queues  *tenantQueues
 	stopped bool
-	metrics *Metrics
+
+	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
+	discardedRequests *prometheus.CounterVec // Per tenant.
 }
 
-type Metrics struct {
-	QueueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	DiscardedRequests *prometheus.CounterVec // Per tenant.
-}
-
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
-		metrics:                 metrics,
+		queueLength:             queueLength,
+		discardedRequests:       discardedRequests,
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -99,7 +97,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 
 	select {
 	case queue.Chan() <- req:
-		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
+		q.queueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -107,7 +105,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		}
 		return nil
 	default:
-		q.metrics.DiscardedRequests.WithLabelValues(tenant).Inc()
+		q.discardedRequests.WithLabelValues(tenant).Inc()
 		return ErrTooManyRequests
 	}
 }
@@ -150,7 +148,7 @@ FindQueue:
 				q.queues.deleteQueue(tenant)
 			}
 
-			q.metrics.QueueLength.WithLabelValues(tenant).Dec()
+			q.queueLength.WithLabelValues(tenant).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()

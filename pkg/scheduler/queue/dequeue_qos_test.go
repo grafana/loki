@@ -55,14 +55,12 @@ func TestQueryFairness(t *testing.T) {
 	numSubRequestsActorA, numSubRequestsActorB := 100, 20
 	total := int64((numSubRequestsActorA + numSubRequestsActorB) * numRequestsPerActor)
 
-	m := &Metrics{
-		QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-		DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-	}
-
 	for _, useActor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("use hierarchical queues = %v", useActor), func(t *testing.T) {
-			requestQueue := NewRequestQueue(1024, 0, m)
+			requestQueue := NewRequestQueue(1024, 0,
+				prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+				prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+			)
 			enqueueRequestsForActor(t, []string{"a"}, useActor, requestQueue, numSubRequestsActorA, 100*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"b"}, useActor, requestQueue, numSubRequestsActorB, 50*time.Millisecond)
 			requestQueue.queues.recomputeUserQueriers()
@@ -128,12 +126,10 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 			  456: [210]
 	**/
 
-	m := &Metrics{
-		QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-		DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-	}
-
-	requestQueue := NewRequestQueue(1024, 0, m)
+	requestQueue := NewRequestQueue(1024, 0,
+		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+	)
 	_ = requestQueue.Enqueue("tenant1", []string{}, r(0), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{}, r(1), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{}, r(2), 0, nil)

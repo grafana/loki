@@ -46,11 +46,10 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
 			for n := 0; n < b.N; n++ {
-				m := &Metrics{
-					QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-					DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-				}
-				queue := NewRequestQueue(maxOutstandingPerTenant, 0, m)
+				queue := NewRequestQueue(maxOutstandingPerTenant, 0,
+					prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+					prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+				)
 				queues = append(queues, queue)
 
 				for ix := 0; ix < queriers; ix++ {
@@ -108,11 +107,10 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		m := &Metrics{
-			QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-			DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-		}
-		q := NewRequestQueue(maxOutstandingPerTenant, 0, m)
+		q := NewRequestQueue(maxOutstandingPerTenant, 0,
+			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+		)
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
@@ -142,11 +140,10 @@ func BenchmarkQueueRequest(b *testing.B) {
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
 	const forgetDelay = 3 * time.Second
 
-	m := &Metrics{
-		QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-		DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-	}
-	queue := NewRequestQueue(1, forgetDelay, m)
+	queue := NewRequestQueue(1, forgetDelay,
+		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+	)
 
 	// Start the queue service.
 	ctx := context.Background()
