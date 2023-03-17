@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -74,7 +74,7 @@ func (cosClient *mockCosClient) GetObjectWithContext(ctx context.Context, input 
 	}
 
 	contentLength := int64(len(data))
-	body := ioutil.NopCloser(bytes.NewReader(data))
+	body := io.NopCloser(bytes.NewReader(data))
 	output := s3.GetObjectOutput{
 		Body:          body,
 		ContentLength: &contentLength,
@@ -88,7 +88,7 @@ func (cosClient *mockCosClient) PutObjectWithContext(ctx context.Context, input 
 		return &s3.PutObjectOutput{}, errMissingBucket
 	}
 
-	dataBytes, err := ioutil.ReadAll(input.Body)
+	dataBytes, err := io.ReadAll(input.Body)
 	if err != nil {
 		return &s3.PutObjectOutput{}, errMissingObject
 	}
@@ -194,7 +194,7 @@ func Test_COSConfig(t *testing.T) {
 			errEmptyBucket,
 		},
 		{
-			"Access key ID and Secret Access key and APIKEY is empty",
+			"Access key ID and Secret Access key and APIKey is empty",
 			COSConfig{
 				BucketNames:       "test",
 				Endpoint:          "test",
@@ -212,7 +212,7 @@ func Test_COSConfig(t *testing.T) {
 				Region:            "dummy",
 				AccessKeyID:       "dummy",
 				SecretAccessKey:   flagext.SecretWithValue("dummy"),
-				ApiKey:            flagext.SecretWithValue("dummy"),
+				APIKey:            flagext.SecretWithValue("dummy"),
 				ServiceInstanceID: "",
 				AuthEndpoint:      "dummy",
 			},
@@ -230,12 +230,12 @@ func Test_COSConfig(t *testing.T) {
 			nil,
 		},
 		{
-			"valid config with APIKEY",
+			"valid config with APIKey",
 			COSConfig{
 				BucketNames:       "test",
 				Endpoint:          "test",
 				Region:            "dummy",
-				ApiKey:            flagext.SecretWithValue("dummy"),
+				APIKey:            flagext.SecretWithValue("dummy"),
 				ServiceInstanceID: "dummy",
 				AuthEndpoint:      "dummy",
 			},
@@ -296,7 +296,7 @@ func Test_GetObject(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		data, err := ioutil.ReadAll(reader)
+		data, err := io.ReadAll(reader)
 		require.NoError(t, err)
 		require.Equal(t, tt.wantBytes, data)
 	}
@@ -352,7 +352,7 @@ func Test_PutObject(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		data, err := ioutil.ReadAll(reader)
+		data, err := io.ReadAll(reader)
 		require.NoError(t, err)
 		require.Equal(t, tt.Body, data)
 	}
@@ -410,10 +410,10 @@ func Test_DeleteObject(t *testing.T) {
 
 func Test_List(t *testing.T) {
 	tests := []struct {
-		prefix      string
-		delimiter   string
-		storage_obj []client.StorageObject
-		wantErr     error
+		prefix     string
+		delimiter  string
+		storageObj []client.StorageObject
+		wantErr    error
 	}{
 		{
 			"key",
@@ -446,18 +446,18 @@ func Test_List(t *testing.T) {
 
 		cosClient.cos = newMockCosClient(testListData)
 
-		storage_obj, _, err := cosClient.List(context.Background(), tt.prefix, tt.delimiter)
+		storageObj, _, err := cosClient.List(context.Background(), tt.prefix, tt.delimiter)
 		if tt.wantErr != nil {
 			require.Equal(t, tt.wantErr.Error(), err.Error())
 			continue
 		}
 		require.NoError(t, err)
 
-		sort.Slice(storage_obj, func(i, j int) bool {
-			return storage_obj[i].Key < storage_obj[j].Key
+		sort.Slice(storageObj, func(i, j int) bool {
+			return storageObj[i].Key < storageObj[j].Key
 		})
 
-		require.Equal(t, tt.storage_obj, storage_obj)
+		require.Equal(t, tt.storageObj, storageObj)
 	}
 }
 
@@ -486,20 +486,20 @@ func Test_APIKeyAuth(t *testing.T) {
 		}
 
 		data, err := json.Marshal(token)
-		if err != nil {
-			w.Write([]byte("error"))
-		}
+		require.NoError(t, err)
 
 		w.WriteHeader(http.StatusAccepted)
-		w.Write(data)
+		_, err = w.Write(data)
+		require.NoError(t, err)
 	}))
+
 	defer authServer.Close()
 
 	cosConfig := COSConfig{
 		BucketNames:       "dummy",
 		Endpoint:          cosSvr.URL,
 		Region:            "dummy",
-		ApiKey:            flagext.SecretWithValue("dummy"),
+		APIKey:            flagext.SecretWithValue("dummy"),
 		ServiceInstanceID: "test",
 		ForcePathStyle:    true,
 		AuthEndpoint:      authServer.URL,
@@ -514,7 +514,7 @@ func Test_APIKeyAuth(t *testing.T) {
 	reader, _, err := cosClient.GetObject(context.Background(), "key-1")
 	require.NoError(t, err)
 
-	data, err := ioutil.ReadAll(reader)
+	data, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, resp, strings.Trim(string(data), "\n"))
 }

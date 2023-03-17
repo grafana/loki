@@ -65,7 +65,7 @@ type COSConfig struct {
 	SecretAccessKey   flagext.Secret `yaml:"secret_access_key"`
 	HTTPConfig        HTTPConfig     `yaml:"http_config"`
 	BackoffConfig     backoff.Config `yaml:"backoff_config" doc:"description=Configures back off when cos get Object."`
-	ApiKey            flagext.Secret `yaml:"api_key"`
+	APIKey            flagext.Secret `yaml:"api_key"`
 	ServiceInstanceID string         `yaml:"service_instance_id"`
 	AuthEndpoint      string         `yaml:"auth_endpoint"`
 }
@@ -98,7 +98,7 @@ func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"cos.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"cos.max-retries", 5, "Maximum number of times to retry when cos get Object")
 
-	f.Var(&cfg.ApiKey, prefix+"cos.api-key", "api Key")
+	f.Var(&cfg.APIKey, prefix+"cos.api-key", "api Key")
 	f.StringVar(&cfg.AuthEndpoint, prefix+"cos.auth-endpoint", defaultCOSAuthEndpoint, "Auth Endpoint to connect to.")
 	f.StringVar(&cfg.ServiceInstanceID, prefix+"cos.service-instance-id", "", "COS service instance id to use")
 }
@@ -135,7 +135,7 @@ func NewCOSObjectClient(cfg COSConfig, hedgingCfg hedging.Config) (*COSObjectCli
 }
 
 func validate(cfg COSConfig) error {
-	if (cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "") && cfg.ApiKey.String() == "" {
+	if (cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() == "") && cfg.APIKey.String() == "" {
 		return errInvalidCredentials
 	}
 
@@ -152,20 +152,20 @@ func validate(cfg COSConfig) error {
 		return errEmptyEndpoint
 	}
 
-	if cfg.ApiKey.String() != "" && cfg.AuthEndpoint == "" {
+	if cfg.APIKey.String() != "" && cfg.AuthEndpoint == "" {
 		cfg.AuthEndpoint = defaultCOSAuthEndpoint
 	}
 
-	if cfg.ApiKey.String() != "" && cfg.ServiceInstanceID == "" {
+	if cfg.APIKey.String() != "" && cfg.ServiceInstanceID == "" {
 		return errServiceInstanceID
 	}
 	return nil
 }
 
 func getCreds(cfg COSConfig) *credentials.Credentials {
-	if cfg.ApiKey.String() != "" {
+	if cfg.APIKey.String() != "" {
 		return ibmiam.NewStaticCredentials(ibm.NewConfig(),
-			cfg.AuthEndpoint, cfg.ApiKey.String(), cfg.ServiceInstanceID)
+			cfg.AuthEndpoint, cfg.APIKey.String(), cfg.ServiceInstanceID)
 	}
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
 		return credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
@@ -258,14 +258,14 @@ func (c *COSObjectClient) bucketFromKey(key string) string {
 func (c *COSObjectClient) Stop() {}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
-func (a *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	return instrument.CollectedRequest(ctx, "COS.DeleteObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		deleteObjectInput := &cos.DeleteObjectInput{
-			Bucket: ibm.String(a.bucketFromKey(objectKey)),
+			Bucket: ibm.String(c.bucketFromKey(objectKey)),
 			Key:    ibm.String(objectKey),
 		}
 
-		_, err := a.cos.DeleteObjectWithContext(ctx, deleteObjectInput)
+		_, err := c.cos.DeleteObjectWithContext(ctx, deleteObjectInput)
 		return err
 	})
 }
@@ -319,20 +319,20 @@ func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 }
 
 // List implements chunk.ObjectClient.
-func (a *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (c *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
 
-	for i := range a.bucketNames {
+	for i := range c.bucketNames {
 		err := instrument.CollectedRequest(ctx, "COS.List", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := cos.ListObjectsV2Input{
-				Bucket:    ibm.String(a.bucketNames[i]),
+				Bucket:    ibm.String(c.bucketNames[i]),
 				Prefix:    ibm.String(prefix),
 				Delimiter: ibm.String(delimiter),
 			}
 
 			for {
-				output, err := a.cos.ListObjectsV2WithContext(ctx, &input)
+				output, err := c.cos.ListObjectsV2WithContext(ctx, &input)
 				if err != nil {
 					return err
 				}

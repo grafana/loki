@@ -188,7 +188,7 @@ type Config struct {
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
 	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
+	BoltDBShipperConfig shipper.Config      `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
 	TSDBShipperConfig   indexshipper.Config `yaml:"tsdb_shipper"`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.

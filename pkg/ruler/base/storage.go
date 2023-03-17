@@ -57,7 +57,7 @@ func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Local.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.BOS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.COS.RegisterFlagsWithPrefix("ruler.storage.", f)
-	f.StringVar(&cfg.Type, "ruler.storage.type", "", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local, bos)")
+	f.StringVar(&cfg.Type, "ruler.storage.type", "", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local, bos, cos)")
 }
 
 // Validate config and returns error on failure
