@@ -158,12 +158,12 @@ Currently, the difference between an active and inactive table **only applies
 to the DynamoDB storage** settings: capacity mode (on-demand or provisioned),
 read/write capacity units and autoscaling.
 
-| DynamoDB            | Active table                            | Inactive table                       |
-| ------------------- | --------------------------------------- | ------------------------------------ |
+| DynamoDB            | Active table                      | Inactive table                              |
+|---------------------|-----------------------------------|---------------------------------------------|
 | Capacity mode       | `enable_ondemand_throughput_mode` | `enable_inactive_throughput_on_demand_mode` |
-| Read capacity unit  | `provisioned_read_throughput`           | `inactive_read_throughput`           |
-| Write capacity unit | `provisioned_write_throughput`          | `inactive_write_throughput`          |
-| Autoscaling         | Enabled (if configured)                 | Always disabled                      |
+| Read capacity unit  | `provisioned_read_throughput`     | `inactive_read_throughput`                  |
+| Write capacity unit | `provisioned_write_throughput`    | `inactive_write_throughput`                 |
+| Autoscaling         | Enabled (if configured)           | Always disabled                             |
 
 
 ## DynamoDB Provisioning

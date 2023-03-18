@@ -411,25 +411,25 @@ present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_
 `max_query_length` `max_query_parallelism` `max_streams_per_user`
 `reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
 
-| config | new default | old default |
-| --- | --- | --- |
-| ingestion_rate_strategy | "global" | "local" |
-| max_global_streams_per_user | 5000 | 0 (no limit) |
-| max_query_length | "721h" | "0h" (no limit) |
-| max_query_parallelism | 32 | 14 |
-| max_streams_per_user | 0 (no limit) | 10000 |
-| reject_old_samples | true | false |
-| reject_old_samples_max_age | "168h" | "336h" |
-| per_stream_rate_limit | 3MB | - |
-| per_stream_rate_limit_burst | 15MB | - |
+| config                      | new default  | old default     |
+|-----------------------------|--------------|-----------------|
+| ingestion_rate_strategy     | "global"     | "local"         |
+| max_global_streams_per_user | 5000         | 0 (no limit)    |
+| max_query_length            | "721h"       | "0h" (no limit) |
+| max_query_parallelism       | 32           | 14              |
+| max_streams_per_user        | 0 (no limit) | 10000           |
+| reject_old_samples          | true         | false           |
+| reject_old_samples_max_age  | "168h"       | "336h"          |
+| per_stream_rate_limit       | 3MB          | -               |
+| per_stream_rate_limit_burst | 15MB         | -               |
 
 #### Change of configuration defaults
 
-| config | new default | old default|
-| --- | --- | --- |
-| chunk_retain_period | 0s | 30s |
-| chunk_idle_period | 30m | 1h |
-| chunk_target_size | 1572864 | 1048576 |
+| config              | new default | old default |
+|---------------------|-------------|-------------|
+| chunk_retain_period | 0s          | 30s         |
+| chunk_idle_period   | 30m         | 1h          |
+| chunk_target_size   | 1572864     | 1048576     |
 
 * chunk_retain_period is necessary when using an index queries cache which is not enabled by default. If you have configured an index_queries_cache_config section make sure that you set chunk_retain_period larger than your cache TTL
 * chunk_idle_period is how long before a chunk which receives no logs is flushed.

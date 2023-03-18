@@ -11,8 +11,8 @@ Push logs to Loki with `pushParameterized`.
 This method generates batches of streams in a random fashion.
 This method requires three arguments:
 
-| name | description |
-| ---- | ----------- |
+| name      | description                 |
+|-----------|-----------------------------|
 | `streams` | number of streams per batch |
 | `minSize` | minimum batch size in bytes |
 | `maxSize` | maximum batch size in bytes |
@@ -85,7 +85,7 @@ Under the hood, the extension uses a fork the library
 `xk6-loki` uses the following label names for generating streams:
 
 | name      | type     | cardinality     |
-| --------- | -------- | --------------- |
+|-----------|----------|-----------------|
 | instance  | fixed    | 1 per k6 worker |
 | format    | fixed    | 7               |
 | os        | fixed    | 3               |

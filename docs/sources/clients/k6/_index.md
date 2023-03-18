@@ -66,9 +66,9 @@ import loki from 'k6/x/loki';
 
 Classes of this module are:
 
-| class | description |
-| ----- | ----------- |
-| `Config` | configuration for the `Client` class |
+| class    | description                                   |
+|----------|-----------------------------------------------|
+| `Config` | configuration for the `Client` class          |
 | `Client` | client for writing and reading logs from Loki |
 
 `Config` and `Client` must be called on the k6 init context (see
@@ -78,15 +78,15 @@ VU iterations.
 
 The `Client` class exposes the following instance methods:
 
-| method | description |
-| ------ | ----------- |
-| `push()` | shortcut for `pushParameterized(5, 800*1024, 1024*1024)` |
-| `pushParameterized(streams, minSize, maxSize)` | execute push request ([POST /loki/api/v1/push]({{< relref "../../api/#push-log-entries-to-loki" >}})) |
-| `instantQuery(query, limit)` | execute instant query  ([GET /loki/api/v1/query]({{< relref "../../api/#query-loki" >}})) |
-| `client.rangeQuery(query, duration, limit)` | execute range query  ([GET /loki/api/v1/query_range]({{< relref "../../api/#query-loki-over-a-range-of-time" >}})) |
-| `client.labelsQuery(duration)` | execute labels query  ([GET /loki/api/v1/labels]({{< relref "../../api/#list-labels-within-a-range-of-time" >}})) |
-| `client.labelValuesQuery(label, duration)` | execute label values query  ([GET /loki/api/v1/label/\<name\>/values]({{< relref "../../api/#list-label-values-within-a-range-of-time" >}})) |
-| `client.seriesQuery(matchers, duration)` | execute series query  ([GET /loki/api/v1/series]({{< relref "../../api/#list-series" >}})) |
+| method                                         | description                                                                                                                                  |
+|------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `push()`                                       | shortcut for `pushParameterized(5, 800*1024, 1024*1024)`                                                                                     |
+| `pushParameterized(streams, minSize, maxSize)` | execute push request ([POST /loki/api/v1/push]({{< relref "../../api/#push-log-entries-to-loki" >}}))                                        |
+| `instantQuery(query, limit)`                   | execute instant query  ([GET /loki/api/v1/query]({{< relref "../../api/#query-loki" >}}))                                                    |
+| `client.rangeQuery(query, duration, limit)`    | execute range query  ([GET /loki/api/v1/query_range]({{< relref "../../api/#query-loki-over-a-range-of-time" >}}))                           |
+| `client.labelsQuery(duration)`                 | execute labels query  ([GET /loki/api/v1/labels]({{< relref "../../api/#list-labels-within-a-range-of-time" >}}))                            |
+| `client.labelValuesQuery(label, duration)`     | execute label values query  ([GET /loki/api/v1/label/\<name\>/values]({{< relref "../../api/#list-label-values-within-a-range-of-time" >}})) |
+| `client.seriesQuery(matchers, duration)`       | execute series query  ([GET /loki/api/v1/series]({{< relref "../../api/#list-series" >}}))                                                   |
 
 **Javascript load test example:**
 

@@ -194,14 +194,14 @@ A service(s) is rate limiting at least 10% of all incoming requests.
   - For ingestion limits, please consult the table below
   - For query limits, the `MaxEntriesLimitPerQuery`, `MaxChunksPerQuery`, or `MaxQuerySeries` can be changed to raise the limit
 
-| Reason | Corresponding Ingestion Limit Keys |
-| --- | --- |
-| `rate_limited` | `ingestionRate`, `ingestionBurstSize` |
-| `stream_limit` | `maxGlobalStreamsPerTenant` |
-| `label_name_too_long` | `maxLabelNameLength` |
-| `label_value_too_long` | `maxLabelValueLength` |
-| `line_too_long` | `maxLineSize` |
-| `max_label_names_per_series` | `maxLabelNamesPerSeries` |
+| Reason                       | Corresponding Ingestion Limit Keys    |
+|------------------------------|---------------------------------------|
+| `rate_limited`               | `ingestionRate`, `ingestionBurstSize` |
+| `stream_limit`               | `maxGlobalStreamsPerTenant`           |
+| `label_name_too_long`        | `maxLabelNameLength`                  |
+| `label_value_too_long`       | `maxLabelValueLength`                 |
+| `line_too_long`              | `maxLineSize`                         |
+| `max_label_names_per_series` | `maxLabelNamesPerSeries`              |
 
 ## Loki Storage Slow Write
 
