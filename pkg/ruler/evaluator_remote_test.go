@@ -250,7 +250,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	require.Len(t, res.Data, 2)
 	require.IsType(t, promql.Vector{}, res.Data)
 	vector := res.Data.(promql.Vector)
-	require.EqualValues(t, now.UnixNano(), vector[0].T)
+	require.EqualValues(t, now.Round(time.Millisecond), time.Unix(0, vector[0].T).Round(time.Millisecond))
 	require.EqualValues(t, value, vector[0].V)
 	require.EqualValues(t, map[string]string{
 		"foo": "bar",
