@@ -239,29 +239,35 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		instrument.ObserveWithExemplar(ctx, r.metrics.responseSizeBytes.WithLabelValues(orgID), float64(len(resp.Body)))
 	}
 
+	log := log.With(logger, "query_hash", hash, "query", query, "instant", ts, "response_time", time.Since(start).String())
+
 	if err != nil {
 		r.metrics.failedEvals.WithLabelValues("error", orgID).Inc()
 
-		level.Warn(logger).Log("msg", "failed to remotely evaluate query expression", "err", err, "query_hash", hash, "instant", ts, "response_time", time.Since(start).Seconds())
-		return nil, fmt.Errorf("remote query evaluation failed: %w", err)
+		level.Warn(log).Log("msg", "failed to evaluate rule", "err", err)
+		return nil, fmt.Errorf("rule evaluation failed: %w", err)
 	}
 
 	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
 	//   i.e. critical alerts or recording rules producing crucial RemoteEvaluatorMetrics series
 	if resp.Code/100 != 2 {
 		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
-		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d: %s", resp.Code, string(resp.Body))
+
+		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", resp.Body)
+		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d", resp.Code)
 	}
 
 	maxSize := r.overrides.RulerRemoteEvaluationMaxResponseSize(orgID)
 	if maxSize > 0 && int64(len(resp.Body)) >= maxSize {
 		r.metrics.failedEvals.WithLabelValues("max_size", orgID).Inc()
+
+		level.Error(log).Log("msg", "rule evaluation exceeded max size", "max_size", maxSize, "response_size", len(resp.Body))
 		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
 	}
 
+	level.Debug(log).Log("msg", "rule evaluation succeeded")
 	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
 
-	level.Debug(logger).Log("msg", "query expression successfully evaluated", "query_hash", hash, "instant", ts, "response_time", time.Since(start).Seconds())
 	return r.decodeResponse(ctx, resp, orgID)
 }
 
