@@ -165,7 +165,8 @@ type roundTripperHandler struct {
 	codec Codec
 }
 
-// NewRoundTripperHandler TODO.
+// NewRoundTripperHandler returns a handler that translates Loki requests into http requests
+// and passes down these to the next RoundTripper.
 func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
 	return roundTripperHandler{
 		next:  next,
