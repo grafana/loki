@@ -99,7 +99,7 @@ func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParalle
 		schema:              schema,
 		bufferPool: sync.Pool{
 			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 0, 1000))
+				return bytes.NewBuffer(make([]byte, 0, 1024))
 			},
 		},
 	}
