@@ -680,6 +680,19 @@ func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
 	})
 }
 
+func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := marshal.WriteIndexStatsResponseJSON(&v, w); err != nil {
+			panic(err)
+		}
+		count++
+	})
+}
+
 type fakeHandler struct {
 	count int
 	lock  sync.Mutex

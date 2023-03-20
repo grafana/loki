@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -431,4 +432,201 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 		result := WeightedParallelism(context.Background(), confs, "fake", &fakeLimits{maxQueryParallelism: 50}, confs[0].From.Add(-24*time.Hour), confs[0].From.Add(-12*time.Hour))
 		require.Equal(t, 1, result)
 	})
+}
+
+func getFakeStatsHandler(retBytes uint64) (queryrangebase.Handler, *int, error) {
+	fakeRT, err := newfakeRoundTripper()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	count, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: retBytes})
+
+	fakeRT.setHandler(statsHandler)
+
+	return queryrangebase.NewRoundTripperHandler(fakeRT, LokiCodec), count, nil
+}
+
+func Test_MaxQuerySize(t *testing.T) {
+	const statsBytes = 1000
+
+	schemas := []config.PeriodConfig{
+		{
+			// BoltDB -> Time -4 days
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-96 * time.Hour).Unix())},
+			IndexType: config.BoltDBShipperType,
+		},
+		{
+			// TSDB -> Time -2 days
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
+			IndexType: config.TSDBType,
+		},
+	}
+
+	for _, tc := range []struct {
+		desc       string
+		schema     string
+		query      string
+		queryRange time.Duration
+		queryStart time.Time
+		queryEnd   time.Time
+		limits     Limits
+
+		shouldErr                bool
+		expectedQueryStatsHits   int
+		expectedQuerierStatsHits int
+	}{
+		{
+			desc:       "No TSDB",
+			schema:     config.BoltDBShipperType,
+			query:      `{app="foo"} |= "foo"`,
+			queryRange: 1 * time.Hour,
+
+			queryStart: testTime.Add(-96 * time.Hour),
+			queryEnd:   testTime.Add(-90 * time.Hour),
+			limits: fakeLimits{
+				maxQueryBytesRead:   1,
+				maxQuerierBytesRead: 1,
+			},
+
+			shouldErr:                false,
+			expectedQueryStatsHits:   0,
+			expectedQuerierStatsHits: 0,
+		},
+		{
+			desc:       "Unlimited",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-48 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   0,
+				maxQuerierBytesRead: 0,
+			},
+
+			shouldErr:                false,
+			expectedQueryStatsHits:   0,
+			expectedQuerierStatsHits: 0,
+		},
+		{
+			desc:       "1 hour range",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr: false,
+			// [testTime-1h, testTime)
+			expectedQueryStatsHits:   1,
+			expectedQuerierStatsHits: 1,
+		},
+		{
+			desc:       "24 hour range",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-24 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr: false,
+			// [testTime-24h, midnight) and [midnight, testTime]
+			expectedQueryStatsHits:   2,
+			expectedQuerierStatsHits: 2,
+		},
+		{
+			desc:       "48 hour range",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-48 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr: false,
+			// [testTime-48h, midnight-1d), [midnight-1d, midnight) and [midnight, testTime]
+			expectedQueryStatsHits:   3,
+			expectedQuerierStatsHits: 3,
+		},
+		{
+			desc:       "Query size too big",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes - 1,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr:                true,
+			expectedQueryStatsHits:   1,
+			expectedQuerierStatsHits: 0,
+		},
+		{
+			desc:       "Querier size too big",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes - 1,
+			},
+
+			shouldErr:                true,
+			expectedQueryStatsHits:   1,
+			expectedQuerierStatsHits: 1,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			queryStatsHandler, queryStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1)))
+			require.NoError(t, err)
+
+			querierStatsHandler, querierStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1)))
+			require.NoError(t, err)
+
+			fakeRT, err := newfakeRoundTripper()
+			require.NoError(t, err)
+
+			_, promHandler := promqlResult(matrix)
+			fakeRT.setHandler(promHandler)
+
+			lokiReq := &LokiRequest{
+				Query:     tc.query,
+				Limit:     1000,
+				StartTs:   tc.queryStart,
+				EndTs:     tc.queryEnd,
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			req, err := LokiCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+
+			middlewares := []queryrangebase.Middleware{
+				NewQuerySizeLimiterMiddleware(schemas, util_log.Logger, tc.limits, LokiCodec, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(schemas, util_log.Logger, tc.limits, LokiCodec, querierStatsHandler),
+			}
+
+			_, err = queryrangebase.NewRoundTripper(fakeRT, LokiCodec, nil, middlewares...).RoundTrip(req)
+
+			if tc.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.expectedQueryStatsHits, *queryStatsHits)
+			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
+		})
+	}
+
 }
