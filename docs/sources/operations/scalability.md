@@ -75,8 +75,8 @@ Remote rule evaluation can be tuned with the following options:
 - `ruler_remote_evaluation_timeout`: maximum allowable execution time for rule evaluations
 - `ruler_remote_evaluation_max_response_size`: maximum allowable response size over gRPC connection from `query-frontend` to `ruler`
 
-Both of these must can specified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) section
-or on a [per-tenant basis](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file). 
+Both of these must can specified globally in the [`limits_config`](/configuration/#limits_config) section
+or on a [per-tenant basis](/configuration/#runtime-configuration-file). 
 
 Remote rule evaluation exposes a number of metrics:
 
