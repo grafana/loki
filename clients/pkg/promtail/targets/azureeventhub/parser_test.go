@@ -1,4 +1,4 @@
-package azurelog
+package azureeventhub
 
 import (
 	"os"
@@ -213,7 +213,7 @@ func Test_parseMessage_relable_config(t *testing.T) {
 
 	relableConfigs := []*relabel.Config{
 		{
-			SourceLabels: model.LabelNames{"__azurelog_category"},
+			SourceLabels: model.LabelNames{"__azureeventhub_category"},
 			Regex:        relabel.MustNewRegexp("(.*)"),
 			TargetLabel:  "category",
 			Replacement:  "$1",

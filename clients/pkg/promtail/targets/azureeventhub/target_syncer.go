@@ -1,4 +1,4 @@
-package azurelog
+package azureeventhub
 
 import (
 	"context"
@@ -25,53 +25,53 @@ func NewSyncer(
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
 	}
-	config := getConfig(cfg.AzurelogConfig.ConnectionString)
+	config := getConfig(cfg.AzureEventHubConfig.ConnectionString)
 
-	client, err := sarama.NewClient(cfg.AzurelogConfig.Brokers, config)
+	client, err := sarama.NewClient(cfg.AzureEventHubConfig.Brokers, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating kafka client: %w", err)
 	}
-	group, err := sarama.NewConsumerGroup(cfg.AzurelogConfig.Brokers, cfg.AzurelogConfig.GroupID, config)
+	group, err := sarama.NewConsumerGroup(cfg.AzureEventHubConfig.Brokers, cfg.AzureEventHubConfig.GroupID, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating consumer group client: %w", err)
 	}
-	pipeline, err := stages.NewPipeline(log.With(logger, "component", "azurelog_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
+	pipeline, err := stages.NewPipeline(log.With(logger, "component", "azureeventhub_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 	if err != nil {
 		return nil, fmt.Errorf("error creating pipeline: %w", err)
 	}
 
 	targetSyncConfig := &kafka.TargetSyncerConfig{
 		RelabelConfigs:       cfg.RelabelConfigs,
-		UseIncomingTimestamp: cfg.AzurelogConfig.UseIncomingTimestamp,
-		Labels:               cfg.AzurelogConfig.Labels,
-		GroupID:              cfg.AzurelogConfig.GroupID,
+		UseIncomingTimestamp: cfg.AzureEventHubConfig.UseIncomingTimestamp,
+		Labels:               cfg.AzureEventHubConfig.Labels,
+		GroupID:              cfg.AzureEventHubConfig.GroupID,
 	}
 
 	t, err := kafka.NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, &eventHubMessageParser{
-		allowCustomPayload: cfg.AzurelogConfig.AllowCustomPayload,
-	}, cfg.AzurelogConfig.Topics, targetSyncConfig)
+		allowCustomPayload: cfg.AzureEventHubConfig.AllowCustomPayload,
+	}, cfg.AzureEventHubConfig.Topics, targetSyncConfig)
 	if err != nil {
-		return nil, fmt.Errorf("error starting azurelog target: %w", err)
+		return nil, fmt.Errorf("error starting azureeventhub target: %w", err)
 	}
 
 	return t, nil
 }
 
 func validateConfig(cfg *scrapeconfig.Config) error {
-	if cfg.AzurelogConfig == nil {
-		return errors.New("azurelog configuration is empty")
+	if cfg.AzureEventHubConfig == nil {
+		return errors.New("azureeventhub configuration is empty")
 	}
 
-	if len(cfg.AzurelogConfig.Brokers) == 0 {
+	if len(cfg.AzureEventHubConfig.Brokers) == 0 {
 		return errors.New("no event hubs brokers defined")
 	}
 
-	if len(cfg.AzurelogConfig.Topics) == 0 {
+	if len(cfg.AzureEventHubConfig.Topics) == 0 {
 		return errors.New("no topics given to be consumed")
 	}
 
-	if cfg.AzurelogConfig.GroupID == "" {
-		cfg.AzurelogConfig.GroupID = "promtail"
+	if cfg.AzureEventHubConfig.GroupID == "" {
+		cfg.AzureEventHubConfig.GroupID = "promtail"
 	}
 	return nil
 }

@@ -1,4 +1,4 @@
-package azurelog
+package azureeventhub
 
 import (
 	"github.com/go-kit/log"
@@ -53,7 +53,7 @@ func (tm *TargetManager) Ready() bool {
 func (tm *TargetManager) Stop() {
 	for _, t := range tm.targetSyncers {
 		if err := t.Stop(); err != nil {
-			level.Error(tm.logger).Log("msg", "error stopping azurelog target", "err", err)
+			level.Error(tm.logger).Log("msg", "error stopping azureeventhub target", "err", err)
 		}
 	}
 }

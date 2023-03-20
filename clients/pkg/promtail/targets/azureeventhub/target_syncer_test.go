@@ -1,4 +1,4 @@
-package azurelog
+package azureeventhub
 
 import (
 	"errors"
@@ -19,11 +19,11 @@ func Test_validateConfig(t *testing.T) {
 	}{
 		{
 			name: "default groupID",
-			cfg: &scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers: []string{"some broker"},
 				Topics:  []string{"some topic"},
 			}},
-			expectedCfg: &scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			expectedCfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers: []string{"some broker"},
 				Topics:  []string{"some topic"},
 				GroupID: "promtail",
@@ -31,12 +31,12 @@ func Test_validateConfig(t *testing.T) {
 		},
 		{
 			name: "success",
-			cfg: &scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers: []string{"some broker"},
 				Topics:  []string{"some topic"},
 				GroupID: "my groupID",
 			}},
-			expectedCfg: &scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			expectedCfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers: []string{"some broker"},
 				Topics:  []string{"some topic"},
 				GroupID: "my groupID",
@@ -62,16 +62,16 @@ func Test_validateConfig_error(t *testing.T) {
 		{
 			name: "empty config",
 			cfg:  &scrapeconfig.Config{},
-			err:  errors.New("azurelog configuration is empty"),
+			err:  errors.New("azureeventhub configuration is empty"),
 		},
 		{
 			name: "no brokers",
-			cfg:  &scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{}},
+			cfg:  &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{}},
 			err:  errors.New("no event hubs brokers defined"),
 		},
 		{
 			name: "no topics",
-			cfg: &scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers: []string{"some broker"},
 			}},
 			err: errors.New("no topics given to be consumed"),
@@ -110,7 +110,7 @@ func TestNewSyncer_errors(t *testing.T) {
 	}{
 		{
 			name: "error creating kafka client, missing password",
-			cfg: scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			cfg: scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers: []string{"some broker"},
 				Topics:  []string{"some topic"},
 				GroupID: "my groupID",
@@ -119,7 +119,7 @@ func TestNewSyncer_errors(t *testing.T) {
 		},
 		{
 			name: "error creating kafka client, missing port in address",
-			cfg: scrapeconfig.Config{AzurelogConfig: &scrapeconfig.AzurelogTargetConfig{
+			cfg: scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
 				Brokers:          []string{"some broker"},
 				Topics:           []string{"some topic"},
 				GroupID:          "my groupID",

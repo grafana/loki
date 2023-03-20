@@ -1,4 +1,4 @@
-package azurelog
+package azureeventhub
 
 import (
 	"bytes"
@@ -133,7 +133,7 @@ func (e *eventHubMessageParser) getTime(messageTime time.Time, useIncomingTimest
 func (e *eventHubMessageParser) getLabels(logRecord *azureMonitorResourceLog, relabelConfig []*relabel.Config) model.LabelSet {
 	lbs := labels.Labels{
 		{
-			Name:  "__azurelog_category",
+			Name:  "__azureeventhub_category",
 			Value: logRecord.Category,
 		},
 	}
