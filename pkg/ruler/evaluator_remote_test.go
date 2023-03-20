@@ -316,7 +316,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, "test")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
-	require.ErrorContains(t, err, "remote query evaluation failed")
+	require.ErrorContains(t, err, "rule evaluation failed")
 	require.ErrorContains(t, err, respErr.Error())
 }
 
