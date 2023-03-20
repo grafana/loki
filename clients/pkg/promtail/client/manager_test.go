@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -81,7 +82,7 @@ func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
 	clientMetrics := NewMetrics(reg)
-	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, notifier(func(subscriber wal.WriterEventSubscriber) {}), testClientConfig)
+	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, writer, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 
@@ -101,30 +102,28 @@ func TestManager_EntriesAreWrittenToClients(t *testing.T) {
 	var testLabels = model.LabelSet{
 		"wal_enabled": "true",
 	}
-	var lines = []string{
-		"Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-		"In eu nisl ac massa ultricies rutrum.",
-		"Sed eget felis at ipsum auctor congue.",
-	}
-	for _, line := range lines {
+	var totalLines = 100
+	for i := 0; i < totalLines; i++ {
 		writer.Chan() <- api.Entry{
 			Labels: testLabels,
 			Entry: logproto.Entry{
 				Timestamp: time.Now(),
-				Line:      line,
+				Line:      fmt.Sprintf("line%d", i),
 			},
 		}
 	}
 
 	require.Eventually(t, func() bool {
-		return len(receivedRequests) == 3
+		return len(receivedRequests) == totalLines
 	}, 5*time.Second, time.Second, "timed out waiting for requests to be received")
 
+	var seenEntries = map[string]struct{}{}
 	// assert over rw client received entries
 	for _, req := range receivedRequests {
 		require.Len(t, req.pushReq.Streams, 1, "expected 1 stream requests to be received")
 		require.Len(t, req.pushReq.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
 		require.Equal(t, `{wal_enabled="true"}`, req.pushReq.Streams[0].Labels)
-		require.Contains(t, lines, req.pushReq.Streams[0].Entries[0].Line)
+		seenEntries[req.pushReq.Streams[0].Entries[0].Line] = struct{}{}
 	}
+	require.Len(t, seenEntries, totalLines)
 }
