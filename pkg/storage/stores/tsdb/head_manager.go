@@ -259,7 +259,7 @@ func (m *HeadManager) Start() error {
 
 	// build WALs from parent dir if any, these would've been generated before the TSDB multi-store support was added.
 	// TSDB files built in this step would be migrated to the period specific dir on starting the tsdbManager.
-	if err := m.buildLegacyWALs(); err != nil {
+	if err := m.buildTSDBFromLegacyWALs(); err != nil {
 		return errors.Wrap(err, "building tsdb from legacy WAL files")
 	}
 
@@ -269,7 +269,7 @@ func (m *HeadManager) Start() error {
 	}
 
 	// build tsdb from old WAL files
-	if err := m.buildWALs(m.dir, false); err != nil {
+	if err := m.buildTSDBFromWALs(m.dir, false); err != nil {
 		return errors.Wrap(err, "building tsdb from old WAL files")
 	}
 
@@ -284,7 +284,7 @@ func (m *HeadManager) Start() error {
 	return nil
 }
 
-func (m *HeadManager) buildLegacyWALs() error {
+func (m *HeadManager) buildTSDBFromLegacyWALs() error {
 	parentDir := filepath.Dir(filepath.Clean(m.dir))
 	if _, err := os.Stat(managerWalDir(parentDir)); err != nil {
 		if os.IsNotExist(err) {
@@ -302,10 +302,10 @@ func (m *HeadManager) buildLegacyWALs() error {
 		}
 	}
 
-	return m.buildWALs(parentDir, true)
+	return m.buildTSDBFromWALs(parentDir, true)
 }
 
-func (m *HeadManager) buildWALs(dir string, legacy bool) error {
+func (m *HeadManager) buildTSDBFromWALs(dir string, legacy bool) error {
 	walsByPeriod, err := walsByPeriod(dir, m.period)
 	if err != nil {
 		return errors.Wrap(err, "loading wals by period")

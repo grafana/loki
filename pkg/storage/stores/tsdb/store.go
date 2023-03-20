@@ -37,7 +37,8 @@ type store struct {
 	stopOnce          sync.Once
 }
 
-type newStoreFactoryFunc func(
+// NewStore creates a new tsdb index ReaderWriter.
+func NewStore(
 	name string,
 	indexShipperCfg indexshipper.Config,
 	schemaCfg config.SchemaConfig,
@@ -49,45 +50,25 @@ type newStoreFactoryFunc func(
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (
-	indexReaderWriter index.ReaderWriter,
-	stopFunc func(),
-	err error,
-)
-
-// NewStore creates a new tsdb index ReaderWriter.
-var NewStore = func() newStoreFactoryFunc {
-	return func(
-		name string,
-		indexShipperCfg indexshipper.Config,
-		schemaCfg config.SchemaConfig,
-		f *fetcher.Fetcher,
-		objectClient client.ObjectClient,
-		limits downloads.Limits,
-		tableRange config.TableRange,
-		backupIndexWriter index.Writer,
-		reg prometheus.Registerer,
-		logger log.Logger,
-	) (
-		index.ReaderWriter,
-		func(),
-		error,
-	) {
-		if backupIndexWriter == nil {
-			backupIndexWriter = noopBackupIndexWriter{}
-		}
-
-		storeInstance := &store{
-			backupIndexWriter: backupIndexWriter,
-			logger:            logger,
-		}
-
-		if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
-			return nil, nil, err
-		}
-
-		return storeInstance, storeInstance.Stop, nil
+	index.ReaderWriter,
+	func(),
+	error,
+) {
+	if backupIndexWriter == nil {
+		backupIndexWriter = noopBackupIndexWriter{}
 	}
-}()
+
+	storeInstance := &store{
+		backupIndexWriter: backupIndexWriter,
+		logger:            logger,
+	}
+
+	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+		return nil, nil, err
+	}
+
+	return storeInstance, storeInstance.Stop, nil
+}
 
 func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
