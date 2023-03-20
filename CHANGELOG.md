@@ -50,7 +50,6 @@
 * [8448](https://github.com/grafana/loki/pull/8448) **chaudum**: Fix bug in LogQL parser that caused certain queries that contain a vector expression to fail.
 * [8448](https://github.com/grafana/loki/pull/8665) **sandeepsukhani**: deletion: fix issue in processing delete requests with tsdb index
 * [8753](https://github.com/grafana/loki/pull/8753) **slim-bean** A zero value for retention_period will now disable retention.
-* [8835](https://github.com/grafana/loki/pull/8835) **ashwanthgoli** json parser: fix panic when processing empty line.
 
 ##### Changes
 
