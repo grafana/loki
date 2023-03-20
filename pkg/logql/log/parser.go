@@ -500,7 +500,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	// Check that the line starts correctly
 	// the parser will pass an error if other
 	// parts of the line are malformed
-	if !isValidJSONStart(line) {
+	if len(line) == 0 || !isValidJSONStart(line) {
 		lbs.SetErr(errJSON)
 		if lbs.ParserLabelHints().PreserveError() {
 			lbs.Set(logqlmodel.PreserveErrorLabel, "true")

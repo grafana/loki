@@ -400,6 +400,20 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			newParserHint([]string{"__error__"}, nil, false, true, ""),
 		},
+		{
+			"empty line",
+			[]byte(``),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `will.not.work`),
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
+			},
+		},
 	}
 	for _, tt := range tests {
 		j, err := NewJSONExpressionParser(tt.expressions)
