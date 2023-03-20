@@ -1,7 +1,6 @@
 package azurelog
 
 import (
-	_ "embed"
 	"os"
 	"testing"
 	"time"
