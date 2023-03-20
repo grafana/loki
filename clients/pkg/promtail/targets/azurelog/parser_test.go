@@ -2,6 +2,7 @@ package azurelog
 
 import (
 	_ "embed"
+	"os"
 	"testing"
 	"time"
 
@@ -11,34 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//go:embed testdata/function_app_logs_message.txt
-var functionAppLogsMessageBody []byte
-
-//go:embed testdata/logic_app_logs_message.json
-var logicAppLogsMessageBody []byte
-
-//go:embed testdata/custom_payload_text.txt
-var customPayloadText []byte
-
-//go:embed testdata/custom_payload_json.json
-var customPayloadJSON []byte
-
-//go:embed testdata/custom_payload_json_with_records_string.json
-var customPayloadJSONWithRecordsString []byte
-
-//go:embed testdata/custom_payload_json_with_records_array.json
-var customPayloadJSONWithRecordsArray []byte
-
-//go:embed testdata/message_with_invalid_time.json
-var messageWithInvalidTime []byte
-
 func Test_parseMessage_function_app(t *testing.T) {
 	messageParser := &eventHubMessageParser{
 		allowCustomPayload: false,
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value: functionAppLogsMessageBody,
+		Value: readFile(t, "testdata/function_app_logs_message.txt"),
 	}
 
 	entries, err := messageParser.Parse(message, nil, nil, true)
@@ -60,7 +40,7 @@ func Test_parseMessage_logic_app(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value: logicAppLogsMessageBody,
+		Value: readFile(t, "testdata/logic_app_logs_message.json"),
 	}
 
 	entries, err := messageParser.Parse(message, nil, nil, true)
@@ -83,7 +63,7 @@ func Test_parseMessage_custom_payload_text(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value:     customPayloadText,
+		Value:     readFile(t, "testdata/custom_payload_text.txt"),
 		Timestamp: time.Date(2021, time.March, 17, 8, 44, 03, 0, time.UTC),
 	}
 
@@ -103,7 +83,7 @@ func Test_parseMessage_custom_payload_text_error(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value: customPayloadText,
+		Value: readFile(t, "testdata/custom_payload_text.txt"),
 	}
 
 	_, err := messageParser.Parse(message, nil, nil, true)
@@ -116,7 +96,7 @@ func Test_parseMessage_custom_payload_json(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value:     customPayloadJSON,
+		Value:     readFile(t, "testdata/custom_payload_json.json"),
 		Timestamp: time.Date(2021, time.March, 17, 8, 44, 03, 0, time.UTC),
 	}
 
@@ -136,7 +116,7 @@ func Test_parseMessage_custom_payload_json_with_records_string(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value:     customPayloadJSONWithRecordsString,
+		Value:     readFile(t, "testdata/custom_payload_json_with_records_string.json"),
 		Timestamp: time.Date(2021, time.March, 17, 8, 44, 03, 0, time.UTC),
 	}
 
@@ -156,7 +136,7 @@ func Test_parseMessage_custom_payload_json_with_records_string_custom_payload_no
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value: customPayloadJSONWithRecordsString,
+		Value: readFile(t, "testdata/custom_payload_json_with_records_string.json"),
 	}
 
 	_, err := messageParser.Parse(message, nil, nil, true)
@@ -169,7 +149,7 @@ func Test_parseMessage_custom_payload_json_with_records_array(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value:     customPayloadJSONWithRecordsArray,
+		Value:     readFile(t, "testdata/custom_payload_json_with_records_array.json"),
 		Timestamp: time.Date(2021, time.March, 17, 8, 44, 03, 0, time.UTC),
 	}
 
@@ -195,7 +175,7 @@ func Test_parseMessage_custom_payload_json_with_records_array_custom_payload_not
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value:     customPayloadJSONWithRecordsArray,
+		Value:     readFile(t, "testdata/custom_payload_json_with_records_array.json"),
 		Timestamp: time.Date(2021, time.March, 17, 8, 44, 03, 0, time.UTC),
 	}
 
@@ -209,7 +189,7 @@ func Test_parseMessage_message_with_invalid_time(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value:     messageWithInvalidTime,
+		Value:     readFile(t, "testdata/message_with_invalid_time.json"),
 		Timestamp: time.Date(2021, time.March, 17, 8, 44, 03, 0, time.UTC),
 	}
 
@@ -229,7 +209,7 @@ func Test_parseMessage_relable_config(t *testing.T) {
 	}
 
 	message := &sarama.ConsumerMessage{
-		Value: functionAppLogsMessageBody,
+		Value: readFile(t, "testdata/function_app_logs_message.txt"),
 	}
 
 	relableConfigs := []*relabel.Config{
@@ -248,4 +228,10 @@ func Test_parseMessage_relable_config(t *testing.T) {
 
 	assert.Equal(t, model.LabelSet{"category": "FunctionAppLogs"}, entries[0].Labels)
 	assert.Equal(t, model.LabelSet{"category": "FunctionAppLogs"}, entries[1].Labels)
+}
+
+func readFile(t *testing.T, filename string) []byte {
+	data, err := os.ReadFile(filename)
+	assert.NoError(t, err)
+	return data
 }
