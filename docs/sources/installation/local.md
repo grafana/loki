@@ -11,8 +11,23 @@ In order to log events with Grafana Loki, download and install both Promtail and
 
 The configuration specifies running Loki as a single binary.
 
-## Install
+## Install using APT or RPM package managers
 
+1. Add Granafa's [APT](https://apt.grafana.com/) or [RPM](https://rpm.grafana.com/)
+   package repository following the linked instructions.
+1. Install Loki and Promtail
+   1. Using `dnf`
+      ```
+      dnf update
+      dnf install loki promtail
+      ```
+   1. Using `apt-get`
+      ```
+      apt-get update
+      apt-get install loki promtail
+      ```
+
+## Install packages manaullypackages manaully
 1. Navigate to the [release page](https://github.com/grafana/loki/releases/).
 2. Scroll down to the Assets section under the version that you want to install.
 3. Download the Loki and Promtail .zip files that correspond to your system.
