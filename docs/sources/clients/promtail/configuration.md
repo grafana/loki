@@ -354,7 +354,7 @@ job_name: <string>
 [gcplog: <gcplog_config>]
 
 # Configuration describing how to get Azure Event Hubs messages.
-[azureeventhub: <azureeventhub_config>]
+[azure_event_hub: <azure_event_hub_config>]
 
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
