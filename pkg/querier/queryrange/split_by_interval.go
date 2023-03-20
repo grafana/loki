@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -109,8 +110,9 @@ func (h *splitByInterval) Process(
 		unlimited = true
 	}
 
+	// Parallelism will be at least 1
+	p := math.Max(parallelism, 1)
 	// don't spawn unnecessary goroutines
-	p := parallelism
 	if len(input) < parallelism {
 		p = len(input)
 	}
