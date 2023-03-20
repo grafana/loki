@@ -198,7 +198,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	now := time.Now().UnixNano()
+	now := time.Now()
 	value := 35891
 
 	cli := mockClient{
@@ -211,14 +211,14 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeVector,
 					Result: loghttp.Vector{
 						{
-							Timestamp: model.Time(now),
+							Timestamp: model.Time(now.UnixNano()),
 							Value:     model.SampleValue(value),
 							Metric: map[model.LabelName]model.LabelValue{
 								model.LabelName("foo"): model.LabelValue("bar"),
 							},
 						},
 						{
-							Timestamp: model.Time(now),
+							Timestamp: model.Time(now.UnixNano()),
 							Value:     model.SampleValue(value),
 							Metric: map[model.LabelName]model.LabelValue{
 								model.LabelName("bar"): model.LabelValue("baz"),
@@ -245,12 +245,12 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
 
-	res, err := ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
+	res, err := ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", now)
 	require.NoError(t, err)
 	require.Len(t, res.Data, 2)
 	require.IsType(t, promql.Vector{}, res.Data)
 	vector := res.Data.(promql.Vector)
-	require.EqualValues(t, now, vector[0].T)
+	require.EqualValues(t, now.UnixNano(), vector[0].T)
 	require.EqualValues(t, value, vector[0].V)
 	require.EqualValues(t, map[string]string{
 		"foo": "bar",
