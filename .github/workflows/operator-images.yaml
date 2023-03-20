@@ -87,8 +87,8 @@ jobs:
      - name: Build and publish image on quay.io
        uses: docker/build-push-action@v4
        with:
-         context: ./operator
-         file: ./operator/bundle.Dockerfile
+         context: ./operator/bundle/openshift
+         file: ./operator/bundle/openshift/bundle.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
 

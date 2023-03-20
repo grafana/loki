@@ -4,14 +4,14 @@ description: geoip stage
 ---
 # geoip
 
-The `geoip` stage is a parsing stage that reads an ip address and 
+The `geoip` stage is a parsing stage that reads an ip address and
 populates the labelset with geoip fields. Maxmind's GeoIP2 databse is used for the lookup.
 
 Populated fields for City db:
 
 - geoip_city_name
 - geoip_country_name
-- geoip_continet_name
+- geoip_continent_name
 - geoip_continent_code
 - geoip_location_latitude
 - geoip_location_longitude
@@ -34,7 +34,7 @@ geoip:
 
   # IP from extracted data to parse.
   [source: <string>]
-  
+
   # Maxmind DB type. Allowed values are "city", "asn"
   [db_type: <string>]
 ```
@@ -62,7 +62,7 @@ The `regex` stage parses the log line and `ip` is extracted. Then the extracted 
 
 - `geoip_city_name`: `Kansas City`
 - `geoip_country_name`: `United States`
-- `geoip_continet_name`: `North America`
+- `geoip_continent_name`: `North America`
 - `geoip_continent_code`: `NA`
 - `geoip_location_latitude`: `"39.1027`
 - `geoip_location_longitude`: `-94.5778`

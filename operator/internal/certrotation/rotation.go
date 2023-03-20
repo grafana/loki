@@ -48,7 +48,7 @@ func (r *signerRotation) SetAnnotations(ca *crypto.TLSCertificateConfig, annotat
 
 type certificateRotation struct {
 	UserInfo  user.Info
-	Hostnames []string
+	Hostnames sets.Set[string]
 	Clock     clockFunc
 }
 
@@ -74,7 +74,7 @@ func (r *certificateRotation) NewCertificate(signer *crypto.CA, validity time.Du
 		return nil
 	}
 
-	return signer.MakeServerCertForDuration(sets.NewString(r.Hostnames...), validity, addClientAuthUsage, addSubject)
+	return signer.MakeServerCertForDuration(sets.NewString(sets.List[string](r.Hostnames)...), validity, addClientAuthUsage, addSubject)
 }
 
 func (r *certificateRotation) NeedNewCertificate(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {
@@ -101,19 +101,22 @@ func (r *certificateRotation) NeedNewCertificate(annotations map[string]string, 
 		return fmt.Sprintf("issuer %q, not in ca bundle:\n%s", signerCommonName, certs.CertificateBundleToString(caBundleCerts))
 	}
 
-	existingHostnames := sets.NewString(strings.Split(annotations[CertificateHostnames], ",")...)
-	requiredHostnames := sets.NewString(r.Hostnames...)
+	existingHostnames := sets.New[string](strings.Split(annotations[CertificateHostnames], ",")...)
+	requiredHostnames := r.Hostnames.Clone()
 	if !existingHostnames.Equal(requiredHostnames) {
 		existingNotRequired := existingHostnames.Difference(requiredHostnames)
 		requiredNotExisting := requiredHostnames.Difference(existingHostnames)
-		return fmt.Sprintf("hostnames %q are existing and not required, %q are required and not existing", strings.Join(existingNotRequired.List(), ","), strings.Join(requiredNotExisting.List(), ","))
+		return fmt.Sprintf("hostnames %q are existing and not required, %q are required and not existing",
+			strings.Join(sets.List[string](existingNotRequired), ","),
+			strings.Join(sets.List[string](requiredNotExisting), ","),
+		)
 	}
 
 	return ""
 }
 
 func (r *certificateRotation) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) {
-	hostnames := sets.String{}
+	hostnames := sets.Set[string]{}
 	for _, ip := range cert.Certs[0].IPAddresses {
 		hostnames.Insert(ip.String())
 	}
@@ -125,7 +128,7 @@ func (r *certificateRotation) SetAnnotations(cert *crypto.TLSCertificateConfig, 
 	annotations[CertificateNotBeforeAnnotation] = cert.Certs[0].NotBefore.Format(time.RFC3339)
 	annotations[CertificateIssuer] = cert.Certs[0].Issuer.CommonName
 	// List does a sort so that we have a consistent representation
-	annotations[CertificateHostnames] = strings.Join(hostnames.List(), ",")
+	annotations[CertificateHostnames] = strings.Join(sets.List[string](hostnames), ",")
 }
 
 func needNewCertificate(annotations map[string]string, clock clockFunc, refresh time.Duration, signer *crypto.CA) string {

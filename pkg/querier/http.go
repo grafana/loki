@@ -72,7 +72,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -108,7 +108,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -162,7 +162,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -456,7 +456,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())

@@ -43,7 +43,7 @@ overrides:
               period: 24h
               priority: 5
 `)
-	require.Equal(t, 31*24*time.Hour, overrides.RetentionPeriod("1"))    // default
+	require.Equal(t, time.Duration(0), overrides.RetentionPeriod("1"))   // default
 	require.Equal(t, 2*30*24*time.Hour, overrides.RetentionPeriod("29")) // overrides
 	require.Equal(t, []validation.StreamRetention(nil), overrides.StreamRetention("1"))
 	require.Equal(t, []validation.StreamRetention{

@@ -45,7 +45,6 @@ const (
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
-	errUnsupportedStorageClass     = errors.New("unsupported S3 storage class")
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{

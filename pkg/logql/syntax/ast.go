@@ -84,7 +84,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
 		}
-		if p == log.NoopStage || p == log.NoopLabelFilter {
+		if p == log.NoopStage {
 			continue
 		}
 		c = append(c, p)
@@ -412,6 +412,8 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
 		return ip, ip.PatternError()
+	case *log.NoopLabelFilter:
+		return log.NoopStage, nil
 	}
 	return e.LabelFilterer, nil
 }

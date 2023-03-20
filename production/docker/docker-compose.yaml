@@ -52,6 +52,7 @@ services:
       [
         '--log.level=debug',
         '--config.file=/etc/prometheus/prometheus.yml',
+        '--enable-feature=remote-write-receiver',
         '--query.lookback-delta=30s'
       ]
     networks:
@@ -117,6 +118,7 @@ services:
     image: grafana/loki:2.7.3
     volumes:
       - ./config:/etc/loki/
+      - ./rules:/loki/rules:ro
     ports:
       - "3100"
       - "7946"

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"unicode"
 
+	"net/netip"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"go4.org/netipx"
-	"net/netip"
 )
 
 var (

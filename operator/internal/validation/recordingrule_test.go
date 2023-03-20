@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/stretchr/testify/require"
@@ -16,17 +16,17 @@ import (
 
 var rtt = []struct {
 	desc string
-	spec v1beta1.RecordingRuleSpec
+	spec lokiv1.RecordingRuleSpec
 	err  *apierrors.StatusError
 }{
 	{
 		desc: "valid spec",
-		spec: v1beta1.RecordingRuleSpec{
-			Groups: []*v1beta1.RecordingRuleGroup{
+		spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.RecordingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.RecordingRuleGroupSpec{
 						{
 							Record: "valid:record:name",
 							Expr:   `sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)`,
@@ -39,8 +39,8 @@ var rtt = []struct {
 				},
 				{
 					Name:     "second",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.RecordingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.RecordingRuleGroupSpec{
 						{
 							Record: "nginx:requests:rate1m",
 							Expr:   `sum(rate({container="nginx"}[1m]))`,
@@ -56,15 +56,15 @@ var rtt = []struct {
 	},
 	{
 		desc: "not unique group names",
-		spec: v1beta1.RecordingRuleSpec{
-			Groups: []*v1beta1.RecordingRuleGroup{
+		spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 				},
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
+					Interval: lokiv1.PrometheusDuration("1m"),
 				},
 			},
 		},
@@ -75,18 +75,18 @@ var rtt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(1).Child("Name"),
 					"first",
-					v1beta1.ErrGroupNamesNotUnique.Error(),
+					lokiv1.ErrGroupNamesNotUnique.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "parse eval interval err",
-		spec: v1beta1.RecordingRuleSpec{
-			Groups: []*v1beta1.RecordingRuleGroup{
+		spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1mo"),
+					Interval: lokiv1.PrometheusDuration("1mo"),
 				},
 			},
 		},
@@ -97,19 +97,19 @@ var rtt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Interval"),
 					"1mo",
-					v1beta1.ErrParseEvaluationInterval.Error(),
+					lokiv1.ErrParseEvaluationInterval.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "invalid record metric name",
-		spec: v1beta1.RecordingRuleSpec{
-			Groups: []*v1beta1.RecordingRuleGroup{
+		spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.RecordingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.RecordingRuleGroupSpec{
 						{
 							Record: "invalid&metric:name",
 							Expr:   `sum(rate({label="value"}[1m]))`,
@@ -125,19 +125,19 @@ var rtt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Record"),
 					"invalid&metric:name",
-					v1beta1.ErrInvalidRecordMetricName.Error(),
+					lokiv1.ErrInvalidRecordMetricName.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "parse LogQL expression err",
-		spec: v1beta1.RecordingRuleSpec{
-			Groups: []*v1beta1.RecordingRuleGroup{
+		spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.RecordingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.RecordingRuleGroupSpec{
 						{
 							Expr: "this is not a valid expression",
 						},
@@ -152,19 +152,19 @@ var rtt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
 					"this is not a valid expression",
-					v1beta1.ErrParseLogQLExpression.Error(),
+					lokiv1.ErrParseLogQLExpression.Error(),
 				),
 			},
 		),
 	},
 	{
 		desc: "LogQL not sample-expression",
-		spec: v1beta1.RecordingRuleSpec{
-			Groups: []*v1beta1.RecordingRuleGroup{
+		spec: lokiv1.RecordingRuleSpec{
+			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "first",
-					Interval: v1beta1.PrometheusDuration("1m"),
-					Rules: []*v1beta1.RecordingRuleGroupSpec{
+					Interval: lokiv1.PrometheusDuration("1m"),
+					Rules: []*lokiv1.RecordingRuleGroupSpec{
 						{
 							Expr: `{message=~".+"}`,
 						},
@@ -179,7 +179,7 @@ var rtt = []struct {
 				field.Invalid(
 					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
 					`{message=~".+"}`,
-					v1beta1.ErrParseLogQLNotSample.Error(),
+					lokiv1.ErrParseLogQLNotSample.Error(),
 				),
 			},
 		),
@@ -193,7 +193,7 @@ func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			l := &v1beta1.RecordingRule{
+			l := &lokiv1.RecordingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
@@ -218,7 +218,7 @@ func TestRecordingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			l := &v1beta1.RecordingRule{
+			l := &lokiv1.RecordingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-rule",
 				},
@@ -226,7 +226,7 @@ func TestRecordingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 
 			v := &validation.RecordingRuleValidator{}
-			err := v.ValidateUpdate(ctx, &v1beta1.RecordingRule{}, l)
+			err := v.ValidateUpdate(ctx, &lokiv1.RecordingRule{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
