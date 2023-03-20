@@ -111,8 +111,8 @@ func TestRemoteEvalScalar(t *testing.T) {
 	require.NoError(t, err)
 
 	var (
-		timestamp = time.Now().UnixNano()
-		value     = 19
+		now   = time.Now()
+		value = 19
 	)
 
 	cli := mockClient{
@@ -123,7 +123,10 @@ func TestRemoteEvalScalar(t *testing.T) {
 				Status: loghttp.QueryStatusSuccess,
 				Data: loghttp.QueryResponseData{
 					ResultType: loghttp.ResultTypeScalar,
-					Result:     loghttp.Scalar{Value: model.SampleValue(value), Timestamp: model.Time(timestamp)},
+					Result: loghttp.Scalar{
+						Value:     model.SampleValue(value),
+						Timestamp: model.TimeFromUnixNano(now.UnixNano()),
+					},
 				},
 			}
 
@@ -144,12 +147,12 @@ func TestRemoteEvalScalar(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
 
-	res, err := ev.Eval(ctx, "19", time.Now())
+	res, err := ev.Eval(ctx, "19", now)
 	require.NoError(t, err)
 	require.IsType(t, promql.Scalar{}, res.Data)
 	require.EqualValues(t, value, res.Data.(promql.Scalar).V)
 	// we lose nanosecond precision due to promql types
-	require.Equal(t, timestamp/1e3, res.Data.(promql.Scalar).T)
+	require.Equal(t, now.Unix(), res.Data.(promql.Scalar).T)
 }
 
 // TestRemoteEvalEmptyScalarResponse validates that an empty scalar response is valid and does not cause an error
@@ -211,14 +214,14 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeVector,
 					Result: loghttp.Vector{
 						{
-							Timestamp: model.Time(now.UnixNano()),
+							Timestamp: model.TimeFromUnixNano(now.UnixNano()),
 							Value:     model.SampleValue(value),
 							Metric: map[model.LabelName]model.LabelValue{
 								model.LabelName("foo"): model.LabelValue("bar"),
 							},
 						},
 						{
-							Timestamp: model.Time(now.UnixNano()),
+							Timestamp: model.TimeFromUnixNano(now.UnixNano()),
 							Value:     model.SampleValue(value),
 							Metric: map[model.LabelName]model.LabelValue{
 								model.LabelName("bar"): model.LabelValue("baz"),
@@ -250,7 +253,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	require.Len(t, res.Data, 2)
 	require.IsType(t, promql.Vector{}, res.Data)
 	vector := res.Data.(promql.Vector)
-	require.EqualValues(t, now.Round(time.Millisecond), time.Unix(0, vector[0].T).Round(time.Millisecond))
+	require.EqualValues(t, now.UnixMilli(), vector[0].T)
 	require.EqualValues(t, value, vector[0].V)
 	require.EqualValues(t, map[string]string{
 		"foo": "bar",
