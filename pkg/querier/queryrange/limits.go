@@ -201,7 +201,7 @@ type querySizeLimiter struct {
 	limitErrorTmpl    string
 }
 
-func newQuerierSizeLimiter(
+func newQuerySizeLimiter(
 	next queryrangebase.Handler,
 	statsHandler queryrangebase.Handler,
 	cfg []config.PeriodConfig,
@@ -246,7 +246,7 @@ func NewQuerierSizeLimiterMiddleware(
 			stats = statsHandler[0]
 		}
 
-		return newQuerierSizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl)
+		return newQuerySizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl)
 	})
 }
 
@@ -265,7 +265,7 @@ func NewQuerySizeLimiterMiddleware(
 			stats = statsHandler[0]
 		}
 
-		return newQuerierSizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl)
+		return newQuerySizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl)
 	})
 }
 
