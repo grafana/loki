@@ -38,14 +38,6 @@ type ObjectClient interface {
 	Stop()
 }
 
-var (
-	bufferPool = sync.Pool{
-		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 1000))
-		},
-	}
-)
-
 // StorageObject represents an object being stored in an Object Store
 type StorageObject struct {
 	Key        string
@@ -90,6 +82,7 @@ type client struct {
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
 	schema              config.SchemaConfig
+	bufferPool          sync.Pool
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
@@ -98,11 +91,17 @@ func NewClient(store ObjectClient, encoder KeyEncoder, schema config.SchemaConfi
 }
 
 func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParallel int, schema config.SchemaConfig) Client {
+
 	return &client{
 		store:               store,
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
 		schema:              schema,
+		bufferPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 0, 1000))
+			},
+		},
 	}
 }
 
@@ -184,10 +183,10 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	// adds bytes.MinRead to avoid allocations when the size is known.
 	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
-	buf := bufferPool.Get().(*bytes.Buffer)
+	buf := o.bufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		buf.Reset()
-		bufferPool.Put(buf)
+		o.bufferPool.Put(buf)
 	}()
 	_, err = buf.ReadFrom(readCloser)
 	if err != nil {
