@@ -63,3 +63,4 @@ This guide assumes Loki will be installed in on of the modes above and that a `v
    ```
 
    Note that `endpoint`, `secretAccessKey` and `accessKeyId` have been omitted.
+ 
