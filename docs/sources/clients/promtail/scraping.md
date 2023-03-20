@@ -345,6 +345,32 @@ For sending messages via UDP:
 *.* action(type="omfwd" protocol="udp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format")
 ```
 
+## Azure Log
+
+Promtail supports reading messages from Azure Event Hubs.
+Targets can be configured using the `azurelog` stanza:
+
+```yaml
+- job_name: azurelog
+  azurelog:
+    group_id: "mygroup"
+    brokers:
+      - my-namespace.servicebus.windows.net:9093
+    connection_string: "my-connection-string"
+    topics:
+      - topicname
+    labels:
+      job: azurelog
+  relabel_configs:
+    - action: replace
+      source_labels:
+        - __azurelog_category
+      target_label: category
+```
+
+Only the `brokers`, `topics` and `connection_string` are required.
+Read the [configuration]({{< relref "configuration/#azure-log" >}}) section for more information.
+
 ## Kafka
 
 Promtail supports reading message from Kafka using a consumer group.
