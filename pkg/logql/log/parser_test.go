@@ -356,7 +356,6 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
 			},
-			noParserHints,
 		},
 	}
 	for _, tt := range tests {
