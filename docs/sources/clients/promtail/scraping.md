@@ -360,11 +360,11 @@ Targets can be configured using the `azureeventhub` stanza:
     event_hubs:
       - event-hub-name
     labels:
-      job: azureeventhub
+      job: azure_event_hub
   relabel_configs:
     - action: replace
       source_labels:
-        - __azureeventhub_category
+        - __azure_event_hub_category
       target_label: category
 ```
 

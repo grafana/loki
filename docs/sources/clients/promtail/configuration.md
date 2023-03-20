@@ -1057,7 +1057,7 @@ When Promtail receives Azure Event Hubs messages, various internal labels are ma
 
 **Available Labels:**
 
-- `__azureeventhub_category`: The log category of the event.
+- `__azure_event_hub_category`: The log category of the event.
 
 The list of labels below are discovered because of consuming Kafka interface of Event Hubs:
 

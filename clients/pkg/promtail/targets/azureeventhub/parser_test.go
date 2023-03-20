@@ -197,7 +197,7 @@ func Test_parseMessage_relable_config(t *testing.T) {
 
 	relableConfigs := []*relabel.Config{
 		{
-			SourceLabels: model.LabelNames{"__azureeventhub_category"},
+			SourceLabels: model.LabelNames{"__azure_event_hub_category"},
 			Regex:        relabel.MustNewRegexp("(.*)"),
 			TargetLabel:  "category",
 			Replacement:  "$1",
