@@ -255,14 +255,14 @@ type AzureEventHubTargetConfig struct {
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 
-	// Event Hub Topics to consume (Required).
-	Topics []string `yaml:"topics"`
+	// Event Hubs to consume (Required).
+	EventHubs []string `yaml:"event_hubs"`
 
 	// Event Hub ConnectionString for authentication on Azure Cloud (Required).
 	ConnectionString string `yaml:"connection_string"`
 
-	// The list of brokers to connect to Event Hub (Required).
-	Brokers []string `yaml:"brokers"`
+	// The list of Event Hub namespaces host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+	FullyQualifiedNamespaces []string `yaml:"fully_qualified_namespaces"`
 
 	// The consumer group id.
 	GroupID string `yaml:"group_id"`

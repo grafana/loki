@@ -354,11 +354,11 @@ Targets can be configured using the `azureeventhub` stanza:
 - job_name: azureeventhub
   azureeventhub:
     group_id: "mygroup"
-    brokers:
+    fully_qualified_namespaces:
       - my-namespace.servicebus.windows.net:9093
     connection_string: "my-connection-string"
-    topics:
-      - topicname
+    event_hubs:
+      - event-hub-name
     labels:
       job: azureeventhub
   relabel_configs:
@@ -368,7 +368,7 @@ Targets can be configured using the `azureeventhub` stanza:
       target_label: category
 ```
 
-Only the `brokers`, `topics` and `connection_string` are required.
+Only the `fully_qualified_namespaces`, `event_hubs` and `connection_string` are required.
 Read the [configuration]({{< relref "configuration/#azure-event-hub" >}}) section for more information.
 
 ## Kafka
