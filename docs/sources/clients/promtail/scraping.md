@@ -351,8 +351,8 @@ Promtail supports reading messages from Azure Event Hubs.
 Targets can be configured using the `azureeventhub` stanza:
 
 ```yaml
-- job_name: azureeventhub
-  azureeventhub:
+- job_name: azure_event_hub
+  azure_event_hub:
     group_id: "mygroup"
     fully_qualified_namespaces:
       - my-namespace.servicebus.windows.net:9093
