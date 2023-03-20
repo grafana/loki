@@ -827,7 +827,7 @@ backend:
   selectorLabels: {}
   # -- Labels for ingester service
   serviceLabels: {}
-  # -- Comma-separated list of Loki modules to load for the read
+  # -- Comma-separated list of Loki modules to load for the `backend` pod
   targetModule: "backend"
   # -- Additional CLI args for the backend
   extraArgs: []
