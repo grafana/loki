@@ -353,6 +353,9 @@ job_name: <string>
 # Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
 [gcplog: <gcplog_config>]
 
+# Configuration describing how to get Azure Event Hubs logs.
+[azurelog: <azurelog_config>]
+
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
 
@@ -1015,6 +1018,54 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_logname`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+
+### Azure Log
+
+The `azurelog` block configures how Promtail receives Azure logs. Promtail uses an Apache Kafka endpoint on Event Hubs to receive log messages. More information can be found [here](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
+
+Apache Kafka endpoint is not available within the "Basic" pricing plan. More information about Event Hubs pricing [here](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
+
+```yaml
+# The list of brokers to connect to Event Hub (Required).
+[brokers: <strings> | default = [""]]
+
+# Event Hub Topics to consume (Required).
+[topics: <strings> | default = [""]]
+
+# The consumer group id.
+[group_id: <string> | default = "promtail"]
+
+# Event Hub ConnectionString for authentication on Azure Cloud (Required).
+[connection_string: <string> | default = "range"]
+
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
+[use_incoming_timestamp: <bool> | default = false]
+
+# If Promtail should ignore messages that don't match the schema for Azure resource logs.
+# Schema is described here https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema.
+[allow_custom_payload: <bool> | default = false]
+
+# Labels optionally hold labels to associate with each log line.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+### Available Labels
+
+When Promtail receives Azure logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
+
+**Available Labels:**
+
+- `__azurelog_category`: The log category of the event.
+
+The list of labels below are discovered because of consuming Kafka interface of Event Hubs:
+
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: The consumer group member id.
+- `__meta_kafka_group_id`: The consumer group id.
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 ### kafka
 
