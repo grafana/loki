@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func shardResolverForConf(
@@ -80,7 +80,7 @@ func getStatsForMatchers(
 ) ([]*stats.Stats, error) {
 	startTime := time.Now()
 
-	results := make([]*stats.Stats, len(matcherGroups), len(matcherGroups))
+	results := make([]*stats.Stats, len(matcherGroups))
 	if err := concurrency.ForEachJob(ctx, len(matcherGroups), parallelism, func(ctx context.Context, i int) error {
 		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
 		diff := matcherGroups[i].Interval + matcherGroups[i].Offset

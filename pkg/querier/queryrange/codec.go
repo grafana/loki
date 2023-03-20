@@ -667,7 +667,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}, nil
 	case *IndexStatsResponse:
 		headers := responses[0].(*IndexStatsResponse).Headers
-		stats := make([]*indexStats.Stats, len(responses), len(responses))
+		stats := make([]*indexStats.Stats, len(responses))
 		for i, res := range responses {
 			stats[i] = res.(*IndexStatsResponse).Response
 		}
