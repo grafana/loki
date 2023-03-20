@@ -69,7 +69,8 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     Defines the log volume in gigabytes, ie 1e+9 bytes, expected to be ingested each day.
     </span>
     <span v-else-if="help === 'node'">
-    Defines the node type of the Kubernetes cluster.
+    Defines the node type of the Kubernetes cluster. Is a vendor or type
+    missing? Feel free to add it to <code>pkg/sizing/node.go</code>.
     </span>
     <span v-else-if="help === 'retention'">
     Defines how long the ingested logs should be kept.
