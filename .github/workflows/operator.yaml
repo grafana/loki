@@ -21,7 +21,7 @@ jobs:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
@@ -47,7 +47,7 @@ jobs:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
@@ -68,7 +68,7 @@ jobs:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
@@ -89,7 +89,7 @@ jobs:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
