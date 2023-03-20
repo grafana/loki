@@ -13,7 +13,10 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -85,6 +88,12 @@ type instance struct {
 	parallelism int
 	locks       chan struct{}
 	handler     queryrangebase.Handler
+	accumulator DownstreamAccumulator
+}
+
+type DownstreamAccumulator interface {
+	Accumulate(ctx context.Context, acc logqlmodel.Result) error
+	Result() []logqlmodel.Result
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
@@ -244,4 +253,96 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}
+}
+
+// downstreamAccumulator is one of two variants:
+// a logsAccumulator or a bufferedAccumulator.
+// Which variant is detected on the first call to Accumulate.
+// Metric queries, which are generally small payloads, are buffered
+// since the memory overhead is negligible.
+// Log queries, sharded thousands of times and each returning <limit>
+// results, can be _considerably_ larger.	In this case, we eagerly
+// accumulate the results into a logsAccumulator, discarding values
+// over the limit to keep memory pressure down while other subqueries
+// are executing.
+type downstreamAccumulator struct {
+	*logsAccumulator
+	*bufferedAccumulator
+}
+
+func newDownstreamAccumulator(limit int) *downstreamAccumulator {
+	return &downstreamAccumulator{
+		logsAccumulator:     &logsAccumulator{},
+		bufferedAccumulator: &bufferedAccumulator{},
+	}
+}
+
+func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
+	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
+		a.logsAccumulator = &logsAccumulator{}
+	} else {
+		a.bufferedAccumulator = &bufferedAccumulator{}
+	}
+}
+
+func (a *downstreamAccumulator) Accumulate(ctx context.Context, acc logqlmodel.Result) error {
+	// Set a shard count to 1 which will allow the stats to correctly aggregate all the shards executed in the query.
+	acc.Statistics.Summary.Shards = 1
+	stats.JoinResults(ctx, acc.Statistics)
+	if err := metadata.JoinHeaders(ctx, acc.Headers); err != nil {
+		level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+	}
+
+	// on first pass, determine which accumulator to use
+	if a.logsAccumulator == nil && a.bufferedAccumulator == nil {
+		a.build(acc)
+	}
+
+	if a.logsAccumulator != nil {
+		return a.logsAccumulator.Accumulate(acc)
+	} else {
+		return a.bufferedAccumulator.Accumulate(acc)
+	}
+}
+
+func (a *downstreamAccumulator) Result() []logqlmodel.Result {
+	if a.logsAccumulator != nil {
+		return []logqlmodel.Result{a.logsAccumulator.Result()}
+	}
+	return a.bufferedAccumulator.Result()
+}
+
+type logsAccumulator struct {
+	res logqlmodel.Result
+}
+
+func (a *logsAccumulator) merge(acc logqlmodel.Result) {
+	panic("not implemented")
+}
+
+func (a *logsAccumulator) Accumulate(acc logqlmodel.Result) error {
+	switch got := acc.Data.(type) {
+	case logqlmodel.Streams:
+		a.merge(acc)
+	default:
+		return fmt.Errorf("unexpected response type during response result accumulation. Got (%T), wanted %s", got, logqlmodel.ValueTypeStreams)
+	}
+	return nil
+}
+
+func (a *logsAccumulator) Result() logqlmodel.Result {
+	return a.res
+}
+
+type bufferedAccumulator struct {
+	results []logqlmodel.Result
+}
+
+func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result) error {
+	a.results = append(a.results, acc)
+	return nil
+}
+
+func (a *bufferedAccumulator) Result() []logqlmodel.Result {
+	return a.results
 }

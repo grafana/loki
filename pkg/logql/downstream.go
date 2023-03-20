@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
@@ -15,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -215,19 +212,6 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 		return nil, err
 	}
 
-	for _, res := range results {
-		// Set a shard count to 1 which will allow the stats to correctly aggregate all the shards executed in the query.
-		res.Statistics.Summary.Shards = 1
-		stats.JoinResults(ctx, res.Statistics)
-	}
-
-	for _, res := range results {
-		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
-			break
-		}
-	}
-
 	return results, nil
 }
 
@@ -357,7 +341,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			return nil, err
 		}
 
-		xs := make([]iter.EntryIterator, 0, len(queries))
+		xs := make([]iter.EntryIterator, 0, len(results))
 		for i, res := range results {
 			iter, err := ResultIterator(res, params)
 			if err != nil {
