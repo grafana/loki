@@ -17,7 +17,7 @@ var empty = string([]byte{byte(0)})
 
 // Mapping is a map-like data structure that allows accessing its items not
 // only by key but also by index.
-// When an item is removed, the iinternal key array is not resized, but the
+// When an item is removed, the internal key array is not resized, but the
 // removed place is marked as empty. This allows to remove keys without
 // changing the index of the remaining items after the removed key.
 // Mapping uses *tenantQueue as concrete value and keys of type string.

@@ -100,9 +100,11 @@ func (q *LeafQueue) Dequeue() Request {
 			q.current = subq.pos
 			item := subq.Dequeue()
 			if item != nil {
+				if subq.Len() == 0 {
+					q.mapping.Remove(subq.name)
+				}
 				return item
 			}
-			q.mapping.Remove(subq.name)
 		}
 	}
 	return nil

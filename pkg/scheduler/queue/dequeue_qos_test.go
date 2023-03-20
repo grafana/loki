@@ -52,8 +52,8 @@ func enqueueRequestsForActor(t *testing.T, actor []string, useActor bool, queue 
 }
 
 func TestQueryFairness(t *testing.T) {
-	numSubRequestsActorA, numSubRequestsActorB := 100, 20
-	total := int64((numSubRequestsActorA + numSubRequestsActorB) * numRequestsPerActor)
+	numSubRequestsActorA, numSubRequestsActorB := 123, 45
+	total := int64((numSubRequestsActorA + numSubRequestsActorA + numSubRequestsActorB) * numRequestsPerActor)
 
 	for _, useActor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("use hierarchical queues = %v", useActor), func(t *testing.T) {
@@ -61,12 +61,13 @@ func TestQueryFairness(t *testing.T) {
 				prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 				prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 			)
+			enqueueRequestsForActor(t, []string{}, useActor, requestQueue, numSubRequestsActorA, 50*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"a"}, useActor, requestQueue, numSubRequestsActorA, 100*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"b"}, useActor, requestQueue, numSubRequestsActorB, 50*time.Millisecond)
 			requestQueue.queues.recomputeUserQueriers()
 
 			// set timeout to minize impact on overall test run duration in case something goes wrong
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			start := time.Now()
@@ -84,15 +85,23 @@ func TestQueryFairness(t *testing.T) {
 					idx := StartIndex
 					for ctx.Err() == nil {
 						r, newIdx, err := requestQueue.Dequeue(ctx, idx, id)
-						res, ok := r.(*req)
-						if err != nil || !ok {
+						if err != nil {
+							if err != context.Canceled {
+								t.Log("Dequeue() returned error:", err)
+							}
 							break
 						}
+						if r == nil {
+							t.Log("Dequeue() returned nil response")
+							break
+						}
+						res, _ := r.(*req)
 						idx = newIdx
 						time.Sleep(res.duration)
 						count := responseCount.Add(1)
 						durations.Store(res.actor, time.Since(start))
 						if count == total {
+							t.Log("count", count, "total", total)
 							cancel()
 						}
 					}
@@ -121,7 +130,7 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 	root:
 	  tenant1: [0, 1, 2]
 		  abc: [10, 11, 12]
-			xyz: [20]
+			xyz: [20, 21, 22]
 			  123: [200]
 			  456: [210]
 	**/
@@ -137,28 +146,38 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(11), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(12), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(20), 0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(21), 0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(22), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "123"}, r(200), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "456"}, r(210), 0, nil)
 	requestQueue.queues.recomputeUserQueriers()
+
+	items := make([]int, 0)
 
 	// set timeout to minize impact on overall test run duration in case something goes wrong
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	items := make([]int, 0)
 	requestQueue.RegisterQuerierConnection("querier")
 	defer requestQueue.UnregisterQuerierConnection("querier")
 
 	idx := StartIndexWithLocalQueue
-	for ctx.Err() == nil && len(items) < 9 {
+	for ctx.Err() == nil {
 		r, newIdx, err := requestQueue.Dequeue(ctx, idx, "querier")
-		res, ok := r.(*dummyRequest)
-		if err != nil || !ok {
+		if err != nil {
+			if err != context.Canceled {
+				t.Log("Dequeue() returned error:", err)
+			}
 			break
 		}
+		if r == nil {
+			t.Log("Dequeue() returned nil response")
+			break
+		}
+		res, _ := r.(*dummyRequest)
 		idx = newIdx
 		items = append(items, res.id)
 	}
 
-	require.Equal(t, []int{0, 10, 20, 1, 11, 200, 2, 12, 210}, items)
+	require.Equal(t, []int{0, 10, 20, 1, 11, 200, 2, 12, 210, 21, 22}, items)
 }
