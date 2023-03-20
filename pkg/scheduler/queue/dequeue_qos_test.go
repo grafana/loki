@@ -27,7 +27,7 @@ type req struct {
 	subQueryID int
 }
 
-func enqueueRequestsForActor(t *testing.T, actor []string, useActor bool, queue *RequestQueue, numSubRequests int, d time.Duration) {
+func enqueueRequestsForActor(t testing.TB, actor []string, useActor bool, queue *RequestQueue, numSubRequests int, d time.Duration) {
 	tenant := "tenant"
 	serializedActor := strings.Join(actor, "|")
 	for x := 0; x < numRequestsPerActor; x++ {
@@ -51,12 +51,12 @@ func enqueueRequestsForActor(t *testing.T, actor []string, useActor bool, queue 
 	}
 }
 
-func TestQueryFairness(t *testing.T) {
+func BenchmarkQueryFairness(t *testing.B) {
 	numSubRequestsActorA, numSubRequestsActorB := 123, 45
 	total := int64((numSubRequestsActorA + numSubRequestsActorA + numSubRequestsActorB) * numRequestsPerActor)
 
 	for _, useActor := range []bool{false, true} {
-		t.Run(fmt.Sprintf("use hierarchical queues = %v", useActor), func(t *testing.T) {
+		t.Run(fmt.Sprintf("use hierarchical queues = %v", useActor), func(t *testing.B) {
 			requestQueue := NewRequestQueue(1024, 0,
 				prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 				prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
