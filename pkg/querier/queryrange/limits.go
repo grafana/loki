@@ -322,7 +322,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.PeriodConfig, error) {
 	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
 	if err != nil {
-		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration")
+		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration: " + err.Error())
 	}
 
 	adjustedStart := int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset))

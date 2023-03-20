@@ -580,6 +580,21 @@ func Test_MaxQuerySize(t *testing.T) {
 			expectedQueryStatsHits:   1,
 			expectedQuerierStatsHits: 1,
 		},
+		{
+			desc:       "Multi-matchers with offset",
+			query:      `sum_over_time ({app="foo"} |= "foo" | unwrap foo [5m] ) / sum_over_time ({app="bar"} |= "bar" | unwrap bar [5m] offset 1h)`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr: false,
+			// *2 since we have two matcher groups
+			expectedQueryStatsHits:   1 * 2,
+			expectedQuerierStatsHits: 1 * 2,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			queryStatsHandler, queryStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1)))
