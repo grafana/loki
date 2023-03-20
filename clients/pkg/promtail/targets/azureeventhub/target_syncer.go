@@ -48,7 +48,7 @@ func NewSyncer(
 	}
 
 	t, err := kafka.NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, &eventHubMessageParser{
-		allowCustomPayload: cfg.AzureEventHubConfig.AllowCustomPayload,
+		disallowCustomMessages: cfg.AzureEventHubConfig.DisallowCustomMessages,
 	}, cfg.AzureEventHubConfig.Topics, targetSyncConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error starting azureeventhub target: %w", err)

@@ -1044,7 +1044,7 @@ Apache Kafka endpoint is not available within the "Basic" pricing plan. More inf
 
 # If Promtail should ignore messages that don't match the schema for Azure resource logs.
 # Schema is described here https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema.
-[allow_custom_payload: <bool> | default = false]
+[disallow_custom_messages: <bool> | default = false]
 
 # Labels optionally hold labels to associate with each log line.
 labels:

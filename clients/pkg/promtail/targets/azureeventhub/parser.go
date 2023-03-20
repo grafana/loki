@@ -3,6 +3,7 @@ package azureeventhub
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -19,15 +20,40 @@ type azureMonitorResourceLogs struct {
 	Records []json.RawMessage `json:"records"`
 }
 
+// validate check if message contains records
+func (l azureMonitorResourceLogs) validate() error {
+	if len(l.Records) == 0 {
+		return errors.New("records are empty")
+	}
+
+	return nil
+}
+
 // azureMonitorResourceLog used to unmarshal common schema for Azure resource logs
 // https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema
 type azureMonitorResourceLog struct {
-	Time     string `json:"time"`
-	Category string `json:"category"`
+	Time          string `json:"time"`
+	Category      string `json:"category"`
+	ResourceId    string `json:"resourceId"`
+	OperationName string `json:"operationName"`
+}
+
+// validate check if fields marked as required by schema for Azure resource log are not empty
+func (l azureMonitorResourceLog) validate() error {
+	valid := len(l.Time) != 0 &&
+		len(l.Category) != 0 &&
+		len(l.ResourceId) != 0 &&
+		len(l.OperationName) != 0
+
+	if !valid {
+		return errors.New("required field or fields is empty")
+	}
+
+	return nil
 }
 
 type eventHubMessageParser struct {
-	allowCustomPayload bool
+	disallowCustomMessages bool
 }
 
 func (e *eventHubMessageParser) Parse(message *sarama.ConsumerMessage, labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
@@ -37,12 +63,16 @@ func (e *eventHubMessageParser) Parse(message *sarama.ConsumerMessage, labelSet 
 	}
 
 	data, err := e.tryUnmarshal(message.Value)
-	if err != nil || len(data.Records) == 0 {
-		if e.allowCustomPayload {
-			return []api.Entry{e.entryWithCustomPayload(message.Value, labelSet, messageTime)}, nil
+	if err == nil {
+		err = data.validate()
+	}
+
+	if err != nil {
+		if e.disallowCustomMessages {
+			return []api.Entry{}, err
 		}
 
-		return []api.Entry{}, err
+		return []api.Entry{e.entryWithCustomPayload(message.Value, labelSet, messageTime)}, nil
 	}
 
 	return e.processRecords(labelSet, relabels, useIncomingTimestamp, data.Records, messageTime)
@@ -97,12 +127,16 @@ func (e *eventHubMessageParser) processRecords(labelSet model.LabelSet, relabels
 func (e *eventHubMessageParser) parseRecord(record []byte, labelSet model.LabelSet, relabelConfig []*relabel.Config, useIncomingTimestamp bool, messageTime time.Time) (api.Entry, error) {
 	logRecord := &azureMonitorResourceLog{}
 	err := json.Unmarshal(record, logRecord)
+	if err == nil {
+		err = logRecord.validate()
+	}
+
 	if err != nil {
-		if e.allowCustomPayload {
-			return e.entryWithCustomPayload(record, labelSet, messageTime), nil
+		if e.disallowCustomMessages {
+			return api.Entry{}, err
 		}
 
-		return api.Entry{}, err
+		return e.entryWithCustomPayload(record, labelSet, messageTime), nil
 	}
 
 	logLabels := e.getLabels(logRecord, relabelConfig)

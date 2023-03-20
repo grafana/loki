@@ -267,8 +267,8 @@ type AzureEventHubTargetConfig struct {
 	// The consumer group id.
 	GroupID string `yaml:"group_id"`
 
-	// Do not ignore messages that doesn't match schema for Azure resource logs
-	AllowCustomPayload bool `yaml:"allow_custom_payload"`
+	// Ignore messages that doesn't match schema for Azure resource logs
+	DisallowCustomMessages bool `yaml:"disallow_custom_messages"`
 }
 
 type KafkaTargetConfig struct {
