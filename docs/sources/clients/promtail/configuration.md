@@ -63,8 +63,8 @@ Where default_value is the value to use if the environment variable is undefined
 
 **Note**: With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
-slashes with single slashes. Because of this every use of a slash `\` needs to
-be replaced with a double slash `\\`
+backslashes with single backslashes. Because of this every use of a backslash `\` needs to
+be replaced with a double backslash `\\`
 
 ### Generic placeholders
 
@@ -663,7 +663,7 @@ config:
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
   # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
+  # the extracted value must be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
 ```
@@ -720,7 +720,7 @@ config:
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
   # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
+  # the extracted value must be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
 

@@ -3409,3 +3409,14 @@ func TestParseLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestNoOpLabelToString(t *testing.T) {
+	logExpr := `{container_name="app"} | foo=~".*"`
+	l, err := ParseLogSelector(logExpr, false)
+	require.NoError(t, err)
+	require.Equal(t, logExpr, l.String())
+
+	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	require.NoError(t, err)
+	require.Len(t, stages, 0)
+}

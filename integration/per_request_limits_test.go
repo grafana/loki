@@ -15,7 +15,7 @@ import (
 )
 
 func TestPerRequestLimits(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
