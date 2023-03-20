@@ -411,8 +411,8 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			},
+			noParserHints,
 		},
 	}
 	for _, tt := range tests {

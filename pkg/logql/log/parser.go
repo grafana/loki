@@ -493,14 +493,14 @@ func pathsToString(paths []interface{}) []string {
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.ParserLabelHints().NoLabels() {
+	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
 	// Check that the line starts correctly
 	// the parser will pass an error if other
 	// parts of the line are malformed
-	if len(line) == 0 || !isValidJSONStart(line) {
+	if !isValidJSONStart(line) {
 		lbs.SetErr(errJSON)
 		if lbs.ParserLabelHints().PreserveError() {
 			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
