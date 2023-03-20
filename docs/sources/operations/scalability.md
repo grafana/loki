@@ -27,3 +27,63 @@ The query scheduler process itself can be started via the `-target=query-schedul
 In compute-constrained environments, garbage collection can become a significant performance factor. Frequently-run garbage collection interferes with running the application by using CPU resources. The use of memory ballast can mitigate the issue. Memory ballast allocates extra, but unused virtual memory in order to inflate the quantity of live heap space. Garbage collection is triggered by the growth of heap space usage. The inflated quantity of heap space reduces the perceived growth, so garbage collection occurs less frequently.
 
 Configure memory ballast using the ballast_bytes configuration option.
+
+## Remote Rule Evaluation
+
+This feature was introduced as part of [`LID-0002`](https://github.com/grafana/loki/pull/8129).
+
+### Background & Identification of Problem
+
+By default, the `ruler` component embeds a query engine to evaluate rules. This generally works fine, except when rules
+are complex or have to process a large amount of data regularly. Poor performance of the `ruler` manifests as recording rules metrics
+with gaps or missed alerts. This situation can be detected by alerting on the `cortex_prometheus_rule_group_iterations_missed_total` metric
+when it has a non-zero value.
+
+### Recommended Solution
+A solution to this problem is to externalize rule evaluation from the `ruler` process. The `ruler` embedded query engine
+is single-threaded, meaning that rules are not split, sharded, or otherwise accelerated like regular Loki queries. The `query-frontend`
+component exists explicitly for this purpose and, when combined with a number of `querier` instances, can massively
+improve rule evaluation performance and lead to fewer missed iterations.
+
+It is generally recommended to create a separate `query-frontend` deployment and `querier` pool from your existing one - which handles adhoc
+queries via Grafana, `logcli`, or the API. Rules should be given priority over adhoc queries because they are used to produce
+metrics or alerts which may be crucial to the reliable operation of your service; if you use the same `query-frontend` and `querier` pool
+for both, your rules will be executed with the same priority as adhoc queries which could lead to unpredictable performance.
+
+### Implementation
+
+To enable remote rule evaluation, set the following configuration options:
+
+```yaml
+ruler:
+  evaluation:
+    mode: remote
+    query_frontend:
+      address: dns:///<query-frontend-service>:<grpc-port>
+```
+
+The `ruler` component will become simply a gRPC client to the `query-frontend` service (side-note: this will result in much lower
+resource usage of your `ruler`s!). Rules' LogQL queries will be executed against the given `query-frontend` service.
+Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
+
+Queries that fail to execute are _not_ retried at this time.
+
+### Limits & Observability
+
+Remote rule evaluation can be tuned with the following options:
+
+- `ruler_remote_evaluation_timeout`: maximum allowable execution time for rule evaluations
+- `ruler_remote_evaluation_max_response_size`: maximum allowable response size over gRPC connection from `query-frontend` to `ruler`
+
+Both of these must can specified globally in the [`limits_config`](https://grafana.com/docs/loki/latest/configuration/#limits_config) section
+or on a [per-tenant basis](https://grafana.com/docs/loki/latest/configuration/#runtime-configuration-file). 
+
+Remote rule evaluation exposes a number of metrics:
+
+- `loki_ruler_remote_eval_request_duration_seconds`: time taken for rule evaluation (histogram)
+- `loki_ruler_remote_eval_response_bytes`: number of bytes in rule evaluation response (histogram)
+- `loki_ruler_remote_eval_response_samples`: number of samples in rule evaluation response (histogram)
+- `loki_ruler_remote_eval_success_total`: successful rule evaluations (counter)
+- `loki_ruler_remote_eval_failure_total`: unsuccessful rule evaluations with reasons (counter)
+
+Each of these metrics are per-tenant, so cardinality must be taken into consideration.
