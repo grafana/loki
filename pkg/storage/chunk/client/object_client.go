@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -36,6 +37,14 @@ type ObjectClient interface {
 	IsObjectNotFoundErr(err error) bool
 	Stop()
 }
+
+var (
+	bufferPool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(make([]byte, 0, 1000))
+		},
+	}
+)
 
 // StorageObject represents an object being stored in an Object Store
 type StorageObject struct {
@@ -175,7 +184,11 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	// adds bytes.MinRead to avoid allocations when the size is known.
 	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
-	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		bufferPool.Put(buf)
+	}()
 	_, err = buf.ReadFrom(readCloser)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
