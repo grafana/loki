@@ -817,6 +817,11 @@ storage:
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
 
+# Upper bound of random duration to wait before rule evaluation to avoid
+# contention during concurrent execution of rules. Set 0 to disable (default).
+# CLI flag: -ruler.evaluation-jitter
+[evaluation_jitter: <duration> | default = 0s]
+
 # Comma-separated list of Alertmanager URLs to send notifications to. Each
 # Alertmanager URL is treated as a separate group in the configuration. Multiple
 # Alertmanagers in HA per group can be supported by using DNS resolution via
