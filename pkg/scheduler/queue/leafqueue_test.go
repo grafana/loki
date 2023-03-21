@@ -14,13 +14,13 @@ func r(id int) *dummyRequest {
 	return &dummyRequest{id}
 }
 
-func TestLeafQueue(t *testing.T) {
+func TestTreeQueue(t *testing.T) {
 
 	t.Run("add sub queues recursively", func(t *testing.T) {
 		pathA := QueuePath([]string{"l0", "l1", "l3"})
 		pathB := QueuePath([]string{"l0", "l2", "l3"})
 
-		q := newLeafQueue(1, "root")
+		q := newTreeQueue(1, "root")
 		require.NotNil(t, q)
 		require.Equal(t, "root", q.Name())
 		require.Equal(t, 0, q.Len())
@@ -58,7 +58,7 @@ func TestLeafQueue(t *testing.T) {
 			QueuePath([]string{"c", "c1", "c11"}),
 		}
 
-		q := newLeafQueue(10, "root")
+		q := newTreeQueue(10, "root")
 		require.NotNil(t, q)
 		for _, p := range paths {
 			q.add(p)
@@ -116,7 +116,7 @@ func TestLeafQueue(t *testing.T) {
 			QueuePath([]string{"c"}),
 		}
 
-		q := newLeafQueue(10, "root")
+		q := newTreeQueue(10, "root")
 		require.NotNil(t, q)
 		for _, p := range paths {
 			q.add(p)
@@ -150,7 +150,7 @@ func TestLeafQueue(t *testing.T) {
 	})
 
 	t.Run("empty sub-queues are removed", func(t *testing.T) {
-		q := newLeafQueue(10, "root")
+		q := newTreeQueue(10, "root")
 		q.add(QueuePath{"a"})
 		q.add(QueuePath{"b"})
 

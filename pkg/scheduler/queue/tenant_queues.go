@@ -50,8 +50,15 @@ type Queue interface {
 	Len() int
 }
 
+type Mapable interface {
+	*tenantQueue | *TreeQueue
+	// https://github.com/golang/go/issues/48522#issuecomment-924348755
+	Pos() QueueIndex
+	SetPos(index QueueIndex)
+}
+
 type tenantQueue struct {
-	*LeafQueue
+	*TreeQueue
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
@@ -102,7 +109,7 @@ func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers i
 		uq = &tenantQueue{
 			seed: util.ShuffleShardSeed(tenant, ""),
 		}
-		uq.LeafQueue = newLeafQueue(q.maxUserQueueSize, tenant)
+		uq.TreeQueue = newTreeQueue(q.maxUserQueueSize, tenant)
 		q.mapping.Put(tenant, uq)
 	}
 
