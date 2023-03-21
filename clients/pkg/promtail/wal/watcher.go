@@ -20,6 +20,10 @@ import (
 const (
 	readPeriod         = 10 * time.Millisecond
 	segmentCheckPeriod = 100 * time.Millisecond
+
+	// debug flag used for developing and testing the watcher code. Using this instead of level.Debug to avoid checking
+	// the log level inwards into the logger code, and just making the compiler omit this code.
+	debug = false
 )
 
 // Based in the implementation of prometheus WAL watcher
@@ -170,18 +174,25 @@ func (w *Watcher) watch(segmentNum int) error {
 			// Since we know last > segmentNum, there must be a new segment. Read the remaining from the segmentNum segment
 			// and return from `watch` to read the next one
 			err = w.readSegment(reader, segmentNum)
+			if debug {
+				level.Warn(w.logger).Log("msg", "Error reading segment inside segmentTicker", "segment", segmentNum, "read", reader.Offset(), "err", err)
+			}
 
-			// When we are tailing, non-EOFs are fatal.
+			// io.EOF error are non-fatal since we are tailing the wal
 			if errors.Cause(err) != io.EOF {
 				return err
 			}
 
+			// return after reading the whole segment for creating a new LiveReader from the newly created segment
 			return nil
 
 		case <-readTicker.C:
 			err = w.readSegment(reader, segmentNum)
+			if debug {
+				level.Warn(w.logger).Log("msg", "Error reading segment inside readTicker", "segment", segmentNum, "read", reader.Offset(), "err", err)
+			}
 
-			// Otherwise, when we are tailing, non-EOFs are fatal.
+			// io.EOF error are non-fatal since we are tailing the wal
 			if errors.Cause(err) != io.EOF {
 				return err
 			}
@@ -192,14 +203,11 @@ func (w *Watcher) watch(segmentNum int) error {
 // Read entries from a segment, decode them and dispatch them.
 func (w *Watcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
 	for r.Next() && !isClosed(w.quit) {
-		b := r.Record()
-		if err := r.Err(); err != nil {
-			return err
-		}
+		rec := r.Record()
 		w.metrics.recordsRead.WithLabelValues(w.id).Inc()
 
-		if err := w.decodeAndDispatch(b, segmentNum); err != nil {
-			return err
+		if err := w.decodeAndDispatch(rec, segmentNum); err != nil {
+			return errors.Wrapf(err, "error decoding record")
 		}
 	}
 	return errors.Wrapf(r.Err(), "segment %d: %v", segmentNum, r.Err())

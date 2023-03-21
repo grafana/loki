@@ -77,10 +77,13 @@ func NewManager(
 
 		// Create and launch wal watcher for this client
 
+		// add some context information for the logger the watcher uses
+		wlog := log.With(logger, "client", client.Name())
+
 		// Look for deleted segments with a frequency of MaxSegmentAge / 2. Segments are checked if they are safe to delete
 		// every MaxSegmentAge/10. We don't want a high frequency since SeriesReset calls in the writeTo lock the cache,
 		// but we don't want to fall behind too much.
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger)
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), wlog), wlog)
 		// subscribe watcher to writer events, such as old segments being reclaimed
 		notifier.Subscribe(watcher)
 		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())

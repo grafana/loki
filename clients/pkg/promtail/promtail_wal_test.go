@@ -36,7 +36,9 @@ const (
 
 // createTestLogger creates a debug enabled logger to STDERR
 func createTestLogger() log.Logger {
-	return level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), level.AllowDebug())
+	logger := level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), level.AllowDebug())
+	// add timestamps to logged entries. Useful for debugging events timing
+	return log.With(logger, "ts", log.DefaultTimestampUTC)
 }
 
 func TestPromtailWithWAL_SingleTenant(t *testing.T) {
@@ -59,7 +61,12 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for req := range receivedCh {
-			t.Logf("received request: %s", req.Request.String())
+			// Add some observability to the requests received in the remote write endpoint
+			var counts []string
+			for _, str := range req.Request.Streams {
+				counts = append(counts, fmt.Sprint(len(str.Entries)))
+			}
+			t.Logf("received request: %s", counts)
 			for _, stream := range req.Request.Streams {
 				received[stream.Labels] = append(received[stream.Labels], stream.Entries...)
 			}
@@ -84,7 +91,7 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 		MaxSegmentAge: time.Second * 30,
 	}
 
-	clientMetrics := client.NewMetrics(nil)
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
 	pr, err := New(cfg, nil, clientMetrics, false)
 	require.NoError(t, err)
 
@@ -281,7 +288,7 @@ func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFil
 		Name:      "test-client",
 		URL:       testServerURL,
 		Timeout:   time.Second * 2,
-		BatchWait: time.Second * 5,
+		BatchWait: time.Second,
 		BatchSize: 1 << 10,
 		BackoffConfig: backoff.Config{
 			MaxRetries: 1,
