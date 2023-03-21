@@ -68,7 +68,7 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 	return time.Duration(requestLimits.QueryTimeout)
 }
 
-func (l *Limiter) RequiredLabelMetchers(ctx context.Context, userID string) []string {
+func (l *Limiter) RequiredLabelMatchers(ctx context.Context, userID string) []string {
 	original := l.CombinedLimits.RequiredLabelMatchers(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
 
@@ -82,7 +82,7 @@ func (l *Limiter) RequiredLabelMetchers(ctx context.Context, userID string) []st
 	}
 
 	union := make([]string, 0, len(unionMap))
-	for _, label := range union {
+	for label := range unionMap {
 		union = append(union, label)
 	}
 	return union

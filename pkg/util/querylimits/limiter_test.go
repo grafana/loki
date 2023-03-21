@@ -38,6 +38,7 @@ func TestLimiter_Defaults(t *testing.T) {
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxQueryLength:          model.Duration(30 * time.Second),
 		MaxEntriesLimitPerQuery: 10,
+		RequiredLabelMatchers:   []string{"foo", "bar"},
 	}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
@@ -48,6 +49,7 @@ func TestLimiter_Defaults(t *testing.T) {
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxEntriesLimitPerQuery: 10,
 		QueryTimeout:            model.Duration(30 * time.Second),
+		RequiredLabelMatchers:   []string{"foo", "bar"},
 	}
 	ctx := context.Background()
 	queryLookback := l.MaxQueryLookback(ctx, "fake")
@@ -66,6 +68,7 @@ func TestLimiter_Defaults(t *testing.T) {
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxEntriesLimitPerQuery: 10,
 		QueryTimeout:            model.Duration(29 * time.Second),
+		RequiredLabelMatchers:   []string{"foo", "bar"},
 	}
 	{
 		ctx2 := InjectQueryLimitsContext(context.Background(), limits)
@@ -137,4 +140,22 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 	require.Equal(t, time.Duration(limits.MaxQueryLength), l.MaxQueryLength(ctx, "fake"))
 	require.Equal(t, limits.MaxEntriesLimitPerQuery, l.MaxEntriesLimitPerQuery(ctx, "fake"))
 	require.Equal(t, time.Duration(limits.QueryTimeout), l.QueryTimeout(ctx, "fake"))
+}
+
+func TestLimiter_MergeLimits(t *testing.T) {
+	// some fake tenant
+	tLimits := make(map[string]*validation.Limits)
+	tLimits["fake"] = &validation.Limits{
+		RequiredLabelMatchers: []string{"one", "two"},
+	}
+
+	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	l := NewLimiter(log.NewNopLogger(), overrides)
+	limits := QueryLimits{
+		RequiredLabelMatchers: []string{"one", "three"},
+	}
+
+	ctx := InjectQueryLimitsContext(context.Background(), limits)
+
+	require.ElementsMatch(t, []string{"one", "two", "three"}, l.RequiredLabelMatchers(ctx, "fake"))
 }

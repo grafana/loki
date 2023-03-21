@@ -198,6 +198,10 @@ func (l *limiter) BlockedQueries(ctx context.Context, userID string) []*validati
 	return []*validation.BlockedQuery{}
 }
 
+func (l *limiter) RequiredLabelMatchers(ctx context.Context, userID string) []string {
+	return nil
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels
