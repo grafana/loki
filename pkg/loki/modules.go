@@ -795,6 +795,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
