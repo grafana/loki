@@ -628,11 +628,11 @@ func (f fakeLimits) MinShardingLookback(string) time.Duration {
 	return f.minShardingLookback
 }
 
-func (f fakeLimits) MaxQueryBytesRead(string) int {
+func (f fakeLimits) MaxQueryBytesRead(context.Context, string) int {
 	return f.maxQueryBytesRead
 }
 
-func (f fakeLimits) MaxQuerierBytesRead(string) int {
+func (f fakeLimits) MaxQuerierBytesRead(context.Context, string) int {
 	return f.maxQuerierBytesRead
 }
 

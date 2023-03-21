@@ -138,7 +138,8 @@ func (r *dynamicShardResolver) checkQuerySizeLimit(bytesPerShard uint64) error {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, r.limits.MaxQuerierBytesRead); maxBytesRead > 0 {
+	maxQuerierBytesReadCapture := func(id string) int { return r.limits.MaxQuerierBytesRead(r.ctx, id) }
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxQuerierBytesReadCapture); maxBytesRead > 0 {
 		if bytesPerShard > uint64(maxBytesRead) {
 			statsBytesStr := humanize.Bytes(bytesPerShard)
 			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))

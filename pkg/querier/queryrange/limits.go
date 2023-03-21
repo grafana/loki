@@ -53,8 +53,8 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
-	MaxQueryBytesRead(u string) int
-	MaxQuerierBytesRead(u string) int
+	MaxQueryBytesRead(context.Context, string) int
+	MaxQuerierBytesRead(context.Context, string) int
 }
 
 type limits struct {
@@ -196,7 +196,7 @@ type querySizeLimiter struct {
 	statsHandler      queryrangebase.Handler
 	cfg               []config.PeriodConfig
 	maxLookBackPeriod time.Duration
-	limitFunc         func(string) int
+	limitFunc         func(context.Context, string) int
 	limitErrorTmpl    string
 }
 
@@ -207,7 +207,7 @@ func newQuerySizeLimiter(
 	logger log.Logger,
 	limits Limits,
 	codec queryrangebase.Codec,
-	limitFunc func(string) int,
+	limitFunc func(context.Context, string) int,
 	limitErrorTmpl string,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
@@ -348,7 +348,8 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limitFunc); maxBytesRead > 0 {
+	limitFuncCapture := func(id string) int { return q.limitFunc(ctx, id) }
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, limitFuncCapture); maxBytesRead > 0 {
 		bytesRead, err := q.getBytesReadForRequest(ctx, r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())

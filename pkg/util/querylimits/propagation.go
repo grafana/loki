@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 )
 
@@ -20,10 +21,12 @@ const (
 // NOTE: we use custom `model.Duration` instead of standard `time.Duration` because,
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type QueryLimits struct {
-	MaxQueryLength          model.Duration `json:"maxQueryLength,omitempty"`
-	MaxQueryLookback        model.Duration `json:"maxQueryLookback,omitempty"`
-	MaxEntriesLimitPerQuery int            `json:"maxEntriesLimitPerQuery,omitempty"`
-	QueryTimeout            model.Duration `json:"queryTimeout,omitempty"`
+	MaxQueryLength          model.Duration   `json:"maxQueryLength,omitempty"`
+	MaxQueryLookback        model.Duration   `json:"maxQueryLookback,omitempty"`
+	MaxEntriesLimitPerQuery int              `json:"maxEntriesLimitPerQuery,omitempty"`
+	QueryTimeout            model.Duration   `json:"queryTimeout,omitempty"`
+	MaxQueryBytesRead       flagext.ByteSize `json:"maxQueryBytesRead,omitempty"`
+	MaxQuerierBytesRead     flagext.ByteSize `json:"maxQuerierBytesRead,omitempty"`
 }
 
 func UnmarshalQueryLimits(data []byte) (*QueryLimits, error) {

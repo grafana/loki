@@ -481,12 +481,12 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 }
 
 // MaxQueryBytesRead returns the maximum bytes a query can read.
-func (o *Overrides) MaxQueryBytesRead(userID string) int {
+func (o *Overrides) MaxQueryBytesRead(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
 }
 
 // MaxQuerierBytesRead returns the maximum bytes a sub query can read after splitting and sharding.
-func (o *Overrides) MaxQuerierBytesRead(userID string) int {
+func (o *Overrides) MaxQuerierBytesRead(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerierBytesRead.Val()
 }
 
