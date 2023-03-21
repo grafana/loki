@@ -181,8 +181,6 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 	defer readCloser.Close()
 
-	// adds bytes.MinRead to avoid allocations when the size is known.
-	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
 	buf := o.bufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		buf.Reset()
