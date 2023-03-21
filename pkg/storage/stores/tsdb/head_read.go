@@ -133,17 +133,15 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
+	*chks = (*chks)[:0]
 	s.Lock()
-	filteredChks := make([]index.ChunkMeta, 0, len(s.chks))
 	for _, chk := range s.chks {
 		if !Overlap(chk, queryBounds) {
 			continue
 		}
-		filteredChks = append(filteredChks, chk)
+		*chks = append(*chks, chk)
 	}
 	s.Unlock()
-
-	*chks = append((*chks)[:0], filteredChks...)
 
 	return s.fp, nil
 }
