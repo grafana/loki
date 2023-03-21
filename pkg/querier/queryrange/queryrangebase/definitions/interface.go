@@ -39,13 +39,13 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
-	proto.Message
 	// GetCachingOptions returns the caching options.
 	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
+	proto.Message
 	// LogToSpan writes information about this request to an OpenTracing span
 	LogToSpan(opentracing.Span)
 }
