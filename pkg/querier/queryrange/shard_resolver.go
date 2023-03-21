@@ -180,8 +180,6 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
 
-	// TODO(salvacorts): Discuss in PR - this is more a guess than the actual shards size.
-	//                   is this something we should be concerned about?
 	if err = r.checkQuerySizeLimit(bytesPerShard); err != nil {
 		return 0, err
 	}
