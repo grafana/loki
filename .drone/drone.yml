@@ -291,13 +291,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -410,13 +410,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -529,13 +529,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -648,13 +648,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -705,13 +705,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -762,13 +762,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -819,13 +819,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -878,13 +878,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -937,13 +937,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -996,14 +996,14 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1054,14 +1054,14 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1112,14 +1112,14 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1170,14 +1170,14 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1298,7 +1298,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag) > .tag
@@ -1348,7 +1348,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
@@ -1395,7 +1395,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
@@ -1423,13 +1423,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1492,7 +1492,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
@@ -1564,7 +1564,7 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - make docker-driver-push
@@ -1606,13 +1606,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1669,13 +1669,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: fetch-tags
 - commands:
   - echo $(./tools/image-tag)-arm64 > .tags
   depends_on:
   - fetch-tags
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: image-tag
 - depends_on:
   - image-tag
@@ -1828,6 +1828,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 6fdf07fbcd5077ed7cd2bfc4cb4e9d06e7caa7ff4dd95a96b3958a2882e75ba4
+hmac: 8563c849a51da1f128fac1a956dd0da2c4143c46107be8af11723c6e13de6d35
 
 ...

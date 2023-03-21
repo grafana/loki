@@ -52,9 +52,11 @@ local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publis
 local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 local helm_chart_auto_update_config_template = secret('helm-chart-update-config-template', 'secret/data/common/loki-helm-chart-auto-update', 'on-loki-release-config.json');
 
+local build_image_name = 'grafana/loki-build-image:%s' % build_image_version;
+
 local run(name, commands, env={}) = {
   name: name,
-  image: 'grafana/loki-build-image:%s' % build_image_version,
+  image: build_image_name,
   commands: commands,
   environment: env,
 };
@@ -69,7 +71,7 @@ local make(target, container=true, args=[]) = run(target, [
 
 local fetch_tags = {
   name: 'fetch-tags',
-  image: 'alpine',
+  image: build_image_name,
   commands: [
     'apk add --no-cache bash git',
     'git fetch origin --tags',
@@ -138,7 +140,7 @@ local arch_image(arch, tags='') = {
     {
       name: 'image-tag',
       depends_on: ['fetch-tags'],
-      image: 'alpine',
+      image: build_image_name,
       commands: [
         'echo $(./tools/image-tag)-%s > .tags' % arch,
       ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
