@@ -30,9 +30,9 @@ const (
 // WriterEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
 // they can subscribe to events by adding themselves as subscribers on the Writer with writer.Subscribe.
 type WriterEventSubscriber interface {
-	// NotifySegmentsCleaned will notify the subscriber that all WAL segments with a number lower or equal to num, were
-	// reclaimed.
-	NotifySegmentsCleaned(num int)
+	// WriteCleanup is implemented by WriteTo, who can subscribe to these type of events for cleaning up the series cache
+	// entries that originated from deleted segments.
+	WriteCleanup
 }
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
@@ -184,7 +184,7 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 		wrt.subscribersLock.Lock()
 		defer wrt.subscribersLock.Unlock()
 		for _, subscriber := range wrt.subscribers {
-			subscriber.NotifySegmentsCleaned(maxReclaimed)
+			subscriber.SeriesReset(maxReclaimed)
 		}
 	}
 	return nil

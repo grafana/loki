@@ -38,20 +38,25 @@ type Reader interface {
 	Record() []byte
 }
 
+// WriteCleanup is responsible for cleaning up resources used in the process of reading the WAL.
+type WriteCleanup interface {
+	// SeriesReset is called to notify that segments have been deleted. The argument of the call
+	// means that all segments with a number lower or equal than segmentNum are safe to be reclaimed.
+	SeriesReset(segmentNum int)
+}
+
 // WriteTo is responsible for doing the necessary work to process both series and entries while the Watcher
 // is reading / tailing segments. Note that StoreSeries and SeriesReset might be called concurrently.
 //
 // Based on https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go#L46
 type WriteTo interface {
+	WriteCleanup
+
 	// StoreSeries is called when series are found in WAL entries by the watcher, alongside with the segmentNum they were
 	// found in.
 	StoreSeries(series []record.RefSeries, segmentNum int)
 
 	AppendEntries(entries wal.RefEntries) error
-
-	// SeriesReset is called when the Watcher notices that segments have been deleted. The argument of the call
-	// signifies that all segments with a number lower or equal than segmentNum are safe to be reclaimed.
-	SeriesReset(segmentNum int)
 }
 
 type Watcher struct {
@@ -268,13 +273,6 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 		}
 	}
 	return first, last, nil
-}
-
-// NotifySegmentsCleaned allows Watcher to implement NotifySegmentsCleaned, in order to receive notifications from a
-// Writer. In particular, NotifySegmentsCleaned allows the Watcher to notify the attached WriteTo that some segments
-// were reclaimed in order to clean up the series cache.
-func (w *Watcher) NotifySegmentsCleaned(num int) {
-	w.writeTo.SeriesReset(num)
 }
 
 // isClosed checks in a non-blocking manner if a channel is closed or not.
