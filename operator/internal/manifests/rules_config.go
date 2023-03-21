@@ -9,9 +9,9 @@ import (
 )
 
 type RuleName struct {
-	cmName      string
-	tenantID    string
-	ns_name_uid string
+	cmName   string
+	tenantID string
+	filename string
 }
 
 // RulesConfigMap returns a ConfigMap resource that contains
@@ -23,7 +23,7 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
 	template := newConfigMapTemplate(opts, l)
 
-	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Namespace))
+	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Name))
 
 	for _, r := range opts.AlertingRules {
 		c, err := rules.MarshalAlertingRule(r)
@@ -31,8 +31,8 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 			return nil, err
 		}
 		key := RuleName{
-			tenantID:    r.Spec.TenantID,
-			ns_name_uid: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
+			tenantID: r.Spec.TenantID,
+			filename: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
 		}
 		shardedCM.data[key.toString()] = c
 	}
@@ -43,8 +43,8 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 			return nil, err
 		}
 		key := RuleName{
-			tenantID:    r.Spec.TenantID,
-			ns_name_uid: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
+			tenantID: r.Spec.TenantID,
+			filename: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
 		}
 		shardedCM.data[key.toString()] = c
 	}
@@ -71,5 +71,5 @@ func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap 
 }
 
 func (rn RuleName) toString() string {
-	return fmt.Sprintf("%s%s%s.yaml", rn.tenantID, rulePartsSeparator, rn.ns_name_uid)
+	return fmt.Sprintf("%s%s%s.yaml", rn.tenantID, rulePartsSeparator, rn.filename)
 }

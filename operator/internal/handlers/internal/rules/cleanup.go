@@ -21,7 +21,7 @@ func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client
 		Namespace: req.Namespace,
 		LabelSelector: labels.SelectorFromSet(labels.Set{
 			"app.kubernetes.io/component": manifests.LabelRulerComponent,
-			"app.kuberentes.io/instance":  req.Name,
+			"app.kubernetes.io/instance":  req.Name,
 		}),
 	})
 	if err != nil {

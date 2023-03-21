@@ -46,14 +46,14 @@ func extractRuleNameComponents(rn string) RuleName {
 	ruleNameComponents := strings.Split(rn, rulePartsSeparator)
 	if len(ruleNameComponents) == 3 {
 		return RuleName{
-			cmName:      ruleNameComponents[0],
-			tenantID:    ruleNameComponents[1],
-			ns_name_uid: ruleNameComponents[2],
+			cmName:   ruleNameComponents[0],
+			tenantID: ruleNameComponents[1],
+			filename: ruleNameComponents[2],
 		}
 	} else {
 		return RuleName{
-			tenantID:    ruleNameComponents[0],
-			ns_name_uid: ruleNameComponents[1],
+			tenantID: ruleNameComponents[0],
+			filename: ruleNameComponents[1],
 		}
 	}
 }
@@ -96,7 +96,7 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 		currentCMSize += dataSize
 
 		// remove the tenantID from the file name
-		k = extractRuleNameComponents(k).ns_name_uid
+		k = extractRuleNameComponents(k).filename
 		currentCM.Data[k] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)

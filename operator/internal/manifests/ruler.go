@@ -353,7 +353,7 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 		for _, rule := range tenant.RuleFiles {
 			shardName := extractRuleNameComponents(rule).cmName
 			if shardName == configMapName {
-				filename := extractRuleNameComponents(rule).ns_name_uid
+				filename := extractRuleNameComponents(rule).filename
 				items = append(items, corev1.KeyToPath{
 					Key:  filename,
 					Path: fmt.Sprintf("%s/%s", tenantID, filename),
