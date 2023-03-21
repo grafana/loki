@@ -186,29 +186,98 @@ func Test_astMapper(t *testing.T) {
 }
 
 func Test_ShardingByPass(t *testing.T) {
-	called := 0
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		called++
-		return nil, nil
-	})
+	for _, tc := range []struct {
+		desc                string
+		query               string
+		statsBytesResponse  uint64
+		maxQuerierBytesSize int
 
-	mware := newASTMapperware(
-		ShardingConfigs{
-			config.PeriodConfig{
-				RowShards: 2,
-			},
+		shouldErr                bool
+		expectedQueryHandlerHits int
+		expectedStatsHandlerHits int
+	}{
+		{
+			desc:                "Non shardable query without matchers",
+			query:               `1+1`,
+			statsBytesResponse:  1000,
+			maxQuerierBytesSize: 1000,
+
+			shouldErr:                false,
+			expectedQueryHandlerHits: 1,
+			expectedStatsHandlerHits: 0,
 		},
-		handler,
-		LokiCodec,
-		log.NewNopLogger(),
-		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
-		0,
-	)
+		{
+			desc:                "Non shardable query",
+			query:               `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			statsBytesResponse:  1000,
+			maxQuerierBytesSize: 1000,
 
-	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
-	require.Nil(t, err)
-	require.Equal(t, called, 1)
+			shouldErr:                false,
+			expectedQueryHandlerHits: 1,
+			expectedStatsHandlerHits: 1,
+		},
+		{
+			desc:                "Non shardable query too big",
+			query:               `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			statsBytesResponse:  2000,
+			maxQuerierBytesSize: 1000,
+
+			shouldErr:                true,
+			expectedQueryHandlerHits: 0,
+			expectedStatsHandlerHits: 1,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			queryCalled := 0
+			statsCalled := 0
+			handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				if _, ok := req.(*LokiRequest); ok {
+					queryCalled++
+					return nil, nil
+				}
+
+				if _, ok := req.(*logproto.IndexStatsRequest); ok {
+					statsCalled++
+					return &IndexStatsResponse{
+						Response: &logproto.IndexStatsResponse{
+							Bytes: tc.statsBytesResponse,
+						},
+					}, nil
+				}
+
+				return nil, nil
+			})
+
+			mware := newASTMapperware(
+				ShardingConfigs{
+					config.PeriodConfig{
+						RowShards: 2,
+						IndexType: config.TSDBType,
+					},
+				},
+				handler,
+				LokiCodec,
+				log.NewNopLogger(),
+				nilShardingMetrics,
+				fakeLimits{
+					maxSeries:           math.MaxInt32,
+					maxQueryParallelism: 1,
+					maxQuerierBytesRead: tc.maxQuerierBytesSize,
+				},
+				0,
+			)
+
+			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(tc.query))
+			if tc.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.expectedQueryHandlerHits, queryCalled)
+			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)
+		})
+	}
 }
 
 func Test_hasShards(t *testing.T) {
