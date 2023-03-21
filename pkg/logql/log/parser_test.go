@@ -978,8 +978,8 @@ func Test_unpackParser_Parse(t *testing.T) {
 			l, _ := j.Process(0, tt.line, b)
 			sort.Sort(tt.wantLbs)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
-			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, tt.wantLine, l)
+			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
 		})
 	}
