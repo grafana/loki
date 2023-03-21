@@ -25,9 +25,10 @@ type Options struct {
 	Stack                lokiv1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 
-	AlertingRules  []lokiv1.AlertingRule
-	RecordingRules []lokiv1.RecordingRule
-	Ruler          Ruler
+	AlertingRules       []lokiv1.AlertingRule
+	RecordingRules      []lokiv1.RecordingRule
+	RulesConfigMapNames []string
+	Ruler               Ruler
 
 	ObjectStorage storage.Options
 

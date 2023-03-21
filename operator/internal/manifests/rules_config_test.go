@@ -12,9 +12,12 @@ import (
 )
 
 func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
-	cm, err := manifests.RulesConfigMap(testOptions())
+	cm_shards, err := manifests.RulesConfigMapShards(testOptions())
 	require.NoError(t, err)
-	require.NotNil(t, cm)
+	require.NotNil(t, cm_shards)
+
+	cm := cm_shards[0]
+
 	require.Len(t, cm.Data, 4)
 	require.Contains(t, cm.Data, "dev-alerting-rules-alerts1.yaml")
 	require.Contains(t, cm.Data, "dev-recording-rules-recs1.yaml")
@@ -24,15 +27,23 @@ func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
 
 func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
 	opts := testOptions()
-	cm, err := manifests.RulesConfigMap(opts)
+	cm_shards, err := manifests.RulesConfigMapShards(opts)
 	require.NoError(t, err)
-	require.NotNil(t, cm)
+	require.NotNil(t, cm_shards)
+
+	cm := cm_shards[0]
 	require.Len(t, cm.Data, 4)
-	fmt.Print(opts.Tenants.Configs)
-	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "dev-alerting-rules-alerts1.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "prod-alerting-rules-alerts2.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "dev-recording-rules-recs1.yaml")
-	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "prod-recording-rules-recs2.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "-rules-0___tenant-a___dev-alerting-rules-alerts1.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-a"].RuleFiles, "-rules-0___tenant-a___prod-alerting-rules-alerts2.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "-rules-0___tenant-b___dev-recording-rules-recs1.yaml")
+	require.Contains(t, opts.Tenants.Configs["tenant-b"].RuleFiles, "-rules-0___tenant-b___prod-recording-rules-recs2.yaml")
+}
+
+func TestRulesConfigMapSharding(t *testing.T) {
+	cm_shards, err := manifests.RulesConfigMapShards(testOptions_withSharding())
+	require.NoError(t, err)
+	require.NotNil(t, cm_shards)
+	require.Len(t, cm_shards, 2)
 }
 
 func testOptions() *manifests.Options {
@@ -119,5 +130,63 @@ func testOptions() *manifests.Options {
 				},
 			},
 		},
+	}
+}
+
+func testOptions_withSharding() *manifests.Options {
+
+	// Generate a list of dummy rules to create a large amount of data
+	// that should result in sharding the rules ConfigMap
+	// In this case, each Alerting rule amounts to 598 bytes of ConfigMap data
+	// and 2000 of them will be split into 2 shards
+	var alertingRules []lokiv1.AlertingRule
+
+	for i := 0; i < 2000; i++ {
+		alertingRules = append(alertingRules, lokiv1.AlertingRule{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "alerting-rules",
+				Namespace: "dev",
+				UID:       types.UID(fmt.Sprintf("alerts%d", i)),
+			},
+			Spec: lokiv1.AlertingRuleSpec{
+				TenantID: "tenant-a",
+				Groups: []*lokiv1.AlertingRuleGroup{
+					{
+						Name: "rule-a",
+						Rules: []*lokiv1.AlertingRuleGroupSpec{
+							{
+								Alert: fmt.Sprintf("test%d", i),
+								Expr: `|
+									sum(rate({kubernetes_namespace_name="openshift-operators-redhat", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
+									/
+									sum(rate({kubernetes_namespace_name="openshift-operators-redhat", kubernetes_pod_name=~"loki-operator-controller-manager.*"}[1m])) by (job)
+									> 0.01
+									`,
+							},
+						},
+					},
+				},
+			},
+		})
+	}
+
+	return &manifests.Options{
+		Name:      "sharding-test",
+		Namespace: "namespace",
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+		Tenants: manifests.Tenants{
+			Configs: map[string]manifests.TenantConfig{
+				"tenant-a": {},
+				"tenant-b": {},
+			},
+		},
+		AlertingRules: alertingRules,
 	}
 }
