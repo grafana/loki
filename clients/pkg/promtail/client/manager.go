@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -82,6 +83,7 @@ func NewManager(
 		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, newClientWriteTo(client.Chan(), logger), logger)
 		// subscribe watcher to writer events, such as old segments being reclaimed
 		notifier.Subscribe(watcher)
+		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
 		watcher.Start()
 		watchers = append(watchers, watcher)
 	}

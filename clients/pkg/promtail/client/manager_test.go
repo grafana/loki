@@ -46,7 +46,7 @@ func (c closerFunc) Close() {
 	c()
 }
 
-func newServerAncClientConfig(t *testing.T) (Config, chan receivedReq, closer) {
+func newServerAndClientConfig(t *testing.T) (Config, chan receivedReq, closer) {
 	receivedReqsChan := make(chan receivedReq, 10)
 
 	// Start a local HTTP server
@@ -69,19 +69,22 @@ func newServerAncClientConfig(t *testing.T) (Config, chan receivedReq, closer) {
 	})
 }
 
-func TestManager_EntriesAreWrittenToClients(t *testing.T) {
+func TestManager_WriteAndReadEntriesFromWAL(t *testing.T) {
 	walDir := t.TempDir()
 	walConfig := wal.Config{
 		Dir:           walDir,
 		Enabled:       true,
 		MaxSegmentAge: time.Second * 10,
 	}
-	logger := log.NewLogfmtLogger(os.Stdout)
-	writer, err := wal.NewWriter(walConfig, logger, nil)
-	require.NoError(t, err)
+	// start all necessary resources
 	reg := prometheus.NewRegistry()
-	testClientConfig, rwReceivedReqs, closeServer := newServerAncClientConfig(t)
+	logger := log.NewLogfmtLogger(os.Stdout)
+	testClientConfig, rwReceivedReqs, closeServer := newServerAndClientConfig(t)
 	clientMetrics := NewMetrics(reg)
+
+	// start writer and manager
+	writer, err := wal.NewWriter(walConfig, logger, reg)
+	require.NoError(t, err)
 	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, writer, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
