@@ -1018,6 +1018,14 @@ func Test_unpackParser_Parse(t *testing.T) {
 			noParserHints,
 		},
 		{
+			"empty line",
+			[]byte(``),
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			[]byte(``),
+			noParserHints,
+		},
+		{
 			"wrong json with hints",
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
 			labels.Labels{},
