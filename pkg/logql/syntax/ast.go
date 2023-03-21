@@ -82,7 +82,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
 		}
-		if p == log.NoopStage || p == log.NoopLabelFilter {
+		if p == log.NoopStage {
 			continue
 		}
 		c = append(c, p)
