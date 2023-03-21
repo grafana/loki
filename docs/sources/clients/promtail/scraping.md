@@ -367,7 +367,7 @@ Targets can be configured using the `azureeventhub` stanza:
       target_label: category
 ```
 
-Only the `fully_qualified_namespace`, `event_hubs` and `connection_string` are required.
+Only the `fully_qualified_namespace`, `connection_string` and `event_hubs` are required.
 Read the [configuration]({{< relref "configuration/#azure-event-hub" >}}) section for more information.
 
 ## Kafka
