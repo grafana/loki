@@ -34,3 +34,13 @@ func TestEvaluationWithJitter(t *testing.T) {
 
 	require.GreaterOrEqual(t, since.Nanoseconds(), fixedRandNum)
 }
+
+func TestEvaluationWithNoJitter(t *testing.T) {
+	const jitter = 0
+
+	inner := mockEval{}
+	eval := NewEvaluatorWithJitter(inner, jitter, fakeSource{})
+
+	// return the inner evaluator if jitter is disabled
+	require.Exactly(t, inner, eval)
+}

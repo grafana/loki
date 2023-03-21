@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -17,7 +16,12 @@ type EvaluatorWithJitter struct {
 	rng       *rand.Rand
 }
 
-func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, rngSource rand.Source) *EvaluatorWithJitter {
+func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, rngSource rand.Source) Evaluator {
+	if maxJitter <= 0 {
+		// jitter is disabled or invalid
+		return inner
+	}
+
 	return &EvaluatorWithJitter{
 		inner:     inner,
 		maxJitter: maxJitter,
@@ -26,14 +30,8 @@ func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, rngSource 
 }
 
 func (e *EvaluatorWithJitter) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
-	if e.inner == nil {
-		return nil, fmt.Errorf("no inner evaluator defined")
-	}
-
-	if e.maxJitter > 0 {
-		jitter := time.Duration(e.rng.Int63n(e.maxJitter.Nanoseconds()))
-		time.Sleep(jitter)
-	}
+	jitter := time.Duration(e.rng.Int63n(e.maxJitter.Nanoseconds()))
+	time.Sleep(jitter)
 
 	return e.inner.Eval(ctx, qs, now)
 }
