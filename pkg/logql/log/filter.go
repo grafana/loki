@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"github.com/grafana/loki/pkg/util"
 	"unicode"
 	"unicode/utf8"
 
@@ -442,7 +443,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 	// attempt to improve regex with tricks
 	f, ok := simplify(reg, isLabel)
 	if !ok {
-		allNonGreedy(reg)
+		util.AllNonGreedy(reg)
 		regex := reg.String()
 		if isLabel {
 			// label regexes are anchored to
@@ -457,25 +458,6 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 	return newNotFilter(f), nil
 }
 
-// allNonGreedy turns greedy quantifiers such as `.*` and `.+` into non-greedy ones. This is the same effect as writing
-// `.*?` and `.+?`. This is only safe because we use `Match`. If we were to find the exact position and length of the match
-// we would not be allowed to make this optimization. `Match` can return quicker because it is not looking for the longest match.
-// Prepending the expression with `(?U)` or passing `NonGreedy` to the expression compiler is not enough since it will
-// just negate `.*` and `.*?`.
-func allNonGreedy(regs ...*syntax.Regexp) {
-	clearCapture(regs...)
-	for _, re := range regs {
-		switch re.Op {
-		case syntax.OpCapture, syntax.OpConcat, syntax.OpAlternate:
-			allNonGreedy(re.Sub...)
-		case syntax.OpStar, syntax.OpPlus:
-			re.Flags = re.Flags | syntax.NonGreedy
-		default:
-			continue
-		}
-	}
-}
-
 // simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
 // For example `(foo|bar)` will be replaced by  `containsFilter(foo) or containsFilter(bar)`
 func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
@@ -485,13 +467,13 @@ func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 	case syntax.OpConcat:
 		return simplifyConcat(reg, nil)
 	case syntax.OpCapture:
-		clearCapture(reg)
+		util.ClearCapture(reg)
 		return simplify(reg, isLabel)
 	case syntax.OpLiteral:
 		if isLabel {
-			return newEqualFilter([]byte(string(reg.Rune)), isCaseInsensitive(reg)), true
+			return newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
 		}
-		return newContainsFilter([]byte(string(reg.Rune)), isCaseInsensitive(reg)), true
+		return newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
@@ -506,23 +488,10 @@ func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 	return nil, false
 }
 
-func isCaseInsensitive(reg *syntax.Regexp) bool {
-	return (reg.Flags & syntax.FoldCase) != 0
-}
-
-// clearCapture removes capture operation as they are not used for filtering.
-func clearCapture(regs ...*syntax.Regexp) {
-	for _, r := range regs {
-		if r.Op == syntax.OpCapture {
-			*r = *r.Sub[0]
-		}
-	}
-}
-
 // simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
 // (foo|bar) or (foo|(bar|buzz)).
 func simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
-	clearCapture(reg.Sub...)
+	util.ClearCapture(reg.Sub...)
 	// attempt to simplify the first leg
 	f, ok := simplify(reg.Sub[0], isLabel)
 	if !ok {
@@ -545,7 +514,7 @@ func simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
 func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
-	clearCapture(reg.Sub...)
+	util.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
 	for _, r := range reg.Sub {
@@ -574,7 +543,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 			}
 			literals++
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
-			baseLiteralIsCaseInsensitive = isCaseInsensitive(sub)
+			baseLiteralIsCaseInsensitive = util.IsCaseInsensitive(sub)
 			continue
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
@@ -613,7 +582,7 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, 
 		// and alternate expression is marked as case insensitive. For example, for the original expression
 		// f|f(?i)oo the extracted expression would be "f (?:)|(?i:OO)" i.e. f with empty match
 		// and fOO. For fOO, we can't initialize containsFilter with caseInsensitve variable as either true or false
-		isAltCaseInsensitive := isCaseInsensitive(alt)
+		isAltCaseInsensitive := util.IsCaseInsensitive(alt)
 		if !baseLiteralIsCaseInsensitive && isAltCaseInsensitive {
 			return nil, false
 		}

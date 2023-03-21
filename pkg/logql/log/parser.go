@@ -493,7 +493,7 @@ func pathsToString(paths []interface{}) []string {
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.ParserLabelHints().NoLabels() {
+	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
@@ -579,7 +579,7 @@ func NewUnpackParser() *UnpackParser {
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
 
 func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.ParserLabelHints().NoLabels() {
+	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 

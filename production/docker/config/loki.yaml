@@ -53,14 +53,10 @@ ruler:
   enable_api: true
   wal:
     dir: /tmp/ruler-wal
-  evaluation:
-    mode: remote
-    query_frontend:
-      address: dns:///loki-read:9095
   storage:
     type: local
     local:
-      directory: /etc/loki/rules
+      directory: /loki/rules
   rule_path: /tmp/prom-rules
   remote_write:
     enabled: true

@@ -522,6 +522,11 @@ The `query_scheduler` block configures the Loki query scheduler. When configured
 # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
 
+# Maximum number of levels of nesting of hierarchical queues. 0 means that
+# hierarchical queues are disabled.
+# CLI flag: -query-scheduler.max-queue-hierarchy-levels
+[max_queue_hierarchy_levels: <int> | default = 3]
+
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-scheduler will keep the querier in the tenant's shard until the
 # forget delay has passed. This feature is useful to reduce the blast radius
@@ -811,6 +816,11 @@ storage:
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
+
+# Upper bound of random duration to wait before rule evaluation to avoid
+# contention during concurrent execution of rules. Set 0 to disable (default).
+# CLI flag: -ruler.evaluation-jitter
+[evaluation_jitter: <duration> | default = 0s]
 
 # Comma-separated list of Alertmanager URLs to send notifications to. Each
 # Alertmanager URL is treated as a separate group in the configuration. Multiple
