@@ -278,10 +278,15 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 
 	switch e := expr.(type) {
 	case syntax.SampleExpr:
+		// TODO: validateMatchers
 		value, err := q.evalSample(ctx, e)
 		return value, err
 
 	case syntax.LogSelectorExpr:
+		if err := q.validateMatchers(ctx, tenants, e.Matchers()); err != nil {
+			return nil, err
+		}
+
 		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
@@ -306,6 +311,28 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	}
 
 	return false
+}
+
+func (q *query) validateMatchers(ctx context.Context, tenants []string, matchers []*labels.Matcher) error {
+	actual := make(map[string]struct{}, len(matchers))
+	for _, m := range matchers {
+		actual[m.Name] = struct{}{}
+	}
+
+	for _, tenant := range tenants {
+		required := q.limits.RequiredLabelMatchers(ctx, tenant)
+		var missing []string
+		for _, label := range required {
+			if _, found := actual[label]; !found {
+				missing = append(missing, label)		
+			}
+		}
+
+		if len(missing) > 0 {
+			return fmt.Errorf(logqlmodel.ErrRequiredMatchersMissing, strings.Join(missing, ", "))
+		}
+	}
+	return nil
 }
 
 // evalSample evaluate a sampleExpr

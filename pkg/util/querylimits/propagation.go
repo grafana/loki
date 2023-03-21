@@ -24,6 +24,7 @@ type QueryLimits struct {
 	MaxQueryLookback        model.Duration `json:"maxQueryLookback,omitempty"`
 	MaxEntriesLimitPerQuery int            `json:"maxEntriesLimitPerQuery,omitempty"`
 	QueryTimeout            model.Duration `json:"queryTimeout,omitempty"`
+	RequiredLabelMatchers   []string       `json:"requiredLabelMatcher,omitempty"`
 }
 
 func UnmarshalQueryLimits(data []byte) (*QueryLimits, error) {

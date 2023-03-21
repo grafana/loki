@@ -17,6 +17,7 @@ type Limits interface {
 	MaxQuerySeries(context.Context, string) int
 	QueryTimeout(context.Context, string) time.Duration
 	BlockedQueries(context.Context, string) []*validation.BlockedQuery
+	RequiredLabelMatchers(context.Context, string) []string
 }
 
 type fakeLimits struct {

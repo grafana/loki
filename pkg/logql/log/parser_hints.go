@@ -1,8 +1,9 @@
 package log
 
 import (
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"strings"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 var noParserHints = &parserHint{}

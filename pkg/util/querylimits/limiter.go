@@ -67,3 +67,23 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 	}
 	return time.Duration(requestLimits.QueryTimeout)
 }
+
+func (l *Limiter) RequiredLabelMetchers(ctx context.Context, userID string) []string {
+	original := l.CombinedLimits.RequiredLabelMatchers(ctx, userID)
+	requestLimits := ExtractQueryLimitsContext(ctx)
+
+	// The most restricting is a union of both slices
+	unionMap := make(map[string]struct{})
+	for _, label := range original {
+		unionMap[label] = struct{}{}
+	}
+	for _, label := range requestLimits.RequiredLabelMatchers {
+		unionMap[label] = struct{}{}
+	}
+
+	union := make([]string, 0, len(unionMap))
+	for _, label := range union {
+		union = append(union, label)
+	}
+	return union
+}

@@ -159,7 +159,8 @@ type Limits struct {
 
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 
-	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+	BlockedQueries        []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+	RequiredLabelMatchers []string                   `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty"`
 }
 
 type StreamRetention struct {
@@ -648,6 +649,10 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 
 func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
+}
+
+func (o *Overrides) RequiredLabelMatchers(ctx context.Context, userID string) []string {
+	return o.getOverridesForUser(userID).RequiredLabelMatchers
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
