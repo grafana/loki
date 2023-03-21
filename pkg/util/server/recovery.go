@@ -42,5 +42,6 @@ func onPanic(p interface{}) error {
 	// keep a multiline stack
 	fmt.Fprintf(os.Stderr, "panic: %v\n%s", p, stack)
 	panicTotal.Inc()
-	return httpgrpc.Errorf(http.StatusInternalServerError, "error while processing request: %v", p)
+	errorStack := string(stack)
+	return httpgrpc.Errorf(http.StatusInternalServerError, "error while processing request: %v, errorStack: %v", p, errorStack)
 }
