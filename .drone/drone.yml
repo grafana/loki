@@ -1379,7 +1379,7 @@ platform:
 steps:
 - commands:
   - git fetch origin --tags
-  image: grafana/loki-build-image:0.28.1
+  image: golang:1.19-windowsservercore-1809
   name: fetch-tags
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
@@ -1807,6 +1807,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: a68e8d3983e37d2683f4c1752125fb7d451a8e10c18a7a6405b792e4aac54990
+hmac: 75fb0ea84d50db96cf2a3c99e19f25a27eb1e7ce190d25b8191759430cdb3451
 
 ...

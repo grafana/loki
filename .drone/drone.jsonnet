@@ -154,7 +154,13 @@ local promtail_win() = pipeline('promtail-windows') {
     version: '1809',
   },
   steps: [
-    fetch_tags,
+    {
+      name: 'fetch-tags',
+      image: 'golang:1.19-windowsservercore-1809',
+      commands: [
+        'git fetch origin --tags',
+      ],
+    },
     {
       name: 'identify-runner',
       image: 'golang:1.19-windowsservercore-1809',
