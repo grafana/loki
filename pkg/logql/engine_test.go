@@ -2445,7 +2445,7 @@ func TestEngine_MaxSeries(t *testing.T) {
 }
 
 func TestEngine_RequiredLabelMatchers(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1, requiredLabels: []string{"app"}}, log.NewNopLogger())
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(10), &fakeLimits{maxSeries: 10000, requiredLabels: []string{"app"}}, log.NewNopLogger())
 	const noErr = ""
 
 	for _, test := range []struct {
@@ -2453,6 +2453,8 @@ func TestEngine_RequiredLabelMatchers(t *testing.T) {
 		expectedError string
 	}{
 		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, noErr},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({app="bar"}[1m] offset 1m)`, noErr},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({pod="bar"}[1m] offset 1m)`, "stream selector is missing required matchers: app"},
 		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers: app"},
 		{`{app="foo", pod="bar"}`, noErr},
 		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers: app"},
@@ -2471,7 +2473,7 @@ func TestEngine_RequiredLabelMatchers(t *testing.T) {
 				require.NotNil(t, err)
 				require.Equal(t, test.expectedError, err.Error())
 			} else {
-				require.Nil(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
