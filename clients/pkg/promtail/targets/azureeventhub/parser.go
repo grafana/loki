@@ -34,7 +34,7 @@ func (l azureMonitorResourceLogs) validate() error {
 type azureMonitorResourceLog struct {
 	Time          string `json:"time"`
 	Category      string `json:"category"`
-	ResourceId    string `json:"resourceId"`
+	ResourceID    string `json:"resourceId"`
 	OperationName string `json:"operationName"`
 }
 
@@ -42,7 +42,7 @@ type azureMonitorResourceLog struct {
 func (l azureMonitorResourceLog) validate() error {
 	valid := len(l.Time) != 0 &&
 		len(l.Category) != 0 &&
-		len(l.ResourceId) != 0 &&
+		len(l.ResourceID) != 0 &&
 		len(l.OperationName) != 0
 
 	if !valid {
