@@ -45,6 +45,7 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
+	RequiredLabelMatchers(context.Context, string) []string
 }
 
 type limits struct {
