@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -1012,6 +1013,10 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
+	}
+
+	if t.Cfg.Ruler.EvaluationJitter > 0 {
+		evaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.EvaluationJitter, rand.NewSource(time.Now().UnixNano()))
 	}
 
 	t.ruleEvaluator = evaluator
