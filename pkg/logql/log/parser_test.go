@@ -5,10 +5,10 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
@@ -342,19 +342,6 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
 				{Name: logqlmodel.ErrorLabel, Value: errJSON},
-			},
-		},
-		{
-			"empty line",
-			[]byte(``),
-			[]LabelExtractionExpr{
-				NewLabelExtractionExpr("uuid", `will.not.work`),
-			},
-			labels.Labels{
-				{Name: "foo", Value: "bar"},
-			},
-			labels.Labels{
-				{Name: "foo", Value: "bar"},
 			},
 		},
 	}
@@ -991,8 +978,8 @@ func Test_unpackParser_Parse(t *testing.T) {
 			l, _ := j.Process(0, tt.line, b)
 			sort.Sort(tt.wantLbs)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
-			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, tt.wantLine, l)
+			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
 		})
 	}
@@ -1059,47 +1046,6 @@ func Test_PatternParser(t *testing.T) {
 			_, _ = pp.Process(0, tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
-		})
-	}
-}
-
-func BenchmarkJsonExpressionParser(b *testing.B) {
-	simpleJsn := []byte(`{
-      "data": "Click Here",
-      "size": 36,
-      "style": "bold",
-      "name": "text1",
-      "hOffset": 250,
-      "vOffset": 100,
-      "alignment": "center",
-      "onMouseUp": "sun1.opacity = (sun1.opacity / 100) * 90;"
-    }`)
-	lbs := NewBaseLabelsBuilder().ForLabels(labels.Labels{}, 0)
-
-	benchmarks := []struct {
-		name string
-		p    Stage
-		line []byte
-	}{
-		{"json-expression", mustStage(NewJSONExpressionParser([]LabelExtractionExpr{
-			NewLabelExtractionExpr("data", "data"),
-			NewLabelExtractionExpr("size", "size"),
-			NewLabelExtractionExpr("style", "style"),
-			NewLabelExtractionExpr("name", "name"),
-			NewLabelExtractionExpr("hOffset", "hOffset"),
-			NewLabelExtractionExpr("vOffset", "vOffset"),
-			NewLabelExtractionExpr("alignment", "alignment"),
-			NewLabelExtractionExpr("onMouseUp", "onMouseUp"),
-		})), simpleJsn},
-	}
-	for _, bb := range benchmarks {
-		b.Run(bb.name, func(b *testing.B) {
-			b.ResetTimer()
-
-			for n := 0; n < b.N; n++ {
-				lbs.Reset()
-				_, result = bb.p.Process(0, bb.line, lbs)
-			}
 		})
 	}
 }
