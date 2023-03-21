@@ -2444,6 +2444,39 @@ func TestEngine_MaxSeries(t *testing.T) {
 	}
 }
 
+func TestEngine_RequiredLabelMatchers(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1, requiredLabels: []string{"app"}}, log.NewNopLogger())
+	const noErr = ""
+
+	for _, test := range []struct {
+		qs            string
+		expectedError string
+	}{
+		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, noErr},
+		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers: app"},
+		{`{app="foo", pod="bar"}`, noErr},
+		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers: app"},
+	} {
+		t.Run(test.qs, func(t *testing.T) {
+			q := eng.Query(LiteralParams{
+				qs:        test.qs,
+				start:     time.Unix(0, 0),
+				end:       time.Unix(100000, 0),
+				step:      60 * time.Second,
+				direction: logproto.FORWARD,
+				limit:     1000,
+			})
+			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			if test.expectedError != "" {
+				require.NotNil(t, err)
+				require.Equal(t, test.expectedError, err.Error())
+			} else {
+				require.Nil(t, err)
+			}
+		})
+	}
+}
+
 // go test -mod=vendor ./pkg/logql/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 func BenchmarkRangeQuery100000(b *testing.B) {
 	benchmarkRangeQuery(int64(100000), b)

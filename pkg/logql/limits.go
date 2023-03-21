@@ -24,6 +24,7 @@ type fakeLimits struct {
 	maxSeries      int
 	timeout        time.Duration
 	blockedQueries []*validation.BlockedQuery
+	requiredLabels []string
 }
 
 func (f fakeLimits) MaxQuerySeries(ctx context.Context, userID string) int {
@@ -39,5 +40,5 @@ func (f fakeLimits) BlockedQueries(ctx context.Context, userID string) []*valida
 }
 
 func (f fakeLimits) RequiredLabelMatchers(ctx context.Context, userID string) []string {
-	return nil
+	return f.requiredLabels
 }
