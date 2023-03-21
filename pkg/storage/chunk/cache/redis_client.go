@@ -46,7 +46,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"redis.tls-insecure-skip-verify", false, description+"Skip validating server certificate.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
-	f.BoolVar(&cfg.RouteRandomly, prefix+"redis.route-randomly", false, description+"Enable routing read-only commands to random master or slave nodes.")
+	f.BoolVar(&cfg.RouteRandomly, prefix+"redis.route-randomly", false, description+"By default, the Redis client only reads from master node. Enabling this option can lower the master node's pressure by randomly routing read-only commands to master or slave nodes available.")
 }
 
 type RedisClient struct {
