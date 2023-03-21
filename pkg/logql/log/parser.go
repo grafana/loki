@@ -484,7 +484,7 @@ func pathsToString(paths []interface{}) []string {
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
+	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
