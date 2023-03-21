@@ -680,7 +680,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         settings: {
           config_template: { from_secret: updater_config_template.name },
         },
-        depends_on: ['clone'],
+        depends_on: ['fetch-tags'],
       },
       {
         name: 'trigger',
