@@ -58,7 +58,7 @@ func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing
 	}, 1)
 
 	for _, line := range lines {
-		writeTo.AppendEntries(wal.RefEntries{
+		_ = writeTo.AppendEntries(wal.RefEntries{
 			Ref: testAppLabelsRef,
 			Entries: []logproto.Entry{
 				{
@@ -114,7 +114,7 @@ func TestClientWriter_LogEntriesWithoutMatchingSeriesAreIgnored(t *testing.T) {
 	}, 1)
 
 	for _, line := range lines {
-		writeTo.AppendEntries(wal.RefEntries{
+		_ = writeTo.AppendEntries(wal.RefEntries{
 			Ref: chunks.HeadSeriesRef(61324),
 			Entries: []logproto.Entry{
 				{
@@ -196,12 +196,11 @@ func bench(numWriters, totalLines int, b *testing.B) {
 	writersWG.Wait()
 
 	b.Log("waiting for reader to finish")
-	wait := waitNTimes(func() bool {
+	require.Eventually(b, func() bool {
 		var read = totalReceived.Load()
 		b.Logf("checking, value read: %d", read)
 		return read == int64(totalLines)
-	}, time.Second, 10)
-	<-wait
+	}, time.Second*10, time.Second)
 	close(ch)
 	readerWG.Wait()
 	require.Equal(b, int64(totalLines), totalReceived.Load(), "some lines where not read")
@@ -227,7 +226,7 @@ func startWriter(segmentNum, seriesToReset int, target *clientWriteTo, lines int
 
 	// write lines with that series
 	for i := 0; i < lines; i++ {
-		target.AppendEntries(wal.RefEntries{
+		_ = target.AppendEntries(wal.RefEntries{
 			Ref: series.Ref,
 			Entries: []logproto.Entry{
 				{
@@ -242,28 +241,4 @@ func startWriter(segmentNum, seriesToReset int, target *clientWriteTo, lines int
 
 	// reset segment
 	target.SeriesReset(seriesToReset)
-}
-
-// waitNTimes will perform repeat the provided check every waitTime, until the check is valid or times repetitions are
-// exceeded.
-func waitNTimes(check func() bool, waitTime time.Duration, times int) <-chan struct{} {
-	ch := make(chan struct{})
-	go func() {
-		timer := time.NewTicker(waitTime)
-		defer func() {
-			close(ch)
-			timer.Stop()
-		}()
-		count := 0
-		for {
-			select {
-			case <-timer.C:
-				if check() || count >= times {
-					return
-				}
-				count++
-			}
-		}
-	}()
-	return ch
 }

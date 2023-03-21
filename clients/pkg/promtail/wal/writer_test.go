@@ -64,8 +64,8 @@ func TestWriter_EntriesAreWrittenToWAL(t *testing.T) {
 
 type notifySegmentsCleanedFunc func(num int)
 
-func (n notifySegmentsCleanedFunc) NotifySegmentsCleaned(num int) {
-	n(num)
+func (n notifySegmentsCleanedFunc) SeriesReset(segmentNum int) {
+	n(segmentNum)
 }
 
 func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {

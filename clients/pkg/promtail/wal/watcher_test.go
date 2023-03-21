@@ -294,7 +294,7 @@ func TestWatcher(t *testing.T) {
 					},
 					writeTo: writeTo,
 					notifySegmentReclaimed: func(segmentNum int) {
-						watcher.NotifySegmentsCleaned(segmentNum)
+						writeTo.SeriesReset(segmentNum)
 					},
 				},
 			)

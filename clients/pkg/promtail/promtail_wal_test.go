@@ -76,7 +76,7 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	testServer := utils.NewRemoteWriteServer(receivedCh, http.StatusOK)
 	t.Logf("started test server at URL %s", testServer.URL)
 	testServerURL := flagext.URLValue{}
-	testServerURL.Set(testServer.URL)
+	_ = testServerURL.Set(testServer.URL)
 
 	cfg, err := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{stages.PipelineStage{
 		stages.StageTypeLabelDrop: []string{
@@ -176,7 +176,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 	testServer := utils.NewRemoteWriteServer(receivedCh, http.StatusOK)
 	t.Logf("started test server at URL %s", testServer.URL)
 	testServerURL := flagext.URLValue{}
-	testServerURL.Set(testServer.URL)
+	_ = testServerURL.Set(testServer.URL)
 
 	cfg, err := createPromtailConfig(dir, testServerURL, scrapedFileName, stages.PipelineStages{
 		// extract tenant ID from log line
@@ -270,9 +270,10 @@ func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFil
 	cfg := config.Config{}
 	// apply default values
 	flagext.DefaultValues(&cfg)
-	cfg.ServerConfig.HTTPListenAddress = "localhost"
-	cfg.ServerConfig.ExternalURL = "localhost"
-	cfg.ServerConfig.GRPCListenAddress = "localhost"
+	const localhost = "localhost"
+	cfg.ServerConfig.HTTPListenAddress = localhost
+	cfg.ServerConfig.ExternalURL = localhost
+	cfg.ServerConfig.GRPCListenAddress = localhost
 	cfg.ServerConfig.HTTPListenPort = 0
 	cfg.ServerConfig.GRPCListenPort = 0
 
@@ -303,7 +304,7 @@ func createPromtailConfig(dir string, testServerURL flagext.URLValue, scrapedFil
 			StaticConfigs: discovery.StaticConfig{
 				&targetgroup.Group{
 					Targets: []model.LabelSet{{
-						"localhost": "",
+						localhost: "",
 					}},
 					Labels: model.LabelSet{
 						"job":      "testlogs",
