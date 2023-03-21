@@ -3,9 +3,11 @@ package scheduler
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,6 +121,7 @@ type connectedFrontend struct {
 
 type Config struct {
 	MaxOutstandingPerTenant int               `yaml:"max_outstanding_requests_per_tenant"`
+	MaxQueueHierarchyLevels int               `yaml:"max_queue_hierarchy_levels"`
 	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
@@ -128,6 +131,7 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	f.IntVar(&cfg.MaxQueueHierarchyLevels, "query-scheduler.max-queue-hierarchy-levels", 3, "Maximum number of levels of nesting of hierarchical queues. 0 means that hierarchical queues are disabled.")
 	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query schedulers create and place themselves in a ring. If no frontend_address or scheduler_address are present anywhere else in the configuration, Loki will toggle this value to true.")
@@ -155,11 +159,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Help: "Total number of query requests discarded.",
 	}, []string{"user"})
 
-	metrics := &queue.Metrics{
-		QueueLength:       s.queueLength,
-		DiscardedRequests: s.discardedRequests,
-	}
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, metrics)
+	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",
@@ -250,7 +250,7 @@ type Limits interface {
 
 type schedulerRequest struct {
 	frontendAddress string
-	userID          string
+	tenantID        string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
@@ -390,11 +390,9 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		return err
 	}
 
-	userID := msg.GetUserID()
-
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
-		userID:          msg.UserID,
+		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
@@ -408,14 +406,31 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	tenantIDs, err := tenant.TenantIDsFromOrgID(req.tenantID)
 	if err != nil {
 		return err
 	}
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
-	s.activeUsers.UpdateUserTimestamp(userID, now)
-	return s.requestQueue.Enqueue(userID, req, maxQueriers, func() {
+	var queuePath []string
+	if s.cfg.MaxQueueHierarchyLevels > 0 {
+		queuePath = msg.QueuePath
+		if len(queuePath) > s.cfg.MaxQueueHierarchyLevels {
+			msg := fmt.Sprintf(
+				"The header %s with value '%s' would result in a sub-queue which is "+
+					"nested %d levels deep, however only %d levels are allowed based on the "+
+					"configuration setting -query-scheduler.max-queue-hierarchy-levels",
+				lokihttpreq.LokiActorPathHeader,
+				strings.Join(queuePath, lokihttpreq.LokiActorPathDelimiter),
+				len(queuePath),
+				s.cfg.MaxQueueHierarchyLevels,
+			)
+			return fmt.Errorf("desired queue level exceeds maxium depth of queue hierarchy: %s", msg)
+		}
+	}
+
+	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
+	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()
@@ -460,6 +475,10 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		}
 		lastIndex = idx
 
+		// This really should not happen, but log additional information before the scheduler panics.
+		if req == nil {
+			level.Error(s.log).Log("msg", "dequeue() call resulted in nil response", "querier", querierID)
+		}
 		r := req.(*schedulerRequest)
 
 		reqQueueTime := time.Since(r.queueTime)
@@ -516,7 +535,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	errCh := make(chan error, 1)
 	go func() {
 		err := querier.Send(&schedulerpb.SchedulerToQuerier{
-			UserID:          req.userID,
+			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
@@ -572,7 +591,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 
 	client := frontendv2pb.NewFrontendForQuerierClient(conn)
 
-	userCtx := user.InjectOrgID(ctx, req.userID)
+	userCtx := user.InjectOrgID(ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
 		HttpResponse: &httpgrpc.HTTPResponse{

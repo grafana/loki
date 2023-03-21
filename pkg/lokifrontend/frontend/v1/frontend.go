@@ -99,12 +99,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	metrics := &queue.Metrics{
-		QueueLength:       f.queueLength,
-		DiscardedRequests: f.discardedRequests,
-	}
-
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, metrics)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, f.queueLength, f.discardedRequests)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	var err error
@@ -327,7 +322,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)
 
-	err = f.requestQueue.Enqueue(joinedTenantID, req, maxQueriers, nil)
+	err = f.requestQueue.Enqueue(joinedTenantID, nil, req, maxQueriers, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}

@@ -61,24 +61,31 @@ func TestQueueMapping(t *testing.T) {
 	})
 
 	t.Run("get next item based on index must not skip when items are removed", func(t *testing.T) {
-		item := m.GetNext(StartIndex)
+		item, err := m.GetNext(-1)
+		require.Nil(t, err)
 		require.Equal(t, "queue-3", item.Name())
-		item = m.GetNext(item.Pos())
+		item, err = m.GetNext(item.Pos())
+		require.Nil(t, err)
 		require.Equal(t, "queue-2", item.Name())
 		m.Remove(item.Name())
-		item = m.GetNext(item.Pos())
+		item, err = m.GetNext(item.Pos())
+		require.Nil(t, err)
 		require.Equal(t, "queue-4", item.Name())
 	})
 
-	t.Run("get next item out of range returns first item", func(t *testing.T) {
-		item := m.GetNext(100)
-		require.Equal(t, "queue-3", item.Name())
+	t.Run("get next item out of range returns ErrOutOfBounds", func(t *testing.T) {
+		item, err := m.GetNext(100)
+		require.Nil(t, item)
+		require.ErrorIs(t, err, ErrOutOfBounds)
+
 	})
 
 	t.Run("get next item skips empty slots", func(t *testing.T) {
-		item := m.GetNext(100)
+		item, err := m.GetNext(-1)
+		require.Nil(t, err)
 		require.Equal(t, "queue-3", item.Name())
-		item = m.GetNext(item.Pos())
+		item, err = m.GetNext(item.Pos())
+		require.Nil(t, err)
 		require.Equal(t, "queue-4", item.Name())
 	})
 

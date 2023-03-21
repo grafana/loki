@@ -768,17 +768,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le) (job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le) (job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.9, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le) (job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/distributor\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".5",
                   "refId": "C"
                }

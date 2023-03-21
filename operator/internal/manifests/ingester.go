@@ -43,6 +43,10 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -83,6 +87,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=ingester",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -147,8 +152,8 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Ingester.Replicas),
+			RevisionHistoryLimit: pointer.Int32(10),
+			Replicas:             pointer.Int32(opts.Stack.Template.Ingester.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -176,7 +181,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.Ingester.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -195,7 +200,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},

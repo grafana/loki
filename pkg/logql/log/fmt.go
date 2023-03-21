@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -58,12 +59,20 @@ var (
 			matches := r.FindAllStringIndex(s, -1)
 			return len(matches), nil
 		},
-		"urldecode": url.QueryUnescape,
-		"urlencode": url.QueryEscape,
+		"urldecode":        url.QueryUnescape,
+		"urlencode":        url.QueryEscape,
+		"bytes":            convertBytes,
+		"duration":         convertDuration,
+		"duration_seconds": convertDuration,
+		"unixEpochMillis":  unixEpochMillis,
+		"unixEpochNanos":   unixEpochNanos,
+		"toDateInZone":     toDateInZone,
 	}
 
 	// sprig template functions
 	templateFunctions = []string{
+		"b64enc",
+		"b64dec",
 		"lower",
 		"upper",
 		"title",
@@ -119,6 +128,23 @@ func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() i
 		return time.Unix(0, currTimestamp())
 	}
 	return functions
+}
+
+func unixEpochMillis(date time.Time) string {
+	return strconv.FormatInt(date.UnixMilli(), 10)
+}
+
+func unixEpochNanos(date time.Time) string {
+	return strconv.FormatInt(date.UnixNano(), 10)
+}
+
+func toDateInZone(fmt, zone, str string) time.Time {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		loc, _ = time.LoadLocation("UTC")
+	}
+	t, _ := time.ParseInLocation(fmt, str, loc)
+	return t
 }
 
 func init() {

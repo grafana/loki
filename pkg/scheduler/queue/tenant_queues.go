@@ -51,10 +51,7 @@ type Queue interface {
 }
 
 type tenantQueue struct {
-	ch RequestChannel
-
-	// name of the queue (aka tenant)
-	name string
+	*LeafQueue
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
@@ -64,39 +61,6 @@ type tenantQueue struct {
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
 	seed int64
-
-	// Points back to 'users' field in queues. Enables quick cleanup.
-	index QueueIndex
-}
-
-// Chan implements Queue
-func (q *tenantQueue) Chan() RequestChannel {
-	return q.ch
-}
-
-// Dequeue implements Queue
-func (q *tenantQueue) Dequeue() Request {
-	return <-q.ch
-}
-
-// Name implements Queue
-func (q *tenantQueue) Name() string {
-	return q.name
-}
-
-// Len implements Queue
-func (q *tenantQueue) Len() int {
-	return len(q.ch)
-}
-
-// Len implements Mapable
-func (q *tenantQueue) Pos() QueueIndex {
-	return q.index
-}
-
-// Len implements Mapable
-func (q *tenantQueue) SetPos(index QueueIndex) {
-	q.index = index
 }
 
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
@@ -111,8 +75,8 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 	}
 }
 
-func (q *tenantQueues) len() int {
-	return q.mapping.Len()
+func (q *tenantQueues) hasTenantQueues() bool {
+	return q.mapping.Len() == 0
 }
 
 func (q *tenantQueues) deleteQueue(tenant string) {
@@ -123,7 +87,7 @@ func (q *tenantQueues) deleteQueue(tenant string) {
 // MaxQueriers is used to compute which queriers should handle requests for this tenant.
 // If maxQueriers is <= 0, all queriers can handle this tenant's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) Queue {
+func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers int) Queue {
 	// Empty tenant is not allowed, as that would break our tenants list ("" is used for free spot).
 	if tenant == "" {
 		return nil
@@ -136,10 +100,9 @@ func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) Queue {
 	uq := q.mapping.GetByKey(tenant)
 	if uq == nil {
 		uq = &tenantQueue{
-			ch:   make(RequestChannel, q.maxUserQueueSize),
 			seed: util.ShuffleShardSeed(tenant, ""),
-			name: tenant,
 		}
+		uq.LeafQueue = newLeafQueue(q.maxUserQueueSize, tenant)
 		q.mapping.Put(tenant, uq)
 	}
 
@@ -148,7 +111,10 @@ func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) Queue {
 		uq.queriers = shuffleQueriersForTenants(uq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
-	return uq
+	if len(path) == 0 {
+		return uq
+	}
+	return uq.add(path)
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
@@ -157,18 +123,28 @@ func (q *tenantQueues) getOrAddQueue(tenant string, maxQueriers int) Queue {
 func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierID string) (Queue, string, QueueIndex) {
 	uid := lastUserIndex
 
+	// at the RequestQueue level we don't have local queues, so start index is -1
+	if uid == StartIndexWithLocalQueue {
+		uid = StartIndex
+	}
+
 	// Ensure the querier is not shutting down. If the querier is shutting down, we shouldn't forward
 	// any more queries to it.
 	if info := q.queriers[querierID]; info == nil || info.shuttingDown {
 		return nil, "", uid
 	}
 
-	for iters := 0; iters < q.mapping.Len(); iters++ {
-		tq := q.mapping.GetNext(uid)
+	maxIters := len(q.mapping.keys) + 1
+	for iters := 0; iters < maxIters; iters++ {
+		tq, err := q.mapping.GetNext(uid)
+		if err == ErrOutOfBounds {
+			uid = StartIndex
+			continue
+		}
 		if tq == nil {
 			break
 		}
-		uid = tq.index
+		uid = tq.pos
 
 		if tq.queriers != nil {
 			if _, ok := tq.queriers[querierID]; !ok {

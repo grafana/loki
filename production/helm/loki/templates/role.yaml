@@ -15,7 +15,7 @@ rules:
     verbs:
       - use
     resourceNames:
-      - {{ include "loki.fullname" . }}
+      - {{ include "loki.name" . }}
 {{- end }}
 {{- if .Values.rbac.sccEnabled }}
 rules:
@@ -26,6 +26,6 @@ rules:
     verbs:
       - use
     resourceNames:
-      - {{ include "loki.fullname" . }}
+      - {{ include "loki.name" . }}
 {{- end }}
 {{- end }}

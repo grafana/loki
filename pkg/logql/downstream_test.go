@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -95,6 +96,68 @@ func TestMappingEquivalence(t *testing.T) {
 				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
 			} else {
 				require.Equal(t, res.Data, shardedRes.Data)
+			}
+		})
+	}
+}
+
+func TestShardCounter(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 60
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		start    = time.Unix(0, 0)
+		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
+		step     = time.Second
+		interval = time.Duration(0)
+		limit    = 100
+	)
+
+	for _, tc := range []struct {
+		query string
+	}{
+		// Test a few queries which will not shard and shard
+		// Avoid testing queries where the shard mapping produces a different query such as avg()
+		{`1`},
+		{`rate({a=~".+"}[1s])`},
+		{`sum by (a) (rate({a=~".+"}[1s]))`},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		t.Run(tc.query, func(t *testing.T) {
+			params := NewLiteralParams(
+				tc.query,
+				start,
+				end,
+				step,
+				interval,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			noop, mapped, err := mapper.Parse(tc.query)
+			require.Nil(t, err)
+
+			shardedQry := sharded.Query(ctx, params, mapped)
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.Nil(t, err)
+
+			if noop {
+				assert.Equal(t, int64(0), shardedRes.Statistics.Summary.Shards)
+			} else {
+				assert.Equal(t, int64(shards), shardedRes.Statistics.Summary.Shards)
 			}
 		})
 	}

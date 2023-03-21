@@ -25,12 +25,15 @@ var (
 // of RequestQueue.GetNextRequestForQuerier method.
 type QueueIndex int // nolint:revive
 
-// StartIndex is the UserIndex that starts iteration over tenant queues from the very first tenant.
+// StartIndexWithLocalQueue is the index of the queue that starts iteration over local and sub queues.
+var StartIndexWithLocalQueue QueueIndex = -2
+
+// StartIndex is the index of the queue that starts iteration over sub queues.
 var StartIndex QueueIndex = -1
 
 // Modify index to start iteration on the same tenant, for which last queue was returned.
 func (ui QueueIndex) ReuseLastIndex() QueueIndex {
-	if ui < 0 {
+	if ui < StartIndex {
 		return ui
 	}
 	return ui - 1
@@ -54,19 +57,17 @@ type RequestQueue struct {
 	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
 	queues  *tenantQueues
 	stopped bool
-	metrics *Metrics
+
+	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
+	discardedRequests *prometheus.CounterVec // Per tenant.
 }
 
-type Metrics struct {
-	QueueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	DiscardedRequests *prometheus.CounterVec // Per tenant.
-}
-
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
-		metrics:                 metrics,
+		queueLength:             queueLength,
+		discardedRequests:       discardedRequests,
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -80,7 +81,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, met
 // between calls.
 //
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, successFn func()) error {
+func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQueriers int, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -88,7 +89,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(tenant, maxQueriers)
+	queue := q.queues.getOrAddQueue(tenant, path, maxQueriers)
 	if queue == nil {
 		// This can only happen if tenant is "".
 		return errors.New("no queue found")
@@ -96,7 +97,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 
 	select {
 	case queue.Chan() <- req:
-		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
+		q.queueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -104,7 +105,7 @@ func (q *RequestQueue) Enqueue(tenant string, req Request, maxQueriers int, succ
 		}
 		return nil
 	default:
-		q.metrics.DiscardedRequests.WithLabelValues(tenant).Inc()
+		q.discardedRequests.WithLabelValues(tenant).Inc()
 		return ErrTooManyRequests
 	}
 }
@@ -120,7 +121,7 @@ func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID s
 
 FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
-	for (q.queues.len() == 0 || querierWait) && ctx.Err() == nil && !q.stopped {
+	for (q.queues.hasTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
 		q.cond.Wait(ctx)
 	}
@@ -147,7 +148,7 @@ FindQueue:
 				q.queues.deleteQueue(tenant)
 			}
 
-			q.metrics.QueueLength.WithLabelValues(tenant).Dec()
+			q.queueLength.WithLabelValues(tenant).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
@@ -179,7 +180,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	for q.queues.len() > 0 && q.connectedQuerierWorkers.Load() > 0 {
+	for !q.queues.hasTenantQueues() && q.connectedQuerierWorkers.Load() > 0 {
 		q.cond.Wait(context.Background())
 	}
 

@@ -54,6 +54,7 @@ type Config struct {
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	QueryTimeout                  time.Duration    `yaml:"query_timeout" doc:"hidden"`
+	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
 }
 
 // RegisterFlags register flags.
@@ -66,6 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
+	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 }
 
 // Validate validates the config.
@@ -668,8 +670,8 @@ type timeRangeLimits interface {
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
-	var maxQueryLookback time.Duration
-	if maxQueryLookback = limits.MaxQueryLookback(ctx, userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)
+	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
@@ -679,7 +681,8 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 			"updated", from)
 
 	}
-	if maxQueryLength := limits.MaxQueryLength(ctx, userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
+	maxQueryLength := limits.MaxQueryLength(ctx, userID)
+	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
 	}
 	if through.Before(from) {

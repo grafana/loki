@@ -46,6 +46,17 @@ common:
       container_name: {{ .Container }}
     {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
+  {{- with .GossipRing }}
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    {{- with .InstanceAddr }}
+    instance_addr: {{ . }}
+    {{- end }}
+    instance_port: {{ .InstancePort }}
+  {{- end }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
@@ -92,12 +103,10 @@ ingester:
   max_chunk_age: 2h
   lifecycler:
     final_sleep: 0s
-    heartbeat_period: 5s
     join_after: 30s
     num_tokens: 512
     ring:
       replication_factor: {{ .Stack.ReplicationFactor }}
-      heartbeat_timeout: 1m
   max_transfer_retries: 0
   wal:
     enabled: true
@@ -164,14 +173,16 @@ limits_config:
   per_stream_rate_limit: 3MB
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
+{{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
-  bind_port: {{ .GossipRing.Port }}
+  bind_port: {{ .BindPort }}
   join_members:
-    - {{ .GossipRing.FQDN }}:{{ .GossipRing.Port }}
+    - {{ .MembersDiscoveryAddr }}:{{ .BindPort }}
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+{{- end }}
 querier:
   engine:
     max_look_back_period: 30s
