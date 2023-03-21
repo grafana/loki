@@ -1040,7 +1040,7 @@ Apache Kafka endpoint is not available within the `Basic` pricing plan. More inf
 # Event Hub ConnectionString for authentication on Azure Cloud (Required).
 [connection_string: <string> | default = "range"]
 
-# If Promtail should pass on the timestamp from the incoming log or not.
+# If Promtail should pass on the timestamp from the incoming message or not.
 # When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 
