@@ -1,7 +1,7 @@
 ## In order to create the application rules, there must be a namespace
 ## named "test-ns" that has the label openshift.io/cluster-monitoring=true
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: AlertingRule
 metadata:
   name: alerting-rule-4
@@ -81,9 +81,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -152,9 +153,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -223,9 +225,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -294,9 +297,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -365,9 +369,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -436,9 +441,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -507,9 +513,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -578,9 +585,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -649,9 +657,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -720,9 +729,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -791,9 +801,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -862,9 +873,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -933,9 +945,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1004,9 +1017,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1075,9 +1089,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1146,9 +1161,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1217,9 +1233,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1288,9 +1305,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1359,9 +1377,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1430,9 +1449,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1501,9 +1521,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1572,9 +1593,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1643,9 +1665,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1714,9 +1737,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1785,9 +1809,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1856,9 +1881,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1927,9 +1953,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -1998,9 +2025,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2069,9 +2097,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2140,9 +2169,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2211,9 +2241,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2282,9 +2313,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2353,9 +2385,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2424,9 +2457,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2495,9 +2529,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2566,9 +2601,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2637,9 +2673,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2708,9 +2745,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2779,9 +2817,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2850,9 +2889,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2921,9 +2961,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -2992,9 +3033,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3063,9 +3105,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3134,9 +3177,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3205,9 +3249,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3276,9 +3321,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3347,9 +3393,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3418,11 +3465,12 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: AlertingRule
 metadata:
   name: alerting-rule-7
@@ -3502,9 +3550,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3573,9 +3622,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3644,9 +3694,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3715,9 +3766,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3786,9 +3838,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3857,9 +3910,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3928,9 +3982,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -3999,9 +4054,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4070,9 +4126,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4141,9 +4198,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4212,9 +4270,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4283,9 +4342,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4354,9 +4414,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4425,9 +4486,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4496,9 +4558,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4567,9 +4630,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4638,9 +4702,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4709,9 +4774,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4780,9 +4846,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4851,9 +4918,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4922,9 +4990,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -4993,9 +5062,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5064,9 +5134,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5135,9 +5206,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5206,9 +5278,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5277,9 +5350,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5348,9 +5422,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5419,9 +5494,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5490,9 +5566,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5561,9 +5638,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5632,9 +5710,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5703,9 +5782,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5774,9 +5854,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5845,9 +5926,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5916,9 +5998,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -5987,9 +6070,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6058,9 +6142,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6129,9 +6214,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6200,9 +6286,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6271,9 +6358,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6342,9 +6430,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6413,9 +6502,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6484,9 +6574,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6555,9 +6646,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6626,9 +6718,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6697,9 +6790,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6768,9 +6862,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6839,11 +6934,12 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
 ---
-apiVersion: loki.grafana.com/v1beta1
+apiVersion: loki.grafana.com/v1
 kind: AlertingRule
 metadata:
   name: alerting-rule-5
@@ -6923,9 +7019,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -6994,9 +7091,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7065,9 +7163,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7136,9 +7235,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7207,9 +7307,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7278,9 +7379,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7349,9 +7451,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7420,9 +7523,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7491,9 +7595,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7562,9 +7667,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7633,9 +7739,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7704,9 +7811,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7775,9 +7883,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7846,9 +7955,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7917,9 +8027,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -7988,9 +8099,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8059,9 +8171,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8130,9 +8243,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8201,9 +8315,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8272,9 +8387,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8343,9 +8459,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8414,9 +8531,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8485,9 +8603,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8556,9 +8675,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8627,9 +8747,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8698,9 +8819,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8769,9 +8891,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8840,9 +8963,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8911,9 +9035,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -8982,9 +9107,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9053,9 +9179,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9124,9 +9251,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9195,9 +9323,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9266,9 +9395,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9337,9 +9467,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9408,9 +9539,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9479,9 +9611,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9550,9 +9683,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9621,9 +9755,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9692,9 +9827,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9763,9 +9899,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9834,9 +9971,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9905,9 +10043,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -9976,9 +10115,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -10047,9 +10187,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -10118,9 +10259,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -10189,9 +10331,10 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
         - alert: HighPercentageError
           expr: |
             sum(rate({kubernetes_namespace_name="test-ns", kubernetes_pod_name=~"loki-operator-controller-manager.*"} |= "error" [1m])) by (job)
@@ -10260,6 +10403,7 @@ spec:
               > 0.01
           for: 10s
           labels:
-            severity: page
+            severity: info
           annotations:
             summary: High Loki Operator Reconciliation Errors
+            description:  High Loki Operator Reconciliation Errors
