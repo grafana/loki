@@ -1411,6 +1411,11 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
     NFPM_SIGNING_KEY:
@@ -1727,6 +1732,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: ae19447e0f2e91746c5b4e6a3dc469a08a63c44045f4b995a6980d0e401e071f
+hmac: b5d3d292a9e1f7edc909dd0aa28664f1aa5794f4abe639dc1df8d9bbea5b5c13
 
 ...
