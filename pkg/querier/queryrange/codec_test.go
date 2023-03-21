@@ -365,7 +365,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_DecodeRequest(t *testing.T) {
 	ctx := context.Background()
-	u, err := url.Parse(`/loki/api/v1/labels/__name__/values?query={foo="bar"}`)
+	u, err := url.Parse(`/loki/api/v1/labels/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
 	require.NoError(t, err)
 
 	r := &http.Request{URL: u}
@@ -380,8 +380,8 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
-	// require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
-	// require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 }
 
