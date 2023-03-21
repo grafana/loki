@@ -122,8 +122,8 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 		},
 		Tenants: manifests.Tenants{
 			Configs: map[string]manifests.TenantConfig{
-				"tenant-a": {RuleFiles: []string{"rule-a-alerts.yaml", "rule-b-recs.yaml"}},
-				"tenant-b": {RuleFiles: []string{"rule-a-alerts.yaml", "rule-b-recs.yaml"}},
+				"tenant-a": {RuleFiles: []string{"test-rules-0___tenant-a___rule-a-alerts.yaml", "test-rules-0___tenant-a___rule-b-recs.yaml"}},
+				"tenant-b": {RuleFiles: []string{"test-rules-0___tenant-b___rule-a-alerts.yaml", "test-rules-0___tenant-b___rule-b-recs.yaml"}},
 			},
 		},
 		RulesConfigMapNames: []string{"config"},
@@ -147,9 +147,7 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rulesCMShards)
 	require.Len(t, rulesCMShards, 2)
-	for _, name := range opts.RulesConfigMapNames {
-		println(name)
-	}
+
 	for _, shard := range rulesCMShards {
 		opts.RulesConfigMapNames = append(opts.RulesConfigMapNames, shard.Name)
 	}
