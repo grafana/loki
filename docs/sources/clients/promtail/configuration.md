@@ -1026,8 +1026,8 @@ The `azure_event_hub` block configures how Promtail receives Azure Event Hubs me
 Apache Kafka endpoint is not available within the "Basic" pricing plan. More information about Event Hubs pricing [here](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
 
 ```yaml
-# The list of Event Hub namespaces host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
-[fully_qualified_namespaces: <strings> | default = [""]]
+# Event Hub namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+[fully_qualified_namespace: <string> | default = ""]
 
 # Event Hubs to consume (Required).
 [event_hubs: <strings> | default = [""]]

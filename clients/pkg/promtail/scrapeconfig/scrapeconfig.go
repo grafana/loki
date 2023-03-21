@@ -261,8 +261,8 @@ type AzureEventHubTargetConfig struct {
 	// Event Hub ConnectionString for authentication on Azure Cloud (Required).
 	ConnectionString string `yaml:"connection_string"`
 
-	// The list of Event Hub namespaces host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
-	FullyQualifiedNamespaces []string `yaml:"fully_qualified_namespaces"`
+	// Event Hub namespace host name (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+	FullyQualifiedNamespace string `yaml:"fully_qualified_namespace"`
 
 	// The consumer group id.
 	GroupID string `yaml:"group_id"`

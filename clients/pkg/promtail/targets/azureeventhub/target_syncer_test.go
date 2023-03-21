@@ -20,26 +20,26 @@ func Test_validateConfig(t *testing.T) {
 		{
 			name: "default groupID",
 			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
-				EventHubs:                []string{"some event hub"},
+				FullyQualifiedNamespace: "some host name",
+				EventHubs:               []string{"some event hub"},
 			}},
 			expectedCfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
-				EventHubs:                []string{"some event hub"},
-				GroupID:                  "promtail",
+				FullyQualifiedNamespace: "some host name",
+				EventHubs:               []string{"some event hub"},
+				GroupID:                 "promtail",
 			}},
 		},
 		{
 			name: "success",
 			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
-				EventHubs:                []string{"some event hub"},
-				GroupID:                  "my groupID",
+				FullyQualifiedNamespace: "some host name",
+				EventHubs:               []string{"some event hub"},
+				GroupID:                 "my groupID",
 			}},
 			expectedCfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
-				EventHubs:                []string{"some event hub"},
-				GroupID:                  "my groupID",
+				FullyQualifiedNamespace: "some host name",
+				EventHubs:               []string{"some event hub"},
+				GroupID:                 "my groupID",
 			}},
 		},
 	}
@@ -72,7 +72,7 @@ func Test_validateConfig_error(t *testing.T) {
 		{
 			name: "no topics",
 			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
+				FullyQualifiedNamespace: "some host name",
 			}},
 			err: errors.New("no topics given to be consumed"),
 		},
@@ -111,19 +111,19 @@ func TestNewSyncer_errors(t *testing.T) {
 		{
 			name: "error creating kafka client, missing password",
 			cfg: scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
-				EventHubs:                []string{"some event hub"},
-				GroupID:                  "my groupID",
+				FullyQualifiedNamespace: "some host name",
+				EventHubs:               []string{"some event hub"},
+				GroupID:                 "my groupID",
 			}},
 			err: errors.New("error creating kafka client: kafka: invalid configuration (Net.SASL.Password must not be empty when SASL is enabled)"),
 		},
 		{
 			name: "error creating kafka client, missing port in address",
 			cfg: scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
-				FullyQualifiedNamespaces: []string{"some host name"},
-				EventHubs:                []string{"some event hub"},
-				GroupID:                  "my groupID",
-				ConnectionString:         "some connection string",
+				FullyQualifiedNamespace: "some host name",
+				EventHubs:               []string{"some event hub"},
+				GroupID:                 "my groupID",
+				ConnectionString:        "some connection string",
 			}},
 			err: errors.New("error creating kafka client: kafka: client has run out of available brokers to talk to: dial tcp: address some host name: missing port in address"),
 		},

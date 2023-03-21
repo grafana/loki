@@ -27,11 +27,11 @@ func NewSyncer(
 	}
 	config := getConfig(cfg.AzureEventHubConfig.ConnectionString)
 
-	client, err := sarama.NewClient(cfg.AzureEventHubConfig.FullyQualifiedNamespaces, config)
+	client, err := sarama.NewClient([]string{cfg.AzureEventHubConfig.FullyQualifiedNamespace}, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating kafka client: %w", err)
 	}
-	group, err := sarama.NewConsumerGroup(cfg.AzureEventHubConfig.FullyQualifiedNamespaces, cfg.AzureEventHubConfig.GroupID, config)
+	group, err := sarama.NewConsumerGroup([]string{cfg.AzureEventHubConfig.FullyQualifiedNamespace}, cfg.AzureEventHubConfig.GroupID, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating consumer group client: %w", err)
 	}
@@ -62,7 +62,7 @@ func validateConfig(cfg *scrapeconfig.Config) error {
 		return errors.New("azureeventhub configuration is empty")
 	}
 
-	if len(cfg.AzureEventHubConfig.FullyQualifiedNamespaces) == 0 {
+	if len(cfg.AzureEventHubConfig.FullyQualifiedNamespace) == 0 {
 		return errors.New("no event hubs brokers defined")
 	}
 
