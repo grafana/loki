@@ -2467,6 +2467,8 @@ shard_streams:
   [desired_rate: <int>]
 
 [blocked_queries: <blocked_query...>]
+
+[required_label_matchers: <list of strings>]
 ```
 
 ### frontend_worker
