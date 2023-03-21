@@ -159,8 +159,9 @@ type Limits struct {
 
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 
-	BlockedQueries        []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
-	RequiredLabelMatchers []string                   `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty"`
+	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+
+	RequiredLabelMatchers []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
 }
 
 type StreamRetention struct {
