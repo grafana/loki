@@ -1023,6 +1023,8 @@ When Promtail receives GCP logs, various internal labels are made available for 
 
 The `azure_event_hub` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. More information can be found [here](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
 
+[Here](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub) is a tutorial on streaming Azure logs to an Azure event hub.
+
 Apache Kafka endpoint is not available within the "Basic" pricing plan. More information about Event Hubs pricing [here](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
 
 ```yaml
@@ -1053,11 +1055,11 @@ labels:
 
 ### Available Labels
 
-When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
+When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
 
 **Available Labels:**
 
-- `__azure_event_hub_category`: The log category of the event.
+- `__azure_event_hub_category`: The log category of the message when a message is an application log.
 
 The list of labels below are discovered because of consuming Kafka interface of Event Hubs:
 
