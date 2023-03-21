@@ -27,7 +27,7 @@ The configuration specifies running Loki as a single binary.
       apt-get install loki promtail
       ```
 
-## Install packages manaullypackages manaully
+## Install manually
 1. Navigate to the [release page](https://github.com/grafana/loki/releases/).
 2. Scroll down to the Assets section under the version that you want to install.
 3. Download the Loki and Promtail .zip files that correspond to your system.
