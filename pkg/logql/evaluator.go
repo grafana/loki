@@ -671,9 +671,6 @@ func binOpStepEvaluator(
 		return true, ts, results
 	}, func() (lastError error) {
 		for _, ev := range []StepEvaluator{lse, rse} {
-			if ev == nil {
-				continue
-			}
 			if err := ev.Close(); err != nil {
 				lastError = err
 			}
