@@ -29,7 +29,7 @@ func TestEvaluationWithJitter(t *testing.T) {
 	eval := NewEvaluatorWithJitter(mockEval{}, jitter, fakeSource{})
 
 	then := time.Now()
-	eval.Eval(context.Background(), "some logql query...", time.Now())
+	_, _ = eval.Eval(context.Background(), "some logql query...", time.Now())
 	since := time.Since(then)
 
 	require.GreaterOrEqual(t, since.Nanoseconds(), fixedRandNum)
