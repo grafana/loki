@@ -283,6 +283,11 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
+	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+	if actor != "" {
+		header.Set(httpreq.LokiActorPathHeader, actor)
+	}
+
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
