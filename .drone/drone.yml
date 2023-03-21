@@ -1301,7 +1301,7 @@ steps:
   environment:
     MAJOR_MINOR_VERSION_REGEXP: ([0-9]+\.[0-9]+)
     RELEASE_TAG_REGEXP: ^([0-9]+\.[0-9]+\.[0-9]+)$
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: prepare-updater-config
   settings:
     config_template:
@@ -1342,7 +1342,7 @@ steps:
   - if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG
     is not the latest version of Loki. The latest version is $latest_version" && exit
     78; fi
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: check-version-is-latest
   when:
     event:
@@ -1353,7 +1353,7 @@ steps:
   - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
   depends_on:
   - check-version-is-latest
-  image: alpine
+  image: grafana/loki-build-image:0.28.1
   name: prepare-helm-chart-update-config
   settings:
     config_template:
@@ -1807,6 +1807,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 9f80fe0c29f373948797930a3f5a258086481181b9f8b76a66962960dfd4a98e
+hmac: c7de512a00ab0b3450fb14929b80be9b4a3b381279de57fe19ad1bc27228542f
 
 ...

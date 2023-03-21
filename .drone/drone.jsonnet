@@ -661,7 +661,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       fetch_tags,
       {
         name: 'prepare-updater-config',
-        image: 'alpine',
+        image: build_image_name,
         environment: {
           MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)',
           RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$',
@@ -705,7 +705,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       fetch_tags,
       {
         name: 'check-version-is-latest',
-        image: 'alpine',
+        image: build_image_name,
         when: onTag,
         commands: [
           "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
@@ -715,7 +715,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       {
         name: 'prepare-helm-chart-update-config',
-        image: 'alpine',
+        image: build_image_name,
         depends_on: ['check-version-is-latest'],
         commands: [
           'RELEASE_TAG=$(./tools/image-tag)',
