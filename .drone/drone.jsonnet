@@ -73,7 +73,6 @@ local fetch_tags = {
   name: 'fetch-tags',
   image: build_image_name,
   commands: [
-    'apk add --no-cache bash git',
     'git fetch origin --tags',
   ],
 };

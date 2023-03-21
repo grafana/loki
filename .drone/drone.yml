@@ -289,7 +289,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -408,7 +407,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -527,7 +525,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -646,7 +643,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -703,7 +699,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -760,7 +755,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -817,7 +811,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -876,7 +869,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -935,7 +927,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -994,7 +985,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1052,7 +1042,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1110,7 +1099,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1168,7 +1156,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1296,7 +1283,6 @@ kind: pipeline
 name: deploy
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1346,7 +1332,6 @@ kind: pipeline
 name: update-loki-helm-chart-on-loki-release
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1393,7 +1378,6 @@ platform:
   version: "1809"
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1421,7 +1405,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1490,7 +1473,6 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1562,7 +1544,6 @@ kind: pipeline
 name: docker-driver
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1604,7 +1585,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1667,7 +1647,6 @@ platform:
   os: linux
 steps:
 - commands:
-  - apk add --no-cache bash git
   - git fetch origin --tags
   image: grafana/loki-build-image:0.28.1
   name: fetch-tags
@@ -1828,6 +1807,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 8563c849a51da1f128fac1a956dd0da2c4143c46107be8af11723c6e13de6d35
+hmac: 9f80fe0c29f373948797930a3f5a258086481181b9f8b76a66962960dfd4a98e
 
 ...
