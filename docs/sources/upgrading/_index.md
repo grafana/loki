@@ -38,7 +38,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 #### Change in LogQL behavior
 
 When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
-was kept
+was kept.
 
 #### Default retention_period has changed
 
