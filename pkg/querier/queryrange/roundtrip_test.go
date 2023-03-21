@@ -634,6 +634,10 @@ func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.Blocke
 	return []*validation.BlockedQuery{}
 }
 
+func (f fakeLimits) RequiredLabelMatchers(context.Context, string) []string {
+	return nil
+}
+
 func counter() (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex

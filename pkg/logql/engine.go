@@ -324,7 +324,7 @@ func (q *query) validateMatchers(ctx context.Context, tenants []string, matchers
 		var missing []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
-				missing = append(missing, label)		
+				missing = append(missing, label)
 			}
 		}
 

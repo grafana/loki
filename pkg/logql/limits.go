@@ -37,3 +37,7 @@ func (f fakeLimits) QueryTimeout(ctx context.Context, userID string) time.Durati
 func (f fakeLimits) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return f.blockedQueries
 }
+
+func (f fakeLimits) RequiredLabelMatchers(ctx context.Context, userID string) []string {
+	return nil
+}
