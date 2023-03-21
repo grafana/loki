@@ -1015,11 +1015,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
 	}
 
-	if t.Cfg.Ruler.EvaluationJitter > 0 {
-		evaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.EvaluationJitter, rand.NewSource(time.Now().UnixNano()))
-	}
-
-	t.ruleEvaluator = evaluator
+	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.EvaluationJitter, rand.NewSource(time.Now().UnixNano()))
 
 	return nil, nil
 }
