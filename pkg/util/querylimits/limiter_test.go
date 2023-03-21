@@ -155,6 +155,8 @@ func TestLimiter_MergeLimits(t *testing.T) {
 		RequiredLabelMatchers: []string{"one", "three"},
 	}
 
+	require.ElementsMatch(t, []string{"one", "two"}, l.RequiredLabelMatchers(context.Background(), "fake"))
+
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
 
 	require.ElementsMatch(t, []string{"one", "two", "three"}, l.RequiredLabelMatchers(ctx, "fake"))

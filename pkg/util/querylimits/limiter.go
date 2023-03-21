@@ -72,11 +72,16 @@ func (l *Limiter) RequiredLabelMatchers(ctx context.Context, userID string) []st
 	original := l.CombinedLimits.RequiredLabelMatchers(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
 
+	if requestLimits == nil {
+		return original
+	}
+
 	// The most restricting is a union of both slices
 	unionMap := make(map[string]struct{})
 	for _, label := range original {
 		unionMap[label] = struct{}{}
 	}
+
 	for _, label := range requestLimits.RequiredLabelMatchers {
 		unionMap[label] = struct{}{}
 	}
