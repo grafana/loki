@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"unicode/utf8"
 
 	"github.com/buger/jsonparser"
@@ -441,14 +442,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	ids   []string
-	paths [][]string
-	keys  internedStringSet
+	expressions map[string][]interface{}
+
+	keys internedStringSet
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
-	var ids []string
-	var paths [][]string
+	paths := make(map[string][]interface{})
+
 	for _, exp := range expressions {
 		path, err := jsonexpr.Parse(exp.Expression, false)
 		if err != nil {
@@ -459,51 +460,27 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 
-		ids = append(ids, exp.Identifier)
-		paths = append(paths, pathsToString(path))
+		paths[exp.Identifier] = path
 	}
 
 	return &JSONExpressionParser{
-		ids:   ids,
-		paths: paths,
-		keys:  internedStringSet{},
+		expressions: paths,
+		keys:        internedStringSet{},
 	}, nil
 }
 
-func pathsToString(paths []interface{}) []string {
-	stingPaths := make([]string, 0, len(paths))
-	for _, p := range paths {
-		switch v := p.(type) {
-		case int:
-			stingPaths = append(stingPaths, fmt.Sprintf("[%d]", v))
-		case string:
-			stingPaths = append(stingPaths, v)
-		}
-	}
-	return stingPaths
-}
-
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
+	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
-	// Check that the line starts correctly
-	// the parser will pass an error if other
-	// parts of the line are malformed
-	if !isValidJSONStart(line) {
+	if !jsoniter.ConfigFastest.Valid(line) {
 		lbs.SetErr(errJSON)
 		return line, true
 	}
 
-	var matches int
-	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
-		if err != nil {
-			lbs.SetErr(errJSON)
-			return
-		}
-
-		identifier := j.ids[idx]
+	for identifier, paths := range j.expressions {
+		result := jsoniter.ConfigFastest.Get(line, paths...).ToString()
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
 			if lbs.BaseHas(identifier) {
 				identifier = identifier + duplicateSuffix
@@ -511,35 +488,9 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return identifier, true
 		})
 
-		switch typ {
-		case jsonparser.Null:
-			lbs.Set(key, "")
-		default:
-			lbs.Set(key, unsafeGetString(data))
-		}
-
-		matches++
-	}, j.paths...)
-
-	// Ensure there's a label for every value
-	if matches < len(j.ids) {
-		for _, id := range j.ids {
-			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(id, "")
-			}
-		}
+		lbs.Set(key, result)
 	}
-
 	return line, true
-}
-
-func isValidJSONStart(data []byte) bool {
-	switch data[0] {
-	case '"', '{', '[':
-		return true
-	default:
-		return false
-	}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -567,9 +518,11 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-
 	u.lbsBuffer = u.lbsBuffer[:0]
-	entry, err := u.unpack(line, lbs)
+	it := jsoniter.ConfigFastest.BorrowIterator(line)
+	defer jsoniter.ConfigFastest.ReturnIterator(it)
+
+	entry, err := u.unpack(it, line, lbs)
 	if err != nil {
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
@@ -578,31 +531,25 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	return entry, true
 }
 
-func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) {
+func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBuilder) ([]byte, error) {
 	// we only care about object and values.
-	if entry[0] != '{' {
+	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
 		return nil, errUnexpectedJSONObject
 	}
-
 	var isPacked bool
-	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
-		switch typ {
-		case jsonparser.String:
-			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
-				// Inlined bytes escape to save allocs
-				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
-				bU, err := jsonparser.Unescape(value, stackbuf[:])
-				if err != nil {
-					return err
-				}
-
-				entry = bU
+	_ = it.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
+		switch iter.WhatIsNext() {
+		case jsoniter.StringValue:
+			// we only unpack map[string]string. Anything else is skipped.
+			if field == logqlmodel.PackedEntryKey {
+				// todo(ctovena): we should just reslice the original line since the property is contiguous
+				// but jsoniter doesn't allow us to do this right now.
+				// https://github.com/buger/jsonparser might do a better job at this.
+				entry = []byte(iter.ReadString())
 				isPacked = true
-				return nil
+				return true
 			}
-
-			key, ok := u.keys.Get(key, func() (string, bool) {
-				field := unsafeGetString(key)
+			key, ok := u.keys.Get(unsafeGetBytes(field), func() (string, bool) {
 				if !lbs.ParserLabelHints().ShouldExtract(field) {
 					return "", false
 				}
@@ -612,22 +559,20 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				return field, true
 			})
 			if !ok {
-				return nil
+				iter.Skip()
+				return true
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, key, unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, key, iter.ReadString())
 		default:
-			return nil
+			iter.Skip()
 		}
-
-		return nil
+		return true
 	})
-
-	if err != nil {
-		return nil, err
+	if it.Error != nil && it.Error != io.EOF {
+		return nil, it.Error
 	}
-
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {

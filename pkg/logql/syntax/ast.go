@@ -410,8 +410,6 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
 		return ip, ip.PatternError()
-	case *log.NoopLabelFilter:
-		return log.NoopStage, nil
 	}
 	return e.LabelFilterer, nil
 }
