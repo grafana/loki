@@ -3532,8 +3532,8 @@ redis:
   # CLI flag: -<prefix>.redis.max-connection-age
   [max_connection_age: <duration> | default = 0s]
 
-  # Cache config for index entry writing.Enable routing read-only commands
-  # to random master or slave nodes.
+  # Cache config for index entry writing.Enable routing read-only commands to
+  # random master or slave nodes.
   # CLI flag: -<prefix>.redis.route-randomly
   [route_randomly: <boolean> | default = false]
 
