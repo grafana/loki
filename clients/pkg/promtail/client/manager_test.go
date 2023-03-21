@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -46,11 +47,11 @@ func (c closerFunc) Close() {
 	c()
 }
 
-func newServerAndClientConfig(t *testing.T) (Config, chan receivedReq, closer) {
-	receivedReqsChan := make(chan receivedReq, 10)
+func newServerAndClientConfig(t *testing.T) (Config, chan utils.RemoteWriteRequest, closer) {
+	receivedReqsChan := make(chan utils.RemoteWriteRequest, 10)
 
 	// Start a local HTTP server
-	server := newTestRemoteWriteServer(receivedReqsChan, http.StatusOK)
+	server := utils.NewRemoteWriteServer(receivedReqsChan, http.StatusOK)
 	require.NotNil(t, server)
 
 	testClientURL, _ := url.Parse(server.URL)
@@ -89,7 +90,7 @@ func TestManager_WriteAndReadEntriesFromWAL(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 
-	receivedRequests := []receivedReq{}
+	receivedRequests := []utils.RemoteWriteRequest{}
 	go func() {
 		for req := range rwReceivedReqs {
 			receivedRequests = append(receivedRequests, req)
@@ -123,10 +124,10 @@ func TestManager_WriteAndReadEntriesFromWAL(t *testing.T) {
 	var seenEntries = map[string]struct{}{}
 	// assert over rw client received entries
 	for _, req := range receivedRequests {
-		require.Len(t, req.pushReq.Streams, 1, "expected 1 stream requests to be received")
-		require.Len(t, req.pushReq.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
-		require.Equal(t, `{wal_enabled="true"}`, req.pushReq.Streams[0].Labels)
-		seenEntries[req.pushReq.Streams[0].Entries[0].Line] = struct{}{}
+		require.Len(t, req.Request.Streams, 1, "expected 1 stream requests to be received")
+		require.Len(t, req.Request.Streams[0].Entries, 1, "expected 1 entry in the only stream received per request")
+		require.Equal(t, `{wal_enabled="true"}`, req.Request.Streams[0].Labels)
+		seenEntries[req.Request.Streams[0].Entries[0].Line] = struct{}{}
 	}
 	require.Len(t, seenEntries, totalLines)
 }
