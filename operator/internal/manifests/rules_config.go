@@ -6,8 +6,13 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
+
+type RuleName struct {
+	cmName      string
+	tenantID    string
+	ns_name_uid string
+}
 
 // RulesConfigMap returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
@@ -25,8 +30,11 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := newRuleFileName(opts, r.Spec.TenantID, r.Namespace, r.Name, r.UID)
-		shardedCM.data[key] = c
+		key := RuleName{
+			tenantID:    r.Spec.TenantID,
+			ns_name_uid: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
+		}
+		shardedCM.data[key.toString()] = c
 	}
 
 	for _, r := range opts.RecordingRules {
@@ -34,8 +42,11 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := newRuleFileName(opts, r.Spec.TenantID, r.Namespace, r.Name, r.UID)
-		shardedCM.data[key] = c
+		key := RuleName{
+			tenantID:    r.Spec.TenantID,
+			ns_name_uid: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
+		}
+		shardedCM.data[key.toString()] = c
 	}
 
 	// If configmap size exceeds 1MB, split it into shards, identified by "prefix+index"
@@ -59,6 +70,6 @@ func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap 
 	}
 }
 
-func newRuleFileName(opts *Options, tenantID, namespace, ruleName string, uid types.UID) string {
-	return fmt.Sprintf("%s%s%s-%s-%s.yaml", tenantID, rulePartsSeparator, namespace, ruleName, uid)
+func (rn RuleName) toString() string {
+	return fmt.Sprintf("%s%s%s.yaml", rn.tenantID, rulePartsSeparator, rn.ns_name_uid)
 }

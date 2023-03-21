@@ -42,8 +42,20 @@ func shardConfigMapName(prefix string, index int) string {
 	return fmt.Sprintf("%s-%d", prefix, index)
 }
 
-func extractTenantID(ruleName string) string {
-	return strings.Split(ruleName, rulePartsSeparator)[0]
+func extractRuleNameComponents(rn string) RuleName {
+	ruleNameComponents := strings.Split(rn, rulePartsSeparator)
+	if len(ruleNameComponents) == 3 {
+		return RuleName{
+			cmName:      ruleNameComponents[0],
+			tenantID:    ruleNameComponents[1],
+			ns_name_uid: ruleNameComponents[2],
+		}
+	} else {
+		return RuleName{
+			tenantID:    ruleNameComponents[0],
+			ns_name_uid: ruleNameComponents[1],
+		}
+	}
 }
 
 func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
@@ -70,7 +82,7 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 		}
 		// extract tenantID from the key to later match it
 		// to the tenant when mounting to the pod
-		tenantID := extractTenantID(k)
+		tenantID := extractRuleNameComponents(k).tenantID
 
 		// add the current configMap name to the rule file name
 		// this is also to help mount rule files to the pod
@@ -84,7 +96,7 @@ func (cm *ShardedConfigMap) Shard(opts *Options) []*corev1.ConfigMap {
 		currentCMSize += dataSize
 
 		// remove the tenantID from the file name
-		k = strings.Split(k, rulePartsSeparator)[1]
+		k = extractRuleNameComponents(k).ns_name_uid
 		currentCM.Data[k] = v
 	}
 	cm.configMapShards = append(cm.configMapShards, currentCM)

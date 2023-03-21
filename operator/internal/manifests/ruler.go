@@ -3,7 +3,6 @@ package manifests
 import (
 	"fmt"
 	"path"
-	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -352,10 +351,9 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 
 	for tenantID, tenant := range tenants {
 		for _, rule := range tenant.RuleFiles {
-			ruleParts := strings.Split(rule, rulePartsSeparator)
-			shardName := ruleParts[0]
+			shardName := extractRuleNameComponents(rule).cmName
 			if shardName == configMapName {
-				filename := ruleParts[2]
+				filename := extractRuleNameComponents(rule).ns_name_uid
 				items = append(items, corev1.KeyToPath{
 					Key:  filename,
 					Path: fmt.Sprintf("%s/%s", tenantID, filename),
