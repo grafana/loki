@@ -61,7 +61,7 @@ local arch = std.extVar('arch');
 
 {
   name: name,
-  arch: arch,
+  arch: if arch == 'arm' then 'arm7' else arch,
   platform: 'linux',
   version: '${DRONE_TAG}',
   section: 'default',
