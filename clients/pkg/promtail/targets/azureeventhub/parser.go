@@ -108,7 +108,7 @@ func (e *eventHubMessageParser) entryWithCustomPayload(body []byte, labelSet mod
 	}
 }
 
-// handle the case when message is a valid json with a key `records`. It can be either a custom payload or a resource log.
+// processRecords handles the case when message is a valid json with a key `records`. It can be either a custom payload or a resource log.
 func (e *eventHubMessageParser) processRecords(labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool, records []json.RawMessage, messageTime time.Time) ([]api.Entry, error) {
 	result := make([]api.Entry, 0, len(records))
 	for _, m := range records {
