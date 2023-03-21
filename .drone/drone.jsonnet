@@ -67,6 +67,15 @@ local make(target, container=true, args=[]) = run(target, [
   ] + args),
 ]);
 
+local fetch_tags = {
+  name: 'fetch-tags',
+  image: 'alpine',
+  commands: [
+    'apk add --no-cache bash git',
+    'git fetch origin --tags',
+  ],
+};
+
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: if arch == 'arm' then 'plugins/docker:linux-arm' else 'plugins/docker',
@@ -124,15 +133,17 @@ local arch_image(arch, tags='') = {
     os: 'linux',
     arch: arch,
   },
-  steps: [{
-    name: 'image-tag',
-    image: 'alpine',
-    commands: [
-      'apk add --no-cache bash git',
-      'git fetch origin --tags',
-      'echo $(./tools/image-tag)-%s > .tags' % arch,
-    ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
-  }],
+  steps: [
+    fetch_tags,
+    {
+      name: 'image-tag',
+      depends_on: ['fetch-tags'],
+      image: 'alpine',
+      commands: [
+        'echo $(./tools/image-tag)-%s > .tags' % arch,
+      ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
+    },
+  ],
 };
 
 local promtail_win() = pipeline('promtail-windows') {
@@ -142,6 +153,7 @@ local promtail_win() = pipeline('promtail-windows') {
     version: '1809',
   },
   steps: [
+    fetch_tags,
     {
       name: 'identify-runner',
       image: 'golang:1.19-windowsservercore-1809',
@@ -645,6 +657,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
+      fetch_tags,
       {
         name: 'prepare-updater-config',
         image: 'alpine',
@@ -653,8 +666,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$',
         },
         commands: [
-          'apk add --no-cache bash git',
-          'git fetch origin --tags',
           'echo $(./tools/image-tag) > .tag',
           'export RELEASE_TAG=$(cat .tag)',
           // if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
@@ -690,13 +701,12 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       ref: ['refs/tags/v*'],
     },
     steps: [
+      fetch_tags,
       {
         name: 'check-version-is-latest',
         image: 'alpine',
         when: onTag,
         commands: [
-          'apk add --no-cache bash git',
-          'git fetch --tags',
           "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
           'RELEASE_TAG=$(./tools/image-tag)',
           'if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
@@ -707,8 +717,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         image: 'alpine',
         depends_on: ['check-version-is-latest'],
         commands: [
-          'apk add --no-cache bash git',
-          'git fetch origin --tags',
           'RELEASE_TAG=$(./tools/image-tag)',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE TAG
@@ -780,6 +788,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
     // Package and test the packages
     steps: [
+      fetch_tags,
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={
@@ -824,16 +833,20 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             GITHUB_TOKEN: { from_secret: github_secret.name },
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
-          }) { when: { event: ['tag'] } },
+          }) {
+        when: { event: ['tag'] },
+        depends_on: ['fetch-tags'],
+      },
     ],
   },
   pipeline('docker-driver') {
     trigger+: onTagOrMain,
     steps: [
+      fetch_tags,
       {
         name: 'build and push',
         image: 'grafana/loki-build-image:%s' % build_image_version,
-        depends_on: ['clone'],
+        depends_on: ['fetch-tags'],
         environment: {
           DOCKER_USERNAME: { from_secret: docker_username_secret.name },
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },

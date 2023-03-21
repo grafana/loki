@@ -291,7 +291,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -405,7 +410,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -519,7 +529,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -633,7 +648,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -685,7 +705,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -737,7 +762,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -789,7 +819,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -843,7 +878,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -897,7 +937,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -951,8 +996,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1004,8 +1054,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1057,8 +1112,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1110,8 +1170,13 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
   - echo ",main" >> .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1233,6 +1298,9 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag) > .tag
   - export RELEASE_TAG=$(cat .tag)
   - export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG
@@ -1279,7 +1347,10 @@ name: update-loki-helm-chart-on-loki-release
 steps:
 - commands:
   - apk add --no-cache bash git
-  - git fetch --tags
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
     's/v//g')
   - RELEASE_TAG=$(./tools/image-tag)
@@ -1292,8 +1363,6 @@ steps:
     event:
     - tag
 - commands:
-  - apk add --no-cache bash git
-  - git fetch origin --tags
   - RELEASE_TAG=$(./tools/image-tag)
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
@@ -1324,6 +1393,11 @@ platform:
   version: "1809"
 steps:
 - commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - Write-Output $env:DRONE_RUNNER_NAME
   image: golang:1.19-windowsservercore-1809
   name: identify-runner
@@ -1349,7 +1423,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1411,6 +1490,11 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
     NFPM_SIGNING_KEY:
@@ -1444,6 +1528,8 @@ steps:
     path: /var/run/docker.sock
 - commands:
   - make BUILD_IN_CONTAINER=false publish
+  depends_on:
+  - fetch-tags
   environment:
     GITHUB_TOKEN:
       from_secret: github_token
@@ -1476,9 +1562,14 @@ kind: pipeline
 name: docker-driver
 steps:
 - commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - make docker-driver-push
   depends_on:
-  - clone
+  - fetch-tags
   environment:
     DOCKER_PASSWORD:
       from_secret: docker_password
@@ -1515,7 +1606,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-amd64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1573,7 +1669,12 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - echo $(./tools/image-tag)-arm64 > .tags
+  depends_on:
+  - fetch-tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -1727,6 +1828,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: ae19447e0f2e91746c5b4e6a3dc469a08a63c44045f4b995a6980d0e401e071f
+hmac: 6fdf07fbcd5077ed7cd2bfc4cb4e9d06e7caa7ff4dd95a96b3958a2882e75ba4
 
 ...
