@@ -508,13 +508,14 @@ func TestTripperware_RequiredLabelMatchers(t *testing.T) {
 	for _, test := range []struct {
 		qs            string
 		expectedError string
+		response      parser.Value
 	}{
-		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, noErr},
-		{`count_over_time({app="foo"}[1m]) / count_over_time({app="bar"}[1m] offset 1m)`, noErr},
-		{`count_over_time({app="foo"}[1m]) / count_over_time({pod="bar"}[1m] offset 1m)`, "stream selector is missing required matchers: app"},
-		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers: app"},
-		{`{app="foo", pod="bar"}`, noErr},
-		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers: app"},
+		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, noErr, vector},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({app="bar"}[1m] offset 1m)`, noErr, vector},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({pod="bar"}[1m] offset 1m)`, "stream selector is missing required matchers: app", nil},
+		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers: app", nil},
+		{`{app="foo", pod="bar"}`, noErr, streams},
+		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers: app", nil},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}
@@ -526,6 +527,8 @@ func TestTripperware_RequiredLabelMatchers(t *testing.T) {
 			rt, err := newfakeRoundTripper()
 			require.NoError(t, err)
 			defer rt.Close()
+			_, h := promqlResult(test.response)
+			rt.setHandler(h)
 
 			lreq := &LokiRequest{
 				Query:     test.qs,

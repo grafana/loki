@@ -262,7 +262,7 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		fmt.Errorf("max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
+		return fmt.Errorf("max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
 	}
 	return nil
 }
@@ -288,7 +288,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 		}
 
 		if len(missing) > 0 {
-			fmt.Errorf("stream selector is missing required matchers: %s", strings.Join(missing, ", "))
+			return fmt.Errorf("stream selector is missing required matchers: %s", strings.Join(missing, ", "))
 
 		}
 	}
