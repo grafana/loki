@@ -1032,7 +1032,8 @@ Apache Kafka endpoint is not available within the `Basic` pricing plan. More inf
 [fully_qualified_namespace: <string> | default = ""]
 
 # Event Hubs to consume (Required).
-[event_hubs: <strings> | default = [""]]
+event_hubs:
+    [ - <string> ... ]
 
 # The consumer group id.
 [group_id: <string> | default = "promtail"]
