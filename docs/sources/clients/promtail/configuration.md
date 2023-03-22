@@ -1029,17 +1029,17 @@ Apache Kafka endpoint is not available within the `Basic` pricing plan. More inf
 
 ```yaml
 # Event Hub namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
-[fully_qualified_namespace: <string> | default = ""]
+fully_qualified_namespace: <string> | default = ""
 
 # Event Hubs to consume (Required).
 event_hubs:
     [ - <string> ... ]
 
+# Event Hub ConnectionString for authentication on Azure Cloud (Required).
+connection_string: <string> | default = "range"
+
 # The consumer group id.
 [group_id: <string> | default = "promtail"]
-
-# Event Hub ConnectionString for authentication on Azure Cloud (Required).
-[connection_string: <string> | default = "range"]
 
 # If Promtail should pass on the timestamp from the incoming message or not.
 # When false Promtail will assign the current timestamp to the log when it was processed
@@ -1050,7 +1050,7 @@ event_hubs:
 [disallow_custom_messages: <bool> | default = false]
 
 # Labels optionally hold labels to associate with each log line.
-labels:
+[labels]:
   [ <labelname>: <labelvalue> ... ]
 ```
 
