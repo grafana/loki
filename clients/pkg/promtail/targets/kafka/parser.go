@@ -9,10 +9,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-// noopMessageParser implements MessageParser. It doesn't modify the content of the original `message.Value`.
-type noopMessageParser struct{}
+// messageParser implements MessageParser. It doesn't modify the content of the original `message.Value`.
+type messageParser struct{}
 
-func (n noopMessageParser) Parse(message *sarama.ConsumerMessage, labels model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
+func (n messageParser) Parse(message *sarama.ConsumerMessage, labels model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
 	return []api.Entry{
 		{
 			Labels: labels,
