@@ -449,7 +449,7 @@ func TestDownstreamEvaluatorFailExecute(t *testing.T) {
 		query  string
 		errMsg error
 	}{
-		{logqlCase1, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %s ", reflect.TypeOf(&syntax.BinOpExpr{}))},
+		{logqlCase1, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %T ", &syntax.BinOpExpr{})},
 	} {
 		q := NewMockQuerier(
 			shards,
