@@ -13,7 +13,7 @@ The configuration specifies running Loki as a single binary.
 
 ## Install using APT or RPM package managers
 
-1. Add Granafa's [APT](https://apt.grafana.com/) or [RPM](https://rpm.grafana.com/)
+1. Add Granafa's Advanced Package Tool [APT](https://apt.grafana.com/) or RPM Package Manager [RPM](https://rpm.grafana.com/)
    package repository following the linked instructions.
 1. Install Loki and Promtail
    1. Using `dnf`
