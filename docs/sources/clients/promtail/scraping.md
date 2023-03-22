@@ -348,7 +348,7 @@ For sending messages via UDP:
 ## Azure Event Hub
 
 Promtail supports reading messages from Azure Event Hubs.
-Targets can be configured using the `azureeventhub` stanza:
+Targets can be configured using the `azure_event_hub` stanza:
 
 ```yaml
 - job_name: azure_event_hub
