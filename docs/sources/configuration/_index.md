@@ -2421,6 +2421,14 @@ ruler_remote_write_sigv4_config:
 # remote client id as key.
 [ruler_remote_write_config: <map of string to RemoteWriteConfig>]
 
+# Timeout for a remote rule evaluation. Defaults to the value of
+# 'querier.query-timeout'.
+[ruler_remote_evaluation_timeout: <duration>]
+
+# Maximum size (in bytes) of the allowable response size from a remote rule
+# evaluation. Set to 0 to allow any response size (default).
+[ruler_remote_evaluation_max_response_size: <int>]
+
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
 # 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if
 # retention_enabled is true, then the log entry deletion API endpoints are

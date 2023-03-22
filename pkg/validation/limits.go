@@ -145,6 +145,10 @@ type Limits struct {
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
+	// TODO(dannyk): possible enhancement is to align this with rule group interval
+	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
+	RulerRemoteEvaluationMaxResponseSize int64         `yaml:"ruler_remote_evaluation_max_response_size" json:"ruler_remote_evaluation_max_response_size" doc:"description=Maximum size (in bytes) of the allowable response size from a remote rule evaluation. Set to 0 to allow any response size (default)."`
+
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
@@ -624,6 +628,22 @@ func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.Rem
 	}
 
 	return nil
+}
+
+// RulerRemoteEvaluationTimeout returns the duration after which to timeout a remote rule evaluation request for a given user.
+func (o *Overrides) RulerRemoteEvaluationTimeout(userID string) time.Duration {
+	// if not defined, use the base query timeout
+	timeout := o.getOverridesForUser(userID).RulerRemoteEvaluationTimeout
+	if timeout <= 0 {
+		return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
+	}
+
+	return timeout
+}
+
+// RulerRemoteEvaluationMaxResponseSize returns the maximum allowable response size from a remote rule evaluation for a given user.
+func (o *Overrides) RulerRemoteEvaluationMaxResponseSize(userID string) int64 {
+	return o.getOverridesForUser(userID).RulerRemoteEvaluationMaxResponseSize
 }
 
 // RetentionPeriod returns the retention period for a given user.
