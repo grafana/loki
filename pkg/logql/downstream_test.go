@@ -2,7 +2,11 @@ package logql
 
 import (
 	"context"
+	"fmt"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/pkg/errors"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -95,6 +99,71 @@ func TestMappingEquivalence(t *testing.T) {
 			} else {
 				require.Equal(t, res.Data, shardedRes.Data)
 			}
+		})
+	}
+}
+
+func TestDownstreamEvaluatorFailExecute(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 60
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		start    = time.Unix(0, 0)
+		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
+		step     = time.Second
+		interval = time.Duration(0)
+		limit    = 100
+	)
+
+	logqlCase1 := "sum(\nsum_over_time({log_type=\"service_metrics\",operation=\"InvokeFunction\",module=\"api_server\",_file=\"/service_metrics.log\",severity_text=\"INFO\"}|=`status\":200`\n|regexp `\"meteringDuration\":(?P<meteringDuration>.*?)(,|\\{|\\[|\\})`\n|regexp `\"cpuCores\":(?P<cpuCores>.*?)(,|\\{|\\[|\\})`\n|label_format capacity=`{{ mulf (.cpuCores | float64) (.meteringDuration|float64)}}` | unwrap capacity | __error__=\"\" [10s])) \n/ \nsum(  sum_over_time({log_type=\"service_metrics\",operation=\"InvokeFunction\",_file=\"/service_metrics.log\",module=\"api_server\",severity_text=\"INFO\"}|=`status\":200`\n|regexp `\"cpuUsage\":(?P<cpuUsage>.*?)(,|\\{|\\[|\\})` | unwrap cpuUsage | __error__=\"\" [10s])\n)"
+	for _, tc := range []struct {
+		query  string
+		errMsg error
+	}{
+		{logqlCase1, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %s ,logql: %s , err: %s", reflect.TypeOf(&syntax.BinOpExpr{}), logqlCase1, errors.New("unimplemented"))},
+		// topk prefers already-seen values in tiebreakers. Since the test data generates
+		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
+		// sorted by labels, we don't expect this to pass.
+		// We could sort them as stated, but it doesn't seem worth the performance hit.
+		// {`topk(3, rate({a=~".+"}[1s]))`, false},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		t.Run(tc.query, func(t *testing.T) {
+			params := NewLiteralParams(
+				tc.query,
+				start,
+				end,
+				step,
+				interval,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			qry := regular.Query(params)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			_, mapped, err := mapper.Parse(tc.query)
+			require.Nil(t, err)
+
+			shardedQry := sharded.Query(ctx, params, mapped)
+
+			_, err = qry.Exec(ctx)
+			require.Nil(t, err)
+
+			_, err = shardedQry.Exec(ctx)
+
+			require.Equal(t, tc.errMsg.Error(), err.Error())
+
 		})
 	}
 }

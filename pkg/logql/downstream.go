@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
@@ -310,7 +311,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 	default:
 		stepEvaluator, err := ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
 		if err != nil {
-			return nil, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %s ,params: %s ,expr: %s ,err: %s", e, params, expr, err)
+			return nil, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %s ,logql: %s , err: %s", reflect.TypeOf(e), e.String(), err)
 		}
 		return stepEvaluator, nil
 	}
