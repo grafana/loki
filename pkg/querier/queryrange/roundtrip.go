@@ -134,6 +134,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 }
 
 func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	logger := logutil.WithContext(req.Context(), r.logger)
 	err := req.ParseForm()
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -151,12 +152,16 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		queryHash := logql.HashedQuery(rangeQuery.Query)
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
+		level.Info(logger).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
 			// The error will be handled later.
-			groups, _ := e.MatcherGroups()
+			groups, err := e.MatcherGroups()
+			if err != nil {
+				level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
+			}
+
 			for _, g := range groups {
 				if err := validateMatchers(req, r.limits, g.Matchers); err != nil {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -192,7 +197,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
+		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
 
 		return r.series.RoundTrip(req)
 	case LabelNamesOp:
@@ -201,7 +206,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start))
+		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start))
 
 		return r.labels.RoundTrip(req)
 	case InstantQueryOp:
@@ -215,7 +220,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		queryHash := logql.HashedQuery(instantQuery.Query)
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
+		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
 
 		switch expr.(type) {
 		case syntax.SampleExpr:
