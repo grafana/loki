@@ -30,16 +30,14 @@ Configure memory ballast using the ballast_bytes configuration option.
 
 ## Remote rule evaluation
 
-This feature was introduced as part of [`LID-0002`](https://github.com/grafana/loki/pull/8129).
-
-### Background & Identification of Problem
+_This feature was first proposed in [`LID-0002`](https://github.com/grafana/loki/pull/8129); it contains the design decisions
+which informed the implementation._
 
 By default, the `ruler` component embeds a query engine to evaluate rules. This generally works fine, except when rules
 are complex or have to process a large amount of data regularly. Poor performance of the `ruler` manifests as recording rules metrics
 with gaps or missed alerts. This situation can be detected by alerting on the `cortex_prometheus_rule_group_iterations_missed_total` metric
 when it has a non-zero value.
 
-### Recommended Solution
 A solution to this problem is to externalize rule evaluation from the `ruler` process. The `ruler` embedded query engine
 is single-threaded, meaning that rules are not split, sharded, or otherwise accelerated like regular Loki queries. The `query-frontend`
 component exists explicitly for this purpose and, when combined with a number of `querier` instances, can massively
@@ -49,8 +47,6 @@ It is generally recommended to create a separate `query-frontend` deployment and
 queries via Grafana, `logcli`, or the API. Rules should be given priority over adhoc queries because they are used to produce
 metrics or alerts which may be crucial to the reliable operation of your service; if you use the same `query-frontend` and `querier` pool
 for both, your rules will be executed with the same priority as adhoc queries which could lead to unpredictable performance.
-
-### Implementation
 
 To enable remote rule evaluation, set the following configuration options:
 
@@ -62,8 +58,11 @@ ruler:
       address: dns:///<query-frontend-service>:<grpc-port>
 ```
 
-The `ruler` component will become simply a gRPC client to the `query-frontend` service (side-note: this will result in much lower
-resource usage of your `ruler`s!). Rules' LogQL queries will be executed against the given `query-frontend` service.
+See [`here`](/configuration/#ruler) for further configuration options.
+
+When you enable remote rule evaluation, the `ruler` component becomes a gRPC client to the `query-frontend` service; 
+this will result in far lower `ruler` resource usage because the majority of the work has been externalized.
+The LogQL queries coming from the `ruler` will be executed against the given `query-frontend` service.
 Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
 
 > **Note:** Queries that fail to execute are _not_ retried.

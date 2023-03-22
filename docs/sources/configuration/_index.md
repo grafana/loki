@@ -2426,7 +2426,7 @@ ruler_remote_write_sigv4_config:
 [ruler_remote_evaluation_timeout: <duration>]
 
 # Maximum size (in bytes) of the allowable response size from a remote rule
-# evaluation. Set to 0 to disable.
+# evaluation. Set to 0 to allow any response size (default).
 [ruler_remote_evaluation_max_response_size: <int>]
 
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
