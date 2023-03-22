@@ -28,7 +28,7 @@ In compute-constrained environments, garbage collection can become a significant
 
 Configure memory ballast using the ballast_bytes configuration option.
 
-## Remote Rule Evaluation
+## Remote rule evaluation
 
 This feature was introduced as part of [`LID-0002`](https://github.com/grafana/loki/pull/8129).
 
@@ -66,7 +66,7 @@ The `ruler` component will become simply a gRPC client to the `query-frontend` s
 resource usage of your `ruler`s!). Rules' LogQL queries will be executed against the given `query-frontend` service.
 Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
 
-Queries that fail to execute are _not_ retried at this time.
+> **Note:** Queries that fail to execute are _not_ retried.
 
 ### Limits & Observability
 
