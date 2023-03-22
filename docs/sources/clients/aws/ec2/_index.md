@@ -156,7 +156,8 @@ Finally the [`relabeling_configs`][relabel] section has three purposes:
 
 2. Choosing where Promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
-3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieve by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environnement variable, the target will be dropped.
+3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieve by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environnement variable, the target will be dropped. 
+If `__meta_ec2_private_dns_name` doesn't match your instance's hosname (on EC2 Windows instance for example, where it is the IP address and not the hostname), you can hardcode the hotname at this stage, or check if any of the instances tag contain the hostname (`__meta_ec2_tag_<tagkey>: each tag value of the instance`)
 
 Alright we should be ready to fire up Promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and won't remember any file positions.
 
