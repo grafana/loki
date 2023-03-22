@@ -4248,11 +4248,11 @@ The `cos_storage_config` block configures the connection to IBM Cloud Object Sto
 # CLI flag: -common.storage.cos.region
 [region: <string> | default = ""]
 
-# COS HMAC Access Key ID
+# COS HMAC Access Key ID.
 # CLI flag: -common.storage.cos.access-key-id
 [access_key_id: <string> | default = ""]
 
-# COS HMAC Secret Access Key
+# COS HMAC Secret Access Key.
 # CLI flag: -common.storage.cos.secret-access-key
 [secret_access_key: <string> | default = ""]
 
@@ -4268,27 +4268,27 @@ http_config:
 
 # Configures back off when cos get Object.
 backoff_config:
-  # Minimum backoff time when cos get Object
+  # Minimum backoff time when cos get Object.
   # CLI flag: -common.storage.cos.min-backoff
   [min_period: <duration> | default = 100ms]
 
-  # Maximum backoff time when cos get Object
+  # Maximum backoff time when cos get Object.
   # CLI flag: -common.storage.cos.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when cos get Object
+  # Maximum number of times to retry when cos get Object.
   # CLI flag: -common.storage.cos.max-retries
   [max_retries: <int> | default = 5]
 
-# api Key
+# IAM API key to access COS.
 # CLI flag: -common.storage.cos.api-key
 [api_key: <string> | default = ""]
 
-# COS service instance id to use
+# COS service instance id to use.
 # CLI flag: -common.storage.cos.service-instance-id
 [service_instance_id: <string> | default = ""]
 
-# Auth Endpoint to connect to.
+# IAM Auth Endpoint for authentication.
 # CLI flag: -common.storage.cos.auth-endpoint
 [auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
 ```

@@ -88,19 +88,19 @@ func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.StringVar(&cfg.Endpoint, prefix+"cos.endpoint", "", "COS Endpoint to connect to.")
 	f.StringVar(&cfg.Region, prefix+"cos.region", "", "COS region to use.")
-	f.StringVar(&cfg.AccessKeyID, prefix+"cos.access-key-id", "", "COS HMAC Access Key ID")
-	f.Var(&cfg.SecretAccessKey, prefix+"cos.secret-access-key", "COS HMAC Secret Access Key")
+	f.StringVar(&cfg.AccessKeyID, prefix+"cos.access-key-id", "", "COS HMAC Access Key ID.")
+	f.Var(&cfg.SecretAccessKey, prefix+"cos.secret-access-key", "COS HMAC Secret Access Key.")
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"cos.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"cos.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 
-	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"cos.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object")
-	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"cos.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"cos.max-retries", 5, "Maximum number of times to retry when cos get Object")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"cos.min-backoff", 100*time.Millisecond, "Minimum backoff time when cos get Object.")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"cos.max-backoff", 3*time.Second, "Maximum backoff time when cos get Object.")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"cos.max-retries", 5, "Maximum number of times to retry when cos get Object.")
 
-	f.Var(&cfg.APIKey, prefix+"cos.api-key", "api Key")
-	f.StringVar(&cfg.AuthEndpoint, prefix+"cos.auth-endpoint", defaultCOSAuthEndpoint, "Auth Endpoint to connect to.")
-	f.StringVar(&cfg.ServiceInstanceID, prefix+"cos.service-instance-id", "", "COS service instance id to use")
+	f.Var(&cfg.APIKey, prefix+"cos.api-key", "IAM API key to access COS.")
+	f.StringVar(&cfg.AuthEndpoint, prefix+"cos.auth-endpoint", defaultCOSAuthEndpoint, "IAM Auth Endpoint for authentication.")
+	f.StringVar(&cfg.ServiceInstanceID, prefix+"cos.service-instance-id", "", "COS service instance id to use.")
 }
 
 type COSObjectClient struct {
