@@ -202,13 +202,13 @@ type querySizeLimiter struct {
 
 func newQuerySizeLimiter(
 	next queryrangebase.Handler,
-	statsHandler queryrangebase.Handler,
 	cfg []config.PeriodConfig,
 	logger log.Logger,
 	limits Limits,
 	codec queryrangebase.Codec,
 	limitFunc func(context.Context, string) int,
 	limitErrorTmpl string,
+	statsHandler ...queryrangebase.Handler,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
 		logger:         logger,
@@ -218,14 +218,19 @@ func newQuerySizeLimiter(
 		limitErrorTmpl: limitErrorTmpl,
 	}
 
-	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
-	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: statsHandler, limits: limits}, limits, logger)
-	q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
+	q.statsHandler = next
+	if len(statsHandler) > 0 {
+		q.statsHandler = statsHandler[0]
+	}
 
 	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
 	statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
-	q.statsHandler = statsSplitTimeMiddleware.Wrap(statsHandler)
+	q.statsHandler = statsSplitTimeMiddleware.Wrap(q.statsHandler)
+
+	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
+	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
+	q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
 
 	return q
 }
@@ -240,12 +245,7 @@ func NewQuerierSizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		stats := next
-		if len(statsHandler) > 0 {
-			stats = statsHandler[0]
-		}
-
-		return newQuerySizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl)
+		return newQuerySizeLimiter(next, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
 	})
 }
 
@@ -259,12 +259,7 @@ func NewQuerySizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		stats := next
-		if len(statsHandler) > 0 {
-			stats = statsHandler[0]
-		}
-
-		return newQuerySizeLimiter(next, stats, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl)
+		return newQuerySizeLimiter(next, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
 	})
 }
 

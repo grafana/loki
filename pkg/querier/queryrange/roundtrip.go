@@ -292,6 +292,9 @@ func NewLogFilterTripperware(
 ) (queryrangebase.Tripperware, error) {
 	return func(next http.RoundTripper) http.RoundTripper {
 		skipMiddleware := queryrangebase.NewRoundTripperHandler(next, codec)
+		if cfg.MaxRetries > 0 {
+			skipMiddleware = queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics).Wrap(skipMiddleware)
+		}
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -366,6 +369,9 @@ func NewLimitedTripperware(
 ) (queryrangebase.Tripperware, error) {
 	return func(next http.RoundTripper) http.RoundTripper {
 		skipMiddleware := queryrangebase.NewRoundTripperHandler(next, codec)
+		if cfg.MaxRetries > 0 {
+			skipMiddleware = queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics).Wrap(skipMiddleware)
+		}
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -519,6 +525,9 @@ func NewMetricTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		skipMiddleware := queryrangebase.NewRoundTripperHandler(next, codec)
+		if cfg.MaxRetries > 0 {
+			skipMiddleware = queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics).Wrap(skipMiddleware)
+		}
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -601,6 +610,9 @@ func NewInstantMetricTripperware(
 ) (queryrangebase.Tripperware, error) {
 	return func(next http.RoundTripper) http.RoundTripper {
 		skipMiddleware := queryrangebase.NewRoundTripperHandler(next, codec)
+		if cfg.MaxRetries > 0 {
+			skipMiddleware = queryrangebase.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics).Wrap(skipMiddleware)
+		}
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
