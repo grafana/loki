@@ -400,6 +400,20 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			newParserHint([]string{"__error__"}, nil, false, true, ""),
 		},
+		{
+			"empty line",
+			[]byte(``),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("uuid", `will.not.work`),
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			noParserHints,
+		},
 	}
 	for _, tt := range tests {
 		j, err := NewJSONExpressionParser(tt.expressions)
@@ -1001,6 +1015,14 @@ func Test_unpackParser_Parse(t *testing.T) {
 				{Name: "__error_details__", Value: "expecting json object(6), but it is not"},
 			},
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
+			noParserHints,
+		},
+		{
+			"empty line",
+			[]byte(``),
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			[]byte(``),
 			noParserHints,
 		},
 		{

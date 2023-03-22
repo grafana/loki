@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -795,6 +796,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1018,7 +1020,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
 	}
 
-	t.ruleEvaluator = evaluator
+	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.EvaluationJitter, rand.NewSource(time.Now().UnixNano()))
 
 	return nil, nil
 }
