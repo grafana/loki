@@ -109,7 +109,9 @@ func main() {
 	}
 
 	var tlsConfig *tls.Config
-	tc := config.TLSConfig{}
+	tc := config.TLSConfig{
+		InsecureSkipVerify: *insecureSkipVerify,
+	}
 	if *certFile != "" || *keyFile != "" || *caFile != "" {
 		if !*useTLS {
 			_, _ = fmt.Fprintf(os.Stderr, "Must set --tls when specifying client certs\n")
@@ -118,8 +120,8 @@ func main() {
 		tc.CAFile = *caFile
 		tc.CertFile = *certFile
 		tc.KeyFile = *keyFile
-		tc.InsecureSkipVerify = *insecureSkipVerify
-
+	}
+	if *useTLS {
 		var err error
 		tlsConfig, err = config.NewTLSConfig(&tc)
 		if err != nil {
