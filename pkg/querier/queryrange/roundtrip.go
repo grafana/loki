@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -15,8 +14,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -25,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -249,50 +245,6 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 		return filterExpr, nil
 	}
 	return expr, nil
-}
-
-// validates log entries limits
-func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	tenantIDs, err := tenant.TenantIDs(req.Context())
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
-	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
-
-	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return fmt.Errorf("max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
-	}
-	return nil
-}
-
-func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Matcher) error {
-	tenants, err := tenant.TenantIDs(req.Context())
-	if err != nil {
-		return err
-	}
-
-	actual := make(map[string]struct{}, len(matchers))
-	for _, m := range matchers {
-		actual[m.Name] = struct{}{}
-	}
-
-	for _, tenant := range tenants {
-		required := limits.RequiredLabelMatchers(req.Context(), tenant)
-		var missing []string
-		for _, label := range required {
-			if _, found := actual[label]; !found {
-				missing = append(missing, label)
-			}
-		}
-
-		if len(missing) > 0 {
-			return fmt.Errorf("stream selector is missing required matchers: %s", strings.Join(missing, ", "))
-
-		}
-	}
-	return nil
 }
 
 const (
