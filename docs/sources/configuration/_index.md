@@ -3532,10 +3532,9 @@ redis:
   # CLI flag: -<prefix>.redis.max-connection-age
   [max_connection_age: <duration> | default = 0s]
 
-  # Cache config for index entry writing.By default, the Redis client only reads
-  # from the master node. Enabling this option can lower pressure on the master
-  # node by randomly routing read-only commands to the master and any available
-  # replicas.
+  # By default, the Redis client only reads from the master node. Enabling this
+  # option can lower pressure on the master node by randomly routing read-only
+  # commands to the master and any available replicas.
   # CLI flag: -<prefix>.redis.route-randomly
   [route_randomly: <boolean> | default = false]
 
