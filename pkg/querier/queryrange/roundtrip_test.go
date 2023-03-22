@@ -512,10 +512,10 @@ func TestTripperware_RequiredLabelMatchers(t *testing.T) {
 	}{
 		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, noErr, vector},
 		{`count_over_time({app="foo"}[1m]) / count_over_time({app="bar"}[1m] offset 1m)`, noErr, vector},
-		{`count_over_time({app="foo"}[1m]) / count_over_time({pod="bar"}[1m] offset 1m)`, "stream selector is missing required matchers app", nil},
-		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers app", nil},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({pod="bar"}[1m] offset 1m)`, "stream selector is missing required matchers [app], labels present in the query were [pod]", nil},
+		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers [app], labels present in the query were [pod]", nil},
 		{`{app="foo", pod="bar"}`, noErr, streams},
-		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers app", nil},
+		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers [app], labels present in the query were [pod]", nil},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}

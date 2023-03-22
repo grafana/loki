@@ -29,7 +29,9 @@ import (
 )
 
 const (
-	limitErrTmpl = "maximum of series (%d) reached for a single query"
+	limitErrTmpl          = "maximum of series (%d) reached for a single query"
+	maxSeriesErrTmpl      = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	requiredLabelsErrTmpl = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 )
 
 var (
@@ -523,7 +525,7 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return fmt.Errorf("max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
+		return fmt.Errorf(maxSeriesErrTmpl, reqLimit, maxEntriesLimit)
 	}
 	return nil
 }
@@ -535,27 +537,23 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	}
 
 	actual := make(map[string]struct{}, len(matchers))
+	var present []string
 	for _, m := range matchers {
 		actual[m.Name] = struct{}{}
+		present = append(present, m.Name)
 	}
 
 	for _, tenant := range tenants {
 		required := limits.RequiredLabelMatchers(req.Context(), tenant)
 		var missing []string
-		var present []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
 				missing = append(missing, label)
-			} else {
-				present = append(present, label)
 			}
 		}
 
 		if len(missing) > 0 {
-			if len(present) > 0 {
-				return fmt.Errorf("stream selector included required matchers %s but is missing %s", strings.Join(present, ", "), strings.Join(missing, ", "))
-			}
-			return fmt.Errorf("stream selector is missing required matchers %s", strings.Join(missing, ", "))
+			return fmt.Errorf(requiredLabelsErrTmpl, strings.Join(missing, ", "), strings.Join(present, ", "))
 		}
 	}
 	return nil
