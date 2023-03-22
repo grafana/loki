@@ -61,6 +61,10 @@ type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryr
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
 func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+	if metrics == nil {
+		metrics = NewSplitByMetrics(nil)
+	}
+
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
 			configs:  configs,
@@ -184,9 +188,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	if h.metrics != nil {
-		h.metrics.splits.Observe(float64(len(intervals)))
-	}
+	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
