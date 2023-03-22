@@ -278,14 +278,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 
 	switch e := expr.(type) {
 	case syntax.SampleExpr:
-		// The error will be handled later.
-		groups, _ := e.MatcherGroups()
-		for _, g := range groups {
-			if err := q.validateMatchers(ctx, tenants, g.Matchers); err != nil {
-				return nil, err
-			}
-		}
-
 		value, err := q.evalSample(ctx, e)
 		return value, err
 

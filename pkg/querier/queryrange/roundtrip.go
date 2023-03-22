@@ -159,6 +159,13 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
+			// The error will be handled later.
+			groups, _ := e.MatcherGroups()
+			for _, g := range groups {
+				if err := validateMatchers(req, r.limits, g.Matchers); err != nil {
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				}
+			}
 			return r.metric.RoundTrip(req)
 		case syntax.LogSelectorExpr:
 			// Note, this function can mutate the request
@@ -167,11 +174,11 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if err := validateMaxEntriesLimits(req, rangeQuery.Limit, r.limits); err != nil {
-				return nil, err
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
-			if err := validateMatchers(req, e.Matchers()); err != nil {
-				return nil, err
+			if err := validateMatchers(req, r.limits, e.Matchers()); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
 			// Only filter expressions are query sharded
@@ -255,8 +262,7 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
+		fmt.Errorf("max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
 	}
 	return nil
 }
@@ -264,7 +270,7 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Matcher) error {
 	tenants, err := tenant.TenantIDs(req.Context())
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return err
 	}
 
 	actual := make(map[string]struct{}, len(matchers))
@@ -282,7 +288,8 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 		}
 
 		if len(missing) > 0 {
-			return fmt.Errorf(logqlmodel.ErrRequiredMatchersMissing, strings.Join(missing, ", "))
+			fmt.Errorf("stream selector is missing required matchers: %s", strings.Join(missing, ", "))
+
 		}
 	}
 	return nil

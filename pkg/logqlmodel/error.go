@@ -19,10 +19,6 @@ var (
 	ErrorDetailsLabel  = "__error_details__"
 )
 
-const (
-	ErrRequiredMatchersMissing = "stream selector is missing required matchers: %s"
-)
-
 // ParseError is what is returned when we failed to parse.
 type ParseError struct {
 	msg       string
