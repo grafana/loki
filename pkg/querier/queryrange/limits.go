@@ -542,15 +542,20 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	for _, tenant := range tenants {
 		required := limits.RequiredLabelMatchers(req.Context(), tenant)
 		var missing []string
+		var present []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
 				missing = append(missing, label)
+			} else {
+				present = append(present, label)
 			}
 		}
 
 		if len(missing) > 0 {
-			return fmt.Errorf("stream selector is missing required matchers: %s", strings.Join(missing, ", "))
-
+			if len(present) > 0 {
+				return fmt.Errorf("stream selector included required matchers %s but is missing %s", strings.Join(present, ", "), strings.Join(missing, ", "))
+			}
+			return fmt.Errorf("stream selector is missing required matchers %s", strings.Join(missing, ", "))
 		}
 	}
 	return nil
