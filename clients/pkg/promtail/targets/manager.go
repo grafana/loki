@@ -245,11 +245,11 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, kafkaTargetManager)
 		case AzureEventHubScrapeConfigs:
-			kafkaTargetManager, err := azureeventhub.NewTargetManager(reg, logger, client, scrapeConfigs)
+			azureEventHubTargetManager, err := azureeventhub.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make azureeventhub target manager")
+				return nil, errors.Wrap(err, "failed to make Azure Event Hub target manager")
 			}
-			targetManagers = append(targetManagers, kafkaTargetManager)
+			targetManagers = append(targetManagers, azureEventHubTargetManager)
 		case GelfConfigs:
 			gelfTargetManager, err := gelf.NewTargetManager(gelfMetrics, logger, client, scrapeConfigs)
 			if err != nil {
