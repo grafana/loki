@@ -193,7 +193,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	// Query lines
 	t.Run("query again to verify logs being served from storage", func(t *testing.T) {
-		time.Sleep(time.Millisecond * 3500)
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		validateQueryResponse(resp)
@@ -220,7 +219,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("verify query time filtering", func(t *testing.T) {
 		// reset boltdb-shipper client and restart querier
 		storage.ResetBoltDBIndexClientWithShipper()
-		time.Sleep(time.Millisecond * 3500)
 		require.NoError(t, tQuerier.Restart())
 
 		// update expectedStreams as per the issued requests
