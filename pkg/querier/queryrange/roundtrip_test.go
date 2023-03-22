@@ -501,7 +501,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
 }
 
-func TestTripperware_RequiredLabelMatchers(t *testing.T) {
+func TestTripperware_RequiredLabels(t *testing.T) {
 
 	const noErr = ""
 
@@ -691,7 +691,7 @@ func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.Blocke
 	return []*validation.BlockedQuery{}
 }
 
-func (f fakeLimits) RequiredLabelMatchers(context.Context, string) []string {
+func (f fakeLimits) RequiredLabels(context.Context, string) []string {
 	return f.requiredLabels
 }
 

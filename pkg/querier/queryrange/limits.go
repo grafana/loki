@@ -49,7 +49,7 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
-	RequiredLabelMatchers(context.Context, string) []string
+	RequiredLabels(context.Context, string) []string
 }
 
 type limits struct {
@@ -544,7 +544,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	}
 
 	for _, tenant := range tenants {
-		required := limits.RequiredLabelMatchers(req.Context(), tenant)
+		required := limits.RequiredLabels(req.Context(), tenant)
 		var missing []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {

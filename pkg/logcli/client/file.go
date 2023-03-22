@@ -198,7 +198,7 @@ func (l *limiter) BlockedQueries(ctx context.Context, userID string) []*validati
 	return []*validation.BlockedQuery{}
 }
 
-func (l *limiter) RequiredLabelMatchers(ctx context.Context, userID string) []string {
+func (l *limiter) RequiredLabels(ctx context.Context, userID string) []string {
 	return nil
 }
 

@@ -68,8 +68,8 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 	return time.Duration(requestLimits.QueryTimeout)
 }
 
-func (l *Limiter) RequiredLabelMatchers(ctx context.Context, userID string) []string {
-	original := l.CombinedLimits.RequiredLabelMatchers(ctx, userID)
+func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
+	original := l.CombinedLimits.RequiredLabels(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
 
 	if requestLimits == nil {
@@ -82,7 +82,7 @@ func (l *Limiter) RequiredLabelMatchers(ctx context.Context, userID string) []st
 		unionMap[label] = struct{}{}
 	}
 
-	for _, label := range requestLimits.RequiredLabelMatchers {
+	for _, label := range requestLimits.RequiredLabels {
 		unionMap[label] = struct{}{}
 	}
 

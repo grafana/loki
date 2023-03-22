@@ -38,6 +38,6 @@ func (f fakeLimits) BlockedQueries(ctx context.Context, userID string) []*valida
 	return f.blockedQueries
 }
 
-func (f fakeLimits) RequiredLabelMatchers(ctx context.Context, userID string) []string {
+func (f fakeLimits) RequiredLabels(ctx context.Context, userID string) []string {
 	return f.requiredLabels
 }
