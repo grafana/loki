@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"net/textproto"
 	"net/url"
@@ -250,20 +251,24 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		return nil, fmt.Errorf("rule evaluation failed: %w", err)
 	}
 
+	fullBody := resp.Body
+	// created a limited reader to avoid logging the entire response body should it be very large
+	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 1024)
+
 	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
 	//   i.e. critical alerts or recording rules producing crucial RemoteEvaluatorMetrics series
 	if resp.Code/100 != 2 {
 		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
 
-		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", resp.Body)
+		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", limitedBody)
 		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d", resp.Code)
 	}
 
 	maxSize := r.overrides.RulerRemoteEvaluationMaxResponseSize(orgID)
-	if maxSize > 0 && int64(len(resp.Body)) >= maxSize {
+	if maxSize > 0 && int64(len(fullBody)) >= maxSize {
 		r.metrics.failedEvals.WithLabelValues("max_size", orgID).Inc()
 
-		level.Error(log).Log("msg", "rule evaluation exceeded max size", "max_size", maxSize, "response_size", len(resp.Body))
+		level.Error(log).Log("msg", "rule evaluation exceeded max size", "max_size", maxSize, "response_size", len(fullBody))
 		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
 	}
 
@@ -274,12 +279,16 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 }
 
 func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTTPResponse, orgID string) (*logqlmodel.Result, error) {
+	fullBody := resp.Body
+	// created a limited reader to avoid logging the entire response body should it be very large
+	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 1024)
+
 	var decoded loghttp.QueryResponse
-	if err := json.NewDecoder(bytes.NewReader(resp.Body)).Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("unexpected body encoding, not valid JSON: %w", err)
+	if err := json.NewDecoder(bytes.NewReader(fullBody)).Decode(&decoded); err != nil {
+		return nil, fmt.Errorf("unexpected body encoding, not valid JSON: %w, body: %s", err, limitedBody)
 	}
 	if decoded.Status != loghttp.QueryStatusSuccess {
-		return nil, fmt.Errorf("query response error - status %q: %s", decoded.Status, resp.Body)
+		return nil, fmt.Errorf("query response error: status %q, body: %s", decoded.Status, limitedBody)
 	}
 
 	switch decoded.Data.ResultType {
