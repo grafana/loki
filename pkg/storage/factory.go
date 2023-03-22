@@ -202,6 +202,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
+	cfg.COSConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
