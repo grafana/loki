@@ -100,7 +100,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				{Name: "__error_details__", Value: "Value looks like object, but can't find closing '}' symbol"},
 				{Name: "__preserve_error__", Value: "true"},
 			},
-			newParserHint([]string{"__error__"}, nil, false, true, ""),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 		},
 		{
 			"duplicate extraction",
@@ -196,6 +196,9 @@ func (p *fakeParseHints) AllRequiredExtracted() bool {
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
+}
+func (p *fakeParseHints) PreserveError() bool {
+	return false
 }
 
 func TestJSONExpressionParser(t *testing.T) {
@@ -465,7 +468,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 				{Name: logqlmodel.PreserveErrorLabel, Value: "true"},
 			},
-			newParserHint([]string{"__error__"}, nil, false, true, ""),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 		},
 		{
 			"empty line",
@@ -762,7 +765,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 				{Name: "__error_details__", Value: "logfmt syntax error at pos 8 : unexpected '='"},
 				{Name: "__preserve_error__", Value: "true"},
 			},
-			newParserHint([]string{"__error__"}, nil, false, true, ""),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 		},
 		{
 			"utf8 error rune",
@@ -1139,7 +1142,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				{Name: "__preserve_error__", Value: "true"},
 			},
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-			newParserHint([]string{"__error__"}, nil, false, true, ""),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 		},
 		{
 			"not a map",
