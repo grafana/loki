@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -92,11 +93,28 @@ type astMapperware struct {
 	confs     ShardingConfigs
 	logger    log.Logger
 	limits    Limits
-	codec     queryrangebase.Codec
 	next      queryrangebase.Handler
 	ng        *logql.DownstreamEngine
 	metrics   *logql.MapperMetrics
 	maxShards int
+}
+
+func (r *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	maxQuerierBytesReadCapture := func(id string) int { return r.limits.MaxQuerierBytesRead(ctx, id) }
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxQuerierBytesReadCapture); maxBytesRead > 0 {
+		if bytesPerShard > uint64(maxBytesRead) {
+			statsBytesStr := humanize.Bytes(bytesPerShard)
+			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
+			return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
+		}
+	}
+
+	return nil
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -140,22 +158,22 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
 
-	noop, parsed, err := mapper.Parse(r.GetQuery())
+	noop, bytesPerShard, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
+	// Note, even if noop, bytesPerShard contains the bytes that'd be read for the whole expr without sharding
+	if err = ast.checkQuerySizeLimit(ctx, bytesPerShard); err != nil {
+		return nil, err
+	}
+
 	// If the ast can't be mapped to a sharded equivalent,
 	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
-		// If the expression cannot be sharded, we'll enforce the MaxQuerierSize limit here.
-		// Note that if the query is shardable, this limits was already enforced by the mapper
-		querierSizeLimiterMiddleware := NewQuerierSizeLimiterMiddleware(ast.confs, ast.logger, ast.limits, ast.codec)
-		next := querierSizeLimiterMiddleware.Wrap(ast.next)
-
-		return next.Do(ctx, r)
+		return ast.next.Do(ctx, r)
 	}
 
 	params, err := paramsFromRequest(r)

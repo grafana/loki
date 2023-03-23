@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	math "math"
-	"net/http"
 	strings "strings"
 	"time"
 
@@ -12,10 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/tenant"
-	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -23,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/prometheus/common/model"
 )
 
 func shardResolverForConf(
@@ -132,33 +127,18 @@ func getStatsForMatchers(
 	return results, nil
 }
 
-func (r *dynamicShardResolver) checkQuerySizeLimit(bytesPerShard uint64) error {
-	tenantIDs, err := tenant.TenantIDs(r.ctx)
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	maxQuerierBytesReadCapture := func(id string) int { return r.limits.MaxQuerierBytesRead(r.ctx, id) }
-	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxQuerierBytesReadCapture); maxBytesRead > 0 {
-		if bytesPerShard > uint64(maxBytesRead) {
-			statsBytesStr := humanize.Bytes(bytesPerShard)
-			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
-			return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
-		}
-	}
-
-	return nil
-}
-
-func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
-	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
+func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
+	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
+
+	start := time.Now()
+
 	// We try to shard subtrees in the AST independently if possible, although
 	// nested binary expressions can make this difficult. In this case,
 	// we query the index stats for all matcher groups then sum the results.
 	grps, err := syntax.MatcherGroups(e)
 	if err != nil {
-		return 0, err
+		return stats.Stats{}, err
 	}
 
 	// If there are zero matchers groups, we'll inject one to query everything
@@ -166,24 +146,12 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	start := time.Now()
-
 	results, err := getStatsForMatchers(ctx, sp, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
-		return 0, err
+		return stats.Stats{}, err
 	}
 
 	combined := stats.MergeStats(results...)
-	factor := guessShardFactor(combined, r.maxShards)
-
-	var bytesPerShard = combined.Bytes
-	if factor > 0 {
-		bytesPerShard = combined.Bytes / uint64(factor)
-	}
-
-	if err = r.checkQuerySizeLimit(bytesPerShard); err != nil {
-		return 0, err
-	}
 
 	level.Debug(sp).Log(
 		append(
@@ -193,11 +161,37 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 			"len", len(results),
 			"max_parallelism", r.maxParallelism,
 			"duration", time.Since(start),
+		)...,
+	)
+
+	return combined, nil
+}
+
+func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
+	sp, _ := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
+	defer sp.Finish()
+
+	combined, err := r.GetStats(e)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	factor := guessShardFactor(combined, r.maxShards)
+
+	var bytesPerShard = combined.Bytes
+	if factor > 0 {
+		bytesPerShard = combined.Bytes / uint64(factor)
+	}
+
+	level.Debug(sp).Log(
+		append(
+			combined.LoggingKeyValues(),
+			"msg", "Got shard factor",
 			"factor", factor,
 			"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
 		)...,
 	)
-	return factor, nil
+	return factor, bytesPerShard, nil
 }
 
 const (

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -186,64 +187,104 @@ func Test_astMapper(t *testing.T) {
 	require.Equal(t, expected.(*LokiResponse).Data, resp.(*LokiResponse).Data)
 }
 
-func Test_ShardingByPass(t *testing.T) {
+func Test_astMapper_QuerySizeLimits(t *testing.T) {
+	noErr := ""
 	for _, tc := range []struct {
 		desc                string
 		query               string
-		statsBytesResponse  uint64
 		maxQuerierBytesSize int
 
-		shouldErr                bool
-		expectedQueryHandlerHits int
+		err                      string
 		expectedStatsHandlerHits int
 	}{
 		{
-			desc:                "Non shardable query without matchers",
-			query:               `1+1`,
-			statsBytesResponse:  1000,
-			maxQuerierBytesSize: 1000,
-
-			shouldErr:                false,
-			expectedQueryHandlerHits: 1,
-			expectedStatsHandlerHits: 0,
-		},
-		{
 			desc:                "Non shardable query",
 			query:               `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
-			statsBytesResponse:  1000,
-			maxQuerierBytesSize: 1000,
+			maxQuerierBytesSize: 100,
 
-			shouldErr:                false,
-			expectedQueryHandlerHits: 1,
+			err:                      noErr,
 			expectedStatsHandlerHits: 1,
 		},
 		{
-			desc:                "Non shardable query too big",
-			query:               `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
-			statsBytesResponse:  2000,
-			maxQuerierBytesSize: 1000,
-
-			shouldErr:                true,
-			expectedQueryHandlerHits: 0,
+			desc:                     "Non shardable query too big",
+			query:                    `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			maxQuerierBytesSize:      10,
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
+		},
+		{
+			desc:                "Shardable query",
+			query:               `count_over_time({app="foo"} |= "foo" [1h])`,
+			maxQuerierBytesSize: 100,
+
+			err:                      noErr,
+			expectedStatsHandlerHits: 1,
+		},
+		{
+			desc:                "Shardable query too big",
+			query:               `count_over_time({app="foo"} |= "foo" [1h])`,
+			maxQuerierBytesSize: 10,
+
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "100 B", "10 B"),
+			expectedStatsHandlerHits: 1,
+		},
+		{
+			desc:                "Partially Shardable query fitting",
+			query:               `count_over_time({app="foo"} |= "foo" [1h]) - sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			maxQuerierBytesSize: 100,
+
+			err:                      noErr,
+			expectedStatsHandlerHits: 2,
+		},
+		{
+			desc:                "Partially Shardable LHS too big",
+			query:               `count_over_time({app="bar"} |= "bar" [1h]) - sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			maxQuerierBytesSize: 100,
+
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "500 B", "100 B"),
+			expectedStatsHandlerHits: 2,
+		},
+		{
+			desc:                "Partially Shardable RHS too big",
+			query:               `count_over_time({app="foo"} |= "foo" [1h]) - sum_over_time({app="bar"} |= "bar" | unwrap foo [1h])`,
+			maxQuerierBytesSize: 100,
+
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "500 B", "100 B"),
+			expectedStatsHandlerHits: 2,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			queryCalled := 0
 			statsCalled := 0
 			handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-				if _, ok := req.(*LokiRequest); ok {
-					queryCalled++
-					return nil, nil
-				}
-
-				if _, ok := req.(*logproto.IndexStatsRequest); ok {
+				if casted, ok := req.(*logproto.IndexStatsRequest); ok {
 					statsCalled++
+
+					var bytes uint64
+					if strings.Contains(casted.Matchers, `app="foo"`) {
+						bytes = 100
+					}
+					if strings.Contains(casted.Matchers, `app="bar"`) {
+						bytes = 500
+					}
+
 					return &IndexStatsResponse{
 						Response: &logproto.IndexStatsResponse{
-							Bytes: tc.statsBytesResponse,
+							Bytes: bytes,
 						},
 					}, nil
+				}
+				if _, ok := req.(*LokiRequest); ok {
+					return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{
+						Data: queryrangebase.PrometheusData{
+							ResultType: loghttp.ResultTypeVector,
+							Result: []queryrangebase.SampleStream{
+								{
+									Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+									Samples: []logproto.LegacySample{{Value: 10, TimestampMs: 10}},
+								},
+							},
+						},
+					}}, nil
 				}
 
 				return nil, nil
@@ -257,28 +298,52 @@ func Test_ShardingByPass(t *testing.T) {
 					},
 				},
 				handler,
-				LokiCodec,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{
-					maxSeries:           math.MaxInt32,
-					maxQueryParallelism: 1,
-					maxQuerierBytesRead: tc.maxQuerierBytesSize,
+					maxSeries:               math.MaxInt32,
+					maxQueryParallelism:     1,
+					tsdbMaxQueryParallelism: 1,
+					queryTimeout:            time.Minute,
+					maxQuerierBytesRead:     tc.maxQuerierBytesSize,
 				},
 				0,
 			)
 
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(tc.query))
-			if tc.shouldErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
+			if err != nil {
+				require.ErrorContains(t, err, tc.err)
 			}
 
-			require.Equal(t, tc.expectedQueryHandlerHits, queryCalled)
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)
+
 		})
 	}
+}
+
+func Test_ShardingByPass(t *testing.T) {
+	called := 0
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		called++
+		return nil, nil
+	})
+
+	mware := newASTMapperware(
+		ShardingConfigs{
+			config.PeriodConfig{
+				RowShards: 2,
+			},
+		},
+		handler,
+		log.NewNopLogger(),
+		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
+		0,
+	)
+
+	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
+	require.Nil(t, err)
+	require.Equal(t, called, 1)
 }
 
 func Test_hasShards(t *testing.T) {
