@@ -20,8 +20,9 @@ different users, because they all share the same tenant.
 
 In that case, as an operator, you would also want to ensure some sort of query
 fairness across these actors within the tenants. To achieve that, Loki
-introduced hierarchical scheduler queues in version 2.9 and they are enabled by
-default.
+introduced hierarchical scheduler queues in version 2.9 based on
+[LID 0003: Query fairness across users within tenants]({{<relref "../../lids/0003-QueryFairnessInScheduler.md">}})
+and they are enabled by default.
 
 ## What are hierarchical queues and how do they work
 
