@@ -34,8 +34,8 @@ import (
 
 const (
 	limitErrTmpl                  = "maximum of series (%d) reached for a single query"
-	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s)"
-	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s)"
+	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
 )
 
 var (
