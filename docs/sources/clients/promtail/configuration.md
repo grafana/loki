@@ -1042,7 +1042,7 @@ connection_string: <string> | default = "range"
 [group_id: <string> | default = "promtail"]
 
 # If Promtail should pass on the timestamp from the incoming message or not.
-# When false Promtail will assign the current timestamp to the log when it was processed
+# When false Promtail will assign the current timestamp to the log when it was processed.
 [use_incoming_timestamp: <bool> | default = false]
 
 # If Promtail should ignore messages that don't match the schema for Azure resource logs.
