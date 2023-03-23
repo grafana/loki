@@ -26,7 +26,6 @@ type QueryLimits struct {
 	MaxEntriesLimitPerQuery int              `json:"maxEntriesLimitPerQuery,omitempty"`
 	QueryTimeout            model.Duration   `json:"queryTimeout,omitempty"`
 	MaxQueryBytesRead       flagext.ByteSize `json:"maxQueryBytesRead,omitempty"`
-	MaxQuerierBytesRead     flagext.ByteSize `json:"maxQuerierBytesRead,omitempty"`
 }
 
 func UnmarshalQueryLimits(data []byte) (*QueryLimits, error) {

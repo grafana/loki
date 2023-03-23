@@ -77,13 +77,3 @@ func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
 	}
 	return requestLimits.MaxQueryBytesRead.Val()
 }
-
-func (l *Limiter) MaxQuerierBytesRead(ctx context.Context, userID string) int {
-	original := l.CombinedLimits.MaxQuerierBytesRead(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
-	if requestLimits == nil || requestLimits.MaxQuerierBytesRead.Val() == 0 || requestLimits.MaxQuerierBytesRead.Val() > original {
-		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
-		return original
-	}
-	return requestLimits.MaxQuerierBytesRead.Val()
-}

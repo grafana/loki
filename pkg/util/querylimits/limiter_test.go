@@ -51,7 +51,6 @@ func TestLimiter_Defaults(t *testing.T) {
 		MaxEntriesLimitPerQuery: 10,
 		QueryTimeout:            model.Duration(30 * time.Second),
 		MaxQueryBytesRead:       10,
-		MaxQuerierBytesRead:     10,
 	}
 	ctx := context.Background()
 	queryLookback := l.MaxQueryLookback(ctx, "fake")
@@ -64,8 +63,6 @@ func TestLimiter_Defaults(t *testing.T) {
 	require.Equal(t, time.Duration(expectedLimits.QueryTimeout), queryTimeout)
 	maxQueryBytesRead := l.MaxQueryBytesRead(ctx, "fake")
 	require.Equal(t, expectedLimits.MaxQueryBytesRead.Val(), maxQueryBytesRead)
-	maxQuerierBytesRead := l.MaxQuerierBytesRead(ctx, "fake")
-	require.Equal(t, expectedLimits.MaxQuerierBytesRead.Val(), maxQuerierBytesRead)
 
 	var limits QueryLimits
 
@@ -75,7 +72,6 @@ func TestLimiter_Defaults(t *testing.T) {
 		MaxEntriesLimitPerQuery: 10,
 		QueryTimeout:            model.Duration(29 * time.Second),
 		MaxQueryBytesRead:       10,
-		MaxQuerierBytesRead:     10,
 	}
 	{
 		ctx2 := InjectQueryLimitsContext(context.Background(), limits)
@@ -89,8 +85,6 @@ func TestLimiter_Defaults(t *testing.T) {
 		require.Equal(t, time.Duration(expectedLimits.QueryTimeout), queryTimeout)
 		maxQueryBytesRead := l.MaxQueryBytesRead(ctx2, "fake")
 		require.Equal(t, expectedLimits2.MaxQueryBytesRead.Val(), maxQueryBytesRead)
-		maxQuerierBytesRead := l.MaxQuerierBytesRead(ctx2, "fake")
-		require.Equal(t, expectedLimits2.MaxQuerierBytesRead.Val(), maxQuerierBytesRead)
 	}
 
 }
@@ -115,7 +109,6 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 		MaxEntriesLimitPerQuery: 100,
 		QueryTimeout:            model.Duration(100 * time.Second),
 		MaxQueryBytesRead:       100,
-		MaxQuerierBytesRead:     100,
 	}
 	expectedLimits := QueryLimits{
 		MaxQueryLength:          model.Duration(30 * time.Second),
@@ -123,7 +116,6 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 		MaxEntriesLimitPerQuery: 10,
 		QueryTimeout:            model.Duration(30 * time.Second),
 		MaxQueryBytesRead:       10,
-		MaxQuerierBytesRead:     10,
 	}
 
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
@@ -132,7 +124,6 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 	require.Equal(t, expectedLimits.MaxEntriesLimitPerQuery, l.MaxEntriesLimitPerQuery(ctx, "fake"))
 	require.Equal(t, time.Duration(expectedLimits.QueryTimeout), l.QueryTimeout(ctx, "fake"))
 	require.Equal(t, expectedLimits.MaxQueryBytesRead.Val(), l.MaxQueryBytesRead(ctx, "fake"))
-	require.Equal(t, expectedLimits.MaxQuerierBytesRead.Val(), l.MaxQuerierBytesRead(ctx, "fake"))
 }
 
 func TestLimiter_AcceptLowerLimits(t *testing.T) {
@@ -155,7 +146,6 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 		MaxEntriesLimitPerQuery: 9,
 		QueryTimeout:            model.Duration(29 * time.Second),
 		MaxQueryBytesRead:       9,
-		MaxQuerierBytesRead:     9,
 	}
 
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
@@ -164,5 +154,4 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 	require.Equal(t, limits.MaxEntriesLimitPerQuery, l.MaxEntriesLimitPerQuery(ctx, "fake"))
 	require.Equal(t, time.Duration(limits.QueryTimeout), l.QueryTimeout(ctx, "fake"))
 	require.Equal(t, limits.MaxQueryBytesRead.Val(), l.MaxQueryBytesRead(ctx, "fake"))
-	require.Equal(t, limits.MaxQuerierBytesRead.Val(), l.MaxQuerierBytesRead(ctx, "fake"))
 }
