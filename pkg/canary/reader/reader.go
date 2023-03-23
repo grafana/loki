@@ -3,7 +3,6 @@ package reader
 import (
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -49,7 +48,6 @@ type LokiReader interface {
 }
 
 type Reader struct {
-	header          http.Header
 	useTLS          bool
 	clientTLSConfig *tls.Config
 	caFile          string
@@ -95,8 +93,6 @@ func NewReader(writer io.Writer,
 	interval time.Duration,
 	queryAppend string,
 ) (*Reader, error) {
-	h := http.Header{}
-
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
 	httpClient := http.DefaultClient
 	if tlsConfig != nil && (certFile != "" || keyFile != "" || caFile != "") {
@@ -112,15 +108,6 @@ func NewReader(writer io.Writer,
 		// non-mutual TLS
 		httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	}
-	if user != "" {
-		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
-	}
-	if tenantID != "" {
-		h.Set("X-Scope-OrgID", tenantID)
-	}
-	if actor != "" {
-		h.Set("X-Loki-Actor-Path", actor)
-	}
 
 	next := time.Now()
 	bkcfg := backoff.Config{
@@ -131,7 +118,6 @@ func NewReader(writer io.Writer,
 	bkoff := backoff.New(context.Background(), bkcfg)
 
 	rd := Reader{
-		header:          h,
 		useTLS:          useTLS,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
@@ -179,6 +165,32 @@ func (r *Reader) Stop() {
 	}
 }
 
+// ApplyHeaders sets all necessary HTTP headers on given request and returns
+// the set headers.
+// If the passed request is nil, a new temporary request object is created.
+// This is useful for creating the headers only.
+func (r *Reader) ApplyHeaders(req *http.Request) http.Header {
+	if req == nil {
+		req, _ = http.NewRequest(http.MethodGet, "", nil)
+	}
+
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	}
+
+	if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
+
+	if r.actor != "" {
+		req.Header.Set("X-Loki-Actor-Path", r.actor)
+	}
+
+	req.Header.Set("User-Agent", userAgent)
+
+	return req.Header
+}
+
 // QueryCountOverTime will ask Loki for a count of logs over the provided range e.g. 5m
 // QueryCountOverTime blocks if a previous query has failed until the appropriate backoff time has been reached.
 func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
@@ -215,17 +227,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		return 0, err
 	}
 
-	if r.user != "" {
-		req.SetBasicAuth(r.user, r.pass)
-	}
-	if r.tenantID != "" {
-		req.Header.Set("X-Scope-OrgID", r.tenantID)
-	}
-	if r.actor != "" {
-		req.Header.Set("X-Loki-Actor-Path", r.actor)
-	}
-	req.Header.Set("User-Agent", userAgent)
-
+	_ = r.ApplyHeaders(req)
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return 0, errors.Wrap(err, "query request failed")
@@ -309,17 +311,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		return nil, err
 	}
 
-	if r.user != "" {
-		req.SetBasicAuth(r.user, r.pass)
-	}
-	if r.tenantID != "" {
-		req.Header.Set("X-Scope-OrgID", r.tenantID)
-	}
-	if r.actor != "" {
-		req.Header.Set("X-Loki-Actor-Path", r.actor)
-	}
-	req.Header.Set("User-Agent", userAgent)
-
+	_ = r.ApplyHeaders(req)
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "query_range request failed")
@@ -462,7 +454,7 @@ func (r *Reader) closeAndReconnect() {
 		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)
 
 		dialer := r.webSocketDialer()
-		c, _, err := dialer.Dial(u.String(), r.header)
+		c, _, err := dialer.Dial(u.String(), r.ApplyHeaders(nil))
 		if err != nil {
 			fmt.Fprintf(r.w, "failed to connect to %s with err %s\n", u.String(), err)
 			<-time.After(10 * time.Second)
