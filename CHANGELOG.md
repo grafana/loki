@@ -41,6 +41,7 @@
 * [6675](https://github.com/grafana/loki/pull/6675) **btaani**: Add logfmt expression parser for selective extraction of labels from logfmt formatted logs
 * [8474](https://github.com/grafana/loki/pull/8474) **farodin91**: Add support for short-lived S3 session tokens
 * [8774](https://github.com/grafana/loki/pull/8774) **slim-bean**: Add new logql template functions `bytes`, `duration`, `unixEpochMillis`, `unixEpochNanos`, `toDateInZone`, `b64Enc`, and `b64Dec`
+* [8886](https://github.com/grafana/loki/pull/8886) **MichelHollands**: Add new logql template functions `toUnixEpoch`, `toUnixEpochMillis` and `toUnixEpochNanos`
 
 ##### Fixes
 
