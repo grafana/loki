@@ -62,7 +62,7 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 		// Check for group name uniqueness
 		if found[g.Name] {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("Groups").Index(i).Child("Name"),
+				field.NewPath("spec").Child("groups").Index(i).Child("name"),
 				g.Name,
 				lokiv1.ErrGroupNamesNotUnique.Error(),
 			))
@@ -74,7 +74,7 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 		_, err := model.ParseDuration(string(g.Interval))
 		if err != nil {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("Groups").Index(i).Child("Interval"),
+				field.NewPath("spec").Child("groups").Index(i).Child("interval"),
 				g.Interval,
 				lokiv1.ErrParseEvaluationInterval.Error(),
 			))
@@ -85,7 +85,7 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			if rule.Alert != "" {
 				if _, err := model.ParseDuration(string(rule.For)); err != nil {
 					allErrs = append(allErrs, field.Invalid(
-						field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("For"),
+						field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("for"),
 						rule.For,
 						lokiv1.ErrParseAlertForPeriod.Error(),
 					))
@@ -98,7 +98,7 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			expr, err := syntax.ParseExpr(rule.Expr)
 			if err != nil {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					rule.Expr,
 					lokiv1.ErrParseLogQLExpression.Error(),
 				))
@@ -109,7 +109,7 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			// Validate that the expression is a sample-expression (metrics as result) and not for logs
 			if _, ok := expr.(syntax.SampleExpr); !ok {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					rule.Expr,
 					lokiv1.ErrParseLogQLNotSample.Error(),
 				))
