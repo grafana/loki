@@ -1,19 +1,21 @@
-package kafka
+package azureeventhubs
 
 import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
 // TargetManager manages a series of kafka targets.
 type TargetManager struct {
 	logger        log.Logger
-	targetSyncers map[string]*TargetSyncer
+	targetSyncers map[string]*kafka.TargetSyncer
 }
 
 // NewTargetManager creates a new Kafka managers.
@@ -25,10 +27,10 @@ func NewTargetManager(
 ) (*TargetManager, error) {
 	tm := &TargetManager{
 		logger:        logger,
-		targetSyncers: make(map[string]*TargetSyncer),
+		targetSyncers: make(map[string]*kafka.TargetSyncer),
 	}
 	for _, cfg := range scrapeConfigs {
-		t, err := NewSyncerFromScrapeConfig(reg, logger, cfg, pushClient)
+		t, err := NewSyncer(reg, logger, cfg, pushClient)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +53,7 @@ func (tm *TargetManager) Ready() bool {
 func (tm *TargetManager) Stop() {
 	for _, t := range tm.targetSyncers {
 		if err := t.Stop(); err != nil {
-			level.Error(tm.logger).Log("msg", "error stopping kafka target", "err", err)
+			level.Error(tm.logger).Log("msg", "error stopping azureeventhub target", "err", err)
 		}
 	}
 }
