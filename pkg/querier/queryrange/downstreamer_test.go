@@ -436,7 +436,7 @@ func newStreams(start, end time.Time, delta time.Duration, n int, direction logp
 }
 
 func TestAccumulatedStreams(t *testing.T) {
-	lim := 20
+	lim := 30
 	n_streams := 10
 	start, end := 0, 10
 	// for a logproto.BACKWARD query, we use a min heap based on FORWARD
@@ -449,8 +449,7 @@ func TestAccumulatedStreams(t *testing.T) {
 
 	for i := 0; i < lim; i++ {
 		got := acc.Pop().(*logproto.Stream)
-		// require.Equal(t, fmt.Sprintf(`{n="%d"}`, i%n_streams), got.Labels)
-
+		require.Equal(t, fmt.Sprintf(`{n="%d"}`, i%n_streams), got.Labels)
 		exp := (n_streams*(end-start) - lim + i) / n_streams
 		require.Equal(t, time.Unix(int64(exp), 0), got.Entries[0].Timestamp)
 	}

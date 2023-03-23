@@ -387,7 +387,7 @@ func newStreamAccumulator(order logproto.Direction, limit int) *accumulatedStrea
 // returns the top priority
 func (acc *accumulatedStreams) top() (time.Time, bool) {
 	if len(acc.streams) > 0 {
-		return acc.streams[0].Entries[0].Timestamp, true
+		return acc.streams[0].Entries[len(acc.streams[0].Entries)-1].Timestamp, true
 	}
 	return time.Time{}, false
 }
@@ -417,7 +417,7 @@ func (acc *accumulatedStreams) Swap(i, j int) {
 // first order by timestamp, then by labels
 func (acc *accumulatedStreams) Less(i, j int) bool {
 	// order by the 'oldest' entry in the stream
-	if a, b := acc.streams[i].Entries[0].Timestamp, acc.streams[j].Entries[0].Timestamp; !a.Equal(b) {
+	if a, b := acc.streams[i].Entries[len(acc.streams[i].Entries)-1].Timestamp, acc.streams[j].Entries[len(acc.streams[j].Entries)-1].Timestamp; !a.Equal(b) {
 		return acc.less(a, b)
 	}
 	return acc.streams[i].Labels <= acc.streams[j].Labels
@@ -515,8 +515,10 @@ func (acc *accumulatedStreams) push(s *logproto.Stream) {
 
 func (acc *accumulatedStreams) addStream(s *logproto.Stream) {
 	// ensure entries conform to order we expect
+	// TODO(owen-d): remove? should be unnecessary since we insert in appropriate order
+	// but it's nice to have the safeguard
 	sort.Slice(s.Entries, func(i, j int) bool {
-		return acc.less(s.Entries[i].Timestamp, s.Entries[j].Timestamp)
+		return acc.less(s.Entries[j].Timestamp, s.Entries[i].Timestamp)
 	})
 
 	acc.streams = append(acc.streams, s)
@@ -537,9 +539,7 @@ func (acc *accumulatedStreams) appendTo(dst, src *logproto.Stream) {
 	var needsSort bool
 	for _, e := range src.Entries {
 		// sort if order has broken
-		// TODO: refactor. Shouldnt need to sort if we store the top entry of each stream at
-		// the end instead of beginning of slice
-		if len(dst.Entries) > 0 && acc.less(e.Timestamp, dst.Entries[len(dst.Entries)-1].Timestamp) {
+		if len(dst.Entries) > 0 && acc.less(dst.Entries[len(dst.Entries)-1].Timestamp, e.Timestamp) {
 			needsSort = true
 		}
 		dst.Entries = append(dst.Entries, e)
@@ -547,7 +547,8 @@ func (acc *accumulatedStreams) appendTo(dst, src *logproto.Stream) {
 
 	if needsSort {
 		sort.Slice(dst.Entries, func(i, j int) bool {
-			return acc.less(dst.Entries[i].Timestamp, dst.Entries[j].Timestamp)
+			// store in reverse order so we can more reliably insert without sorting and pop from end
+			return acc.less(dst.Entries[j].Timestamp, dst.Entries[i].Timestamp)
 		})
 	}
 
@@ -565,8 +566,10 @@ func (acc *accumulatedStreams) Pop() any {
 
 	stream := acc.streams[0]
 	cpy := *stream
-	cpy.Entries = cpy.Entries[:1]
-	stream.Entries = stream.Entries[1:]
+	// TODO(owen-d): is it better to return a new slice than
+	// return a single len slice with the first entry pointing to the original?
+	cpy.Entries = cpy.Entries[len(stream.Entries)-1:]
+	stream.Entries = stream.Entries[0 : len(stream.Entries)-1]
 
 	acc.count--
 
