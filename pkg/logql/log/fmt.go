@@ -67,6 +67,9 @@ var (
 		"unixEpochMillis":  unixEpochMillis,
 		"unixEpochNanos":   unixEpochNanos,
 		"toDateInZone":     toDateInZone,
+		"toEpoch":          toEpoch,
+		"toEpochMillis":    toEpochMillis,
+		"toEpochNanos":     toEpochNanos,
 	}
 
 	// sprig template functions
@@ -128,6 +131,35 @@ func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() i
 		return time.Unix(0, currTimestamp())
 	}
 	return functions
+}
+
+// toEpoch converts a string with Unix time to an time Value
+func toEpoch(epoch string) (int64, error) {
+	i, err := strconv.ParseInt(epoch, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return i, nil
+}
+
+// toEpochMillis converts a string with Unix time in milliseconds to an time Value
+func toEpochMillis(epoch string) (time.Time, error) {
+	i, err := strconv.ParseInt(epoch, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	tm := time.UnixMilli(i)
+	return tm, nil
+}
+
+// toEpochNanos converts a string with Unix time in nanoseconds to an time Value
+func toEpochNanos(epoch string) (time.Time, error) {
+	i, err := strconv.ParseInt(epoch, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	tm := time.Unix(0, i)
+	return tm, nil
 }
 
 func unixEpochMillis(date time.Time) string {

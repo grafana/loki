@@ -674,6 +674,33 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				{Name: "bar", Value: "i'm a string, encode me!"},
 			},
 		},
+		{
+			"toEpoch",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpoch | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
+			labels.Labels{
+				{Name: "foo", Value: "2023-03-23"},
+				{Name: "bar", Value: "1679577215"},
+			},
+		},
+		{
+			"toEpochMillis",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpochMillis | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
+			labels.Labels{
+				{Name: "foo", Value: "2009-11-10"},
+				{Name: "bar", Value: "1257894000000"},
+			},
+		},
+		{
+			"toEpochNanos",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpochNanos | date "Jan 2, 2006 at 3:04pm" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
+			labels.Labels{
+				{Name: "foo", Value: "Sep 9, 2001 at 2:46am"},
+				{Name: "bar", Value: "1000000000000000000"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
