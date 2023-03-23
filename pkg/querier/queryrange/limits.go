@@ -350,13 +350,23 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
-		if bytesRead > uint64(maxBytesRead) {
-			statsBytesStr := humanize.Bytes(bytesRead)
-			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
-			errorMsg := fmt.Sprintf(q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
-			level.Warn(log).Log("msg", errorMsg, "limitBytes", maxBytesReadStr, "queryBytes", statsBytesStr)
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, errorMsg)
+		var limitName string
+		if q.limitErrorTmpl == limErrQueryTooManyBytesTmpl {
+			limitName = "max_query"
 		}
+		if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl {
+			limitName = "max_querier"
+		}
+
+		statsBytesStr := humanize.Bytes(bytesRead)
+		maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
+
+		if bytesRead > uint64(maxBytesRead) {
+			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
+		}
+
+		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
 	return q.next.Do(ctx, r)
