@@ -1025,7 +1025,7 @@ The `azure_event_hub` block configures how Promtail receives Azure Event Hubs me
 
 To learn more about streaming Azure logs to an Azure event hub, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
 
-Apache Kafka endpoint is not available within the `Basic` pricing plan. More information about Event Hubs pricing [here](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
+Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
 
 ```yaml
 # Event Hub namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
