@@ -166,7 +166,6 @@ func Test_astMapper(t *testing.T) {
 			},
 		},
 		handler,
-		LokiCodec,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
@@ -691,7 +690,6 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			mware := newASTMapperware(
 				confs,
 				handler,
-				LokiCodec,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},

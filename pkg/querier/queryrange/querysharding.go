@@ -52,7 +52,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, codec, logger, shardingMetrics, limits, maxShards)
+		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -71,7 +71,6 @@ func NewQueryShardMiddleware(
 func newASTMapperware(
 	confs ShardingConfigs,
 	next queryrangebase.Handler,
-	codec queryrangebase.Codec,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
 	limits Limits,
@@ -81,7 +80,6 @@ func newASTMapperware(
 		confs:     confs,
 		logger:    log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:    limits,
-		codec:     codec,
 		next:      next,
 		ng:        logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics:   metrics,
