@@ -1,5 +1,6 @@
 ## Main
 
+- [8878](https://github.com/grafana/loki/pull/8878) **periklis**: Refactor all type validations into own package
 - [7451](https://github.com/grafana/loki/pull/7451) **btaani**: Add support for rules configmap sharding
 - [8672](https://github.com/grafana/loki/pull/8672) **periklis**: Add support for memberlist bind network configuration
 - [8748](https://github.com/grafana/loki/pull/8748) **periklis**: Add alertingrule tenant id label for all rules
