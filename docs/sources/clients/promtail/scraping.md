@@ -363,7 +363,7 @@ Targets can be configured using the `azure_event_hubs` stanza:
   relabel_configs:
     - action: replace
       source_labels:
-        - __azure_event_hub_category
+        - __azure_event_hubs_category
       target_label: category
 ```
 
