@@ -325,6 +325,16 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
 }
 
+func (q *querySizeLimiter) guessLimitName() string {
+	if q.limitErrorTmpl == limErrQueryTooManyBytesTmpl {
+		return "MaxQueryBytesRead"
+	}
+	if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl {
+		return "MaxQuerierBytesRead"
+	}
+	return "unknown"
+}
+
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log, ctx := spanlogger.New(ctx, "query_size_limits")
 	defer log.Finish()
@@ -350,23 +360,15 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
-		var limitName string
-		if q.limitErrorTmpl == limErrQueryTooManyBytesTmpl {
-			limitName = "max_query"
-		}
-		if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl {
-			limitName = "max_querier"
-		}
-
 		statsBytesStr := humanize.Bytes(bytesRead)
 		maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
 
 		if bytesRead > uint64(maxBytesRead) {
-			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
 		}
 
-		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
 	return q.next.Do(ctx, r)
