@@ -167,7 +167,7 @@ func (e *eventHubMessageParser) getTime(messageTime time.Time, useIncomingTimest
 func (e *eventHubMessageParser) getLabels(logRecord *azureMonitorResourceLog, relabelConfig []*relabel.Config) model.LabelSet {
 	lbs := labels.Labels{
 		{
-			Name:  "__azure_event_hub_category",
+			Name:  "__azure_event_hubs_category",
 			Value: logRecord.Category,
 		},
 	}
