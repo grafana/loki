@@ -8,6 +8,11 @@
 
 ### All Changes
 
+#### Promtail
+
+##### Enhancements
+* [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
+
 ## 2.8.0 (2023-03-??)
 
 #### Loki
