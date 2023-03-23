@@ -1062,7 +1062,7 @@ When Promtail receives Azure Event Hubs messages, various internal labels are ma
 
 - `__azure_event_hubs_category`: The log category of the message when a message is an application log.
 
-The list of labels below are discovered because of consuming Kafka interface of Event Hubs:
+The following list of labels is discovered using the Kafka endpoint in Event Hubs.
 
 - `__meta_kafka_topic`: The current topic for where the message has been read.
 - `__meta_kafka_partition`: The partition id where the message has been read.
