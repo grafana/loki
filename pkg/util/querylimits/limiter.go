@@ -92,3 +92,13 @@ func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
 	}
 	return union
 }
+
+func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
+	original := l.CombinedLimits.MaxQueryBytesRead(ctx, userID)
+	requestLimits := ExtractQueryLimitsContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryBytesRead.Val() == 0 || requestLimits.MaxQueryBytesRead.Val() > original {
+		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
+		return original
+	}
+	return requestLimits.MaxQueryBytesRead.Val()
+}
