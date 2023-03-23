@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -95,6 +96,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 	select {
 	case queue.Chan() <- req:
 		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
+		q.metrics.enqueueCount.WithLabelValues(tenant, fmt.Sprint(len(path))).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -146,6 +148,7 @@ FindQueue:
 			}
 
 			q.metrics.QueueLength.WithLabelValues(tenant).Dec()
+			q.metrics.dequeueCount.WithLabelValues(tenant, querierID).Inc()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
