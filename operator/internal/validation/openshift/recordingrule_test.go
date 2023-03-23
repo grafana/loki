@@ -62,7 +62,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:     field.ErrorTypeInvalid,
-					Field:    "Spec.TenantID",
+					Field:    "spec.tenantID",
 					BadValue: "application",
 					Detail:   `RecordingRule does not use correct tenant ["infrastructure"]`,
 				},
@@ -91,7 +91,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:     field.ErrorTypeInvalid,
-					Field:    "Spec.Groups[0].Rules[0].Expr",
+					Field:    "spec.groups[0].rules[0].expr",
 					BadValue: "invalid",
 					Detail:   lokiv1.ErrParseLogQLExpression.Error(),
 				},
@@ -120,7 +120,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:     field.ErrorTypeInvalid,
-					Field:    "Spec.Groups[0].Rules[0].Expr",
+					Field:    "spec.groups[0].rules[0].expr",
 					BadValue: `{kubernetes_namespace_name="example", level="error"}`,
 					Detail:   lokiv1.ErrParseLogQLNotSample.Error(),
 				},
@@ -149,7 +149,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:     field.ErrorTypeInvalid,
-					Field:    "Spec.Groups[0].Rules[0].Expr",
+					Field:    "spec.groups[0].rules[0].expr",
 					BadValue: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
 					Detail:   lokiv1.ErrRuleMustMatchNamespace.Error(),
 				},
@@ -178,7 +178,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:     field.ErrorTypeInvalid,
-					Field:    "Spec.Groups[0].Rules[0].Expr",
+					Field:    "spec.groups[0].rules[0].expr",
 					BadValue: `sum(rate({kubernetes_namespace_name="other-ns", level="error"}[5m])) by (job) > 0.1`,
 					Detail:   lokiv1.ErrRuleMustMatchNamespace.Error(),
 				},

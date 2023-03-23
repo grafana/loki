@@ -168,5 +168,4 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 
 	require.Len(t, volumeNames, 2)
 	require.Len(t, volumeProjections, 2)
-
 }

@@ -1,5 +1,6 @@
 ## Main
 
+- [8878](https://github.com/grafana/loki/pull/8878) **periklis**: Refactor all type validations into own package
 - [8875](https://github.com/grafana/loki/pull/8875) **Red-GV**: Remove mutations to non-updatable statefulset fields
 - [7451](https://github.com/grafana/loki/pull/7451) **btaani**: Add support for rules configmap sharding
 - [8672](https://github.com/grafana/loki/pull/8672) **periklis**: Add support for memberlist bind network configuration
