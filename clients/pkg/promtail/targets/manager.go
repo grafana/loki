@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/azureeventhub"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/azureeventhubs"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
@@ -245,7 +245,7 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, kafkaTargetManager)
 		case AzureEventHubScrapeConfigs:
-			azureEventHubTargetManager, err := azureeventhub.NewTargetManager(reg, logger, client, scrapeConfigs)
+			azureEventHubTargetManager, err := azureeventhubs.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make Azure Event Hub target manager")
 			}

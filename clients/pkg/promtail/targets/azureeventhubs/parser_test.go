@@ -1,4 +1,4 @@
-package azureeventhub
+package azureeventhubs
 
 import (
 	"os"
