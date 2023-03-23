@@ -1019,23 +1019,23 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
 
-### Azure Event Hub
+### Azure Event Hubs
 
-The `azure_event_hub` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. For more information, see the [Azure Event Hubs documentation](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
+The `azure_event_hubs` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. For more information, see the [Azure Event Hubs documentation](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
 
-To learn more about streaming Azure logs to an Azure event hub, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
+To learn more about streaming Azure logs to an Azure Event Hubs, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
 
 Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
 
 ```yaml
-# Event Hub namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+# Event Hubs namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
 fully_qualified_namespace: <string> | default = ""
 
 # Event Hubs to consume (Required).
 event_hubs:
     [ - <string> ... ]
 
-# Event Hub ConnectionString for authentication on Azure Cloud (Required).
+# Event Hubs ConnectionString for authentication on Azure Cloud (Required).
 connection_string: <string> | default = "range"
 
 # The consumer group id.
@@ -1060,7 +1060,7 @@ When Promtail receives Azure Event Hubs messages, various internal labels are ma
 
 **Available Labels:**
 
-- `__azure_event_hub_category`: The log category of the message when a message is an application log.
+- `__azure_event_hubs_category`: The log category of the message when a message is an application log.
 
 The list of labels below are discovered because of consuming Kafka interface of Event Hubs:
 
