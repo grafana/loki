@@ -161,7 +161,7 @@ func (in instance) For(
 		}
 	}()
 
-	results := make([]logqlmodel.Result, len(queries))
+	acc := newDownstreamAccumulator(queries[0].Params, len(queries))
 	for i := 0; i < len(queries); i++ {
 		select {
 		case <-ctx.Done():
@@ -170,10 +170,10 @@ func (in instance) For(
 			if resp.err != nil {
 				return nil, resp.err
 			}
-			results[resp.i] = resp.res
+			acc.Accumulate(ctx, resp.i, resp.res)
 		}
 	}
-	return results, nil
+	return acc.Result(), nil
 }
 
 // convert to matrix
@@ -272,26 +272,28 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 type downstreamAccumulator struct {
 	*logsAccumulator
 	*bufferedAccumulator
+	params logql.Params
+	n      int // number of queries, used to build slice size
 }
 
-func newDownstreamAccumulator(limit int) *downstreamAccumulator {
-	return &downstreamAccumulator{
-		logsAccumulator:     &logsAccumulator{},
-		bufferedAccumulator: &bufferedAccumulator{},
-	}
+func newDownstreamAccumulator(params logql.Params, nQueries int) *downstreamAccumulator {
+	return &downstreamAccumulator{params: params, n: nQueries}
 }
 
 func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
 		a.logsAccumulator = &logsAccumulator{
-			accumulatedStreams: newStreamAccumulator(logproto.BACKWARD, 10),
+			accumulatedStreams: newStreamAccumulator(a.params.Direction(), int(a.params.Limit())),
 		}
 	} else {
-		a.bufferedAccumulator = &bufferedAccumulator{}
+		a.bufferedAccumulator = &bufferedAccumulator{
+			results: make([]logqlmodel.Result, a.n),
+		}
+
 	}
 }
 
-func (a *downstreamAccumulator) Accumulate(ctx context.Context, acc logqlmodel.Result) error {
+func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc logqlmodel.Result) error {
 	// Set a shard count to 1 which will allow the stats to correctly aggregate all the shards executed in the query.
 	acc.Statistics.Summary.Shards = 1
 	stats.JoinResults(ctx, acc.Statistics)
@@ -307,7 +309,7 @@ func (a *downstreamAccumulator) Accumulate(ctx context.Context, acc logqlmodel.R
 	if a.logsAccumulator != nil {
 		return a.logsAccumulator.Accumulate(acc)
 	} else {
-		return a.bufferedAccumulator.Accumulate(acc)
+		return a.bufferedAccumulator.Accumulate(acc, index)
 	}
 }
 
@@ -319,18 +321,19 @@ func (a *downstreamAccumulator) Result() []logqlmodel.Result {
 }
 
 type logsAccumulator struct {
-	res                logqlmodel.Result
 	accumulatedStreams *accumulatedStreams
 }
 
-func (a *logsAccumulator) merge(acc logqlmodel.Result) {
-	panic("not implemented")
+func (a *logsAccumulator) merge(s logqlmodel.Streams) {
+	for _, stream := range s {
+		a.accumulatedStreams.Push(&stream)
+	}
 }
 
 func (a *logsAccumulator) Accumulate(acc logqlmodel.Result) error {
 	switch got := acc.Data.(type) {
 	case logqlmodel.Streams:
-		a.merge(acc)
+		a.merge(got)
 	default:
 		return fmt.Errorf("unexpected response type during response result accumulation. Got (%T), wanted %s", got, logqlmodel.ValueTypeStreams)
 	}
@@ -338,15 +341,37 @@ func (a *logsAccumulator) Accumulate(acc logqlmodel.Result) error {
 }
 
 func (a *logsAccumulator) Result() logqlmodel.Result {
-	return a.res
+	m := make(map[string]*logproto.Stream, a.accumulatedStreams.Len())
+	result := make(logqlmodel.Streams, 0, a.accumulatedStreams.Len())
+	for x := a.accumulatedStreams.Pop(); x != nil; x = a.accumulatedStreams.Pop() {
+		s := x.(*logproto.Stream)
+
+		if prior, ok := m[s.Labels]; !ok {
+			m[s.Labels] = s
+		} else {
+			prior.Entries = append(prior.Entries, s.Entries...)
+		}
+	}
+
+	for _, s := range m {
+		sort.Slice(s.Entries, func(i, j int) bool {
+			return !s.Entries[i].Timestamp.After(s.Entries[j].Timestamp)
+		})
+		result = append(result, *s)
+	}
+
+	return logqlmodel.Result{
+		// stats & headers are already aggregated in the context
+		Data: result,
+	}
 }
 
 type bufferedAccumulator struct {
 	results []logqlmodel.Result
 }
 
-func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result) error {
-	a.results = append(a.results, acc)
+func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result, i int) error {
+	a.results[i] = acc
 	return nil
 }
 

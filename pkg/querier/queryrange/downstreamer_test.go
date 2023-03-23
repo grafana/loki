@@ -222,8 +222,25 @@ func TestInstanceFor(t *testing.T) {
 		}.Downstreamer(context.Background()).(*instance)
 	}
 	in := mkIn()
+	newParams := func() logql.Params {
+		return logql.NewLiteralParams(
+			"",
+			time.Now(),
+			time.Now(),
+			0,
+			0,
+			logproto.BACKWARD,
+			1000,
+			nil,
+		)
+	}
 
-	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+	var queries []logql.DownstreamQuery
+	for i := 0; i < in.parallelism+1; i++ {
+		queries = append(queries, logql.DownstreamQuery{
+			Params: newParams(),
+		})
+	}
 	var mtx sync.Mutex
 	var ct int
 
@@ -232,7 +249,9 @@ func TestInstanceFor(t *testing.T) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
-		return logqlmodel.Result{}, nil
+		return logqlmodel.Result{
+			Data: promql.Scalar{},
+		}, nil
 	})
 	require.Nil(t, err)
 	require.Equal(t, len(queries), ct)
@@ -261,11 +280,13 @@ func TestInstanceFor(t *testing.T) {
 		context.TODO(),
 		[]logql.DownstreamQuery{
 			{
+				Params: newParams(),
 				Shards: logql.Shards{
 					{Shard: 0, Of: 2},
 				},
 			},
 			{
+				Params: newParams(),
 				Shards: logql.Shards{
 					{Shard: 1, Of: 2},
 				},
@@ -273,25 +294,17 @@ func TestInstanceFor(t *testing.T) {
 		},
 		func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 			return logqlmodel.Result{
-				Data: logqlmodel.Streams{{
-					Labels: qry.Shards[0].String(),
-				}},
+				Data: promql.Scalar{
+					V: float64(qry.Shards[0].Shard),
+				},
 			}, nil
 		},
 	)
 	require.Nil(t, err)
-	require.Equal(
-		t,
-		[]logqlmodel.Result{
-			{
-				Data: logqlmodel.Streams{{Labels: "0_of_2"}},
-			},
-			{
-				Data: logqlmodel.Streams{{Labels: "1_of_2"}},
-			},
-		},
-		results,
-	)
+	require.Equal(t, 2, len(results))
+	for i := range results {
+		require.Equal(t, float64(i), results[i].Data.(promql.Scalar).V)
+	}
 	ensureParallelism(t, in, in.parallelism)
 }
 
