@@ -172,8 +172,6 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 
 	ph.requiredLabels = hints
 	ph.shouldPreserveError = containsError(hints)
-	ph.labelNames = labelNames
-	ph.labelFilters = labelFilters
 
 	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 }
