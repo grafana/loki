@@ -57,6 +57,7 @@ type Reader struct {
 	user            string
 	pass            string
 	tenantID        string
+	actor           string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
 	sName           string
@@ -85,6 +86,7 @@ func NewReader(writer io.Writer,
 	user string,
 	pass string,
 	tenantID string,
+	actor string,
 	queryTimeout time.Duration,
 	labelName string,
 	labelVal string,
@@ -116,6 +118,9 @@ func NewReader(writer io.Writer,
 	if tenantID != "" {
 		h.Set("X-Scope-OrgID", tenantID)
 	}
+	if actor != "" {
+		h.Set("X-Loki-Actor-Path", actor)
+	}
 
 	next := time.Now()
 	bkcfg := backoff.Config{
@@ -134,6 +139,7 @@ func NewReader(writer io.Writer,
 		user:            user,
 		pass:            pass,
 		tenantID:        tenantID,
+		actor:           actor,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
 		sName:           streamName,
@@ -214,6 +220,9 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	}
 	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
+	if r.actor != "" {
+		req.Header.Set("X-Loki-Actor-Path", r.actor)
 	}
 	req.Header.Set("User-Agent", userAgent)
 
@@ -305,6 +314,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
+	if r.actor != "" {
+		req.Header.Set("X-Loki-Actor-Path", r.actor)
 	}
 	req.Header.Set("User-Agent", userAgent)
 
