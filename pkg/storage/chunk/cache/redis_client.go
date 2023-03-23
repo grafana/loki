@@ -29,6 +29,7 @@ type RedisConfig struct {
 	InsecureSkipVerify bool           `yaml:"tls_insecure_skip_verify"`
 	IdleTimeout        time.Duration  `yaml:"idle_timeout"`
 	MaxConnAge         time.Duration  `yaml:"max_connection_age"`
+	RouteRandomly      bool           `yaml:"route_randomly"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -45,6 +46,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"redis.tls-insecure-skip-verify", false, description+"Skip validating server certificate.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
+	f.BoolVar(&cfg.RouteRandomly, prefix+"redis.route-randomly", false, description+"By default, the Redis client only reads from the master node. Enabling this option can lower pressure on the master node by randomly routing read-only commands to the master and any available replicas.")
 }
 
 type RedisClient struct {
@@ -74,14 +76,15 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 		}
 	}
 	opt := &redis.UniversalOptions{
-		Addrs:       endpoints,
-		MasterName:  cfg.MasterName,
-		Username:    cfg.Username,
-		Password:    cfg.Password.String(),
-		DB:          cfg.DB,
-		PoolSize:    cfg.PoolSize,
-		IdleTimeout: cfg.IdleTimeout,
-		MaxConnAge:  cfg.MaxConnAge,
+		Addrs:         endpoints,
+		MasterName:    cfg.MasterName,
+		Username:      cfg.Username,
+		Password:      cfg.Password.String(),
+		DB:            cfg.DB,
+		PoolSize:      cfg.PoolSize,
+		IdleTimeout:   cfg.IdleTimeout,
+		MaxConnAge:    cfg.MaxConnAge,
+		RouteRandomly: cfg.RouteRandomly,
 	}
 	if cfg.EnableTLS {
 		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}

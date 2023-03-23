@@ -103,6 +103,8 @@ type Limits struct {
 	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
 
 	// Ruler defaults and limits.
+
+	// TODO(dannyk): this setting is misnamed and probably deprecatable.
 	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
@@ -145,6 +147,10 @@ type Limits struct {
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
+	// TODO(dannyk): possible enhancement is to align this with rule group interval
+	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
+	RulerRemoteEvaluationMaxResponseSize int64         `yaml:"ruler_remote_evaluation_max_response_size" json:"ruler_remote_evaluation_max_response_size" doc:"description=Maximum size (in bytes) of the allowable response size from a remote rule evaluation. Set to 0 to allow any response size (default)."`
+
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
@@ -162,6 +168,8 @@ type Limits struct {
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+
+	RequiredLabels []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
 }
 
 type StreamRetention struct {
@@ -639,6 +647,22 @@ func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.Rem
 	return nil
 }
 
+// RulerRemoteEvaluationTimeout returns the duration after which to timeout a remote rule evaluation request for a given user.
+func (o *Overrides) RulerRemoteEvaluationTimeout(userID string) time.Duration {
+	// if not defined, use the base query timeout
+	timeout := o.getOverridesForUser(userID).RulerRemoteEvaluationTimeout
+	if timeout <= 0 {
+		return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
+	}
+
+	return timeout
+}
+
+// RulerRemoteEvaluationMaxResponseSize returns the maximum allowable response size from a remote rule evaluation for a given user.
+func (o *Overrides) RulerRemoteEvaluationMaxResponseSize(userID string) int64 {
+	return o.getOverridesForUser(userID).RulerRemoteEvaluationMaxResponseSize
+}
+
 // RetentionPeriod returns the retention period for a given user.
 func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RetentionPeriod)
@@ -663,6 +687,10 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 
 func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
+}
+
+func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
+	return o.getOverridesForUser(userID).RequiredLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

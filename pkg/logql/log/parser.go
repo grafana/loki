@@ -37,6 +37,7 @@ var (
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
+	errFoundAllLabels       = errors.New("found all required labels")
 )
 
 type JSONParser struct {
@@ -64,6 +65,11 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	j.lbs = lbs
 
 	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
+		if errors.Is(err, errFoundAllLabels) {
+			// Short-circuited
+			return line, true
+		}
+
 		lbs.SetErr(errJSON)
 		lbs.SetErrorDetails(err.Error())
 		if lbs.ParserLabelHints().PreserveError() {
@@ -87,6 +93,12 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 		// rollback the prefix as we exit the current object.
 		j.prefixBuffer = j.prefixBuffer[:prefixLen]
 		return err
+	}
+
+	if j.lbs.ParserLabelHints().AllRequiredExtracted() {
+		// Not actually an error. Parsing can be short-circuited
+		// and this tells jsonparser to stop parsing
+		return errFoundAllLabels
 	}
 
 	return nil
@@ -135,6 +147,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !j.lbs.ParserLabelHints().ShouldExtract(string(j.prefixBuffer)) {
 			return "", false
 		}
+
 		return string(j.prefixBuffer), true
 	})
 
@@ -234,6 +247,10 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				if lbs.BaseHas(sanitize) {
 					sanitize = fmt.Sprintf("%s%s", sanitize, duplicateSuffix)
 				}
+				if !lbs.ParserLabelHints().ShouldExtract(sanitize) {
+					return "", false
+				}
+
 				return sanitize, true
 			})
 			if !ok {
@@ -265,18 +282,21 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
+
 	l.dec.Reset(line)
 	for l.dec.ScanKeyval() {
 		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
 			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
-			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
-				return "", false
-			}
 			if len(sanitized) == 0 {
 				return "", false
 			}
+
 			if lbs.BaseHas(sanitized) {
 				sanitized = fmt.Sprintf("%s%s", sanitized, duplicateSuffix)
+			}
+
+			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+				return "", false
 			}
 			return sanitized, true
 		})
@@ -289,6 +309,10 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			val = nil
 		}
 		lbs.Set(key, string(val))
+
+		if lbs.ParserLabelHints().AllRequiredExtracted() {
+			break
+		}
 	}
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)
@@ -332,11 +356,12 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	names := l.names[:len(matches)]
 	for i, m := range matches {
 		name := names[i]
-		if !lbs.parserKeyHints.ShouldExtract(name) {
-			continue
-		}
 		if lbs.BaseHas(name) {
 			name = name + duplicateSuffix
+		}
+
+		if !lbs.parserKeyHints.ShouldExtract(name) {
+			continue
 		}
 
 		lbs.Set(name, string(m))
@@ -431,8 +456,17 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) {
 				key = key + duplicateSuffix
+				if !lbs.ParserLabelHints().ShouldExtract(key) {
+					// Don't extract duplicates if we don't have to
+					break
+				}
 			}
+
 			lbs.Set(key, string(val))
+
+			if lbs.ParserLabelHints().AllRequiredExtracted() {
+				break
+			}
 		}
 	}
 	if l.dec.Err() != nil {
@@ -579,7 +613,7 @@ func NewUnpackParser() *UnpackParser {
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
 
 func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.ParserLabelHints().NoLabels() {
+	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
@@ -618,14 +652,13 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				isPacked = true
 				return nil
 			}
-
 			key, ok := u.keys.Get(key, func() (string, bool) {
 				field := unsafeGetString(key)
-				if !lbs.ParserLabelHints().ShouldExtract(field) {
-					return "", false
-				}
 				if lbs.BaseHas(field) {
 					field = field + duplicateSuffix
+				}
+				if !lbs.ParserLabelHints().ShouldExtract(field) {
+					return "", false
 				}
 				return field, true
 			})

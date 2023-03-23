@@ -817,6 +817,11 @@ storage:
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
 
+# Upper bound of random duration to wait before rule evaluation to avoid
+# contention during concurrent execution of rules. Set 0 to disable (default).
+# CLI flag: -ruler.evaluation-jitter
+[evaluation_jitter: <duration> | default = 0s]
+
 # Comma-separated list of Alertmanager URLs to send notifications to. Each
 # Alertmanager URL is treated as a separate group in the configuration. Multiple
 # Alertmanagers in HA per group can be supported by using DNS resolution via
@@ -2427,6 +2432,14 @@ ruler_remote_write_sigv4_config:
 # remote client id as key.
 [ruler_remote_write_config: <map of string to RemoteWriteConfig>]
 
+# Timeout for a remote rule evaluation. Defaults to the value of
+# 'querier.query-timeout'.
+[ruler_remote_evaluation_timeout: <duration>]
+
+# Maximum size (in bytes) of the allowable response size from a remote rule
+# evaluation. Set to 0 to allow any response size (default).
+[ruler_remote_evaluation_max_response_size: <int>]
+
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
 # 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if
 # retention_enabled is true, then the log entry deletion API endpoints are
@@ -2478,6 +2491,9 @@ shard_streams:
   [desired_rate: <int>]
 
 [blocked_queries: <blocked_query...>]
+
+# Define a list of required selector labels.
+[required_label_matchers: <list of strings>]
 ```
 
 ### frontend_worker
@@ -3394,196 +3410,181 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 &nbsp;
 
 ```yaml
-# Cache config for index entry writing.(deprecated: use embedded-cache instead)
-# Enable in-memory cache (auto-enabled for the chunks & query results cache if
-# no other cache is configured).
+# (deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled
+# for the chunks & query results cache if no other cache is configured).
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean> | default = false]
 
-# Cache config for index entry writing.The default validity of entries for
-# caches unless overridden.
+# The default validity of entries for caches unless overridden.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration> | default = 1h]
 
 background:
-  # Cache config for index entry writing.At what concurrency to write back to
-  # cache.
+  # At what concurrency to write back to cache.
   # CLI flag: -<prefix>.background.write-back-concurrency
   [writeback_goroutines: <int> | default = 10]
 
-  # Cache config for index entry writing.How many key batches to buffer for
-  # background write-back.
+  # How many key batches to buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> | default = 10000]
 
 memcached:
-  # Cache config for index entry writing.How long keys stay in the memcache.
+  # How long keys stay in the memcache.
   # CLI flag: -<prefix>.memcached.expiration
   [expiration: <duration> | default = 0s]
 
-  # Cache config for index entry writing.How many keys to fetch in each batch.
+  # How many keys to fetch in each batch.
   # CLI flag: -<prefix>.memcached.batchsize
   [batch_size: <int> | default = 1024]
 
-  # Cache config for index entry writing.Maximum active requests to memcache.
+  # Maximum active requests to memcache.
   # CLI flag: -<prefix>.memcached.parallelism
   [parallelism: <int> | default = 100]
 
 memcached_client:
-  # Cache config for index entry writing.Hostname for memcached service to use.
-  # If empty and if addresses is unset, no memcached will be used.
+  # Hostname for memcached service to use. If empty and if addresses is unset,
+  # no memcached will be used.
   # CLI flag: -<prefix>.memcached.hostname
   [host: <string> | default = ""]
 
-  # Cache config for index entry writing.SRV service used to discover memcache
-  # servers.
+  # SRV service used to discover memcache servers.
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # Cache config for index entry writing.EXPERIMENTAL: Comma separated addresses
-  # list in DNS Service Discovery format:
+  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery
+  # format:
   # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 
-  # Cache config for index entry writing.Maximum time to wait before giving up
-  # on memcached requests.
+  # Maximum time to wait before giving up on memcached requests.
   # CLI flag: -<prefix>.memcached.timeout
   [timeout: <duration> | default = 100ms]
 
-  # Cache config for index entry writing.Maximum number of idle connections in
-  # pool.
+  # Maximum number of idle connections in pool.
   # CLI flag: -<prefix>.memcached.max-idle-conns
   [max_idle_conns: <int> | default = 16]
 
-  # Cache config for index entry writing.The maximum size of an item stored in
-  # memcached. Bigger items are not stored. If set to 0, no maximum size is
-  # enforced.
+  # The maximum size of an item stored in memcached. Bigger items are not
+  # stored. If set to 0, no maximum size is enforced.
   # CLI flag: -<prefix>.memcached.max-item-size
   [max_item_size: <int> | default = 0]
 
-  # Cache config for index entry writing.Period with which to poll DNS for
-  # memcache servers.
+  # Period with which to poll DNS for memcache servers.
   # CLI flag: -<prefix>.memcached.update-interval
   [update_interval: <duration> | default = 1m]
 
-  # Cache config for index entry writing.Use consistent hashing to distribute to
-  # memcache servers.
+  # Use consistent hashing to distribute to memcache servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
   [consistent_hash: <boolean> | default = true]
 
-  # Cache config for index entry writing.Trip circuit-breaker after this number
-  # of consecutive dial failures (if zero then circuit-breaker is disabled).
+  # Trip circuit-breaker after this number of consecutive dial failures (if zero
+  # then circuit-breaker is disabled).
   # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
   [circuit_breaker_consecutive_failures: <int> | default = 10]
 
-  # Cache config for index entry writing.Duration circuit-breaker remains open
-  # after tripping (if zero then 60 seconds is used).
+  # Duration circuit-breaker remains open after tripping (if zero then 60
+  # seconds is used).
   # CLI flag: -<prefix>.memcached.circuit-breaker-timeout
   [circuit_breaker_timeout: <duration> | default = 10s]
 
-  # Cache config for index entry writing.Reset circuit-breaker counts after this
-  # long (if zero then never reset).
+  # Reset circuit-breaker counts after this long (if zero then never reset).
   # CLI flag: -<prefix>.memcached.circuit-breaker-interval
   [circuit_breaker_interval: <duration> | default = 10s]
 
 redis:
-  # Cache config for index entry writing.Redis Server or Cluster configuration
-  # endpoint to use for caching. A comma-separated list of endpoints for Redis
-  # Cluster or Redis Sentinel. If empty, no redis will be used.
+  # Redis Server or Cluster configuration endpoint to use for caching. A
+  # comma-separated list of endpoints for Redis Cluster or Redis Sentinel. If
+  # empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string> | default = ""]
 
-  # Cache config for index entry writing.Redis Sentinel master name. An empty
-  # string for Redis Server or Redis Cluster.
+  # Redis Sentinel master name. An empty string for Redis Server or Redis
+  # Cluster.
   # CLI flag: -<prefix>.redis.master-name
   [master_name: <string> | default = ""]
 
-  # Cache config for index entry writing.Maximum time to wait before giving up
-  # on redis requests.
+  # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
   [timeout: <duration> | default = 500ms]
 
-  # Cache config for index entry writing.How long keys stay in the redis.
+  # How long keys stay in the redis.
   # CLI flag: -<prefix>.redis.expiration
   [expiration: <duration> | default = 0s]
 
-  # Cache config for index entry writing.Database index.
+  # Database index.
   # CLI flag: -<prefix>.redis.db
   [db: <int> | default = 0]
 
-  # Cache config for index entry writing.Maximum number of connections in the
-  # pool.
+  # Maximum number of connections in the pool.
   # CLI flag: -<prefix>.redis.pool-size
   [pool_size: <int> | default = 0]
 
-  # Cache config for index entry writing.Username to use when connecting to
-  # redis.
+  # Username to use when connecting to redis.
   # CLI flag: -<prefix>.redis.username
   [username: <string> | default = ""]
 
-  # Cache config for index entry writing.Password to use when connecting to
-  # redis.
+  # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
   [password: <string> | default = ""]
 
-  # Cache config for index entry writing.Enable connecting to redis with TLS.
+  # Enable connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
-  # Cache config for index entry writing.Skip validating server certificate.
+  # Skip validating server certificate.
   # CLI flag: -<prefix>.redis.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
-  # Cache config for index entry writing.Close connections after remaining idle
-  # for this duration. If the value is zero, then idle connections are not
-  # closed.
+  # Close connections after remaining idle for this duration. If the value is
+  # zero, then idle connections are not closed.
   # CLI flag: -<prefix>.redis.idle-timeout
   [idle_timeout: <duration> | default = 0s]
 
-  # Cache config for index entry writing.Close connections older than this
-  # duration. If the value is zero, then the pool does not close connections
-  # based on age.
+  # Close connections older than this duration. If the value is zero, then the
+  # pool does not close connections based on age.
   # CLI flag: -<prefix>.redis.max-connection-age
   [max_connection_age: <duration> | default = 0s]
 
+  # By default, the Redis client only reads from the master node. Enabling this
+  # option can lower pressure on the master node by randomly routing read-only
+  # commands to the master and any available replicas.
+  # CLI flag: -<prefix>.redis.route-randomly
+  [route_randomly: <boolean> | default = false]
+
 embedded_cache:
-  # Cache config for index entry writing.Whether embedded cache is enabled.
+  # Whether embedded cache is enabled.
   # CLI flag: -<prefix>.embedded-cache.enabled
   [enabled: <boolean> | default = false]
 
-  # Cache config for index entry writing.Maximum memory size of the cache in MB.
+  # Maximum memory size of the cache in MB.
   # CLI flag: -<prefix>.embedded-cache.max-size-mb
   [max_size_mb: <int> | default = 100]
 
-  # Cache config for index entry writing.The time to live for items in the cache
-  # before they get purged.
+  # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
 
 fifocache:
-  # Cache config for index entry writing.Maximum memory size of the cache in
-  # bytes. A unit suffix (KB, MB, GB) may be applied.
+  # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
+  # applied.
   # CLI flag: -<prefix>.fifocache.max-size-bytes
   [max_size_bytes: <string> | default = "1GB"]
 
-  # Cache config for index entry writing.deprecated: Maximum number of entries
-  # in the cache.
+  # deprecated: Maximum number of entries in the cache.
   # CLI flag: -<prefix>.fifocache.max-size-items
   [max_size_items: <int> | default = 0]
 
-  # Cache config for index entry writing.The time to live for items in the cache
-  # before they get purged.
+  # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.fifocache.ttl
   [ttl: <duration> | default = 1h]
 
-  # Deprecated (use ttl instead): Cache config for index entry writing.The
-  # expiry duration for the cache.
+  # Deprecated (use ttl instead): The expiry duration for the cache.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration> | default = 0s]
 
-  # Deprecated (use max-size-items or max-size-bytes instead): Cache config for
-  # index entry writing.The number of entries to cache.
+  # Deprecated (use max-size-items or max-size-bytes instead): The number of
+  # entries to cache.
   # CLI flag: -<prefix>.fifocache.size
   [size: <int> | default = 0]
 

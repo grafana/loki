@@ -14,8 +14,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -24,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -137,6 +134,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 }
 
 func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	logger := logutil.WithContext(req.Context(), r.logger)
 	err := req.ParseForm()
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -154,10 +152,21 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		queryHash := logql.HashedQuery(rangeQuery.Query)
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
+		level.Info(logger).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
+			// The error will be handled later.
+			groups, err := e.MatcherGroups()
+			if err != nil {
+				level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
+			}
+
+			for _, g := range groups {
+				if err := validateMatchers(req, r.limits, g.Matchers); err != nil {
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				}
+			}
 			return r.metric.RoundTrip(req)
 		case syntax.LogSelectorExpr:
 			// Note, this function can mutate the request
@@ -166,8 +175,13 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if err := validateMaxEntriesLimits(req, rangeQuery.Limit, r.limits); err != nil {
-				return nil, err
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
+
+			if err := validateMatchers(req, r.limits, e.Matchers()); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+
 			// Only filter expressions are query sharded
 			if !expr.HasFilter() {
 				return r.limited.RoundTrip(req)
@@ -183,7 +197,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
+		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
 
 		return r.series.RoundTrip(req)
 	case LabelNamesOp:
@@ -192,7 +206,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start))
+		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start))
 
 		return r.labels.RoundTrip(req)
 	case InstantQueryOp:
@@ -206,7 +220,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		queryHash := logql.HashedQuery(instantQuery.Query)
-		level.Info(logutil.WithContext(req.Context(), r.logger)).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
+		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
 
 		switch expr.(type) {
 		case syntax.SampleExpr:
@@ -236,23 +250,6 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 		return filterExpr, nil
 	}
 	return expr, nil
-}
-
-// validates log entries limits
-func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	tenantIDs, err := tenant.TenantIDs(req.Context())
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
-	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
-
-	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
-	}
-	return nil
 }
 
 const (

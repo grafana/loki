@@ -16,6 +16,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -33,7 +34,9 @@ import (
 )
 
 const (
-	limitErrTmpl                  = "maximum of series (%d) reached for a single query"
+	limitErrTmpl          = "maximum of series (%d) reached for a single query"
+	maxSeriesErrTmpl      = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	requiredLabelsErrTmpl = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
 	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
 )
@@ -53,6 +56,7 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
+	RequiredLabels(context.Context, string) []string
 	MaxQueryBytesRead(context.Context, string) int
 	MaxQuerierBytesRead(context.Context, string) int
 }
@@ -183,7 +187,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
 		if queryLen > maxQueryLength {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLength)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength))
 		}
 	}
 
@@ -702,4 +706,49 @@ func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []c
 			end,
 		)
 	})
+}
+
+// validates log entries limits
+func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
+	tenantIDs, err := tenant.TenantIDs(req.Context())
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
+	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
+
+	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
+		return fmt.Errorf(maxSeriesErrTmpl, reqLimit, maxEntriesLimit)
+	}
+	return nil
+}
+
+func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Matcher) error {
+	tenants, err := tenant.TenantIDs(req.Context())
+	if err != nil {
+		return err
+	}
+
+	actual := make(map[string]struct{}, len(matchers))
+	var present []string
+	for _, m := range matchers {
+		actual[m.Name] = struct{}{}
+		present = append(present, m.Name)
+	}
+
+	for _, tenant := range tenants {
+		required := limits.RequiredLabels(req.Context(), tenant)
+		var missing []string
+		for _, label := range required {
+			if _, found := actual[label]; !found {
+				missing = append(missing, label)
+			}
+		}
+
+		if len(missing) > 0 {
+			return fmt.Errorf(requiredLabelsErrTmpl, strings.Join(missing, ", "), strings.Join(present, ", "))
+		}
+	}
+	return nil
 }

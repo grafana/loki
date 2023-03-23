@@ -31,7 +31,7 @@ func dayFromTime(t model.Time) config.DayTime {
 }
 
 var (
-	start     = model.Now().Add(-30 * 24 * time.Hour)
+	start = model.Now().Add(-30 * 24 * time.Hour)
 )
 
 func setupTestCompactor(t *testing.T, tempDir string) *Compactor {

@@ -4,13 +4,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Mapable interface {
-	*tenantQueue | *LeafQueue
-	// https://github.com/golang/go/issues/48522#issuecomment-924348755
-	Pos() QueueIndex
-	SetPos(index QueueIndex)
-}
-
 var ErrOutOfBounds = errors.New("queue index out of bounds")
 
 var empty = string([]byte{byte(0)})
