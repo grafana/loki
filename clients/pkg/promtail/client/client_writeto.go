@@ -50,7 +50,6 @@ func (c *clientWriteTo) StoreSeries(series []record.RefSeries, segment int) {
 	defer c.seriesSegmentLock.Unlock()
 	for _, seriesRec := range series {
 		c.seriesSegment[seriesRec.Ref] = segment
-		// maybe we can avoid doing this below if already present
 		labels := util.MapToModelLabelSet(seriesRec.Labels.Map())
 		c.series[seriesRec.Ref] = labels
 	}
@@ -63,7 +62,7 @@ func (c *clientWriteTo) SeriesReset(segmentNum int) {
 	c.seriesSegmentLock.Lock()
 	defer c.seriesSegmentLock.Unlock()
 	for k, v := range c.seriesSegment {
-		if v < segmentNum {
+		if v <= segmentNum {
 			level.Debug(c.logger).Log("msg", fmt.Sprintf("reclaiming series under segment %d", segmentNum))
 			delete(c.seriesSegment, k)
 			delete(c.series, k)
