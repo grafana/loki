@@ -5,6 +5,9 @@ networks:
 
 services:
   loki:
+    build:
+      dockerfile: ./cmd/loki/Dockerfile
+      context: ../
     image: grafana/loki:2.7.3
     ports:
       - "3100:3100"

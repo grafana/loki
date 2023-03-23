@@ -1,0 +1,28 @@
+name: Deploy Preevy environment
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+env:
+  AWS_REGION: "us-east-1"
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::297324796627:role/loki-github-action
+          aws-region: ${{ inputs.aws-region }}
+      - uses: actions/checkout@v3
+      - name: Install Preevy CLI
+        run: npm i -g preevy
+      - name: Run preevy up
+        run: |
+          preevy init --from "s3://preview-297324796627-gh-action?region=us-east-1"
+          cd production
+          preevy up
