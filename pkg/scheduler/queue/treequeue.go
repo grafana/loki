@@ -7,10 +7,10 @@ import (
 
 type QueuePath []string //nolint:revive
 
-// LeafQueue is an hierarchical queue implementation where each sub-queue
+// TreeQueue is an hierarchical queue implementation where each sub-queue
 // has the same guarantees to be chosen from.
 // Each queue has also a local queue, which gets chosen with equal preference as the sub-queues.
-type LeafQueue struct {
+type TreeQueue struct {
 	// local queue
 	ch RequestChannel
 	// index of where this item is located in the mapping
@@ -18,18 +18,18 @@ type LeafQueue struct {
 	// index of the sub-queues
 	current QueueIndex
 	// mapping for sub-queues
-	mapping *Mapping[*LeafQueue]
+	mapping *Mapping[*TreeQueue]
 	// name of the queue
 	name string
 	// maximum queue size of the local queue
 	size int
 }
 
-// newLeafQueue creates a new LeafQueue instance
-func newLeafQueue(size int, name string) *LeafQueue {
-	m := &Mapping[*LeafQueue]{}
+// newTreeQueue creates a new TreeQueue instance
+func newTreeQueue(size int, name string) *TreeQueue {
+	m := &Mapping[*TreeQueue]{}
 	m.Init(64) // TODO(chaudum): What is a good initial value?
-	return &LeafQueue{
+	return &TreeQueue{
 		ch:      make(RequestChannel, size),
 		pos:     StartIndexWithLocalQueue,
 		current: StartIndexWithLocalQueue,
@@ -40,7 +40,7 @@ func newLeafQueue(size int, name string) *LeafQueue {
 }
 
 // add recursively adds queues based on given path
-func (q *LeafQueue) add(path QueuePath) *LeafQueue {
+func (q *TreeQueue) add(path QueuePath) *TreeQueue {
 	if len(path) == 0 {
 		return q
 	}
@@ -52,22 +52,22 @@ func (q *LeafQueue) add(path QueuePath) *LeafQueue {
 	return queue.add(remaining)
 }
 
-func (q *LeafQueue) getOrCreate(name string) (subq *LeafQueue, created bool) {
+func (q *TreeQueue) getOrCreate(name string) (subq *TreeQueue, created bool) {
 	subq = q.mapping.GetByKey(name)
 	if subq == nil {
-		subq = newLeafQueue(q.size, name)
+		subq = newTreeQueue(q.size, name)
 		created = true
 	}
 	return subq, created
 }
 
 // Chan implements Queue
-func (q *LeafQueue) Chan() RequestChannel {
+func (q *TreeQueue) Chan() RequestChannel {
 	return q.ch
 }
 
 // Dequeue implements Queue
-func (q *LeafQueue) Dequeue() Request {
+func (q *TreeQueue) Dequeue() Request {
 	var item Request
 
 	// shortcut of there are not sub-queues
@@ -111,14 +111,14 @@ func (q *LeafQueue) Dequeue() Request {
 }
 
 // Name implements Queue
-func (q *LeafQueue) Name() string {
+func (q *TreeQueue) Name() string {
 	return q.name
 }
 
 // Len implements Queue
 // It returns the length of the local queue and all sub-queues.
 // This may be expensive depending on the size of the queue tree.
-func (q *LeafQueue) Len() int {
+func (q *TreeQueue) Len() int {
 	count := len(q.ch)
 	for _, subq := range q.mapping.Values() {
 		count += subq.Len()
@@ -127,20 +127,20 @@ func (q *LeafQueue) Len() int {
 }
 
 // Index implements Mapable
-func (q *LeafQueue) Pos() QueueIndex {
+func (q *TreeQueue) Pos() QueueIndex {
 	return q.pos
 }
 
 // Index implements Mapable
-func (q *LeafQueue) SetPos(index QueueIndex) {
+func (q *TreeQueue) SetPos(index QueueIndex) {
 	q.pos = index
 }
 
 // String makes the queue printable
-func (q *LeafQueue) String() string {
+func (q *TreeQueue) String() string {
 	sb := &strings.Builder{}
 	sb.WriteString("{")
-	fmt.Fprintf(sb, "name=%s, len=%d/%d, leafs=[", q.Name(), q.Len(), cap(q.ch))
+	fmt.Fprintf(sb, "name=%s, len=%d/%d, children=[", q.Name(), q.Len(), cap(q.ch))
 	subqs := q.mapping.Values()
 	for i, m := range subqs {
 		sb.WriteString(m.String())
