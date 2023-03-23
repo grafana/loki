@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -294,6 +295,8 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 }
 
 func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (int, []logproto.Entry, []entryWithError) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "stream.storeEntries")
+	defer sp.Finish()
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
 	var invalid []entryWithError
