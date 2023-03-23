@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= v0.1.0
+VERSION ?= v0.2.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
@@ -191,6 +191,7 @@ oci-push: ## Push the image
 .PHONY: bundle-all
 bundle-all: ## Generate both bundles.
 	$(MAKE) bundle
+	$(MAKE) bundle VARIANT=community-openshift
 	$(MAKE) bundle VARIANT=openshift
 
 .PHONY: bundle

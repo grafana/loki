@@ -1,0 +1,11 @@
+resources:
+- ./../community
+
+# Adds namespace to all resources.
+namespace: kubernetes-operators
+
+configMapGenerator:
+- files:
+  - controller_manager_config.yaml
+  name: manager-config
+  behavior: replace
