@@ -2480,6 +2480,9 @@ shard_streams:
   [desired_rate: <int>]
 
 [blocked_queries: <blocked_query...>]
+
+# Define a list of required selector labels.
+[required_label_matchers: <list of strings>]
 ```
 
 ### frontend_worker

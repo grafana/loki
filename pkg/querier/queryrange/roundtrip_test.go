@@ -470,8 +470,8 @@ func TestPostQueries(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestEntriesLimitsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+func TestTripperware_EntriesLimit(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -499,6 +499,62 @@ func TestEntriesLimitsTripperware(t *testing.T) {
 
 	_, err = tpw(rt).RoundTrip(req)
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+}
+
+func TestTripperware_RequiredLabels(t *testing.T) {
+
+	const noErr = ""
+
+	for _, test := range []struct {
+		qs            string
+		expectedError string
+		response      parser.Value
+	}{
+		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, noErr, vector},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({app="bar"}[1m] offset 1m)`, noErr, vector},
+		{`count_over_time({app="foo"}[1m]) / count_over_time({pod="bar"}[1m] offset 1m)`, "stream selector is missing required matchers [app], labels present in the query were [pod]", nil},
+		{`avg(count_over_time({pod=~"foo|bar"} |~".+bar" [1m]))`, "stream selector is missing required matchers [app], labels present in the query were [pod]", nil},
+		{`{app="foo", pod="bar"}`, noErr, streams},
+		{`{pod="bar"} |= "foo" |~ ".+bar"`, "stream selector is missing required matchers [app], labels present in the query were [pod]", nil},
+	} {
+		t.Run(test.qs, func(t *testing.T) {
+			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}
+			tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			if stopper != nil {
+				defer stopper.Stop()
+			}
+			require.NoError(t, err)
+			rt, err := newfakeRoundTripper()
+			require.NoError(t, err)
+			defer rt.Close()
+			_, h := promqlResult(test.response)
+			rt.setHandler(h)
+
+			lreq := &LokiRequest{
+				Query:     test.qs,
+				Limit:     1000,
+				StartTs:   testTime.Add(-6 * time.Hour),
+				EndTs:     testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query_range",
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			req, err := LokiCodec.EncodeRequest(ctx, lreq)
+			require.NoError(t, err)
+
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+
+			_, err = tpw(rt).RoundTrip(req)
+			if test.expectedError != "" {
+				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, test.expectedError), err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func Test_getOperation(t *testing.T) {
@@ -582,6 +638,7 @@ type fakeLimits struct {
 	splits                  map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
+	requiredLabels          []string
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -632,6 +689,10 @@ func (f fakeLimits) QueryTimeout(context.Context, string) time.Duration {
 
 func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.BlockedQuery {
 	return []*validation.BlockedQuery{}
+}
+
+func (f fakeLimits) RequiredLabels(context.Context, string) []string {
+	return f.requiredLabels
 }
 
 func counter() (*int, http.Handler) {

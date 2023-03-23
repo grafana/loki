@@ -1,5 +1,11 @@
 ## Main/Unreleased
 
+#### Loki
+
+##### Enhancements
+
+* [8851](https://github.com/grafana/loki/pull/8851) **jeschkies**: Introduce limit to require a set of labels for selecting streams.
+
 ### All Changes
 
 ## 2.8.0 (2023-03-??)
