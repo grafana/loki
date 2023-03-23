@@ -1,8 +1,11 @@
 package queryrange
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -11,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
@@ -279,7 +283,9 @@ func newDownstreamAccumulator(limit int) *downstreamAccumulator {
 
 func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
-		a.logsAccumulator = &logsAccumulator{}
+		a.logsAccumulator = &logsAccumulator{
+			accumulatedStreams: newStreamAccumulator(logproto.BACKWARD, 10),
+		}
 	} else {
 		a.bufferedAccumulator = &bufferedAccumulator{}
 	}
@@ -313,7 +319,8 @@ func (a *downstreamAccumulator) Result() []logqlmodel.Result {
 }
 
 type logsAccumulator struct {
-	res logqlmodel.Result
+	res                logqlmodel.Result
+	accumulatedStreams *accumulatedStreams
 }
 
 func (a *logsAccumulator) merge(acc logqlmodel.Result) {
@@ -345,4 +352,236 @@ func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result) error {
 
 func (a *bufferedAccumulator) Result() []logqlmodel.Result {
 	return a.results
+}
+
+// heap impl for keeping only the top n results across m streams
+// importantly, accumulatedStreams is _bounded_, so it will only
+// store the top `limit` results across all streams.
+// To implement this, we use a min-heap when looking
+// for the max values (logproto.FORWARD)
+// and vice versa for logproto.BACKWARD.
+// This allows us to easily find the 'worst' value
+// and replace it with a better one.
+// Once we've fully processed all log lines,
+// we return the heap in opposite order and then reverse it
+// to get the correct order.
+// Heap implements container/heap.Interface
+// solely to use heap.Interface as a library.
+// It is not intended for the heap pkg functions
+// to otherwise call this type.
+type accumulatedStreams struct {
+	count, limit int
+	labelmap     map[string]int
+	streams      []*logproto.Stream
+	order        logproto.Direction
+}
+
+func newStreamAccumulator(order logproto.Direction, limit int) *accumulatedStreams {
+	return &accumulatedStreams{
+		labelmap: make(map[string]int),
+		order:    order,
+		limit:    limit,
+	}
+}
+
+// returns the top priority
+func (acc *accumulatedStreams) top() (time.Time, bool) {
+	if len(acc.streams) > 0 {
+		return acc.streams[0].Entries[0].Timestamp, true
+	}
+	return time.Time{}, false
+}
+
+func (acc *accumulatedStreams) Find(labels string) (int, bool) {
+	i, ok := acc.labelmap[labels]
+	return i, ok
+}
+
+// number of streams
+func (acc *accumulatedStreams) Len() int { return len(acc.streams) }
+
+func (acc *accumulatedStreams) Swap(i, j int) {
+	// for i=0, j=1
+
+	// {'a': 0, 'b': 1}
+	// [a, b]
+	acc.streams[i], acc.streams[j] = acc.streams[j], acc.streams[i]
+	// {'a': 0, 'b': 1}
+	// [b, a]
+	acc.labelmap[acc.streams[i].Labels] = i
+	acc.labelmap[acc.streams[j].Labels] = j
+	// {'a': 1, 'b': 0}
+	// [b, a]
+}
+
+// first order by timestamp, then by labels
+func (acc *accumulatedStreams) Less(i, j int) bool {
+	// order by the 'oldest' entry in the stream
+	if a, b := acc.streams[i].Entries[0].Timestamp, acc.streams[j].Entries[0].Timestamp; !a.Equal(b) {
+		return acc.less(a, b)
+	}
+	return acc.streams[i].Labels <= acc.streams[j].Labels
+}
+
+func (acc *accumulatedStreams) less(a, b time.Time) bool {
+	// use after for stable sort
+	if acc.order == logproto.FORWARD {
+		return !a.After(b)
+	}
+	return !b.After(a)
+}
+
+func (acc *accumulatedStreams) Push(x any) {
+	s := x.(*logproto.Stream)
+	if len(s.Entries) == 0 {
+		return
+	}
+
+	if room := acc.limit - acc.count; room >= len(s.Entries) {
+		if i, ok := acc.Find(s.Labels); ok {
+			// stream already exists, append entries
+
+			// these are already guaranteed to be sorted
+			// Reasoning: we shard subrequests so each stream exists on only one
+			// shard. Therefore, the only time a stream should already exist
+			// is in successive splits, which are already guaranteed to be ordered
+			// and we can just append.
+			acc.appendTo(acc.streams[i], s)
+
+			return
+		}
+
+		// new stream
+		acc.addStream(s)
+		return
+	}
+
+	// there's not enough room for all the entries,
+	// so we need to
+	acc.push(s)
+}
+
+// there's not enough room for all the entries.
+// since we store them in a reverse heap relative to what we _want_
+// (i.e. the max value for FORWARD, the min value for BACKWARD),
+// we test if the new entry is better than the worst entry,
+// swapping them if so.
+func (acc *accumulatedStreams) push(s *logproto.Stream) {
+	worst, ok := acc.top()
+	room := min(acc.limit-acc.count, len(s.Entries))
+
+	if !ok {
+		if room == 0 {
+			// special case: limit must be zero since there's no room and no worst entry
+			return
+		}
+		s.Entries = s.Entries[:room]
+		// special case: there are no entries in the heap. Push entries up to the limit
+		acc.addStream(s)
+		return
+	}
+
+	// We can safely discard anything worse than the worst entry.
+	cutoff := sort.Search(len(s.Entries), func(i int) bool {
+		// TODO(refactor label comparison -- should be in another fn)
+		if worst.Equal(s.Entries[i].Timestamp) {
+			return acc.streams[0].Labels < s.Labels
+		}
+		return acc.less(s.Entries[i].Timestamp, worst)
+	})
+	s.Entries = s.Entries[:cutoff]
+
+	// since entries are sorted by timestamp from best -> worst,
+	// we can discard the entire stream if the incoming best entry
+	// is worse than the worst entry in the heap.
+	for i := 0; i < len(s.Entries) && acc.less(worst, s.Entries[i].Timestamp); i++ {
+
+		// push one entry at a time
+		room = acc.limit - acc.count
+		// pop if there's no room to make the heap small enough for an append;
+		// in the short path of Push() we know that there's room for at least one entry
+		if room == 0 {
+			acc.Pop()
+		}
+
+		cpy := *s
+		cpy.Entries = []logproto.Entry{s.Entries[i]}
+		acc.Push(&cpy)
+
+		// update worst
+		worst, _ = acc.top()
+	}
+}
+
+func (acc *accumulatedStreams) addStream(s *logproto.Stream) {
+	// ensure entries conform to order we expect
+	sort.Slice(s.Entries, func(i, j int) bool {
+		return acc.less(s.Entries[i].Timestamp, s.Entries[j].Timestamp)
+	})
+
+	acc.streams = append(acc.streams, s)
+	i := len(acc.streams) - 1
+	acc.labelmap[s.Labels] = i
+	acc.count += len(s.Entries)
+	heap.Fix(acc, i)
+}
+
+// dst must already exist in acc
+func (acc *accumulatedStreams) appendTo(dst, src *logproto.Stream) {
+	// these are already guaranteed to be sorted
+	// Reasoning: we shard subrequests so each stream exists on only one
+	// shard. Therefore, the only time a stream should already exist
+	// is in successive splits, which are already guaranteed to be ordered
+	// and we can just append.
+
+	var needsSort bool
+	for _, e := range src.Entries {
+		// sort if order has broken
+		// TODO: refactor. Shouldnt need to sort if we store the top entry of each stream at
+		// the end instead of beginning of slice
+		if len(dst.Entries) > 0 && acc.less(e.Timestamp, dst.Entries[len(dst.Entries)-1].Timestamp) {
+			needsSort = true
+		}
+		dst.Entries = append(dst.Entries, e)
+	}
+
+	if needsSort {
+		sort.Slice(dst.Entries, func(i, j int) bool {
+			return acc.less(dst.Entries[i].Timestamp, dst.Entries[j].Timestamp)
+		})
+	}
+
+	acc.count += len(src.Entries)
+	heap.Fix(acc, acc.labelmap[dst.Labels])
+
+}
+
+// Pop returns a stream with one entry. It pops the first entry of the first stream
+func (acc *accumulatedStreams) Pop() any {
+	n := acc.Len()
+	if n == 0 {
+		return nil
+	}
+
+	stream := acc.streams[0]
+	cpy := *stream
+	cpy.Entries = cpy.Entries[:1]
+	stream.Entries = stream.Entries[1:]
+
+	acc.count--
+
+	if len(stream.Entries) == 0 {
+		// remove stream
+		acc.Swap(0, n-1)
+		acc.streams[n-1] = nil // avoid leaking reference
+		delete(acc.labelmap, stream.Labels)
+		acc.streams = acc.streams[:n-1]
+
+	}
+
+	if acc.Len() > 0 {
+		heap.Fix(acc, 0)
+	}
+
+	return &cpy
 }

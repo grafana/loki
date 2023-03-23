@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -406,4 +407,52 @@ func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
 		ct++
 	}
 	require.Equal(t, l.maxQueryParallelism, ct)
+}
+
+func newStream(start, end time.Time, delta time.Duration, ls string, direction logproto.Direction) *logproto.Stream {
+	s := &logproto.Stream{
+		Labels: ls,
+	}
+	for t := start; t.Before(end); t = t.Add(delta) {
+		s.Entries = append(s.Entries, logproto.Entry{
+			Timestamp: t,
+			Line:      fmt.Sprintf("line %d", t.Unix()),
+		})
+	}
+	if direction == logproto.BACKWARD {
+		// simulate data coming in reverse order (logproto.BACKWARD)
+		for i, j := 0, len(s.Entries)-1; i < j; i, j = i+1, j-1 {
+			s.Entries[i], s.Entries[j] = s.Entries[j], s.Entries[i]
+		}
+	}
+	return s
+}
+
+func newStreams(start, end time.Time, delta time.Duration, n int, direction logproto.Direction) (res []*logproto.Stream) {
+	for i := 0; i < n; i++ {
+		res = append(res, newStream(start, end, delta, fmt.Sprintf(`{n="%d"}`, i), direction))
+	}
+	return res
+}
+
+func TestAccumulatedStreams(t *testing.T) {
+	lim := 20
+	n_streams := 10
+	start, end := 0, 10
+	// for a logproto.BACKWARD query, we use a min heap based on FORWARD
+	// to store the _earliest_ timestamp of the _latest_ entries, up to `limit`
+	xs := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, n_streams, logproto.BACKWARD)
+	acc := newStreamAccumulator(logproto.FORWARD, lim)
+	for _, x := range xs {
+		acc.Push(x)
+	}
+
+	for i := 0; i < lim; i++ {
+		got := acc.Pop().(*logproto.Stream)
+		// require.Equal(t, fmt.Sprintf(`{n="%d"}`, i%n_streams), got.Labels)
+
+		exp := (n_streams*(end-start) - lim + i) / n_streams
+		require.Equal(t, time.Unix(int64(exp), 0), got.Entries[0].Timestamp)
+	}
+
 }
