@@ -2003,6 +2003,15 @@ spec:
 
     * Kubernetes Custom Resources: Use Kubernetes custom resources to deploy and manage Loki, Alerting rules, Recording rules, and related components.
     * Simplified Deployment Configuration: Configure the fundamentals of Loki like tenants, limits, replication factor and storage from a native Kubernetes resource.
+    ### Feature Gates
+
+    The Loki Operator Bundle provides a set of feature gates that enable/disable specific feature depending on the target Kubernetes distribution. The following feature gates are enabled by default:
+    * `lokiStackGateway`: Enables reconciling the reverse-proxy lokistack-gateway component for multi-tenant authentication/authorization traffic control to Loki.
+    * `runtimeSeccompProfile`: Enables the restricted seccomp profile on all Lokistack components.
+    * `lokiStackWebhook`: Enables the LokiStack CR validation and conversion webhooks.
+    * `alertingRuleWebhook`: Enables the AlertingRule CR validation webhook.
+    * `recordingRuleWebhook`: Enables the RecordingRule CR validation webhook.
+    * `rulerConfigWebhook`: Enables the RulerConfig CR validation webhook.
 
     ### Before you start
 
