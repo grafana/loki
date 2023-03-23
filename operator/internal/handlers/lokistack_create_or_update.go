@@ -253,13 +253,13 @@ func CreateOrUpdateLokiStack(
 		// Clean up ruler resources
 		err = rules.RemoveRulesConfigMap(ctx, req, k)
 		if err != nil {
-			ll.Error(err, "failed to remove rules configmap")
+			ll.Error(err, "failed to remove rules ConfigMap")
 			return err
 		}
 
 		err = rules.RemoveRuler(ctx, req, k)
 		if err != nil {
-			ll.Error(err, "failed to remove ruler statefulset")
+			ll.Error(err, "failed to remove ruler StatefulSet")
 			return err
 		}
 	}

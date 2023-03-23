@@ -19,7 +19,7 @@ func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1.AlertingRule)
 	wantTenant := tenantForNamespace(alertingRule.Namespace)
 	if !slices.Contains(wantTenant, tenantID) {
 		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("Spec").Child("TenantID"),
+			field.NewPath("spec").Child("tenantID"),
 			tenantID,
 			fmt.Sprintf("AlertingRule does not use correct tenant %q", wantTenant)))
 	}
@@ -28,7 +28,7 @@ func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1.AlertingRule)
 		for j, rule := range g.Rules {
 			if err := validateRuleExpression(alertingRule.Namespace, tenantID, rule.Expr); err != nil {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					rule.Expr,
 					err.Error(),
 				))

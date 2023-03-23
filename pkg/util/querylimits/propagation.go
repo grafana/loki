@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 )
 
@@ -24,6 +25,8 @@ type QueryLimits struct {
 	MaxQueryLookback        model.Duration `json:"maxQueryLookback,omitempty"`
 	MaxEntriesLimitPerQuery int            `json:"maxEntriesLimitPerQuery,omitempty"`
 	QueryTimeout            model.Duration `json:"queryTimeout,omitempty"`
+	RequiredLabels          []string       `json:"requiredLabels,omitempty"`
+	MaxQueryBytesRead       flagext.ByteSize `json:"maxQueryBytesRead,omitempty"`
 }
 
 func UnmarshalQueryLimits(data []byte) (*QueryLimits, error) {

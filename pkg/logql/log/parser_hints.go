@@ -1,11 +1,12 @@
 package log
 
 import (
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"strings"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-var noParserHints = &parserHint{}
+var noParserHints = &Hints{}
 
 // ParserHint are hints given to LogQL parsers.
 // This is specially useful for parser that extract implicitly all possible label keys.
@@ -26,29 +27,44 @@ type ParserHint interface {
 	//		 sum(rate({app="foo"} | json [5m]))
 	// We don't need to extract any labels from the log line.
 	NoLabels() bool
+
+	// Holds state about what's already been extracted for the associated
+	// labels. This assumes that only required labels are ever extracted
+	RecordExtracted(string)
+	AllRequiredExtracted() bool
+	Reset()
 	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
 }
 
-type parserHint struct {
+type Hints struct {
 	noLabels            bool
 	requiredLabels      []string
 	shouldPreserveError bool
+	extracted           []string
 }
 
-func (p *parserHint) ShouldExtract(key string) bool {
+func (p *Hints) ShouldExtract(key string) bool {
 	if len(p.requiredLabels) == 0 {
 		return true
 	}
+
+	for _, l := range p.extracted {
+		if l == key {
+			return false
+		}
+	}
+
 	for _, l := range p.requiredLabels {
 		if l == key {
 			return true
 		}
 	}
+
 	return false
 }
 
-func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
+func (p *Hints) ShouldExtractPrefix(prefix string) bool {
 	if len(p.requiredLabels) == 0 {
 		return true
 	}
@@ -61,27 +77,49 @@ func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
 	return false
 }
 
-func (p *parserHint) NoLabels() bool {
-	return p.noLabels
+func (p *Hints) NoLabels() bool {
+	return p.noLabels || p.AllRequiredExtracted()
 }
 
-func (p *parserHint) PreserveError() bool {
+func (p *Hints) RecordExtracted(key string) {
+	for _, l := range p.requiredLabels {
+		if l == key {
+			p.extracted = append(p.extracted, key)
+			return
+		}
+	}
+}
+
+func (p *Hints) AllRequiredExtracted() bool {
+	if len(p.requiredLabels) == 0 {
+		return false
+	}
+	return len(p.extracted) == len(p.requiredLabels)
+}
+
+func (p *Hints) Reset() {
+	p.extracted = p.extracted[:0]
+}
+
+// NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
+func (p *Hints) PreserveError() bool {
 	return p.shouldPreserveError
 }
 
-// newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
+// NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *Hints {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
 	hints = appendLabelHints(hints, metricLabelName)
 	hints = uniqueString(hints)
 
+	extracted := make([]string, 0, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
-			return &parserHint{requiredLabels: hints, shouldPreserveError: containsError(hints)}
+			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 		}
-		return &parserHint{noLabels: true}
+		return &Hints{noLabels: true}
 	}
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
@@ -89,7 +127,7 @@ func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return noParserHints
 	}
-	return &parserHint{requiredLabels: hints, shouldPreserveError: containsError(hints)}
+	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 }
 
 func containsError(hints []string) bool {

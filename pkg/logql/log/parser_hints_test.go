@@ -2,6 +2,7 @@
 package log_test
 
 import (
+	"github.com/grafana/loki/pkg/logql/log"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -231,4 +232,22 @@ func Test_ParserHints(t *testing.T) {
 			require.Equal(t, tt.expectLbs, lbsResString)
 		})
 	}
+}
+
+func TestRecordingExtractedLabels(t *testing.T) {
+	p := log.NewParserHint([]string{"1", "2", "3"}, nil, false, true, "")
+	p.RecordExtracted("1")
+	p.RecordExtracted("2")
+
+	require.False(t, p.AllRequiredExtracted())
+	require.False(t, p.NoLabels())
+
+	p.RecordExtracted("3")
+
+	require.True(t, p.AllRequiredExtracted())
+	require.True(t, p.NoLabels())
+
+	p.Reset()
+	require.False(t, p.AllRequiredExtracted())
+	require.False(t, p.NoLabels())
 }
