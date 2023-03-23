@@ -1023,7 +1023,7 @@ When Promtail receives GCP logs, various internal labels are made available for 
 
 The `azure_event_hub` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. For more information, see the [Azure Event Hubs documentation](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
 
-[Here](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub) is a tutorial on streaming Azure logs to an Azure event hub.
+To learn more about streaming Azure logs to an Azure event hub, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
 
 Apache Kafka endpoint is not available within the `Basic` pricing plan. More information about Event Hubs pricing [here](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
 
