@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 )
 
@@ -58,16 +57,14 @@ type RequestQueue struct {
 	queues  *tenantQueues
 	stopped bool
 
-	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	discardedRequests *prometheus.CounterVec // Per tenant.
+	metrics *Metrics
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
-		queueLength:             queueLength,
-		discardedRequests:       discardedRequests,
+		metrics:                 metrics,
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -97,7 +94,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 
 	select {
 	case queue.Chan() <- req:
-		q.queueLength.WithLabelValues(tenant).Inc()
+		q.metrics.QueueLength.WithLabelValues(tenant).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -105,7 +102,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		}
 		return nil
 	default:
-		q.discardedRequests.WithLabelValues(tenant).Inc()
+		q.metrics.DiscardedRequests.WithLabelValues(tenant).Inc()
 		return ErrTooManyRequests
 	}
 }
@@ -148,7 +145,7 @@ FindQueue:
 				q.queues.deleteQueue(tenant)
 			}
 
-			q.queueLength.WithLabelValues(tenant).Dec()
+			q.metrics.QueueLength.WithLabelValues(tenant).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()

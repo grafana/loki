@@ -80,18 +80,13 @@ type request struct {
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+	queueMetrics := queue.NewMetrics("query_frontend", registerer)
 	f := &Frontend{
-		cfg:    cfg,
-		log:    log,
-		limits: limits,
-		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_query_frontend_queue_length",
-			Help: "Number of queries in the queue.",
-		}, []string{"user"}),
-		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_frontend_discarded_requests_total",
-			Help: "Total number of query requests discarded.",
-		}, []string{"user"}),
+		cfg:               cfg,
+		log:               log,
+		limits:            limits,
+		queueLength:       queueMetrics.QueueLength,
+		discardedRequests: queueMetrics.DiscardedRequests,
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -99,7 +94,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, f.queueLength, f.discardedRequests)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	var err error

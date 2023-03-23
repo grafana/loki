@@ -140,6 +140,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // NewScheduler creates a new Scheduler.
 func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
+	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
@@ -147,19 +148,11 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
+		queueLength:        queueMetrics.QueueLength,
+		discardedRequests:  queueMetrics.DiscardedRequests,
+
+		requestQueue: queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
 	}
-
-	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_queue_length",
-		Help: "Number of queries in the queue.",
-	}, []string{"user"})
-
-	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_query_scheduler_discarded_requests_total",
-		Help: "Total number of query requests discarded.",
-	}, []string{"user"})
-
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",
