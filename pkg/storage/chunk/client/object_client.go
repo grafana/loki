@@ -190,8 +190,9 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
-
-	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
+	chunkBytes := make([]byte, len(buf.Bytes()))
+	copy(chunkBytes, buf.Bytes())
+	if err := c.Decode(decodeContext, chunkBytes); err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 	return c, nil
