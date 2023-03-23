@@ -353,7 +353,9 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		if bytesRead > uint64(maxBytesRead) {
 			statsBytesStr := humanize.Bytes(bytesRead)
 			maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
+			errorMsg := fmt.Sprintf(q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
+			level.Warn(log).Log("msg", errorMsg, "limitBytes", maxBytesReadStr, "queryBytes", statsBytesStr)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, errorMsg)
 		}
 	}
 
