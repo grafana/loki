@@ -19,11 +19,11 @@ func Test_validateConfig(t *testing.T) {
 	}{
 		{
 			name: "default groupID",
-			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			cfg: &scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 				EventHubs:               []string{"some event hub"},
 			}},
-			expectedCfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			expectedCfg: &scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 				EventHubs:               []string{"some event hub"},
 				GroupID:                 "promtail",
@@ -31,12 +31,12 @@ func Test_validateConfig(t *testing.T) {
 		},
 		{
 			name: "success",
-			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			cfg: &scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 				EventHubs:               []string{"some event hub"},
 				GroupID:                 "my groupID",
 			}},
-			expectedCfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			expectedCfg: &scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 				EventHubs:               []string{"some event hub"},
 				GroupID:                 "my groupID",
@@ -62,19 +62,19 @@ func Test_validateConfig_error(t *testing.T) {
 		{
 			name: "empty config",
 			cfg:  &scrapeconfig.Config{},
-			err:  errors.New("azureeventhub configuration is empty"),
+			err:  errors.New("azure_event_hubs configuration is empty"),
 		},
 		{
-			name: "no brokers",
-			cfg:  &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{}},
-			err:  errors.New("no event hubs brokers defined"),
+			name: "no fully qualified namespace",
+			cfg:  &scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{}},
+			err:  errors.New("no fully_qualified_namespace defined"),
 		},
 		{
-			name: "no topics",
-			cfg: &scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			name: "no event hubs",
+			cfg: &scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 			}},
-			err: errors.New("no topics given to be consumed"),
+			err: errors.New("no event_hubs defined"),
 		},
 	}
 	for _, tt := range tests {
@@ -110,7 +110,7 @@ func TestNewSyncer_errors(t *testing.T) {
 	}{
 		{
 			name: "error creating kafka client, missing password",
-			cfg: scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			cfg: scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 				EventHubs:               []string{"some event hub"},
 				GroupID:                 "my groupID",
@@ -119,7 +119,7 @@ func TestNewSyncer_errors(t *testing.T) {
 		},
 		{
 			name: "error creating kafka client, missing port in address",
-			cfg: scrapeconfig.Config{AzureEventHubConfig: &scrapeconfig.AzureEventHubTargetConfig{
+			cfg: scrapeconfig.Config{AzureEventHubsConfig: &scrapeconfig.AzureEventHubsTargetConfig{
 				FullyQualifiedNamespace: "some host name",
 				EventHubs:               []string{"some event hub"},
 				GroupID:                 "my groupID",

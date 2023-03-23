@@ -27,19 +27,19 @@ import (
 )
 
 const (
-	FileScrapeConfigs          = "fileScrapeConfigs"
-	JournalScrapeConfigs       = "journalScrapeConfigs"
-	SyslogScrapeConfigs        = "syslogScrapeConfigs"
-	GcplogScrapeConfigs        = "gcplogScrapeConfigs"
-	PushScrapeConfigs          = "pushScrapeConfigs"
-	WindowsEventsConfigs       = "windowsEventsConfigs"
-	KafkaConfigs               = "kafkaConfigs"
-	GelfConfigs                = "gelfConfigs"
-	CloudflareConfigs          = "cloudflareConfigs"
-	DockerConfigs              = "dockerConfigs"
-	DockerSDConfigs            = "dockerSDConfigs"
-	HerokuDrainConfigs         = "herokuDrainConfigs"
-	AzureEventHubScrapeConfigs = "azureeventhubScrapeConfigs"
+	FileScrapeConfigs           = "fileScrapeConfigs"
+	JournalScrapeConfigs        = "journalScrapeConfigs"
+	SyslogScrapeConfigs         = "syslogScrapeConfigs"
+	GcplogScrapeConfigs         = "gcplogScrapeConfigs"
+	PushScrapeConfigs           = "pushScrapeConfigs"
+	WindowsEventsConfigs        = "windowsEventsConfigs"
+	KafkaConfigs                = "kafkaConfigs"
+	GelfConfigs                 = "gelfConfigs"
+	CloudflareConfigs           = "cloudflareConfigs"
+	DockerConfigs               = "dockerConfigs"
+	DockerSDConfigs             = "dockerSDConfigs"
+	HerokuDrainConfigs          = "herokuDrainConfigs"
+	AzureEventHubsScrapeConfigs = "azureeventhubsScrapeConfigs"
 )
 
 var (
@@ -104,8 +104,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
 		case cfg.KafkaConfig != nil:
 			targetScrapeConfigs[KafkaConfigs] = append(targetScrapeConfigs[KafkaConfigs], cfg)
-		case cfg.AzureEventHubConfig != nil:
-			targetScrapeConfigs[AzureEventHubScrapeConfigs] = append(targetScrapeConfigs[AzureEventHubScrapeConfigs], cfg)
+		case cfg.AzureEventHubsConfig != nil:
+			targetScrapeConfigs[AzureEventHubsScrapeConfigs] = append(targetScrapeConfigs[AzureEventHubsScrapeConfigs], cfg)
 		case cfg.GelfConfig != nil:
 			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
 		case cfg.CloudflareConfig != nil:
@@ -244,12 +244,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make kafka target manager")
 			}
 			targetManagers = append(targetManagers, kafkaTargetManager)
-		case AzureEventHubScrapeConfigs:
-			azureEventHubTargetManager, err := azureeventhubs.NewTargetManager(reg, logger, client, scrapeConfigs)
+		case AzureEventHubsScrapeConfigs:
+			azureEventHubsTargetManager, err := azureeventhubs.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make Azure Event Hub target manager")
+				return nil, errors.Wrap(err, "failed to make Azure Event Hubs target manager")
 			}
-			targetManagers = append(targetManagers, azureEventHubTargetManager)
+			targetManagers = append(targetManagers, azureEventHubsTargetManager)
 		case GelfConfigs:
 			gelfTargetManager, err := gelf.NewTargetManager(gelfMetrics, logger, client, scrapeConfigs)
 			if err != nil {

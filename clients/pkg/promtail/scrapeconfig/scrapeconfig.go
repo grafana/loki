@@ -33,19 +33,19 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName             string                     `mapstructure:"job_name,omitempty" yaml:"job_name,omitempty"`
-	PipelineStages      stages.PipelineStages      `mapstructure:"pipeline_stages,omitempty" yaml:"pipeline_stages,omitempty"`
-	JournalConfig       *JournalTargetConfig       `mapstructure:"journal,omitempty" yaml:"journal,omitempty"`
-	SyslogConfig        *SyslogTargetConfig        `mapstructure:"syslog,omitempty" yaml:"syslog,omitempty"`
-	GcplogConfig        *GcplogTargetConfig        `mapstructure:"gcplog,omitempty" yaml:"gcplog,omitempty"`
-	PushConfig          *PushTargetConfig          `mapstructure:"loki_push_api,omitempty" yaml:"loki_push_api,omitempty"`
-	WindowsConfig       *WindowsEventsTargetConfig `mapstructure:"windows_events,omitempty" yaml:"windows_events,omitempty"`
-	KafkaConfig         *KafkaTargetConfig         `mapstructure:"kafka,omitempty" yaml:"kafka,omitempty"`
-	AzureEventHubConfig *AzureEventHubTargetConfig `mapstructure:"azure_event_hub,omitempty" yaml:"azure_event_hub,omitempty"`
-	GelfConfig          *GelfTargetConfig          `mapstructure:"gelf,omitempty" yaml:"gelf,omitempty"`
-	CloudflareConfig    *CloudflareConfig          `mapstructure:"cloudflare,omitempty" yaml:"cloudflare,omitempty"`
-	HerokuDrainConfig   *HerokuDrainTargetConfig   `mapstructure:"heroku_drain,omitempty" yaml:"heroku_drain,omitempty"`
-	RelabelConfigs      []*relabel.Config          `mapstructure:"relabel_configs,omitempty" yaml:"relabel_configs,omitempty"`
+	JobName              string                      `mapstructure:"job_name,omitempty" yaml:"job_name,omitempty"`
+	PipelineStages       stages.PipelineStages       `mapstructure:"pipeline_stages,omitempty" yaml:"pipeline_stages,omitempty"`
+	JournalConfig        *JournalTargetConfig        `mapstructure:"journal,omitempty" yaml:"journal,omitempty"`
+	SyslogConfig         *SyslogTargetConfig         `mapstructure:"syslog,omitempty" yaml:"syslog,omitempty"`
+	GcplogConfig         *GcplogTargetConfig         `mapstructure:"gcplog,omitempty" yaml:"gcplog,omitempty"`
+	PushConfig           *PushTargetConfig           `mapstructure:"loki_push_api,omitempty" yaml:"loki_push_api,omitempty"`
+	WindowsConfig        *WindowsEventsTargetConfig  `mapstructure:"windows_events,omitempty" yaml:"windows_events,omitempty"`
+	KafkaConfig          *KafkaTargetConfig          `mapstructure:"kafka,omitempty" yaml:"kafka,omitempty"`
+	AzureEventHubsConfig *AzureEventHubsTargetConfig `mapstructure:"azure_event_hubs,omitempty" yaml:"azure_event_hubs,omitempty"`
+	GelfConfig           *GelfTargetConfig           `mapstructure:"gelf,omitempty" yaml:"gelf,omitempty"`
+	CloudflareConfig     *CloudflareConfig           `mapstructure:"cloudflare,omitempty" yaml:"cloudflare,omitempty"`
+	HerokuDrainConfig    *HerokuDrainTargetConfig    `mapstructure:"heroku_drain,omitempty" yaml:"heroku_drain,omitempty"`
+	RelabelConfigs       []*relabel.Config           `mapstructure:"relabel_configs,omitempty" yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `mapstructure:"docker_sd_configs,omitempty" yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig `mapstructure:",squash" yaml:",inline"`
@@ -247,7 +247,7 @@ type WindowsEventsTargetConfig struct {
 	Labels model.LabelSet `yaml:"labels"`
 }
 
-type AzureEventHubTargetConfig struct {
+type AzureEventHubsTargetConfig struct {
 	// Labels optionally holds labels to associate with each log line.
 	Labels model.LabelSet `yaml:"labels"`
 
@@ -258,10 +258,10 @@ type AzureEventHubTargetConfig struct {
 	// Event Hubs to consume (Required).
 	EventHubs []string `yaml:"event_hubs"`
 
-	// Event Hub ConnectionString for authentication on Azure Cloud (Required).
+	// Event Hubs ConnectionString for authentication on Azure Cloud (Required).
 	ConnectionString string `yaml:"connection_string"`
 
-	// Event Hub namespace host name (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+	// Event Hubs namespace host name (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
 	FullyQualifiedNamespace string `yaml:"fully_qualified_namespace"`
 
 	// The consumer group id.

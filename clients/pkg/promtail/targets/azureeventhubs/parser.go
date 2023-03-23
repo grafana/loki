@@ -52,11 +52,11 @@ func (l azureMonitorResourceLog) validate() error {
 	return nil
 }
 
-type eventHubMessageParser struct {
+type messageParser struct {
 	disallowCustomMessages bool
 }
 
-func (e *eventHubMessageParser) Parse(message *sarama.ConsumerMessage, labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
+func (e *messageParser) Parse(message *sarama.ConsumerMessage, labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool) ([]api.Entry, error) {
 	messageTime := time.Now()
 	if useIncomingTimestamp {
 		messageTime = message.Timestamp
@@ -80,7 +80,7 @@ func (e *eventHubMessageParser) Parse(message *sarama.ConsumerMessage, labelSet 
 
 // tryUnmarshal tries to unmarshal raw message data, in case of error tries to fix it and unmarshal fixed data.
 // If both attempts fail, return the initial unmarshal error.
-func (e *eventHubMessageParser) tryUnmarshal(message []byte) (*azureMonitorResourceLogs, error) {
+func (e *messageParser) tryUnmarshal(message []byte) (*azureMonitorResourceLogs, error) {
 	data := &azureMonitorResourceLogs{}
 	err := json.Unmarshal(message, data)
 	if err == nil {
@@ -98,7 +98,7 @@ func (e *eventHubMessageParser) tryUnmarshal(message []byte) (*azureMonitorResou
 	return data, nil
 }
 
-func (e *eventHubMessageParser) entryWithCustomPayload(body []byte, labelSet model.LabelSet, messageTime time.Time) api.Entry {
+func (e *messageParser) entryWithCustomPayload(body []byte, labelSet model.LabelSet, messageTime time.Time) api.Entry {
 	return api.Entry{
 		Labels: labelSet,
 		Entry: logproto.Entry{
@@ -109,7 +109,7 @@ func (e *eventHubMessageParser) entryWithCustomPayload(body []byte, labelSet mod
 }
 
 // processRecords handles the case when message is a valid json with a key `records`. It can be either a custom payload or a resource log.
-func (e *eventHubMessageParser) processRecords(labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool, records []json.RawMessage, messageTime time.Time) ([]api.Entry, error) {
+func (e *messageParser) processRecords(labelSet model.LabelSet, relabels []*relabel.Config, useIncomingTimestamp bool, records []json.RawMessage, messageTime time.Time) ([]api.Entry, error) {
 	result := make([]api.Entry, 0, len(records))
 	for _, m := range records {
 		entry, err := e.parseRecord(m, labelSet, relabels, useIncomingTimestamp, messageTime)
@@ -124,7 +124,7 @@ func (e *eventHubMessageParser) processRecords(labelSet model.LabelSet, relabels
 
 // parseRecord parses a single value from the "records" in the original message.
 // It can also handle a case when the record contains custom data and doesn't match the schema for Azure resource logs.
-func (e *eventHubMessageParser) parseRecord(record []byte, labelSet model.LabelSet, relabelConfig []*relabel.Config, useIncomingTimestamp bool, messageTime time.Time) (api.Entry, error) {
+func (e *messageParser) parseRecord(record []byte, labelSet model.LabelSet, relabelConfig []*relabel.Config, useIncomingTimestamp bool, messageTime time.Time) (api.Entry, error) {
 	logRecord := &azureMonitorResourceLog{}
 	err := json.Unmarshal(record, logRecord)
 	if err == nil {
@@ -151,7 +151,7 @@ func (e *eventHubMessageParser) parseRecord(record []byte, labelSet model.LabelS
 	}, nil
 }
 
-func (e *eventHubMessageParser) getTime(messageTime time.Time, useIncomingTimestamp bool, logRecord *azureMonitorResourceLog) time.Time {
+func (e *messageParser) getTime(messageTime time.Time, useIncomingTimestamp bool, logRecord *azureMonitorResourceLog) time.Time {
 	if !useIncomingTimestamp || logRecord.Time == "" {
 		return messageTime
 	}
@@ -164,7 +164,7 @@ func (e *eventHubMessageParser) getTime(messageTime time.Time, useIncomingTimest
 	return recordTime
 }
 
-func (e *eventHubMessageParser) getLabels(logRecord *azureMonitorResourceLog, relabelConfig []*relabel.Config) model.LabelSet {
+func (e *messageParser) getLabels(logRecord *azureMonitorResourceLog, relabelConfig []*relabel.Config) model.LabelSet {
 	lbs := labels.Labels{
 		{
 			Name:  "__azure_event_hubs_category",

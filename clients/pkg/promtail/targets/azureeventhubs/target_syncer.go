@@ -25,53 +25,53 @@ func NewSyncer(
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
 	}
-	config := getConfig(cfg.AzureEventHubConfig.ConnectionString)
+	config := getConfig(cfg.AzureEventHubsConfig.ConnectionString)
 
-	client, err := sarama.NewClient([]string{cfg.AzureEventHubConfig.FullyQualifiedNamespace}, config)
+	client, err := sarama.NewClient([]string{cfg.AzureEventHubsConfig.FullyQualifiedNamespace}, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating kafka client: %w", err)
 	}
-	group, err := sarama.NewConsumerGroup([]string{cfg.AzureEventHubConfig.FullyQualifiedNamespace}, cfg.AzureEventHubConfig.GroupID, config)
+	group, err := sarama.NewConsumerGroup([]string{cfg.AzureEventHubsConfig.FullyQualifiedNamespace}, cfg.AzureEventHubsConfig.GroupID, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating consumer group client: %w", err)
 	}
-	pipeline, err := stages.NewPipeline(log.With(logger, "component", "azureeventhub_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
+	pipeline, err := stages.NewPipeline(log.With(logger, "component", "azure_event_hubs_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 	if err != nil {
 		return nil, fmt.Errorf("error creating pipeline: %w", err)
 	}
 
 	targetSyncConfig := &kafka.TargetSyncerConfig{
 		RelabelConfigs:       cfg.RelabelConfigs,
-		UseIncomingTimestamp: cfg.AzureEventHubConfig.UseIncomingTimestamp,
-		Labels:               cfg.AzureEventHubConfig.Labels,
-		GroupID:              cfg.AzureEventHubConfig.GroupID,
+		UseIncomingTimestamp: cfg.AzureEventHubsConfig.UseIncomingTimestamp,
+		Labels:               cfg.AzureEventHubsConfig.Labels,
+		GroupID:              cfg.AzureEventHubsConfig.GroupID,
 	}
 
-	t, err := kafka.NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, &eventHubMessageParser{
-		disallowCustomMessages: cfg.AzureEventHubConfig.DisallowCustomMessages,
-	}, cfg.AzureEventHubConfig.EventHubs, targetSyncConfig)
+	t, err := kafka.NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, &messageParser{
+		disallowCustomMessages: cfg.AzureEventHubsConfig.DisallowCustomMessages,
+	}, cfg.AzureEventHubsConfig.EventHubs, targetSyncConfig)
 	if err != nil {
-		return nil, fmt.Errorf("error starting azureeventhub target: %w", err)
+		return nil, fmt.Errorf("error starting azure_event_hubs target: %w", err)
 	}
 
 	return t, nil
 }
 
 func validateConfig(cfg *scrapeconfig.Config) error {
-	if cfg.AzureEventHubConfig == nil {
-		return errors.New("azureeventhub configuration is empty")
+	if cfg.AzureEventHubsConfig == nil {
+		return errors.New("azure_event_hubs configuration is empty")
 	}
 
-	if len(cfg.AzureEventHubConfig.FullyQualifiedNamespace) == 0 {
-		return errors.New("no event hubs brokers defined")
+	if len(cfg.AzureEventHubsConfig.FullyQualifiedNamespace) == 0 {
+		return errors.New("no fully_qualified_namespace defined")
 	}
 
-	if len(cfg.AzureEventHubConfig.EventHubs) == 0 {
-		return errors.New("no topics given to be consumed")
+	if len(cfg.AzureEventHubsConfig.EventHubs) == 0 {
+		return errors.New("no event_hubs defined")
 	}
 
-	if cfg.AzureEventHubConfig.GroupID == "" {
-		cfg.AzureEventHubConfig.GroupID = "promtail"
+	if cfg.AzureEventHubsConfig.GroupID == "" {
+		cfg.AzureEventHubsConfig.GroupID = "promtail"
 	}
 	return nil
 }

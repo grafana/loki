@@ -12,7 +12,7 @@ import (
 )
 
 func Test_parseMessage_function_app(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value: readFile(t, "testdata/function_app_logs_message.txt"),
@@ -32,7 +32,7 @@ func Test_parseMessage_function_app(t *testing.T) {
 }
 
 func Test_parseMessage_logic_app(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value: readFile(t, "testdata/logic_app_logs_message.json"),
@@ -53,7 +53,7 @@ func Test_parseMessage_logic_app(t *testing.T) {
 }
 
 func Test_parseMessage_custom_payload_text(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value:     readFile(t, "testdata/custom_payload_text.txt"),
@@ -71,7 +71,7 @@ func Test_parseMessage_custom_payload_text(t *testing.T) {
 }
 
 func Test_parseMessage_custom_payload_text_error(t *testing.T) {
-	messageParser := &eventHubMessageParser{
+	messageParser := &messageParser{
 		disallowCustomMessages: true,
 	}
 
@@ -84,7 +84,7 @@ func Test_parseMessage_custom_payload_text_error(t *testing.T) {
 }
 
 func Test_parseMessage_custom_payload_json(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value:     readFile(t, "testdata/custom_payload_json.json"),
@@ -102,7 +102,7 @@ func Test_parseMessage_custom_payload_json(t *testing.T) {
 }
 
 func Test_parseMessage_custom_payload_json_with_records_string(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value:     readFile(t, "testdata/custom_payload_json_with_records_string.json"),
@@ -120,7 +120,7 @@ func Test_parseMessage_custom_payload_json_with_records_string(t *testing.T) {
 }
 
 func Test_parseMessage_custom_payload_json_with_records_string_custom_payload_not_allowed(t *testing.T) {
-	messageParser := &eventHubMessageParser{
+	messageParser := &messageParser{
 		disallowCustomMessages: true,
 	}
 
@@ -133,7 +133,7 @@ func Test_parseMessage_custom_payload_json_with_records_string_custom_payload_no
 }
 
 func Test_parseMessage_custom_payload_json_with_records_array(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value:     readFile(t, "testdata/custom_payload_json_with_records_array.json"),
@@ -157,7 +157,7 @@ func Test_parseMessage_custom_payload_json_with_records_array(t *testing.T) {
 }
 
 func Test_parseMessage_custom_payload_json_with_records_array_custom_payload_not_allowed(t *testing.T) {
-	messageParser := &eventHubMessageParser{
+	messageParser := &messageParser{
 		disallowCustomMessages: true,
 	}
 
@@ -171,7 +171,7 @@ func Test_parseMessage_custom_payload_json_with_records_array_custom_payload_not
 }
 
 func Test_parseMessage_message_with_invalid_time(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value:     readFile(t, "testdata/message_with_invalid_time.json"),
@@ -189,7 +189,7 @@ func Test_parseMessage_message_with_invalid_time(t *testing.T) {
 }
 
 func Test_parseMessage_relable_config(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value: readFile(t, "testdata/function_app_logs_message.txt"),
@@ -214,7 +214,7 @@ func Test_parseMessage_relable_config(t *testing.T) {
 }
 
 func Test_parseMessage_custom_message_and_logic_app_logs(t *testing.T) {
-	messageParser := &eventHubMessageParser{}
+	messageParser := &messageParser{}
 
 	message := &sarama.ConsumerMessage{
 		Value:     readFile(t, "testdata/custom_message_and_logic_app_logs.json"),
@@ -235,7 +235,7 @@ func Test_parseMessage_custom_message_and_logic_app_logs(t *testing.T) {
 }
 
 func Test_parseMessage_custom_message_and_logic_app_logs_disallowCustomMessages(t *testing.T) {
-	messageParser := &eventHubMessageParser{
+	messageParser := &messageParser{
 		disallowCustomMessages: true,
 	}
 
