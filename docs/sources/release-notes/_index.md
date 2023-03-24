@@ -14,4 +14,4 @@ listed here by version number.
 - [V2.4 release notes]({{<relref "v2-4">}})
 - [V2.3 release notes]({{<relref "v2-3">}})
 
-The details about our release cadence are documented [here](cadence.md).
+The details about our release cadence are documented [here](cadence).

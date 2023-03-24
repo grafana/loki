@@ -4,11 +4,12 @@ description: How our release process works
 weight: 1
 ---
 
-# Stable Releases
+# Release cadence
 
-Loki releases (this includes [Promtail](/clients/promtail), [Loki Canary](/operations/loki-canary/), etc) use the following naming scheme:
+## Stable Releases
 
-### `MAJOR`.`MINOR`.`PATCH`
+Loki releases (this includes [Promtail](/clients/promtail), [Loki Canary](/operations/loki-canary/), etc) use the following
+naming scheme: `MAJOR`.`MINOR`.`PATCH`
 
 - `MAJOR` (roughly once a year): these releases include large new features & possible backwards-compatibility breaks
 - `MINOR` (roughly once a quarter): these releases include new features which do not break backwards-compatibility
@@ -26,7 +27,7 @@ of our [slack community](/community/getting-in-touch).
 
 You can find all of our releases [on GitHub](https://github.com/grafana/loki/releases) and on [Docker Hub](https://hub.docker.com/r/grafana/loki).
 
-# Weekly Releases
+## Weekly Releases
 
 Every Monday morning, we create a new "weekly" release from the tip of the [`main` branch](https://github.com/grafana/loki).
 These releases use the following naming scheme:
@@ -41,7 +42,7 @@ releases _should not be run in production_ unless you are willing to tolerate so
 
 You can find these releases on [Docker Hub](https://hub.docker.com/r/grafana/loki/tags?page=1&name=k).
 
-## Which release will my merged PR be part of?
+### Which release will my merged PR be part of?
 
 Once your PR is merged to `main`, you can expect it to become available in the next week's
 [weekly release](#weekly-releases). To find out which stable or weekly releases a commit is included in, use the following tool:
