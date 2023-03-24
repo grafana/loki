@@ -27,4 +27,4 @@ patchesStrategicMerge:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: main-ee371a8
+  newTag: main-99acb9b

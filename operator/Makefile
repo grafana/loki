@@ -33,7 +33,7 @@ REGISTRY_BASE_OPENSHIFT = quay.io/openshift-logging
 REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 
 # TODO(@periklis): Replace this image tag with VERSION once we have GH tags
-MAIN_IMAGE_TAG = main-ee371a8
+MAIN_IMAGE_TAG = main-99acb9b
 
 # Customize for variants: community or openshift
 VARIANT ?= community

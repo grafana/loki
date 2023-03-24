@@ -43,7 +43,7 @@ patchesStrategicMerge:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: main-ee371a8
+  newTag: main-99acb9b
 
 # the following config is for teaching kustomize how to do var substitution
 vars:
