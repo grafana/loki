@@ -191,6 +191,7 @@ oci-push: ## Push the image
 .PHONY: bundle-all
 bundle-all: ## Generate both bundles.
 	$(MAKE) bundle
+	$(MAKE) bundle VARIANT=community-openshift
 	$(MAKE) bundle VARIANT=openshift
 
 .PHONY: bundle
