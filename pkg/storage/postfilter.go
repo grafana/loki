@@ -139,12 +139,12 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 			for cnk := range queuedChunks {
 				if ctx.Err() != nil {
 					errors <- ctx.Err()
-					return
+					continue
 				}
 				cnkWithKey, err := c.pipelineExecChunk(ctx, cnk, postFilterLogSelector, s)
 				if ctx.Err() != nil {
 					errors <- ctx.Err()
-					return
+					continue
 				}
 				if err != nil {
 					errors <- err
