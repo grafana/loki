@@ -2,6 +2,8 @@ package ruler
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -10,36 +12,82 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-const fixedRandNum int64 = 987654321
-
 type mockEval struct{}
 
 func (m mockEval) Eval(context.Context, string, time.Time) (*logqlmodel.Result, error) {
 	return nil, nil
 }
 
-type fakeSource struct{}
+type fakeHasher struct {
+	buf []byte
 
-func (f fakeSource) Int63() int64 { return fixedRandNum }
-func (f fakeSource) Seed(int64)   {}
+	responses map[string]uint32
+}
+
+func (f *fakeHasher) Write(p []byte) (n int, err error) {
+	f.buf = p
+	return 0, nil
+}
+
+func (f *fakeHasher) Sum(b []byte) []byte { return nil }
+func (f *fakeHasher) Reset()              {}
+func (f *fakeHasher) Size() int           { return 32 }
+func (f *fakeHasher) BlockSize() int      { return 32 }
+func (f *fakeHasher) Sum32() uint32 {
+	h, ok := f.responses[string(f.buf)]
+	if !ok {
+		panic(fmt.Sprintf("unexpected buffer: %b", f.buf))
+	}
+
+	return h
+}
 
 func TestEvaluationWithJitter(t *testing.T) {
-	const jitter = 2 * time.Second
+	const maxJitter = 2 * time.Second
+	const ratio = 0.5 // we expect a sleep of half of maxJitter: 1s
+	const query = "some logql query..."
 
-	eval := NewEvaluatorWithJitter(mockEval{}, jitter, fakeSource{})
+	eval := NewEvaluatorWithJitter(mockEval{}, maxJitter, &fakeHasher{
+		responses: map[string]uint32{
+			query: uint32(math.Ceil(ratio * math.MaxUint32)),
+		},
+	})
 
 	then := time.Now()
-	_, _ = eval.Eval(context.Background(), "some logql query...", time.Now())
+	_, _ = eval.Eval(context.Background(), query, time.Now())
 	since := time.Since(then)
 
-	require.GreaterOrEqual(t, since.Nanoseconds(), fixedRandNum)
+	actual := ratio * maxJitter.Seconds()
+	require.GreaterOrEqualf(t, since.Seconds(), actual, "expected the eval to sleep for at least %.2fs", actual)
+}
+
+func TestConsistentJitter(t *testing.T) {
+	const maxJitter = 2 * time.Second
+
+	eval := NewEvaluatorWithJitter(mockEval{}, maxJitter, &fakeHasher{
+		responses: map[string]uint32{
+			"query A": uint32(math.Ceil(0.75 * math.MaxUint32)),
+			"query B": uint32(math.Ceil(0.25 * math.MaxUint32)),
+			"query C": uint32(math.Ceil(0.5 * math.MaxUint32)),
+		},
+	})
+
+	require.IsType(t, &EvaluatorWithJitter{}, eval)
+
+	// no matter how many times we calculate the jitter, it will always be the same
+	require.EqualValues(t, 1.5, eval.(*EvaluatorWithJitter).calculateJitter("query A").Seconds())
+	require.EqualValues(t, 1.5, eval.(*EvaluatorWithJitter).calculateJitter("query A").Seconds())
+	require.EqualValues(t, 0.5, eval.(*EvaluatorWithJitter).calculateJitter("query B").Seconds())
+	require.EqualValues(t, 0.5, eval.(*EvaluatorWithJitter).calculateJitter("query B").Seconds())
+	require.EqualValues(t, 1, eval.(*EvaluatorWithJitter).calculateJitter("query C").Seconds())
+	require.EqualValues(t, 1, eval.(*EvaluatorWithJitter).calculateJitter("query C").Seconds())
 }
 
 func TestEvaluationWithNoJitter(t *testing.T) {
 	const jitter = 0
 
 	inner := mockEval{}
-	eval := NewEvaluatorWithJitter(inner, jitter, fakeSource{})
+	eval := NewEvaluatorWithJitter(inner, jitter, nil)
 
 	// return the inner evaluator if jitter is disabled
 	require.Exactly(t, inner, eval)
