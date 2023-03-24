@@ -1,6 +1,6 @@
 {{- if and .Values.gateway.enabled }}
 {{- if gt (int .Values.gateway.replicas) 1 }}
-apiVersion: {{ include "loki.podDisruptionBudget.apiVersion" . }}
+apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
