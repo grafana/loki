@@ -41,3 +41,9 @@ func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 		}, []string{"user", "querier"}),
 	}
 }
+
+func (m *Metrics) Cleanup(user string) {
+	m.QueueLength.DeleteLabelValues(user)
+	m.DiscardedRequests.DeleteLabelValues(user)
+	m.dequeueCount.DeletePartialMatch(prometheus.Labels{"user": user})
+}
