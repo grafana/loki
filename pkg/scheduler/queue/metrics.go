@@ -6,22 +6,21 @@ import (
 )
 
 type Metrics struct {
-	QueueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	DiscardedRequests *prometheus.CounterVec // Per tenant.
-	// unexported fields must only used by the RequestQueue which resides in the same package
-	enqueueCount *prometheus.CounterVec // Per tenant and level
-	dequeueCount *prometheus.CounterVec // Per tenant and querier
+	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
+	discardedRequests *prometheus.CounterVec // Per tenant.
+	enqueueCount      *prometheus.CounterVec // Per tenant and level
+	dequeueCount      *prometheus.CounterVec // Per tenant and querier
 }
 
 func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 	return &Metrics{
-		QueueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Subsystem: subsystem,
 			Name:      "queue_length",
 			Help:      "Number of queries in the queue.",
 		}, []string{"user"}),
-		DiscardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Subsystem: subsystem,
 			Name:      "discarded_requests_total",
@@ -43,7 +42,7 @@ func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 }
 
 func (m *Metrics) Cleanup(user string) {
-	m.QueueLength.DeleteLabelValues(user)
-	m.DiscardedRequests.DeleteLabelValues(user)
+	m.queueLength.DeleteLabelValues(user)
+	m.discardedRequests.DeleteLabelValues(user)
 	m.dequeueCount.DeletePartialMatch(prometheus.Labels{"user": user})
 }
