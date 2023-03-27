@@ -85,7 +85,7 @@ The go build tag `promtail_journal_enabled` should be passed to include Journal 
 If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
 
 ```shell
-go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
