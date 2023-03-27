@@ -11,9 +11,9 @@ weight: 1
 Loki releases (this includes [Promtail](/clients/promtail), [Loki Canary](/operations/loki-canary/), etc) use the following
 naming scheme: `MAJOR`.`MINOR`.`PATCH`
 
-- `MAJOR` (roughly once a year): these releases include large new features & possible backwards-compatibility breaks
-- `MINOR` (roughly once a quarter): these releases include new features which do not break backwards-compatibility
-- `PATCH` (roughly once or twice a month): these releases include bug & security fixes which do not break backwards-compatibility
+- `MAJOR` (roughly once a year): these releases include large new features & possible backwards-compatibility breaks.
+- `MINOR` (roughly once a quarter): these releases include new features which do not break backwards-compatibility.
+- `PATCH` (roughly once or twice a month): these releases include bug & security fixes which do not break backwards-compatibility.
 
 > **NOTE:** While our naming scheme resembles [Semantic Versioning](https://semver.org/), at this time we do not strictly follow its
 guidelines to the letter. Our goal is to provide regular releases that are as stable as possible, and we take backwards-compatibility
@@ -23,7 +23,7 @@ choosing a new version of Loki to install.
 New releases are based of a [weekly release](#weekly-releases) which we have vetted for stability over a number of weeks.
 
 We strongly recommend keeping up-to-date with patch releases as they are released. We post updates of new releases in the `#loki` channel
-of our [slack community](/community/getting-in-touch).
+of our [Slack community](/community/getting-in-touch).
 
 You can find all of our releases [on GitHub](https://github.com/grafana/loki/releases) and on [Docker Hub](https://hub.docker.com/r/grafana/loki).
 
