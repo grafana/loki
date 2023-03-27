@@ -6,23 +6,44 @@ import (
 )
 
 type Metrics struct {
-	QueueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	DiscardedRequests *prometheus.CounterVec // Per tenant.
+	queueLength       *prometheus.GaugeVec   // Per tenant
+	discardedRequests *prometheus.CounterVec // Per tenant
+	enqueueCount      *prometheus.CounterVec // Per tenant and level
+	dequeueCount      *prometheus.CounterVec // Per tenant and querier
 }
 
 func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 	return &Metrics{
-		QueueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Subsystem: subsystem,
 			Name:      "queue_length",
 			Help:      "Number of queries in the queue.",
 		}, []string{"user"}),
-		DiscardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Subsystem: subsystem,
 			Name:      "discarded_requests_total",
 			Help:      "Total number of query requests discarded.",
 		}, []string{"user"}),
+		enqueueCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "enqueue_count",
+			Help:      "Total number of enqueued (sub-)queries.",
+		}, []string{"user", "level"}),
+		dequeueCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "dequeue_count",
+			Help:      "Total number of dequeued (sub-)queries.",
+		}, []string{"user", "querier"}),
 	}
+}
+
+func (m *Metrics) Cleanup(user string) {
+	m.queueLength.DeleteLabelValues(user)
+	m.discardedRequests.DeleteLabelValues(user)
+	m.enqueueCount.DeletePartialMatch(prometheus.Labels{"user": user})
+	m.dequeueCount.DeletePartialMatch(prometheus.Labels{"user": user})
 }
