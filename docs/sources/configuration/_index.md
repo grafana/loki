@@ -817,11 +817,6 @@ storage:
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
 
-# Upper bound of random duration to wait before rule evaluation to avoid
-# contention during concurrent execution of rules. Set 0 to disable (default).
-# CLI flag: -ruler.evaluation-jitter
-[evaluation_jitter: <duration> | default = 0s]
-
 # Comma-separated list of Alertmanager URLs to send notifications to. Each
 # Alertmanager URL is treated as a separate group in the configuration. Multiple
 # Alertmanagers in HA per group can be supported by using DNS resolution via
@@ -1109,6 +1104,12 @@ evaluation:
   # locally.
   # CLI flag: -ruler.evaluation.mode
   [mode: <string> | default = "local"]
+
+  # Upper bound of random duration to wait before rule evaluation to avoid
+  # contention during concurrent execution of rules. Jitter is calculated
+  # consistently for a given rule. Set 0 to disable (default).
+  # CLI flag: -ruler.evaluation.max-jitter
+  [max_jitter: <duration> | default = 0s]
 
   query_frontend:
     # GRPC listen address of the query-frontend(s). Must be a DNS address
@@ -2330,6 +2331,17 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # disables the lookback, causing sharding of all queries at all times.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
+
+# Max number of bytes a query can fetch. Enforced in log and metric queries only
+# when TSDB is used. The default value of 0 disables this limit.
+# CLI flag: -frontend.max-query-bytes-read
+[max_query_bytes_read: <int> | default = 0B]
+
+# Max number of bytes a query can fetch after splitting and sharding. Enforced
+# in log and metric queries only when TSDB is used. The default value of 0
+# disables this limit.
+# CLI flag: -frontend.max-querier-bytes-read
+[max_querier_bytes_read: <int> | default = 0B]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.

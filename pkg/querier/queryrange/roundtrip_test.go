@@ -108,11 +108,34 @@ var (
 	}
 )
 
+func getQueryAndStatsHandler(queryHandler, statsHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/loki/api/v1/index/stats" {
+			statsHandler.ServeHTTP(w, r)
+			return
+		}
+
+		if r.URL.Path == "/loki/api/v1/query_range" || r.URL.Path == "/loki/api/v1/query" {
+			queryHandler.ServeHTTP(w, r)
+			return
+		}
+
+		panic("Request not supported")
+	})
+}
+
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-	l := WithSplitByLimits(fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1}, 4*time.Hour)
+	var l Limits = fakeLimits{
+		maxSeries:               math.MaxInt32,
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+	}
+	l = WithSplitByLimits(l, 4*time.Hour)
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{
-		Configs: testSchemas,
+		Configs: testSchemasTSDB,
 	}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -139,9 +162,28 @@ func TestMetricsTripperware(t *testing.T) {
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 
+	// Test MaxQueryBytesRead limit
+	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
+	queryCount, queryHandler := counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Error(t, err)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test MaxQuerierBytesRead limit
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
+	queryCount, queryHandler = counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Error(t, err)
+	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
 	// testing retry
-	retries, h := counter()
-	rt.setHandler(h)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	retries, queryHandler := counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	_, err = tpw(rt).RoundTrip(req)
 	// 3 retries configured.
 	require.GreaterOrEqual(t, *retries, 3)
@@ -153,8 +195,9 @@ func TestMetricsTripperware(t *testing.T) {
 	defer rt.Close()
 
 	// testing split interval
-	count, h := promqlResult(matrix)
-	rt.setHandler(h)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	count, queryHandler := promqlResult(matrix)
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	resp, err := tpw(rt).RoundTrip(req)
 	// 2 queries
 	require.Equal(t, 2, *count)
@@ -163,8 +206,8 @@ func TestMetricsTripperware(t *testing.T) {
 	require.NoError(t, err)
 
 	// testing cache
-	count, h = counter()
-	rt.setHandler(h)
+	count, queryHandler = counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	cacheResp, err := tpw(rt).RoundTrip(req)
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
@@ -176,7 +219,13 @@ func TestMetricsTripperware(t *testing.T) {
 }
 
 func TestLogFilterTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	var l Limits = fakeLimits{
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+	}
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -215,17 +264,44 @@ func TestLogFilterTripperware(t *testing.T) {
 	require.NoError(t, err)
 
 	// testing retry
-	retries, h := counter()
-	rt.setHandler(h)
+	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	retries, queryHandler := counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	_, err = tpw(rt).RoundTrip(req)
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
+
+	// Test MaxQueryBytesRead limit
+	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
+	queryCount, queryHandler := counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Error(t, err)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test MaxQuerierBytesRead limit
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
+	queryCount, queryHandler = counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Error(t, err)
+	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 0, *queryCount)
 }
 
 func TestInstantQueryTripperware(t *testing.T) {
 	testShardingConfig := testConfig
 	testShardingConfig.ShardedQueries = true
-	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	var l Limits = fakeLimits{
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+		queryTimeout:            1 * time.Minute,
+		maxSeries:               1,
+	}
+	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -237,6 +313,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	lreq := &LokiInstantRequest{
 		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
 		Limit:     1000,
+		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
 	}
@@ -249,8 +326,27 @@ func TestInstantQueryTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := promqlResult(vector)
-	rt.setHandler(h)
+	// Test MaxQueryBytesRead limit
+	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
+	queryCount, queryHandler := counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Error(t, err)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test MaxQuerierBytesRead limit
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
+	queryCount, queryHandler = counter()
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Error(t, err)
+	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	count, queryHandler := promqlResult(vector)
+	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	resp, err := tpw(rt).RoundTrip(req)
 	require.Equal(t, 1, *count)
 	require.NoError(t, err)
@@ -639,6 +735,8 @@ type fakeLimits struct {
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
+	maxQueryBytesRead       int
+	maxQuerierBytesRead     int
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -683,6 +781,14 @@ func (f fakeLimits) MinShardingLookback(string) time.Duration {
 	return f.minShardingLookback
 }
 
+func (f fakeLimits) MaxQueryBytesRead(context.Context, string) int {
+	return f.maxQueryBytesRead
+}
+
+func (f fakeLimits) MaxQuerierBytesRead(context.Context, string) int {
+	return f.maxQuerierBytesRead
+}
+
 func (f fakeLimits) QueryTimeout(context.Context, string) time.Duration {
 	return f.queryTimeout
 }
@@ -725,6 +831,19 @@ func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
+			panic(err)
+		}
+		count++
+	})
+}
+
+func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := marshal.WriteIndexStatsResponseJSON(&v, w); err != nil {
 			panic(err)
 		}
 		count++

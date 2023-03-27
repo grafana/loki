@@ -37,6 +37,21 @@ var testSchemas = func() []config.PeriodConfig {
 	return confs
 }()
 
+var testSchemasTSDB = func() []config.PeriodConfig {
+	confS := `
+- from: "1950-01-01"
+  store: tsdb
+  object_store: gcs
+  schema: v12
+`
+
+	var confs []config.PeriodConfig
+	if err := yaml.Unmarshal([]byte(confS), &confs); err != nil {
+		panic(err)
+	}
+	return confs
+}()
+
 func Test_splitQuery(t *testing.T) {
 	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
