@@ -107,7 +107,10 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 			filters = append(filters, f)
 		case *LineFmtExpr:
 			rest = append(rest, f)
-			result = append(result, combineFilters(filters))
+
+			if len(filters) > 0 {
+				result = append(result, combineFilters(filters))
+			}
 			result = append(result, rest...)
 
 			filters = filters[:0]
@@ -117,7 +120,9 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 		}
 	}
 
-	result = append(result, combineFilters(filters))
+	if len(filters) > 0 {
+		result = append(result, combineFilters(filters))
+	}
 	return append(result, rest...)
 }
 
