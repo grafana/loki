@@ -17,7 +17,7 @@ import (
 // Consistent jitter is important because it allows rules to be evaluated on a regular, predictable cadence
 // while also ensuring that we spread evaluations across the configured jitter window to avoid resource contention scenarios.
 type EvaluatorWithJitter struct {
-	sync.Mutex
+	mu sync.Mutex
 
 	inner     Evaluator
 	maxJitter time.Duration
@@ -47,13 +47,13 @@ func (e *EvaluatorWithJitter) calculateJitter(qs string) time.Duration {
 	var h uint32
 
 	// rules can be evaluated concurrently, so we protect the hasher with a mutex
-	e.Lock()
+	e.mu.Lock()
 	{
 		_, _ = e.hasher.Write([]byte(qs))
 		h = e.hasher.Sum32()
 		e.hasher.Reset()
 	}
-	e.Unlock()
+	e.mu.Unlock()
 
 	ratio := float32(h) / math.MaxUint32
 	return time.Duration(ratio * float32(e.maxJitter.Nanoseconds()))
