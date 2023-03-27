@@ -61,11 +61,12 @@ type Frontend struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	// Metrics.
-	queueLength       *prometheus.GaugeVec
-	discardedRequests *prometheus.CounterVec
-	numClients        prometheus.GaugeFunc
-	queueDuration     prometheus.Histogram
+	// qeueue metrics
+	queueMetrics *queue.Metrics
+
+	// frontend metrics
+	numClients    prometheus.GaugeFunc
+	queueDuration prometheus.Histogram
 }
 
 type request struct {
@@ -82,11 +83,10 @@ type request struct {
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	queueMetrics := queue.NewMetrics("query_frontend", registerer)
 	f := &Frontend{
-		cfg:               cfg,
-		log:               log,
-		limits:            limits,
-		queueLength:       queueMetrics.QueueLength,
-		discardedRequests: queueMetrics.DiscardedRequests,
+		cfg:          cfg,
+		log:          log,
+		limits:       limits,
+		queueMetrics: queueMetrics,
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -140,8 +140,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
-	f.queueLength.DeleteLabelValues(user)
-	f.discardedRequests.DeleteLabelValues(user)
+	f.queueMetrics.Cleanup(user)
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
