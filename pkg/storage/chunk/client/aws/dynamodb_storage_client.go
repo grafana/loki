@@ -64,6 +64,7 @@ type DynamoDBConfig struct {
 	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
 	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
 	BackoffConfig          backoff.Config           `yaml:"backoff_config"`
+	KMSKeyID               string                   `yaml:"kms_key_id"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -77,6 +78,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
+	f.StringVar(&cfg.KMSKeyID, "dynamodb.kms-key-id", "", "KMS key used for encrypting DynamoDB items.  DynamoDB will use an Amazon owned KMS key if not provided.")
 	cfg.Metrics.RegisterFlags(f)
 }
 

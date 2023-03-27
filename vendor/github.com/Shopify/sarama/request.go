@@ -109,7 +109,7 @@ func decodeRequest(r io.Reader) (*request, int, error) {
 	bytesRead += len(encodedReq)
 
 	req := &request{}
-	if err := decode(encodedReq, req); err != nil {
+	if err := decode(encodedReq, req, nil); err != nil {
 		return nil, bytesRead, err
 	}
 
@@ -125,7 +125,7 @@ func allocateBody(key, version int16) protocolBody {
 	case 2:
 		return &OffsetRequest{Version: version}
 	case 3:
-		return &MetadataRequest{}
+		return &MetadataRequest{Version: version}
 	case 8:
 		return &OffsetCommitRequest{Version: version}
 	case 9:
@@ -155,7 +155,7 @@ func allocateBody(key, version int16) protocolBody {
 	case 21:
 		return &DeleteRecordsRequest{}
 	case 22:
-		return &InitProducerIDRequest{}
+		return &InitProducerIDRequest{Version: version}
 	case 24:
 		return &AddPartitionsToTxnRequest{}
 	case 25:

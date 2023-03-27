@@ -73,6 +73,7 @@ type Reader struct {
 	quit            chan struct{}
 	shuttingDown    bool
 	done            chan struct{}
+	queryAppend     string
 }
 
 func NewReader(writer io.Writer,
@@ -90,6 +91,7 @@ func NewReader(writer io.Writer,
 	streamName string,
 	streamValue string,
 	interval time.Duration,
+	queryAppend string,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -143,6 +145,7 @@ func NewReader(writer io.Writer,
 		quit:            make(chan struct{}),
 		done:            make(chan struct{}),
 		shuttingDown:    false,
+		queryAppend:     queryAppend,
 	}
 
 	go rd.run()
@@ -281,7 +284,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query_range",
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
-			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"}", r.sName, r.sValue, r.lName, r.lVal)) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
@@ -438,7 +441,7 @@ func (r *Reader) closeAndReconnect() {
 			Scheme:   scheme,
 			Host:     r.addr,
 			Path:     "/loki/api/v1/tail",
-			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"}", r.sName, r.sValue, r.lName, r.lVal)),
+			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)),
 		}
 
 		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)

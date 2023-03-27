@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -30,7 +28,9 @@ import (
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // Here is how the generic compactor works:
@@ -168,7 +168,13 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
+type Limits interface {
+	deletion.Limits
+	retention.Limits
+	DefaultLimits() *validation.Limits
+}
+
+func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -234,7 +240,7 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
+func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -269,7 +275,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 	return nil
 }
 
-func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Overrides) error {
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -652,7 +658,7 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []retention.IntervalFilter) {
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, filter.Func) {
 	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
 		return expired, nonDeletedIntervals
 	}

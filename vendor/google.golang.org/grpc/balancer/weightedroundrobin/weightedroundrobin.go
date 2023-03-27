@@ -45,7 +45,7 @@ func (a AddrInfo) Equal(o interface{}) bool {
 // SetAddrInfo returns a copy of addr in which the BalancerAttributes field is
 // updated with addrInfo.
 //
-// Experimental
+// # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
@@ -57,7 +57,7 @@ func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
 // GetAddrInfo returns the AddrInfo stored in the BalancerAttributes field of
 // addr.
 //
-// Experimental
+// # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.

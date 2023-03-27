@@ -2,16 +2,13 @@ package logql
 
 import (
 	"context"
-	"fmt"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/pkg/errors"
 	"math"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -53,6 +50,7 @@ func TestMappingEquivalence(t *testing.T) {
 		{`sum(max(rate({a=~".+"}[1s])))`, false},
 		{`max(count(rate({a=~".+"}[1s])))`, false},
 		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
+		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -83,7 +81,7 @@ func TestMappingEquivalence(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			_, mapped, err := mapper.Parse(tc.query)
+			_, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
@@ -103,7 +101,7 @@ func TestMappingEquivalence(t *testing.T) {
 	}
 }
 
-func TestDownstreamEvaluatorFailExecute(t *testing.T) {
+func TestShardCounter(t *testing.T) {
 	var (
 		shards   = 3
 		nStreams = 60
@@ -116,17 +114,14 @@ func TestDownstreamEvaluatorFailExecute(t *testing.T) {
 		limit    = 100
 	)
 
-	logqlCase1 := "sum(\nsum_over_time({log_type=\"service_metrics\",operation=\"InvokeFunction\",module=\"api_server\",_file=\"/service_metrics.log\",severity_text=\"INFO\"}|=`status\":200`\n|regexp `\"meteringDuration\":(?P<meteringDuration>.*?)(,|\\{|\\[|\\})`\n|regexp `\"cpuCores\":(?P<cpuCores>.*?)(,|\\{|\\[|\\})`\n|label_format capacity=`{{ mulf (.cpuCores | float64) (.meteringDuration|float64)}}` | unwrap capacity | __error__=\"\" [10s])) \n/ \nsum(  sum_over_time({log_type=\"service_metrics\",operation=\"InvokeFunction\",_file=\"/service_metrics.log\",module=\"api_server\",severity_text=\"INFO\"}|=`status\":200`\n|regexp `\"cpuUsage\":(?P<cpuUsage>.*?)(,|\\{|\\[|\\})` | unwrap cpuUsage | __error__=\"\" [10s])\n)"
 	for _, tc := range []struct {
-		query  string
-		errMsg error
+		query string
 	}{
-		{logqlCase1, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %s ,logql: %s , err: %s", reflect.TypeOf(&syntax.BinOpExpr{}), logqlCase1, errors.New("unimplemented"))},
-		// topk prefers already-seen values in tiebreakers. Since the test data generates
-		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
-		// sorted by labels, we don't expect this to pass.
-		// We could sort them as stated, but it doesn't seem worth the performance hit.
-		// {`topk(3, rate({a=~".+"}[1s]))`, false},
+		// Test a few queries which will not shard and shard
+		// Avoid testing queries where the shard mapping produces a different query such as avg()
+		{`1`},
+		{`rate({a=~".+"}[1s])`},
+		{`sum by (a) (rate({a=~".+"}[1s]))`},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -148,22 +143,22 @@ func TestDownstreamEvaluatorFailExecute(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			_, mapped, err := mapper.Parse(tc.query)
+			noop, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
 
-			_, err = qry.Exec(ctx)
+			shardedRes, err := shardedQry.Exec(ctx)
 			require.Nil(t, err)
 
-			_, err = shardedQry.Exec(ctx)
-
-			require.Equal(t, tc.errMsg.Error(), err.Error())
-
+			if noop {
+				assert.Equal(t, int64(0), shardedRes.Statistics.Summary.Shards)
+			} else {
+				assert.Equal(t, int64(shards), shardedRes.Statistics.Summary.Shards)
+			}
 		})
 	}
 }

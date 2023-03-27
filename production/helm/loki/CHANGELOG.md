@@ -11,6 +11,68 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
+[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
+- [BUGFIX] Fix role/PSP mapping
+
+## 4.8.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.2
+
+## 4.7
+
+- [CHANGE] **BREAKING** Rename `gel-license.jwt` property of secret `gel-secrets` to `license.jwt` on enterprise-logs chart.
+
+## 4.6.2
+
+- [BUGFIX] Fix tokengen and provisioner secrets creation on enterprise-logs chart.
+
+## 4.6.1
+
+- [FEATURE] Add `gateway.nginxConfig.customReadUrl`, `gateway.nginxConfig.customWriteUrl` and `gateway.nginxConfig.customBackendUrl` to override read/write/backend paths.
+- [BUGFIX] Remove unreleased setting `useFederatedToken` from Azure configuration block.
+
+## 4.6
+
+- [Change] Bump Loki version to 2.7.3. Revert to 2 target simple scalable mode as default until third target ships in minor release.
+
+## 4.5.1
+
+- [BUGFIX] Fix rendering of namespace in provisioner job.
+- [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
+- [BUGFIX] Correctly set `compactor_address` for 3 target scalable configuration.
+
+## 4.5
+
+- [ENHANCEMENT] Single binary mode is now possible for more than 1 replica, with a gateway and object storage backend.
+
+## 4.4.2
+
+- [CHANGE] Bump Loki version to 2.7.2 and GEL version to 1.6.1
+
+## 4.4.1
+
+- [BUGFIX] Fix a few problems with the included dashboards and allow the rules to be created in a different namespace (which may be necessary based on how your Prometheus Operator is deployed).
+
+## 4.1.1
+
+- [FEATURE] Added `loki.runtimeConfig` helm values to provide a reloadable runtime configuration.
+
+## 4.1
+
+- [BUGFIX] Fix bug in provisioner job that caused the self-monitoring tenant secret to be created with an empty token.
+
+## 4.0
+
+- [FEATURE] Added `enterprise.adminToken.additionalNamespaces` which are a list of additional namespaces to create secrets containing the GEL admin token in. This is especially useful if your Grafana instance is in another namespace.
+- [CHANGE] **BREAKING** Remove `enterprise.nginxConfig.file`. Both enterprise and gateway configurations now share the same nginx config, use `gateway.nginxConfig.file` for both. Admin routes will 404 on OSS deployments.
+- [CHANGE] **BREAKING** Default simple deployment mode to new, 3 target configuration (read, write, and backend). This new configuration allows the `read` target to be run as a deployment and auto-scaled. To go back to the legacy, 2 target configuration, set `read.legacyReadTraget` to `true`.
+- [CHANGE] **BREAKING** Change how tenants are defined
+- [CHANGE] **BREKAING** Remove `enterprise.adminTokenSecret`. This is now defined under `enterprise.adminToken.secret`.
+- [CHANGE] **BREKAING** Rename and change format of `enterprise.provisioner.tenants`. Property has been renamed to `enterprise.provisioner.additionalTenants`, and is now an array of objects rather than string. Each object must contain a `name` and a `secretNamespace` field, where `name` is the name of the tenant and `secretNamespace` is the namespace to create the secret with the tenant's read and write token.
+- [CHANGE] **BREAKING** Change the structure of `monitoring.selfMonitoring.tenant` from a string to an object. The new object must have a `name` and a `secretNamespace` field, where `name` is the name of the self-monitoring tenant and `secretNamespace` is the namespace to create an additional secret with the tenant's token. A secret will still also be created in the release namespace as it's needed by the Loki canary.
+- [CHANGE] **BREAKING** Remove ability to create self-monitoring resources in different namespaces (with the exception of dashboard configmaps).
+
 ## 3.10.0
 
 - [CHANGE] Deprecate `enterprise.nginxConfig.file`. Both enterprise and gateway configurations now share the same nginx config. Admin routes will 404 on OSS deployments. Will be removed in version 4 of the chart, please use `gateway.nginxConfig.file` for both OSS and Enterprise gateways.

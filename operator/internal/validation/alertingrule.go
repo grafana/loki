@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
@@ -20,14 +20,14 @@ var _ admission.CustomValidator = &AlertingRuleValidator{}
 
 // AlertingRuleValidator implements a custom validator for AlertingRule resources.
 type AlertingRuleValidator struct {
-	ExtendedValidator func(context.Context, *lokiv1beta1.AlertingRule) field.ErrorList
+	ExtendedValidator func(context.Context, *lokiv1.AlertingRule) field.ErrorList
 }
 
 // SetupWebhookWithManager registers the AlertingRuleValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
 func (v *AlertingRuleValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1beta1.AlertingRule{}).
+		For(&lokiv1.AlertingRule{}).
 		WithValidator(v).
 		Complete()
 }
@@ -49,7 +49,7 @@ func (v *AlertingRuleValidator) ValidateDelete(_ context.Context, _ runtime.Obje
 }
 
 func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object) error {
-	alertingRule, ok := obj.(*lokiv1beta1.AlertingRule)
+	alertingRule, ok := obj.(*lokiv1.AlertingRule)
 	if !ok {
 		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type AlertingRule: %t", obj))
 	}
@@ -62,9 +62,9 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 		// Check for group name uniqueness
 		if found[g.Name] {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("Groups").Index(i).Child("Name"),
+				field.NewPath("spec").Child("groups").Index(i).Child("name"),
 				g.Name,
-				lokiv1beta1.ErrGroupNamesNotUnique.Error(),
+				lokiv1.ErrGroupNamesNotUnique.Error(),
 			))
 		}
 
@@ -74,9 +74,9 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 		_, err := model.ParseDuration(string(g.Interval))
 		if err != nil {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("Groups").Index(i).Child("Interval"),
+				field.NewPath("spec").Child("groups").Index(i).Child("interval"),
 				g.Interval,
-				lokiv1beta1.ErrParseEvaluationInterval.Error(),
+				lokiv1.ErrParseEvaluationInterval.Error(),
 			))
 		}
 
@@ -85,9 +85,9 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			if rule.Alert != "" {
 				if _, err := model.ParseDuration(string(rule.For)); err != nil {
 					allErrs = append(allErrs, field.Invalid(
-						field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("For"),
+						field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("for"),
 						rule.For,
-						lokiv1beta1.ErrParseAlertForPeriod.Error(),
+						lokiv1.ErrParseAlertForPeriod.Error(),
 					))
 
 					continue
@@ -98,9 +98,9 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			expr, err := syntax.ParseExpr(rule.Expr)
 			if err != nil {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					rule.Expr,
-					lokiv1beta1.ErrParseLogQLExpression.Error(),
+					lokiv1.ErrParseLogQLExpression.Error(),
 				))
 
 				continue
@@ -109,9 +109,9 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 			// Validate that the expression is a sample-expression (metrics as result) and not for logs
 			if _, ok := expr.(syntax.SampleExpr); !ok {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					rule.Expr,
-					lokiv1beta1.ErrParseLogQLNotSample.Error(),
+					lokiv1.ErrParseLogQLNotSample.Error(),
 				))
 			}
 		}

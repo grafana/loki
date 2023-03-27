@@ -94,6 +94,7 @@ type Distributor struct {
 	distributorsLifecycler *ring.Lifecycler
 
 	rateLimitStrat string
+	logSender      LogSender
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -104,7 +105,6 @@ type Distributor struct {
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
-	logSender              LogSender
 	streamShardCount       prometheus.Counter
 }
 
@@ -114,7 +114,7 @@ func New(
 	clientCfg client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
-	overrides *validation.Overrides,
+	overrides Limits,
 	registerer prometheus.Registerer,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -176,6 +176,7 @@ func New(
 		labelCache:             labelCache,
 		shardTracker:           NewShardTracker(),
 		rateLimitStrat:         rateLimitStrat,
+		logSender:              DefaultLogSender,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -191,8 +192,6 @@ func New(
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
-
-		logSender: DefaultLogSender,
 		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "stream_sharding_count",
@@ -269,19 +268,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	userID := tenantID
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
 		return &logproto.PushResponse{}, nil
 	}
-
 	if DefaultLogShip != nil {
 		req, err = DefaultLogShip.Ship(ctx, tenantID, req)
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
@@ -293,78 +291,82 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var validationErr error
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
-	for _, stream := range req.Streams {
-		// Return early if stream does not contain any entries
-		if len(stream.Entries) == 0 {
-			continue
-		}
-
-		// Truncate first so subsequent steps have consistent line lengths
-		d.truncateLines(validationContext, &stream)
-
-		stream.Labels, stream.Hash, err = d.parseStreamLabels(userID, validationContext, stream.Labels, &stream)
-		if err != nil {
-			validationErr = err
-			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
-			bytes := 0
-			for _, e := range stream.Entries {
-				bytes += len(e.Line)
-			}
-			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
-			continue
-		}
-
-		n := 0
-		streamSize := 0
-		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
-				validationErr = err
+	func() {
+		sp, _ := opentracing.StartSpanFromContext(ctx, "distributor.ValidatePushRequest")
+		for _, stream := range req.Streams {
+			// Return early if stream does not contain any entries
+			if len(stream.Entries) == 0 {
 				continue
 			}
 
-			if DefaultLogPipeline != nil {
-				pass, pipelineErr := DefaultLogPipeline.Pipeline(ctx, userID, stream.Labels, entry)
-				if pipelineErr != nil {
+			// Truncate first so subsequent steps have consistent line lengths
+			d.truncateLines(validationContext, &stream)
+
+			stream.Labels, stream.Hash, err = d.parseStreamLabels(tenantID, validationContext, stream.Labels, &stream)
+			if err != nil {
+				validationErr = err
+				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
+				bytes := 0
+				for _, e := range stream.Entries {
+					bytes += len(e.Line)
+				}
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
+				continue
+			}
+
+			n := 0
+			streamSize := 0
+			for _, entry := range stream.Entries {
+				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 					validationErr = err
 					continue
 				}
-				if !pass {
-					continue
+
+				if DefaultLogPipeline != nil {
+					pass, pipelineErr := DefaultLogPipeline.Pipeline(ctx, userID, stream.Labels, entry)
+					if pipelineErr != nil {
+						validationErr = err
+						continue
+					}
+					if !pass {
+						continue
+					}
+
 				}
 
-			}
+				stream.Entries[n] = entry
 
-			stream.Entries[n] = entry
-
-			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
-			// since Loki will accept out of order writes it doesn't account for separate
-			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.incrementDuplicateTimestamps && n != 0 {
-				// Traditional logic for Loki is that 2 lines with the same timestamp and
-				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-				// To maintain this behavior, only increment the timestamp if the log content is different
-				if stream.Entries[n-1].Line != entry.Line {
-					stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
+				// since Loki will accept out of order writes it doesn't account for separate
+				// pushes with overlapping time ranges having entries with duplicate timestamps
+				if validationContext.incrementDuplicateTimestamps && n != 0 {
+					// Traditional logic for Loki is that 2 lines with the same timestamp and
+					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
+					// To maintain this behavior, only increment the timestamp if the log content is different
+					if stream.Entries[n-1].Line != entry.Line {
+						stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+					}
 				}
+
+				n++
+				validatedLineSize += len(entry.Line)
+				validatedLineCount++
+				streamSize += len(entry.Line)
 			}
+			stream.Entries = stream.Entries[:n]
 
-			n++
-			validatedLineSize += len(entry.Line)
-			validatedLineCount++
-			streamSize += len(entry.Line)
+			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+			if shardStreamsCfg.Enabled {
+				derivedKeys, derivedStreams := d.shardStream(stream, streamSize, tenantID)
+				keys = append(keys, derivedKeys...)
+				streams = append(streams, derivedStreams...)
+			} else {
+				keys = append(keys, util.TokenFor(tenantID, stream.Labels))
+				streams = append(streams, streamTracker{stream: stream})
+			}
 		}
-		stream.Entries = stream.Entries[:n]
-
-		shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-		if shardStreamsCfg.Enabled {
-			derivedKeys, derivedStreams := d.shardStream(stream, streamSize, tenantID)
-			keys = append(keys, derivedKeys...)
-			streams = append(streams, derivedStreams...)
-		} else {
-			keys = append(keys, util.TokenFor(tenantID, stream.Labels))
-			streams = append(streams, streamTracker{stream: stream})
-		}
-	}
+		sp.Finish()
+	}()
 
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
@@ -384,18 +386,26 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
-	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
-		if err != nil {
-			return nil, err
-		}
 
-		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
-		streams[i].maxFailures = replicationSet.MaxErrors
-		for _, ingester := range replicationSet.Instances {
-			streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
-			ingesterDescs[ingester.Addr] = ingester
+	if err := func() error {
+		sp, _ := opentracing.StartSpanFromContext(ctx, "distributor.QueryIngestersRing")
+		defer sp.Finish()
+		for i, key := range keys {
+			replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
+			if err != nil {
+				return err
+			}
+
+			streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
+			streams[i].maxFailures = replicationSet.MaxErrors
+			for _, ingester := range replicationSet.Instances {
+				streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
+				ingesterDescs[ingester.Addr] = ingester
+			}
 		}
+		return nil
+	}(); err != nil {
+		return nil, err
 	}
 
 	tracker := pushTracker{
@@ -547,7 +557,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 			stream.Entries[i].Line = e.Line[:maxSize]
 
 			truncatedSamples++
-			truncatedBytes = len(e.Line) - maxSize
+			truncatedBytes += len(e.Line) - maxSize
 		}
 	}
 
@@ -615,8 +625,7 @@ type labelData struct {
 }
 
 func (d *Distributor) parseStreamLabels(tenantID string, vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
-	val, ok := d.labelCache.Get(key)
-	if ok {
+	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
 		return labelVal.labels, labelVal.hash, nil
 	}

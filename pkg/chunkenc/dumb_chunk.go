@@ -154,9 +154,6 @@ func (i *dumbChunkIterator) Labels() string {
 	return ""
 }
 
-func (i *dumbChunkIterator) ProcessLine() string {
-	panic("unsupported")
-}
 func (i *dumbChunkIterator) StreamHash() uint64 {
 	return 0
 }

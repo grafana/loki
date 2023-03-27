@@ -952,7 +952,11 @@ func (r *Reader) ReadSeeker(random bool, index []byte) (*ReadSeeker, error) {
 // Seek allows seeking in compressed data.
 func (r *ReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	if r.err != nil {
-		return 0, r.err
+		if !errors.Is(r.err, io.EOF) {
+			return 0, r.err
+		}
+		// Reset on EOF
+		r.err = nil
 	}
 	if offset == 0 && whence == io.SeekCurrent {
 		return r.blockStart + int64(r.i), nil

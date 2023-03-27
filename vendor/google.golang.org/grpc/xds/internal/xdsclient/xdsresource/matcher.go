@@ -208,18 +208,21 @@ func match(domain, host string) (domainMatchType, bool) {
 // FindBestMatchingVirtualHost returns the virtual host whose domains field best
 // matches host
 //
-// The domains field support 4 different matching pattern types:
-//  - Exact match
-//  - Suffix match (e.g. “*ABC”)
-//  - Prefix match (e.g. “ABC*)
-//  - Universal match (e.g. “*”)
+//	The domains field support 4 different matching pattern types:
 //
-// The best match is defined as:
-//  - A match is better if it’s matching pattern type is better
-//    - Exact match > suffix match > prefix match > universal match
-//  - If two matches are of the same pattern type, the longer match is better
-//    - This is to compare the length of the matching pattern, e.g. “*ABCDE” >
-//    “*ABC”
+//	- Exact match
+//	- Suffix match (e.g. “*ABC”)
+//	- Prefix match (e.g. “ABC*)
+//	- Universal match (e.g. “*”)
+//
+//	The best match is defined as:
+//	- A match is better if it’s matching pattern type is better.
+//	  * Exact match > suffix match > prefix match > universal match.
+//
+//	- If two matches are of the same pattern type, the longer match is
+//	  better.
+//	  * This is to compare the length of the matching pattern, e.g. “*ABCDE” >
+//	    “*ABC”
 func FindBestMatchingVirtualHost(host string, vHosts []*VirtualHost) *VirtualHost { // Maybe move this crap to client
 	var (
 		matchVh   *VirtualHost

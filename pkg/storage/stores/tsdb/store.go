@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -183,7 +184,7 @@ func (s *store) Stop() {
 	})
 }
 
-func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdb_index.ChunkMetas{
@@ -199,7 +200,7 @@ func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
 		return errors.Wrap(err, "writing index entry")
 	}
 
-	return s.backupIndexWriter.IndexChunk(ctx, chk)
+	return s.backupIndexWriter.IndexChunk(ctx, from, through, chk)
 }
 
 type failingIndexWriter struct{}
@@ -210,6 +211,6 @@ func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_i
 
 type noopBackupIndexWriter struct{}
 
-func (n noopBackupIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (n noopBackupIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }

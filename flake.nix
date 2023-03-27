@@ -145,6 +145,7 @@
             nettools
 
             golangci-lint
+            gotools
             helm-docs
             faillint
             chart-testing

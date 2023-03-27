@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -176,11 +178,14 @@ func markForDelete(
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
 
 		// see if the chunk is deleted completely or partially
-		if expired, nonDeletedIntervalFilters := expiration.Expired(c, now); expired {
-			if len(nonDeletedIntervalFilters) > 0 {
-				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, tableInterval, nonDeletedIntervalFilters)
+		if expired, filterFunc := expiration.Expired(c, now); expired {
+			linesDeleted := true // tracks whether we deleted at least some data from the chunk
+			if filterFunc != nil {
+				wroteChunks := false
+				var err error
+				wroteChunks, linesDeleted, err = chunkRewriter.rewriteChunk(ctx, c, tableInterval, filterFunc)
 				if err != nil {
-					return false, fmt.Errorf("failed to rewrite chunk %s for intervals %+v with error %s", c.ChunkID, nonDeletedIntervalFilters, err)
+					return false, fmt.Errorf("failed to rewrite chunk %s with error %s", c.ChunkID, err)
 				}
 
 				if wroteChunks {
@@ -190,17 +195,19 @@ func markForDelete(
 				}
 			}
 
-			modified = true
+			if linesDeleted {
+				modified = true
 
-			// Mark the chunk for deletion only if it is completely deleted, or this is the last table that the chunk is index in.
-			// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
-			// the retention would fail because it would fail to find it in the storage.
-			if len(nonDeletedIntervalFilters) == 0 || c.Through <= tableInterval.End {
-				if err := marker.Put(c.ChunkID); err != nil {
-					return false, err
+				// Mark the chunk for deletion only if it is completely deleted, or this is the last table that the chunk is index in.
+				// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
+				// the retention would fail because it would fail to find it in the storage.
+				if filterFunc == nil || c.Through <= tableInterval.End {
+					if err := marker.Put(c.ChunkID); err != nil {
+						return false, err
+					}
 				}
+				return true, nil
 			}
-			return true, nil
 		}
 
 		// The chunk is not deleted, now see if we can drop its index entry based on end time from tableInterval.
@@ -332,75 +339,88 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 	}
 }
 
-func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableInterval model.Interval, intervalFilters []IntervalFilter) (bool, error) {
+// rewriteChunk rewrites a chunk after filtering out logs using filterFunc.
+// It first builds a newChunk using filterFunc.
+// If the newChunk is same as the original chunk then there is nothing to do here, wroteChunks and linesDeleted both would be false.
+// If the newChunk is different, linesDeleted would be true.
+// The newChunk is indexed and uploaded only if it belongs to the current index table being processed,
+// the status of which is set to wroteChunks.
+func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userID := unsafeGetString(ce.UserID)
 	chunkID := unsafeGetString(ce.ChunkID)
 
 	chk, err := chunk.ParseExternalKey(userID, chunkID)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	chks, err := c.chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	if len(chks) != 1 {
-		return false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", chunkID, len(chks))
+		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", chunkID, len(chks))
 	}
 
-	wroteChunks := false
-
-	for _, ivf := range intervalFilters {
-		start := ivf.Interval.Start
-		end := ivf.Interval.End
-
-		newChunkData, err := chks[0].Data.Rebound(start, end, ivf.Filter)
-		if err != nil {
-			if errors.Is(err, chunk.ErrSliceNoDataInRange) {
-				level.Info(util_log.Logger).Log("msg", "Rebound leaves an empty chunk", "chunk ref", string(ce.ChunkRef.ChunkID))
-				// skip empty chunks
-				continue
-			}
-			return false, err
+	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string) bool {
+		if filterFunc(ts, s) {
+			linesDeleted = true
+			return true
 		}
 
-		if start > tableInterval.End || end < tableInterval.Start {
-			continue
+		return false
+	})
+	if err != nil {
+		if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", string(ce.ChunkRef.ChunkID))
+			return false, true, nil
 		}
-
-		facade, ok := newChunkData.(*chunkenc.Facade)
-		if !ok {
-			return false, errors.New("invalid chunk type")
-		}
-
-		newChunk := chunk.NewChunk(
-			userID, chks[0].FingerprintModel(), chks[0].Metric,
-			facade,
-			start,
-			end,
-		)
-
-		err = newChunk.Encode()
-		if err != nil {
-			return false, err
-		}
-
-		uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk)
-		if err != nil {
-			return false, err
-		}
-
-		// upload chunk only if an entry was written
-		if uploadChunk {
-			err = c.chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
-			if err != nil {
-				return false, err
-			}
-			wroteChunks = true
-		}
+		return false, false, err
 	}
 
-	return wroteChunks, nil
+	// if no lines were deleted then there is nothing to do
+	if !linesDeleted {
+		return false, false, nil
+	}
+
+	facade, ok := newChunkData.(*chunkenc.Facade)
+	if !ok {
+		return false, false, errors.New("invalid chunk type")
+	}
+
+	newChunkStart, newChunkEnd := util.RoundToMilliseconds(facade.Bounds())
+
+	// new chunk is out of range for this table so don't upload and index it
+	if newChunkStart > tableInterval.End || newChunkEnd < tableInterval.Start {
+		return false, linesDeleted, nil
+	}
+
+	newChunk := chunk.NewChunk(
+		userID, chks[0].FingerprintModel(), chks[0].Metric,
+		facade,
+		newChunkStart,
+		newChunkEnd,
+	)
+
+	err = newChunk.Encode()
+	if err != nil {
+		return false, false, err
+	}
+
+	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk)
+	if err != nil {
+		return false, false, err
+	}
+
+	// upload chunk only if an entry was written
+	if uploadChunk {
+		err = c.chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
+		if err != nil {
+			return false, false, err
+		}
+		wroteChunks = true
+	}
+
+	return wroteChunks, linesDeleted, nil
 }

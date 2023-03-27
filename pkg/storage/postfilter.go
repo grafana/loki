@@ -94,7 +94,10 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 			return nil, nil, err
 		}
 		queryLogql = sampleExpr.String()
-		postFilterLogSelector = sampleExpr.Selector()
+		postFilterLogSelector, err = sampleExpr.Selector()
+		if err != nil {
+			return nil, nil, err
+		}
 	} else {
 		logSelector, err := syntax.ParseLogSelector(c.selector, true)
 		if err != nil {

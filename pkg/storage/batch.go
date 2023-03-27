@@ -374,10 +374,6 @@ func (it *logBatchIterator) Close() error {
 	return nil
 }
 
-func (it *logBatchIterator) ProcessLine() string {
-	return it.curr.ProcessLine()
-}
-
 func (it *logBatchIterator) Entry() logproto.Entry {
 	return it.curr.Entry()
 }

@@ -19,6 +19,8 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
+	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
+
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
 	lokiGRPCPortName         = "grpclb"
@@ -39,6 +41,7 @@ const (
 	configVolumeName       = "config"
 	rulesStorageVolumeName = "rules"
 	storageVolumeName      = "storage"
+	rulePartsSeparator     = "___"
 
 	walDirectory          = "/tmp/wal"
 	dataDirectory         = "/tmp/loki"
@@ -52,7 +55,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.7.1"
+	DefaultContainerImage = "docker.io/grafana/loki:2.7.4"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -178,9 +181,14 @@ func RulerName(stackName string) string {
 	return fmt.Sprintf("%s-ruler", stackName)
 }
 
-// RulesConfigMapName is the name of the alerting rules configmap
+// RulesConfigMapName is the name of the alerting/recording rules configmap
 func RulesConfigMapName(stackName string) string {
 	return fmt.Sprintf("%s-rules", stackName)
+}
+
+// RulesStorageVolumeName is the name of the rules volume
+func RulesStorageVolumeName() string {
+	return rulesStorageVolumeName
 }
 
 // GatewayName is the name of the lokiStack-gateway statefulset

@@ -1,7 +1,8 @@
 ---
 title: Releasing Loki Build Image
+description: Releasing Loki Build Image
 ---
-# Releasing `loki-build-image`
+# Releasing Loki Build Image
 
 The [`loki-build-image`](https://github.com/grafana/loki/tree/master/loki-build-image)
 is the Docker image used to run tests and build Grafana Loki binaries in CI.

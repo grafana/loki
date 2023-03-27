@@ -158,11 +158,11 @@ const (
 // filter chains in a single Listener resource. It also contains the default
 // filter chain specified in the Listener resource. It provides two important
 // pieces of functionality:
-// 1. Validate the filter chains in an incoming Listener resource to make sure
-//    that there aren't filter chains which contain the same match criteria.
-// 2. As part of performing the above validation, it builds an internal data
-//    structure which will if used to look up the matching filter chain at
-//    connection time.
+//  1. Validate the filter chains in an incoming Listener resource to make sure
+//     that there aren't filter chains which contain the same match criteria.
+//  2. As part of performing the above validation, it builds an internal data
+//     structure which will if used to look up the matching filter chain at
+//     connection time.
 //
 // The logic specified in the documentation around the xDS FilterChainMatch
 // proto mentions 8 criteria to match on.

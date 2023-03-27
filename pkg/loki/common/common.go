@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -13,7 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/util"
-
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -66,19 +66,21 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 type Storage struct {
-	S3       aws.S3Config              `yaml:"s3"`
-	GCS      gcp.GCSConfig             `yaml:"gcs"`
-	Azure    azure.BlobStorageConfig   `yaml:"azure"`
-	BOS      baidubce.BOSStorageConfig `yaml:"bos"`
-	Swift    openstack.SwiftConfig     `yaml:"swift"`
-	FSConfig FilesystemConfig          `yaml:"filesystem"`
-	Hedging  hedging.Config            `yaml:"hedging"`
+	S3           aws.S3Config              `yaml:"s3"`
+	GCS          gcp.GCSConfig             `yaml:"gcs"`
+	Azure        azure.BlobStorageConfig   `yaml:"azure"`
+	AlibabaCloud alibaba.OssConfig         `yaml:"alibabacloud"`
+	BOS          baidubce.BOSStorageConfig `yaml:"bos"`
+	Swift        openstack.SwiftConfig     `yaml:"swift"`
+	FSConfig     FilesystemConfig          `yaml:"filesystem"`
+	Hedging      hedging.Config            `yaml:"hedging"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.S3.RegisterFlagsWithPrefix(prefix, f)
 	s.GCS.RegisterFlagsWithPrefix(prefix, f)
 	s.Azure.RegisterFlagsWithPrefix(prefix, f)
+	s.AlibabaCloud.RegisterFlagsWithPrefix(prefix, f)
 	s.Swift.RegisterFlagsWithPrefix(prefix, f)
 	s.BOS.RegisterFlagsWithPrefix(prefix, f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix, f)

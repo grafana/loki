@@ -28,7 +28,8 @@ type Config struct {
 	BatchWait time.Duration `yaml:"batchwait"`
 	BatchSize int           `yaml:"batchsize"`
 
-	Client config.HTTPClientConfig `yaml:",inline"`
+	Client  config.HTTPClientConfig `yaml:",inline"`
+	Headers map[string]string       `yaml:"headers,omitempty"`
 
 	BackoffConfig backoff.Config `yaml:"backoff_config"`
 	// The labels to add to any time series or alerts when communicating with loki
@@ -44,8 +45,7 @@ type Config struct {
 	// prevent HOL blocking in multitenant deployments.
 	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
 
-	// deprecated use StreamLagLabels from config.Config instead
-	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
+	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels" doc:"deprecated"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by

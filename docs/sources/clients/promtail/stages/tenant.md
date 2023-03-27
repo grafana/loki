@@ -1,11 +1,12 @@
 ---
 title: tenant
+description: tenant stage
 ---
-# `tenant` stage
+# tenant
 
 The tenant stage is an action stage that sets the tenant ID for the log entry
 picking it from a field in the extracted data map. If the field is missing, the
-default promtail client [`tenant_id`](../../configuration#client_config) will
+default promtail client [`tenant_id`]({{<relref "../configuration#clients">}}) will
 be used.
 
 

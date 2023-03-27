@@ -1,5 +1,6 @@
 ---
 title: Contributing to Loki
+description: Contributing to Loki
 ---
 # Contributing to Loki
 

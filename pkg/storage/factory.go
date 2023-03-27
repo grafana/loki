@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
@@ -52,19 +54,19 @@ func ResetBoltDBIndexClientWithShipper() {
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	downloads.Limits
-	CardinalityLimit(userID string) int
-	MaxChunksPerQueryFromStore(userID string) int
-	MaxQueryLength(userID string) time.Duration
+	stores.StoreLimits
+	CardinalityLimit(string) int
 }
 
 // NamedStores helps configure additional object stores from a given storage provider
 type NamedStores struct {
-	AWS        map[string]aws.StorageConfig         `yaml:"aws"`
-	Azure      map[string]azure.BlobStorageConfig   `yaml:"azure"`
-	BOS        map[string]baidubce.BOSStorageConfig `yaml:"bos"`
-	Filesystem map[string]local.FSConfig            `yaml:"filesystem"`
-	GCS        map[string]gcp.GCSConfig             `yaml:"gcs"`
-	Swift      map[string]openstack.SwiftConfig     `yaml:"swift"`
+	AWS          map[string]aws.StorageConfig         `yaml:"aws"`
+	Azure        map[string]azure.BlobStorageConfig   `yaml:"azure"`
+	BOS          map[string]baidubce.BOSStorageConfig `yaml:"bos"`
+	Filesystem   map[string]local.FSConfig            `yaml:"filesystem"`
+	GCS          map[string]gcp.GCSConfig             `yaml:"gcs"`
+	AlibabaCloud map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
+	Swift        map[string]openstack.SwiftConfig     `yaml:"swift"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -102,7 +104,12 @@ func (ns *NamedStores) populateStoreType() error {
 		}
 		ns.storeType[name] = config.StorageTypeAzure
 	}
-
+	for name := range ns.AlibabaCloud {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = config.StorageTypeAlibabaCloud
+	}
 	for name := range ns.BOS {
 		if err := checkForDuplicates(name); err != nil {
 			return err
@@ -158,6 +165,7 @@ func (ns *NamedStores) validate() error {
 
 // Config chooses which storage client to use.
 type Config struct {
+	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`
 	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
@@ -201,7 +209,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 
-	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading.", f)
+	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
@@ -330,6 +338,12 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case config.StorageTypeAzure:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
+		if err != nil {
+			return nil, err
+		}
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+	case config.StorageTypeAlibabaCloud:
+		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -467,6 +481,16 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
+	case config.StorageTypeAlibabaCloud:
+		ossCfg := cfg.AlibabaStorageConfig
+		if namedStore != "" {
+			var ok bool
+			ossCfg, ok = cfg.NamedStores.AlibabaCloud[namedStore]
+			if !ok {
+				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", name)
+			}
+		}
+		return alibaba.NewOssObjectClient(context.Background(), ossCfg)
 	case config.StorageTypeGCS:
 		gcsCfg := cfg.GCSConfig
 		if namedStore != "" {

@@ -1,7 +1,8 @@
 ---
 title: Scraping
+description: Promtail Scraping (Service Discovery) 
 ---
-# Promtail Scraping (Service Discovery)
+# Scraping
 
 ## File Target Discovery
 
@@ -193,6 +194,9 @@ resuming the target without skipping logs.
 
 Read the [configuration]({{< relref "configuration#windows_events" >}}) section for more information.
 
+See the [eventlogmessage]({{<relref "stages/eventlogmessage/">}}) stage for extracting
+data from the `message`.
+
 ## GCP Log scraping
 
 Promtail supports scraping cloud resource logs such as GCS bucket logs, load balancer logs, and Kubernetes cluster logs from GCP.
@@ -222,7 +226,7 @@ Here `project_id` and `subscription` are the only required fields.
 - `project_id` is the GCP project id.
 - `subscription` is the GCP pubsub subscription where Promtail can consume log entries from.
 
-Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
+Before using `gcplog` target, GCP should be [configured]({{<relref "gcplog-cloud">}}) with pubsub subscription to receive logs from.
 
 It also supports `relabeling` and `pipeline` stages just like other targets.
 
@@ -256,7 +260,7 @@ section. This server exposes the single endpoint `POST /gcp/api/v1/push`, respon
 
 For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed
 as part of a larger orchestration service like Kubernetes, which can handle HTTPS traffic through an ingress, or it can be hosted behind
-a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured](../gcplog-cloud)
+a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured]({{<relref "gcplog-cloud">}})
 to send logs to Promtail.
 
 It also supports `relabeling` and `pipeline` stages.
@@ -341,6 +345,31 @@ For sending messages via UDP:
 *.* action(type="omfwd" protocol="udp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format")
 ```
 
+## Azure Event Hubs
+
+Promtail supports reading messages from Azure Event Hubs.
+Targets can be configured using the `azure_event_hubs` stanza:
+
+```yaml
+- job_name: azure_event_hubs
+  azure_event_hubs:
+    group_id: "mygroup"
+    fully_qualified_namespace: my-namespace.servicebus.windows.net:9093
+    connection_string: "my-connection-string"
+    event_hubs:
+      - event-hub-name
+    labels:
+      job: azure_event_hub
+  relabel_configs:
+    - action: replace
+      source_labels:
+        - __azure_event_hubs_category
+      target_label: category
+```
+
+Only `fully_qualified_namespace`, `connection_string` and `event_hubs` are required fields.
+Read the [configuration]({{< relref "../../configuration/#azure-event-hubs" >}}) section for more information.
+
 ## Kafka
 
 Promtail supports reading message from Kafka using a consumer group.
@@ -378,7 +407,8 @@ scrape_configs:
 ```
 
 Only the `brokers` and `topics` are required.
-Read the [configuration]({{< relref "configuration#kafka" >}}) section for more information.
+Read the [configuration]({{< relref "configuration/#kafka" >}}) section for more information.
+
 
 ## GELF
 
@@ -558,5 +588,5 @@ clients:
   - [ <client_option> ]
 ```
 
-Refer to [`client_config`]({{< relref "configuration#client_config" >}}) from the Promtail
+Refer to [`client_config`]({{< relref "configuration#clients" >}}) from the Promtail
 Configuration reference for all available options.

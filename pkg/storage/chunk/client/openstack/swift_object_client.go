@@ -80,6 +80,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
 		AuthUrl:        cfg.AuthURL,
+		Internal:       cfg.Internal,
 		ApiKey:         cfg.Password,
 		UserName:       cfg.Username,
 		UserId:         cfg.UserID,

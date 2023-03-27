@@ -26,8 +26,8 @@ func newQueryBlocker(ctx context.Context, q *query) *queryBlocker {
 	}
 }
 
-func (qb *queryBlocker) isBlocked(tenant string) bool {
-	patterns := qb.q.limits.BlockedQueries(tenant)
+func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
+	patterns := qb.q.limits.BlockedQueries(ctx, tenant)
 	if len(patterns) <= 0 {
 		return false
 	}

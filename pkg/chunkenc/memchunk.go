@@ -931,7 +931,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.Entry()
-		if filter != nil && filter(entry.Line) {
+		if filter != nil && filter(entry.Timestamp, entry.Line) {
 			continue
 		}
 		if err := newChunk.Append(&entry); err != nil {
@@ -1268,17 +1268,12 @@ type entryBufferedIterator struct {
 	*bufferedIterator
 	pipeline log.StreamPipeline
 
-	cur            logproto.Entry
-	currLabels     log.LabelsResult
-	curProcessLine string
+	cur        logproto.Entry
+	currLabels log.LabelsResult
 }
 
 func (e *entryBufferedIterator) Entry() logproto.Entry {
 	return e.cur
-}
-
-func (e *entryBufferedIterator) ProcessLine() string {
-	return e.curProcessLine
 }
 
 func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
@@ -1293,7 +1288,6 @@ func (e *entryBufferedIterator) Next() bool {
 		}
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
-		e.curProcessLine = string(e.currLine)
 		e.currLabels = lbs
 		return true
 	}

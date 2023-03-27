@@ -1,7 +1,8 @@
 ---
 title: Cloud setup GCP Logs
+description: Cloud setup GCP logs
 ---
-# Cloud setup GCP logs
+# Cloud setup GCP Logs
 
 This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
 
@@ -123,7 +124,7 @@ gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
  --role='roles/iam.serviceAccountTokenCreator'
 ```
 
-Having configured Promtail with the [GCP Logs Push target](./#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
+Having configured Promtail with the [GCP Logs Push target](#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
 the push subscription.
 
 ```bash
@@ -230,7 +231,7 @@ We need a service account with following permissions.
 
 This enables Promtail to read log entries from the pubsub subscription created before.
 
-you can find example for Promtail scrape config for `gcplog` [here](../scraping/#gcplog-scraping)
+you can find example for Promtail scrape config for `gcplog` [here]({{<relref "scraping/#gcp-log-scraping">}})
 
 If you are scraping logs from multiple GCP projects, then this serviceaccount should have above permissions in all the projects you are tyring to scrape.
 
