@@ -6,8 +6,8 @@ import (
 )
 
 type Metrics struct {
-	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	discardedRequests *prometheus.CounterVec // Per tenant.
+	queueLength       *prometheus.GaugeVec   // Per tenant
+	discardedRequests *prometheus.CounterVec // Per tenant
 	enqueueCount      *prometheus.CounterVec // Per tenant and level
 	dequeueCount      *prometheus.CounterVec // Per tenant and querier
 }
