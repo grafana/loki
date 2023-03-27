@@ -34,9 +34,9 @@ import (
 )
 
 const (
-	limitErrTmpl          = "maximum of series (%d) reached for a single query"
-	maxSeriesErrTmpl      = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
-	requiredLabelsErrTmpl = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
+	limitErrTmpl                  = "maximum of series (%d) reached for a single query"
+	maxSeriesErrTmpl              = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	requiredLabelsErrTmpl         = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
 	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
 )
@@ -226,11 +226,6 @@ func newQuerySizeLimiter(
 	if len(statsHandler) > 0 {
 		q.statsHandler = statsHandler[0]
 	}
-
-	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-	statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
-	q.statsHandler = statsSplitTimeMiddleware.Wrap(q.statsHandler)
 
 	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
 	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
