@@ -502,6 +502,26 @@ engine:
 # CLI flag: -querier.query-ingester-only
 [query_ingester_only: <boolean> | default = false]
 
+# /series/,Queriers should only query the ingesters and not try to query any
+# store
+# CLI flag: -querier.series-ingester-only
+[series_ingester_only: <boolean> | default = true]
+
+# /label/,Queriers should only query the ingesters and not try to query any
+# store
+# CLI flag: -querier.label-ingester-only
+[label_ingester_only: <boolean> | default = true]
+
+# CLI flag: -querier.query-post-filter-chunk
+[post_filter_chunk: <boolean> | default = false]
+
+# CLI flag: -querier.query-post-metrics-filter-chunk
+[post_metrics_filter_chunk: <boolean> | default = false]
+
+# post filter max parallel
+# CLI flag: -querier.post_filter-max-parallel
+[post_filter_max_parallel: <int> | default = 256]
+
 # When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
@@ -1467,6 +1487,10 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+[query_batch_size: <int>]
+
+[query_batch_sample_size: <int>]
 ```
 
 ### index_gateway
@@ -1622,6 +1646,8 @@ bigtable:
 
 # Configures storing chunks and/or the index in Cassandra.
 cassandra:
+  [name: <string> | default = ""]
+
   # Comma-separated hostnames or IPs of Cassandra instances.
   # CLI flag: -cassandra.addresses
   [addresses: <string> | default = ""]
