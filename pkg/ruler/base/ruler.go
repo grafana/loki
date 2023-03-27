@@ -88,8 +88,6 @@ type Config struct {
 	StoreConfig RuleStoreConfig `yaml:"storage" doc:"deprecated|description=Use -ruler-storage. CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
-	// Maximum time to sleep before each rule evaluation.
-	EvaluationJitter time.Duration `yaml:"evaluation_jitter"`
 
 	// Global alertmanager config.
 	config.AlertManagerConfig `yaml:",inline"`
@@ -163,7 +161,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
-	f.DurationVar(&cfg.EvaluationJitter, "ruler.evaluation-jitter", 0, "Upper bound of random duration to wait before rule evaluation to avoid contention during concurrent execution of rules. Set 0 to disable (default).")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of Alertmanager URLs to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via '-ruler.alertmanager-discovery'.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
