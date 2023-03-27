@@ -9,7 +9,7 @@ weight: 1
 ## Stable Releases
 
 Loki releases (this includes [Promtail](/clients/promtail), [Loki Canary](/operations/loki-canary/), etc) use the following
-naming scheme: `MAJOR`.`MINOR`.`PATCH`
+naming scheme: `MAJOR`.`MINOR`.`PATCH`.
 
 - `MAJOR` (roughly once a year): these releases include large new features & possible backwards-compatibility breaks.
 - `MINOR` (roughly once a quarter): these releases include new features which do not break backwards-compatibility.
