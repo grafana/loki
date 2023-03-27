@@ -32,7 +32,9 @@ You can find all of our releases [on GitHub](https://github.com/grafana/loki/rel
 Every Monday morning, we create a new "weekly" release from the tip of the [`main` branch](https://github.com/grafana/loki).
 These releases use the following naming scheme:
 
-`weekly-k<week-number>` where `<week-number>` is the number of weeks since we began this process (2020-07-06).
+<ul>
+<code>weekly-k&lt;week-number&gt;</code> where <code>&lt;week-number&gt;</code> is the number of weeks since we began this process (2020-07-06).
+</ul>
 
 These weekly releases are deployed across our Grafana Cloud Logs fleet of instances. We test these releases for stability
 by deploying them through development, pre-production, and production instances.
