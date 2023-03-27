@@ -7,6 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -22,9 +26,10 @@ type EvaluatorWithJitter struct {
 	inner     Evaluator
 	maxJitter time.Duration
 	hasher    hash.Hash32
+	logger    log.Logger
 }
 
-func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, hasher hash.Hash32) Evaluator {
+func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, hasher hash.Hash32, logger log.Logger) Evaluator {
 	if maxJitter <= 0 {
 		// jitter is disabled or invalid
 		return inner
@@ -34,22 +39,34 @@ func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, hasher has
 		inner:     inner,
 		maxJitter: maxJitter,
 		hasher:    hasher,
+		logger:    logger,
 	}
 }
 
 func (e *EvaluatorWithJitter) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
-	time.Sleep(e.calculateJitter(qs))
+	logger := log.With(e.logger, "query", qs, "query_hash", logql.HashedQuery(qs))
+	jitter := e.calculateJitter(qs, logger)
+
+	if jitter > 0 {
+		level.Debug(logger).Log("msg", "applying jitter", "jitter", jitter)
+		time.Sleep(jitter)
+	}
 
 	return e.inner.Eval(ctx, qs, now)
 }
 
-func (e *EvaluatorWithJitter) calculateJitter(qs string) time.Duration {
+func (e *EvaluatorWithJitter) calculateJitter(qs string, logger log.Logger) time.Duration {
 	var h uint32
 
 	// rules can be evaluated concurrently, so we protect the hasher with a mutex
 	e.mu.Lock()
 	{
-		_, _ = e.hasher.Write([]byte(qs))
+		_, err := e.hasher.Write([]byte(qs))
+		if err != nil {
+			level.Warn(logger).Log("msg", "could not hash query to determine rule jitter", "err", err)
+			return 0
+		}
+
 		h = e.hasher.Sum32()
 		e.hasher.Reset()
 	}
