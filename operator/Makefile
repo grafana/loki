@@ -35,13 +35,13 @@ REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 # TODO(@periklis): Replace this image tag with VERSION once we have GH tags
 MAIN_IMAGE_TAG = main-99acb9b
 
-# Customize for variants: community or openshift
+# Customize for variants: community, community-openshift or openshift
 VARIANT ?= community
 ifeq ($(VARIANT), openshift)
 ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
     REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
-    VERSION = v0.1.0
 endif
+    VERSION = v0.1.0-placeholder
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
