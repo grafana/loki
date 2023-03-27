@@ -167,7 +167,7 @@ test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
 .PHONY: scorecard
 scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundles (community, community-openshift, openshift)
 	$(OPERATOR_SDK) scorecard -c ./bundle/community/tests/scorecard/config.yaml bundle/community
-	$(OPERATOR_SDK) scorecard -c ./bundle/community/tests/scorecard/config.yaml bundle/community-openshift
+	$(OPERATOR_SDK) scorecard -c ./bundle/community-openshift/tests/scorecard/config.yaml bundle/community-openshift
 	$(OPERATOR_SDK) scorecard -c ./bundle/openshift/tests/scorecard/config.yaml bundle/openshift
 
 .PHONY: lint
