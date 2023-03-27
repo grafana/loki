@@ -79,7 +79,7 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 
 func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	c := make([]log.Stage, 0, len(m))
-	for _, e := range m {
+	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
@@ -90,6 +90,51 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 		c = append(c, p)
 	}
 	return c, nil
+}
+
+// reorderStages reorders m such that LineFilters
+// are as close to the front of the filter as possible.
+func (m MultiStageExpr) reorderStages() []StageExpr {
+	var (
+		result  = make([]StageExpr, 0, len(m))
+		filters = make([]*LineFilterExpr, 0, len(m))
+		rest    = make([]StageExpr, 0, len(m))
+	)
+
+	for _, s := range m {
+		switch f := s.(type) {
+		case *LineFilterExpr:
+			filters = append(filters, f)
+		case *LineFmtExpr:
+			rest = append(rest, f)
+			result = append(result, combineFilters(filters))
+			result = append(result, rest...)
+
+			filters = filters[:0]
+			rest = rest[:0]
+		default:
+			rest = append(rest, f)
+		}
+	}
+
+	result = append(result, combineFilters(filters))
+	return append(result, rest...)
+}
+
+func combineFilters(in []*LineFilterExpr) StageExpr {
+	result := in[len(in)-1]
+	for i := len(in) - 2; i >= 0; i-- {
+		leafNode(result).Left = in[i]
+	}
+
+	return result
+}
+
+func leafNode(in *LineFilterExpr) *LineFilterExpr {
+	current := in
+	for ; current.Left != nil; current = current.Left {
+	}
+	return current
 }
 
 func (m MultiStageExpr) String() string {
