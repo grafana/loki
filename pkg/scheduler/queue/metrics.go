@@ -27,13 +27,13 @@ func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 			Help:      "Total number of query requests discarded.",
 		}, []string{"user"}),
 		enqueueCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Subsystem: subsystem,
 			Name:      "enqueue_count",
 			Help:      "Total number of enqueued (sub-)queries.",
 		}, []string{"user", "level"}),
 		dequeueCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: "loki",
 			Subsystem: subsystem,
 			Name:      "dequeue_count",
 			Help:      "Total number of dequeued (sub-)queries.",
