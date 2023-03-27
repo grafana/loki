@@ -1,12 +1,22 @@
 ---
+title: Alerting and recording rules
+menuTitle: Alert
+description: Learn how the rule evaluates queries for alerting.
+
 aliases:
-  - /alerting/
-title: Alerting and Recording Rules
-description: Alerting and Recording Rules
-weight: 700
+  - /docs/loki/latest/rules/
+  - docs/loki/latest/alert/
+  - docs/loki/latest/alerting/
+
+weight: 850
+keywords:
+  - loki
+  - alert
+  - alerting
+  - ruler
 ---
 
-# Alerting and Recording Rules
+# Alerting and recording rules
 
 Grafana Loki includes a component called the ruler. The ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 

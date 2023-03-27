@@ -204,15 +204,13 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 		acc = &stats.Stats{}
 	}
 
-	queryBounds := newBounds(from, through)
-
 	for idx, interval := range intervals {
 		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, func(chk index.ChunkMeta) bool {
 			// for the first split, purely do overlap check to also include chunks having
 			// start time earlier than start time of the table interval we are querying.
 			// for all other splits, consider only chunks that have from >= interval.Start
 			// so that we start after the start time of the index table we are querying.
-			if Overlap(queryBounds, chk) && (idx == 0 || chk.From() >= interval.Start) {
+			if idx == 0 || chk.From() >= interval.Start {
 				return true
 			}
 			return false
