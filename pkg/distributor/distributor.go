@@ -323,7 +323,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				if DefaultLogPipeline != nil {
-					pass, pipelineErr := DefaultLogPipeline.Pipeline(ctx, userID, stream.Labels, entry)
+					pass, pipelineErr := DefaultLogPipeline.Pipeline(ctx, tenantID, stream.Labels, entry)
 					if pipelineErr != nil {
 						validationErr = err
 						continue
