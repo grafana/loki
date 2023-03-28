@@ -30,6 +30,14 @@
 
 ### Dependencies
 
+## 2.7.5 (2023-03-28)
+
+#### Loki
+
+##### Fixes
+
+* [7924](https://github.com/grafana/loki/pull/7924) **jeschkies**: Flush buffered logger on exit
+
 ## 2.7.4 (2023-02-24)
 
 #### Loki
