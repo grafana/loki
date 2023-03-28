@@ -414,6 +414,8 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 }
 
 func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "seriesLimiter.Do")
+	defer sp.Finish()
 	// no need to fire a request if the limit is already reached.
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
@@ -565,6 +567,9 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 }
 
 func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
+	defer sp.Finish()
+
 	request, err := rt.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
