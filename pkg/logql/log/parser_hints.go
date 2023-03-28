@@ -142,6 +142,8 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	for _, s := range stages {
 		switch f := s.(type) {
 		case *BinaryLabelFilter:
+			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
+			// we should be able to add this to our filters
 			continue
 		case LabelFilterer:
 			if len(f.RequiredLabelNames()) > 1 {
