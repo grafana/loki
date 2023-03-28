@@ -282,8 +282,16 @@ func newDownstreamAccumulator(params logql.Params, nQueries int) *downstreamAccu
 
 func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
+
+		// the stream accumulator stores a heap with reversed order
+		// from the results we expect, so we need to reverse the direction
+		direction := logproto.FORWARD
+		if a.params.Direction() == logproto.FORWARD {
+			direction = logproto.BACKWARD
+		}
+
 		a.logsAccumulator = &logsAccumulator{
-			accumulatedStreams: newStreamAccumulator(a.params.Direction(), int(a.params.Limit())),
+			accumulatedStreams: newStreamAccumulator(direction, int(a.params.Limit())),
 		}
 	} else {
 		a.bufferedAccumulator = &bufferedAccumulator{
@@ -325,8 +333,9 @@ type logsAccumulator struct {
 }
 
 func (a *logsAccumulator) merge(s logqlmodel.Streams) {
-	for _, stream := range s {
-		a.accumulatedStreams.Push(&stream)
+	for i := range s {
+		x := s[i]
+		a.accumulatedStreams.Push(&x)
 	}
 }
 
@@ -355,10 +364,20 @@ func (a *logsAccumulator) Result() logqlmodel.Result {
 
 	for _, s := range m {
 		sort.Slice(s.Entries, func(i, j int) bool {
-			return !s.Entries[i].Timestamp.After(s.Entries[j].Timestamp)
+			// sort in reverse order since accumulated streams tracks the inverse order
+			switch a.accumulatedStreams.order {
+			case logproto.BACKWARD:
+				return !s.Entries[i].Timestamp.After(s.Entries[j].Timestamp)
+			default:
+				return !s.Entries[i].Timestamp.Before(s.Entries[j].Timestamp)
+			}
 		})
 		result = append(result, *s)
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Labels < result[j].Labels
+	})
 
 	return logqlmodel.Result{
 		// stats & headers are already aggregated in the context
@@ -411,7 +430,7 @@ func newStreamAccumulator(order logproto.Direction, limit int) *accumulatedStrea
 
 // returns the top priority
 func (acc *accumulatedStreams) top() (time.Time, bool) {
-	if len(acc.streams) > 0 {
+	if len(acc.streams) > 0 && len(acc.streams[0].Entries) > 0 {
 		return acc.streams[0].Entries[len(acc.streams[0].Entries)-1].Timestamp, true
 	}
 	return time.Time{}, false
@@ -506,7 +525,9 @@ func (acc *accumulatedStreams) push(s *logproto.Stream) {
 		return
 	}
 
-	// We can safely discard anything worse than the worst entry.
+	// since entries are sorted by timestamp from best -> worst,
+	// we can discard the entire stream if the incoming best entry
+	// is worse than the worst entry in the heap.
 	cutoff := sort.Search(len(s.Entries), func(i int) bool {
 		// TODO(refactor label comparison -- should be in another fn)
 		if worst.Equal(s.Entries[i].Timestamp) {
@@ -516,9 +537,6 @@ func (acc *accumulatedStreams) push(s *logproto.Stream) {
 	})
 	s.Entries = s.Entries[:cutoff]
 
-	// since entries are sorted by timestamp from best -> worst,
-	// we can discard the entire stream if the incoming best entry
-	// is worse than the worst entry in the heap.
 	for i := 0; i < len(s.Entries) && acc.less(worst, s.Entries[i].Timestamp); i++ {
 
 		// push one entry at a time
@@ -591,10 +609,8 @@ func (acc *accumulatedStreams) Pop() any {
 
 	stream := acc.streams[0]
 	cpy := *stream
-	// TODO(owen-d): is it better to return a new slice than
-	// return a single len slice with the first entry pointing to the original?
 	cpy.Entries = cpy.Entries[len(stream.Entries)-1:]
-	stream.Entries = stream.Entries[0 : len(stream.Entries)-1]
+	cpy.Entries = []logproto.Entry{cpy.Entries[len(stream.Entries)-1]}
 
 	acc.count--
 

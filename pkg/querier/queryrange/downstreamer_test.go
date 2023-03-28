@@ -429,7 +429,7 @@ func newStream(start, end time.Time, delta time.Duration, ls string, direction l
 	for t := start; t.Before(end); t = t.Add(delta) {
 		s.Entries = append(s.Entries, logproto.Entry{
 			Timestamp: t,
-			Line:      fmt.Sprintf("line %d", t.Unix()),
+			Line:      fmt.Sprintf("%d", t.Unix()),
 		})
 	}
 	if direction == logproto.BACKWARD {
@@ -467,4 +467,111 @@ func TestAccumulatedStreams(t *testing.T) {
 		require.Equal(t, time.Unix(int64(exp), 0), got.Entries[0].Timestamp)
 	}
 
+}
+
+func TestDownstreamAccumulatorSimple(t *testing.T) {
+	lim := 30
+	start, end := 0, 10
+	direction := logproto.BACKWARD
+
+	streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, 10, direction)
+	x := make(logqlmodel.Streams, 0, len(streams))
+	for _, s := range streams {
+		x = append(x, *s)
+	}
+	// dummy params. Only need to populate direction & limit
+	params := logql.NewLiteralParams(
+		"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+	)
+
+	acc := newDownstreamAccumulator(params, 1)
+	result := logqlmodel.Result{
+		Data: x,
+	}
+
+	acc.Accumulate(context.Background(), 0, result)
+
+	res := acc.Result()[0]
+	got, ok := res.Data.(logqlmodel.Streams)
+	require.Equal(t, true, ok)
+	require.Equal(t, 10, len(got), "correct number of streams")
+
+	// each stream should have the top 3 entries
+	for i := 0; i < 10; i++ {
+		require.Equal(t, 3, len(got[i].Entries), "correct number of entries in stream")
+		for j := 0; j < 3; j++ {
+			require.Equal(t, time.Unix(int64(9-j), 0), got[i].Entries[j].Timestamp, "correct timestamp")
+		}
+	}
+}
+
+// TestDownstreamAccumulatorMultiMerge simulates merging multiple
+// sub-results from different queries.
+func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
+	for _, direction := range []logproto.Direction{logproto.BACKWARD, logproto.FORWARD} {
+		t.Run(fmt.Sprintf("%s", direction), func(t *testing.T) {
+			nQueries := 10
+			delta := 10 // 10 entries per stream, 1s apart
+			streamsPerQuery := 10
+			lim := 30
+
+			payloads := make([]logqlmodel.Streams, 0, nQueries)
+			for i := 0; i < nQueries; i++ {
+				start := i * delta
+				end := start + delta
+				streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, direction)
+				var res logqlmodel.Streams
+				for i := range streams {
+					res = append(res, *streams[i])
+				}
+				payloads = append(payloads, res)
+
+			}
+
+			// queries are always dispatched in the correct order.
+			// oldest time ranges first in the case of logproto.FORWARD
+			// and newest time ranges first in the case of logproto.BACKWARD
+			if direction == logproto.BACKWARD {
+				for i, j := 0, len(payloads)-1; i < j; i, j = i+1, j-1 {
+					payloads[i], payloads[j] = payloads[j], payloads[i]
+				}
+			}
+
+			// dummy params. Only need to populate direction & limit
+			params := logql.NewLiteralParams(
+				"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+			)
+
+			acc := newDownstreamAccumulator(params, 1)
+			for i := 0; i < nQueries; i++ {
+				err := acc.Accumulate(context.Background(), i, logqlmodel.Result{
+					Data: payloads[i],
+				})
+				require.Nil(t, err)
+			}
+
+			got, ok := acc.Result()[0].Data.(logqlmodel.Streams)
+			require.Equal(t, true, ok)
+
+			// each stream should have the top 3 entries
+			for i := 0; i < streamsPerQuery; i++ {
+				stream := got[i]
+				require.Equal(t, fmt.Sprintf(`{n="%d"}`, i), stream.Labels, "correct labels")
+				ln := lim / streamsPerQuery
+				require.Equal(t, ln, len(stream.Entries), "correct number of entries in stream")
+				switch direction {
+				case logproto.BACKWARD:
+					for i := 0; i < ln; i++ {
+						offset := delta*nQueries - 1 - i
+						require.Equal(t, time.Unix(int64(offset), 0), stream.Entries[i].Timestamp, "correct timestamp")
+					}
+				default:
+					for i := 0; i < ln; i++ {
+						offset := i
+						require.Equal(t, time.Unix(int64(offset), 0), stream.Entries[i].Timestamp, "correct timestamp")
+					}
+				}
+			}
+		})
+	}
 }
