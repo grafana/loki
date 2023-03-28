@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"path"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -104,13 +103,13 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
 		var (
 			nodeName    = indexShipperCfg.IngesterName
-			dir         = path.Join(indexShipperCfg.ActiveIndexDirectory, name)
 			tsdbMetrics = NewMetrics(reg)
 		)
 
 		tsdbManager := NewTSDBManager(
+			name,
 			nodeName,
-			dir,
+			indexShipperCfg.ActiveIndexDirectory,
 			s.indexShipper,
 			tableRange,
 			schemaCfg,
@@ -119,8 +118,9 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 		)
 
 		headManager := NewHeadManager(
+			name,
 			s.logger,
-			dir,
+			indexShipperCfg.ActiveIndexDirectory,
 			tsdbMetrics,
 			tsdbManager,
 		)

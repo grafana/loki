@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -44,6 +43,7 @@ tsdbManager is used for managing active index and is responsible for:
 type tsdbManager struct {
 	nodeName   string // node name
 	log        log.Logger
+	name       string
 	dir        string
 	metrics    *Metrics
 	tableRange config.TableRange
@@ -55,6 +55,7 @@ type tsdbManager struct {
 }
 
 func NewTSDBManager(
+	name,
 	nodeName,
 	dir string,
 	shipper indexshipper.IndexShipper,
@@ -64,6 +65,7 @@ func NewTSDBManager(
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
+		name:       name,
 		nodeName:   nodeName,
 		log:        log.With(logger, "component", "tsdb-manager"),
 		dir:        dir,
@@ -90,18 +92,6 @@ func (m *tsdbManager) Start() (err error) {
 		)
 	}()
 
-	// as we are running multiple instances of tsdbManager, one for each period
-	// existing tables should be migrated to period specific directory
-	if err := migrateMultitenantDir(m.dir, m.tableRange, m.log); err != nil {
-		return errors.Wrap(err, "migrating multitenant dir")
-	}
-
-	// regexp for finding the trailing index bucket number at the end of table name
-	extractBucketNumberRegex, err := regexp.Compile(`[0-9]+$`)
-	if err != nil {
-		return err
-	}
-
 	// load list of multitenant tsdbs
 	mulitenantDir := managerMultitenantDir(m.dir)
 	files, err := os.ReadDir(mulitenantDir)
@@ -115,12 +105,8 @@ func (m *tsdbManager) Start() (err error) {
 		}
 
 		bucket := f.Name()
-		if !extractBucketNumberRegex.MatchString(f.Name()) {
-			level.Warn(m.log).Log(
-				"msg", "directory name does not match expected bucket name pattern",
-				"name", bucket,
-				"err", err.Error(),
-			)
+		if ok, err := m.tableRange.TableInRange(bucket); !ok {
+			level.Info(m.log).Log("msg", fmt.Sprintf("skip loading, table not in range: %s", f.Name()), "reason", err)
 			continue
 		}
 		buckets++
@@ -165,7 +151,7 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
-func (m *tsdbManager) buildFromHead(heads *tenantHeads, dir string, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
+func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
@@ -209,7 +195,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, dir string, shipper inde
 	}
 
 	for p, b := range periods {
-		dstDir := filepath.Join(managerMultitenantDir(dir), fmt.Sprint(p))
+		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
 		dst := newPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
@@ -224,7 +210,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, dir string, shipper inde
 		start := time.Now()
 		_, err = b.Build(
 			context.Background(),
-			managerScratchDir(dir),
+			filepath.Join(managerScratchDir(m.dir), m.name),
 			func(from, through model.Time, checksum uint32) Identifier {
 				return dst
 			},
@@ -260,7 +246,7 @@ func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 		m.metrics.tsdbBuilds.WithLabelValues(status, "head").Inc()
 	}()
 
-	return m.buildFromHead(heads, m.dir, m.shipper, []config.TableRange{m.tableRange})
+	return m.buildFromHead(heads, m.shipper, []config.TableRange{m.tableRange})
 }
 
 func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy bool) (err error) {
@@ -275,14 +261,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	}()
 
 	var (
-		dir         = m.dir
 		tableRanges = []config.TableRange{m.tableRange}
 		shipper     = m.shipper
 	)
 
 	if legacy {
-		dir = filepath.Dir(filepath.Clean(dir))
-
 		// pass all TSDB tableRanges as the legacy WAL files are not period specific.
 		tableRanges = config.GetIndexStoreTableRanges(config.TSDBType, m.schemaCfg.Configs)
 
@@ -294,11 +277,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
 	for _, id := range ids {
 		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, m.log)
-		if err = recoverHead(dir, tmp, []WALIdentifier{id}); err != nil {
+		if err = recoverHead(m.name, m.dir, tmp, []WALIdentifier{id}, legacy); err != nil {
 			return errors.Wrap(err, "building TSDB from WALs")
 		}
 
-		err := m.buildFromHead(tmp, dir, shipper, tableRanges)
+		err := m.buildFromHead(tmp, shipper, tableRanges)
 		if err != nil {
 			return err
 		}

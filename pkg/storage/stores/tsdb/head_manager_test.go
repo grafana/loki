@@ -27,12 +27,14 @@ import (
 )
 
 type noopTSDBManager struct {
-	dir string
+	name string
+	dir  string
 	*tenantHeads
 }
 
-func newNoopTSDBManager(dir string) noopTSDBManager {
+func newNoopTSDBManager(name, dir string) noopTSDBManager {
 	return noopTSDBManager{
+		name:        name,
 		dir:         dir,
 		tenantHeads: newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger()),
 	}
@@ -43,7 +45,7 @@ func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
 }
 
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
-	return recoverHead(m.dir, m.tenantHeads, wals)
+	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false)
 }
 func (m noopTSDBManager) Start() error { return nil }
 
@@ -206,10 +208,11 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
-	for _, d := range managerRequiredDirs(dir) {
+	for _, d := range managerRequiredDirs(storeName, dir) {
 		require.Nil(t, util.EnsureDirectory(d))
 	}
 
@@ -217,7 +220,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, mgr.Rotate(now))
 
 	// now build a WAL independently to test recovery
-	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, now), now)
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
 	require.Nil(t, err)
 
 	for i, c := range cases {
@@ -237,11 +240,11 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 	require.Nil(t, w.Stop())
 
-	grp, ok, err := walsForPeriod(mgr.dir, mgr.period, mgr.period.PeriodFor(now))
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
-	require.Nil(t, recoverHead(mgr.dir, mgr.activeHeads, grp.wals))
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
 
 	for _, c := range cases {
 		refs, err := mgr.GetChunkRefs(
@@ -290,8 +293,9 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
-	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
 	// Write old WALs
@@ -426,7 +430,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 
 	// populate WAL file with chunks from two different periods
 	now := time.Now()
-	w, err := newHeadWAL(log.NewNopLogger(), walPath(dir, now), now)
+	w, err := newHeadWAL(log.NewNopLogger(), legacyWalPath(dir, now), now)
 	require.Nil(t, err)
 	require.Nil(t, w.Log(&WALRecord{
 		UserID:      c.User,
