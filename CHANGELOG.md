@@ -115,6 +115,8 @@
 * [7923](https://github.com/grafana/loki/pull/7923) **manohar-koukuntla**: Add zone aware ingesters in jsonnet deployment
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
+* [8921](https://github.com/grafana/loki/pull/8921) **JoaoBraveCoding**: Bumps loki.mixins dependency on grafana/jsonnet-lib 
+
 
 ##### Fixes
 
