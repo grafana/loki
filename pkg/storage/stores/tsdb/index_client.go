@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -92,8 +93,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
-	log, ctx := spanlogger.New(ctx, "IndexClient.GetChunkRefs")
-	defer log.Span.Finish()
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.GetChunkRefs")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
+	defer log.Finish()
 
 	var kvps []interface{}
 	defer func() {

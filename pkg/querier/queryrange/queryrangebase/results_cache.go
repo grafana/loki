@@ -396,7 +396,9 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		reqResps []RequestResponse
 		err      error
 	)
-	log, ctx := spanlogger.New(ctx, "handleHit")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "handleHit")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	requests, responses, err := s.partition(r, extents)
@@ -609,7 +611,9 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	}
 
 	var resp CachedResponse
-	log, ctx := spanlogger.New(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	log.LogFields(otlog.Int("bytes", len(bufs[0])))

@@ -283,8 +283,10 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
-	sp, ctx := spanlogger.NewWithLogger(ctx, q.logger, "querySizeLimiter.getBytesReadForRequest")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.Finish()
+	log := spanlogger.FromContextWithFallback(ctx, q.logger)
+	defer log.Finish()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -306,7 +308,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combinedStats.LoggingKeyValues(),
 			"msg", "queried index",
