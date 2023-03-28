@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	reflect "reflect"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -92,7 +93,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		req := ParamsToLokiRequest(qry.Params, qry.Shards).WithQuery(qry.Expr.String())
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep())
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
