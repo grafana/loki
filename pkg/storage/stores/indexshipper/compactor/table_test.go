@@ -257,6 +257,10 @@ func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID st
 	return t(ctx, tableName, userID, indexFile, logger)
 }
 
+func (t TableMarkerFunc) MarkersCnt(ctx context.Context, bla string, blo string, indexProcessor retention.IndexProcessor, logger log.Logger) (int64, error) {
+	return 0, nil
+}
+
 type IntervalMayHaveExpiredChunksFunc func(interval model.Interval, userID string) bool
 
 func (f IntervalMayHaveExpiredChunksFunc) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
@@ -476,4 +480,71 @@ func TestTable_CompactionFailure(t *testing.T) {
 
 	// ensure that we have cleanup the local working directory after successful compaction.
 	require.NoFileExists(t, tableWorkingDirectory)
+}
+
+func TestTable_GetMarks(t *testing.T) {
+	type dbsSetup struct {
+		numUnCompactedCommonDBs  int
+		numUnCompactedPerUserDBs int
+		numCompactedDBs          int
+	}
+	setup := dbsSetup{
+		numUnCompactedCommonDBs:  10,
+		numUnCompactedPerUserDBs: 10,
+	}
+
+	assertF := func(t *testing.T, storagePath, tableName string) {
+		expectedNumCommonDBs := 0
+		if setup.numUnCompactedCommonDBs+setup.numCompactedDBs > 0 {
+			expectedNumCommonDBs = 1
+		}
+
+		expectedNumUsers := 0
+		if setup.numUnCompactedPerUserDBs+setup.numCompactedDBs > 0 {
+			expectedNumUsers = 2
+		}
+		validateTable(t, filepath.Join(storagePath, tableName), expectedNumCommonDBs, expectedNumUsers, func(filename string) {
+			require.True(t, strings.HasSuffix(filename, ".gz"))
+		})
+	}
+	tableMarker := TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+		return false, true, nil
+	})
+	commonDBsConfig := IndexesConfig{
+		NumCompactedFiles:   2,
+		NumUnCompactedFiles: 2,
+	}
+	perUserDBsConfig := PerUserIndexesConfig{
+		IndexesConfig: IndexesConfig{
+			NumUnCompactedFiles: 2,
+			NumCompactedFiles:   2,
+		},
+		NumUsers: 2,
+	}
+
+	tempDir := t.TempDir()
+	tableName := fmt.Sprintf("%s12345", tableName)
+
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
+
+	SetupTable(t, filepath.Join(objectStoragePath, tableName), commonDBsConfig, perUserDBsConfig)
+
+	// do the compaction
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
+		newTestIndexCompactor(), config.PeriodConfig{},
+		tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
+			return true
+		}), 10)
+	require.NoError(t, err)
+
+	require.NoError(t, table.compact(true))
+	assertF(t, objectStoragePath, tableName)
+
+	marks, err := table.getMarks()
+	require.NoError(t, err)
+	require.Len(t, marks, 1)
 }

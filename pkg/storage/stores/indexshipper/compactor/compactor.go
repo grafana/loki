@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -501,6 +503,33 @@ func (c *Compactor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
 }
 
+func (c *Compactor) CountMarksFromTable(ctx context.Context, tableName string) (map[string]int64, error) {
+	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
+	if !ok {
+		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
+		return nil, nil
+	}
+
+	indexCompactor, ok := c.indexCompactors[schemaCfg.IndexType]
+	if !ok {
+		return nil, fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
+	}
+
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, indexCompactor,
+		schemaCfg, c.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
+		return nil, err
+	}
+
+	m, err := table.getMarks()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to get marks", "table", tableName, "err", err)
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
 	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
 	if !ok {
@@ -742,4 +771,57 @@ func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return schemaCfg, true
+}
+
+func (c *Compactor) getMarkedDeletions(ctx context.Context) (map[string]int64, error) {
+	// refresh index list cache since previous compaction would have changed the index files in the object store
+	c.indexStorageClient.RefreshIndexListCache(ctx)
+
+	tables, err := c.indexStorageClient.ListTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// process most recent tables first
+	sortTablesByRange(tables)
+
+	mo := map[string]int64{}
+	for _, tableName := range tables {
+		if tableName == deletion.DeleteRequestsTableName {
+			// TODO: handle this
+			continue
+		}
+
+		level.Info(util_log.Logger).Log("msg", "getting marks for table", "table-name", tableName)
+		mi, err := c.CountMarksFromTable(ctx, tableName)
+		if err != nil {
+			return nil, err
+		}
+		level.Info(util_log.Logger).Log("msg", "finished getting marks for table", "table-name", tableName)
+		for k, xmi := range mi {
+			mo[k] += xmi
+		}
+	}
+
+	return mo, nil
+}
+
+func (c *Compactor) MarkedDeletionsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, err := tenant.TenantID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	marks, err := c.getMarkedDeletions(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(marks); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
+		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
+	}
 }

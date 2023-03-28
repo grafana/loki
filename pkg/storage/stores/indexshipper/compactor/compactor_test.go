@@ -31,7 +31,7 @@ func dayFromTime(t model.Time) config.DayTime {
 }
 
 var (
-	start     = model.Now().Add(-30 * 24 * time.Hour)
+	start = model.Now().Add(-30 * 24 * time.Hour)
 )
 
 func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
@@ -69,6 +69,18 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 	c.RegisterIndexCompactor(indexType, testIndexCompactor{})
 
 	return c
+}
+
+func TestBal(t *testing.T) {
+	// tempDir := t.TempDir()
+	// compactor := setupTestCompactor(t, tempDir)
+	// ctx := user.InjectOrgID(context.Background(), "fake")
+	// interval, err := model.ParseDuration("30d")
+	// require.NoError(t, err)
+	// deleted, err := compactor.simulateRetention(ctx, interval)
+	// // expected = 2592000000000000
+	// require.NoError(t, err)
+	// require.True(t, deleted)
 }
 
 func TestCompactor_RunCompaction(t *testing.T) {

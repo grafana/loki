@@ -77,6 +77,7 @@ var errNoChunksFound = errors.New("no chunks found in table, please check if the
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
 	MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error)
+	MarkersCnt(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (int64, error)
 }
 
 type Marker struct {
@@ -114,6 +115,26 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, in
 		return false, false, err
 	}
 	return empty, modified, nil
+}
+
+func (t *Marker) MarkersCnt(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (int64, error) {
+	level.Warn(util_log.Logger).Log("msg", "MarkersCnt invoked")
+	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create marker writer: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+
+	cnt := markerWriter.Count()
+
+	if err := markerWriter.Close(); err != nil {
+		return 0, err
+	}
+
+	return cnt, nil
 }
 
 func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {

@@ -115,6 +115,65 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 	return &table, nil
 }
 
+func (t *table) getMarks() (map[string]int64, error) {
+	tableInterval := retention.ExtractIntervalFromTableName(t.name)
+	// call runRetention on the index sets which may have expired chunks
+	m := map[string]int64{}
+
+	var err error
+	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// userIndexSets is just for passing it to NewTableCompactor since go considers map[string]*indexSet different type than map[string]IndexSet
+	userIndexSets := make(map[string]IndexSet, len(t.usersWithPerUserIndex))
+
+	for _, userID := range t.usersWithPerUserIndex {
+		var err error
+		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		if err != nil {
+			return nil, err
+		}
+		userIndexSets[userID] = t.indexSets[userID]
+	}
+
+	for userID, is := range t.indexSets {
+		// make sure we do not apply retention on common index set which got compacted away to per-user index
+		if userID == "" && is.compactedIndex == nil && is.removeSourceObjects && !is.uploadCompactedDB {
+			continue
+		}
+
+		if !t.expirationChecker.IntervalMayHaveExpiredChunks(tableInterval, userID) {
+			continue
+		}
+
+		// compactedIndex is only set in indexSet when files have been compacted,
+		// so we need to open the compacted index file for applying retention if compactedIndex is nil
+		if is.compactedIndex == nil && len(is.ListSourceFiles()) == 1 {
+			if err := t.openCompactedIndexForRetention(is); err != nil {
+				continue
+				// TODO: handle better
+			}
+		}
+
+		if is.compactedIndex == nil {
+			continue
+			// TODO: handle better
+		}
+
+		cnt, err := t.tableMarker.MarkersCnt(is.ctx, is.tableName, is.userID, is.compactedIndex, is.logger)
+		if err != nil {
+			continue
+			// TODO: handle better
+		}
+
+		m[is.tableName+":"+is.userID] = cnt
+	}
+
+	return m, nil
+}
+
 func (t *table) compact(applyRetention bool) error {
 	indexFiles, usersWithPerUserIndex, err := t.indexStorageClient.ListFiles(t.ctx, t.name, false)
 	if err != nil {
