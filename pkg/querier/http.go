@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -487,7 +488,11 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string,
 func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			log, ctx := spanlogger.New(req.Context(), call)
+			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
+			defer sp.Finish()
+			log := spanlogger.FromContext(req.Context())
+			defer log.Finish()
+
 			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
