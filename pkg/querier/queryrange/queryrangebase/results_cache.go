@@ -212,6 +212,8 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "resultsCache.Do")
+	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
