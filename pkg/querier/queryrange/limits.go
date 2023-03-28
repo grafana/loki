@@ -37,10 +37,10 @@ const (
 	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
 	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
-	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
-	limErrQuerierTooManyBytesTmpl            = "query too large to execute on a single querier: (query: %s, limit: %s). Consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings"
-	limErrQuerierTooManyBytesShardableTmpl   = "not shardable query too large to execute on a single querier: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
-	limErrQuerierTooManyBytesUnshardableTmpl = "shard query is too big to execute on a single querier: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesTmpl            = "query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings"
+	limErrQuerierTooManyBytesUnshardableTmpl = "un-shardable query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesShardableTmpl   = "shard query is too big to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 )
 
 var (
