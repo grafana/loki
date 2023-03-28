@@ -21,7 +21,7 @@ const (
 func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace string) error {
 	key := client.ObjectKey{Name: name, Namespace: namespace}
 	ss, err := getLokiStack(ctx, k, key)
-	if err != nil {
+	if ss == nil || err != nil {
 		return err
 	}
 
@@ -39,7 +39,7 @@ func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace s
 func RemoveRulerConfigAnnotation(ctx context.Context, k k8s.Client, name, namespace string) error {
 	key := client.ObjectKey{Name: name, Namespace: namespace}
 	ss, err := getLokiStack(ctx, k, key)
-	if err != nil {
+	if ss == nil || err != nil {
 		return err
 	}
 
