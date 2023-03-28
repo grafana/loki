@@ -941,6 +941,72 @@ string
 </tbody>
 </table>
 
+## HashRingSpec { #loki-grafana-com-v1-HashRingSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>HashRingSpec defines the hash ring configuration</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>type</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-HashRingType">
+HashRingType
+</a>
+</em>
+</td>
+<td>
+<p>Type of hash ring implementation that should be used</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>memberlist</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-MemberListSpec">
+MemberListSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MemberList configuration spec</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## HashRingType { #loki-grafana-com-v1-HashRingType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-HashRingSpec">HashRingSpec</a>)
+</p>
+<div>
+<p>HashRingType defines the type of hash ring which can be used with the Loki cluster.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;memberlist&#34;</p></td>
+<td><p>HashRingMemberList when using memberlist for the distributed hash ring.</p>
+</td>
+</tr></tbody>
+</table>
+
 ## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
@@ -1047,6 +1113,30 @@ int32
 </td>
 </tr>
 </tbody>
+</table>
+
+## InstanceAddrType { #loki-grafana-com-v1-InstanceAddrType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-MemberListSpec">MemberListSpec</a>)
+</p>
+<div>
+<p>InstanceAddrType defines the type of pod network to use for advertising IPs to the ring.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;default&#34;</p></td>
+<td><p>InstanceAddrDefault when using the first from any private network interfaces (RFC 1918 and RFC 6598).</p>
+</td>
+</tr><tr><td><p>&#34;podIP&#34;</p></td>
+<td><p>InstanceAddrPodIP when using the public pod IP from the cluster&rsquo;s pod network.</p>
+</td>
+</tr></tbody>
 </table>
 
 ## LimitsSpec { #loki-grafana-com-v1-LimitsSpec }
@@ -1580,6 +1670,20 @@ LokiStackSizeType
 </tr>
 <tr>
 <td>
+<code>hashRing</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-HashRingSpec">
+HashRingSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>HashRing defines the spec for the distributed hash ring configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>storage</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-ObjectStorageSpec">
@@ -1938,6 +2042,41 @@ reconciled by the operator.</p>
 reconciled by the operator.</p>
 </td>
 </tr></tbody>
+</table>
+
+## MemberListSpec { #loki-grafana-com-v1-MemberListSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-HashRingSpec">HashRingSpec</a>)
+</p>
+<div>
+<p>MemberListSpec defines the configuration for the memberlist based hash ring.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>instanceAddrType</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-InstanceAddrType">
+InstanceAddrType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>InstanceAddrType defines the type of address to use to advertise to the ring.
+Defaults to the first address from any private network interfaces of the current pod.
+Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
+are not available.</p>
+</td>
+</tr>
+</tbody>
 </table>
 
 ## ModeType { #loki-grafana-com-v1-ModeType }

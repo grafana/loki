@@ -67,3 +67,38 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 	}
 	return time.Duration(requestLimits.QueryTimeout)
 }
+
+func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
+	original := l.CombinedLimits.RequiredLabels(ctx, userID)
+	requestLimits := ExtractQueryLimitsContext(ctx)
+
+	if requestLimits == nil {
+		return original
+	}
+
+	// The most restricting is a union of both slices
+	unionMap := make(map[string]struct{})
+	for _, label := range original {
+		unionMap[label] = struct{}{}
+	}
+
+	for _, label := range requestLimits.RequiredLabels {
+		unionMap[label] = struct{}{}
+	}
+
+	union := make([]string, 0, len(unionMap))
+	for label := range unionMap {
+		union = append(union, label)
+	}
+	return union
+}
+
+func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
+	original := l.CombinedLimits.MaxQueryBytesRead(ctx, userID)
+	requestLimits := ExtractQueryLimitsContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryBytesRead.Val() == 0 || requestLimits.MaxQueryBytesRead.Val() > original {
+		level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit")
+		return original
+	}
+	return requestLimits.MaxQueryBytesRead.Val()
+}

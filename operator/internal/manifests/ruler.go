@@ -49,6 +49,10 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		objs = configureRulerObjsForMode(opts)
 	}
 
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -60,8 +64,21 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 	), nil
 }
 
-// NewRulerStatefulSet creates a statefulset object for a ruler
+// NewRulerStatefulSet creates a StatefulSet object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
+	var volumeProjections []corev1.VolumeProjection
+
+	for _, name := range opts.RulesConfigMapNames {
+		volumeProjections = append(volumeProjections, corev1.VolumeProjection{
+			ConfigMap: &corev1.ConfigMapProjection{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: name,
+				},
+				Items: ruleVolumeItems(name, opts.Tenants.Configs),
+			},
+		})
+	}
+
 	podSpec := corev1.PodSpec{
 		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
@@ -79,12 +96,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			{
 				Name: rulesStorageVolumeName,
 				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: RulesConfigMapName(opts.Name),
-						},
-						Items: ruleVolumeItems(opts.Tenants.Configs),
+					Projected: &corev1.ProjectedVolumeSource{
+						Sources: volumeProjections,
 					},
 				},
 			},
@@ -101,6 +114,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=ruler",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -128,11 +142,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						MountPath: config.LokiConfigMountDir,
 					},
 					{
-						Name:      rulesStorageVolumeName,
-						ReadOnly:  false,
-						MountPath: rulesStorageDirectory,
-					},
-					{
 						Name:      walVolumeName,
 						ReadOnly:  false,
 						MountPath: walDirectory,
@@ -141,6 +150,11 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						Name:      storageVolumeName,
 						ReadOnly:  false,
 						MountPath: dataDirectory,
+					},
+					{
+						Name:      rulesStorageVolumeName,
+						ReadOnly:  false,
+						MountPath: rulesStorageDirectory,
 					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
@@ -332,15 +346,19 @@ func configureRulerObjsForMode(opts Options) []client.Object {
 	return openShiftObjs
 }
 
-func ruleVolumeItems(tenants map[string]TenantConfig) []corev1.KeyToPath {
+func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []corev1.KeyToPath {
 	var items []corev1.KeyToPath
 
-	for id, tenant := range tenants {
+	for tenantID, tenant := range tenants {
 		for _, rule := range tenant.RuleFiles {
-			items = append(items, corev1.KeyToPath{
-				Key:  rule,
-				Path: fmt.Sprintf("%s/%s", id, rule),
-			})
+			shardName := extractRuleNameComponents(rule).cmName
+			if shardName == configMapName {
+				filename := extractRuleNameComponents(rule).filename
+				items = append(items, corev1.KeyToPath{
+					Key:  filename,
+					Path: fmt.Sprintf("%s/%s", tenantID, filename),
+				})
+			}
 		}
 	}
 

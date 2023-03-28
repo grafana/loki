@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -801,7 +802,7 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					chks []index.ChunkMeta
 				)
 
-				fp, err := idx.Series(ps.At(), &ls, &chks)
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)

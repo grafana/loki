@@ -1,5 +1,14 @@
 ## Main
 
+## 0.2.0 (2023-03-27)
+
+- [8651](https://github.com/grafana/loki/pull/8651) **periklis**: Prepare Community Loki Operator release v0.2.0
+- [8881](https://github.com/grafana/loki/pull/8881) **periklis**: Provide community bundle for openshift community hub
+- [8863](https://github.com/grafana/loki/pull/8863) **periklis**: Break the API types out into their own module
+- [8878](https://github.com/grafana/loki/pull/8878) **periklis**: Refactor all type validations into own package
+- [8875](https://github.com/grafana/loki/pull/8875) **Red-GV**: Remove mutations to non-updatable statefulset fields
+- [7451](https://github.com/grafana/loki/pull/7451) **btaani**: Add support for rules configmap sharding
+- [8672](https://github.com/grafana/loki/pull/8672) **periklis**: Add support for memberlist bind network configuration
 - [8748](https://github.com/grafana/loki/pull/8748) **periklis**: Add alertingrule tenant id label for all rules
 - [8743](https://github.com/grafana/loki/pull/8743) **periklis**: Add alerting style guide validation
 - [8192](https://github.com/grafana/loki/pull/8192) **jotak**: Allow multiple matchers for multi-tenancy with Network tenant (OpenShift)

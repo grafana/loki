@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,6 +61,10 @@ type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryr
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
 func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+	if metrics == nil {
+		metrics = NewSplitByMetrics(nil)
+	}
+
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
 			configs:  configs,
@@ -109,8 +114,9 @@ func (h *splitByInterval) Process(
 		unlimited = true
 	}
 
+	// Parallelism will be at least 1
+	p := math.Max(parallelism, 1)
 	// don't spawn unnecessary goroutines
-	p := parallelism
 	if len(input) < parallelism {
 		p = len(input)
 	}
@@ -181,6 +187,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
+
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
@@ -205,8 +212,8 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LokiLabelNamesRequest:
-		// Set this to 0 since this is not used in Series/Labels Request.
+	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest:
+		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "unknown request type")
@@ -269,6 +276,16 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:    r.Path,
 				StartTs: start,
 				EndTs:   end,
+			})
+		})
+	case *logproto.IndexStatsRequest:
+		startTS := model.Time(r.GetStart()).Time()
+		endTS := model.Time(r.GetEnd()).Time()
+		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
+			reqs = append(reqs, &logproto.IndexStatsRequest{
+				From:     model.TimeFromUnix(start.Unix()),
+				Through:  model.TimeFromUnix(end.Unix()),
+				Matchers: r.GetMatchers(),
 			})
 		})
 	default:

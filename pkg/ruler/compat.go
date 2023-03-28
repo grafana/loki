@@ -48,11 +48,14 @@ type RulesLimits interface {
 	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
 	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
+
+	RulerRemoteEvaluationTimeout(userID string) time.Duration
+	RulerRemoteEvaluationMaxResponseSize(userID string) int64
 }
 
-// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
+// queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
+func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
@@ -131,8 +134,8 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(evaluator, overrides, registry, userID)
-		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFn := queryFunc(evaluator, overrides, registry, userID)
+		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the
 		// manager.This is used to back the memstore
@@ -141,7 +144,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:      registry,
 			Queryable:       memStore,
-			QueryFunc:       queryFunc,
+			QueryFunc:       queryFn,
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String()),

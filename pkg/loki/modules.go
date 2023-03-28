@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"net/http"
 	"net/http/httputil"
@@ -472,6 +473,9 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.LegacyShutdownHandler)),
 	)
+	t.Server.HTTP.Methods("POST").Path("/ingester/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
+	)
 	t.Server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
@@ -793,6 +797,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1000,9 +1005,14 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			break
 		}
 
-		evaluator, err = ruler.NewLocalEvaluator(&t.Cfg.Ruler.Evaluation, engine, logger)
+		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
 	case ruler.EvalModeRemote:
-		evaluator, err = ruler.NewRemoteEvaluator(&t.Cfg.Ruler.Evaluation, logger)
+		qfClient, e := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
+		if e != nil {
+			return nil, fmt.Errorf("failed to dial query frontend for remote rule evaluation: %w", err)
+		}
+
+		evaluator, err = ruler.NewRemoteEvaluator(qfClient, t.Overrides, logger, prometheus.DefaultRegisterer)
 	default:
 		err = fmt.Errorf("unknown rule evaluation mode %q", mode)
 	}
@@ -1011,7 +1021,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
 	}
 
-	t.ruleEvaluator = evaluator
+	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.Evaluation.MaxJitter, fnv.New32a(), logger)
 
 	return nil, nil
 }
