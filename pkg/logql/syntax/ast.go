@@ -106,6 +106,10 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 		case *LineFilterExpr:
 			filters = append(filters, f)
 		case *LineFmtExpr:
+			// line_format modifies the contents of the line so any line filter
+			// originally after a line_format must still be after the same
+			// line_format.
+
 			rest = append(rest, f)
 
 			if len(filters) > 0 {
