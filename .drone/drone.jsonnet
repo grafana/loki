@@ -707,6 +707,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         image: 'alpine',
         depends_on: ['check-version-is-latest'],
         commands: [
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
           'RELEASE_TAG=$(./tools/image-tag)',
           'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
           // replace placeholders with RELEASE TAG
@@ -778,6 +780,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
     // Package and test the packages
     steps: [
+      {
+        name: 'fetch-tags',
+        image: 'alpine',
+        commands: [
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
+        ],
+      },
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={

@@ -45,7 +45,6 @@ const (
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
-	errUnsupportedStorageClass     = errors.New("unsupported S3 storage class")
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -73,6 +72,7 @@ type S3Config struct {
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
+	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
@@ -108,6 +108,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
+	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
 	// TODO Remove in Cortex 1.10.0
@@ -248,7 +249,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
 		s3Config = s3Config.WithCredentials(creds)
 	}
 

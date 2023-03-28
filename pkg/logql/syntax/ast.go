@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"github.com/grafana/loki/pkg/util"
 	"math"
 	"regexp"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/regexp/syntax"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -410,6 +412,8 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
 		return ip, ip.PatternError()
+	case *log.NoopLabelFilter:
+		return log.NoopStage, nil
 	}
 	return e.LabelFilterer, nil
 }
@@ -614,11 +618,47 @@ func (l *LogfmtExpressionParser) String() string {
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
+	if t == labels.MatchRegexp || t == labels.MatchNotRegexp {
+		return simplifyRegexMatcher(t, n, v)
+	}
+
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
 	return m
+}
+
+func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matcher {
+	reg, err := syntax.Parse(value, syntax.Perl)
+	if err != nil {
+		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+	}
+	reg = reg.Simplify()
+
+	m, ok := simplify(typ, name, value, reg)
+	if !ok {
+		util.AllNonGreedy(reg)
+		return labels.MustNewMatcher(typ, name, reg.String())
+	}
+
+	return m
+}
+
+// simplify will return an equals matcher if there is a regex matching a literal
+func simplify(typ labels.MatchType, name, value string, reg *syntax.Regexp) (*labels.Matcher, bool) {
+	switch reg.Op {
+	case syntax.OpLiteral:
+		if !util.IsCaseInsensitive(reg) {
+			t := labels.MatchEqual
+			if typ == labels.MatchNotRegexp {
+				t = labels.MatchNotEqual
+			}
+			return labels.MustNewMatcher(t, name, value), true
+		}
+		return nil, false
+	}
+	return nil, false
 }
 
 func mustNewFloat(s string) float64 {

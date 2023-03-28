@@ -42,6 +42,10 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -82,6 +86,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 					"-target=querier",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -136,7 +141,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(opts.Stack.Template.Querier.Replicas),
+			Replicas: pointer.Int32(opts.Stack.Template.Querier.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

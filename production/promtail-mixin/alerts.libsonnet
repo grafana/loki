@@ -44,7 +44,7 @@
             |||,
             'for': '15m',
             labels: {
-              severity: 'critical',
+              severity: 'warning',
             },
             annotations: {
               message: |||

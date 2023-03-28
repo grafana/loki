@@ -487,7 +487,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiPromResponse{
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 1}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 1}},
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
 					Data: queryrangebase.PrometheusData{
@@ -558,7 +558,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      100,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -646,7 +646,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      6,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -731,7 +731,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.FORWARD,
 				Limit:      100,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -819,7 +819,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.FORWARD,
 				Limit:      5,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -872,8 +872,9 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiSeriesResponse{
-				Status:  "success",
-				Version: 1,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
+				Status:     "success",
+				Version:    1,
 				Data: []logproto.SeriesIdentifier{
 					{
 						Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
@@ -908,9 +909,10 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiLabelNamesResponse{
-				Status:  "success",
-				Version: 1,
-				Data:    []string{"foo", "bar", "buzz", "blip", "blop"},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
+				Status:     "success",
+				Version:    1,
+				Data:       []string{"foo", "bar", "buzz", "blip", "blop"},
 			},
 			false,
 		},
@@ -1010,9 +1012,11 @@ var (
 			"execTime": 22,
 			"linesProcessedPerSecond": 23,
 			"queueTime": 21,
-			"subqueries": 1,
+			"shards": 0,
+			"splits": 0,
+			"subqueries": 0,
 			"totalBytesProcessed": 24,
-                        "totalEntriesReturned": 10,
+			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25
 		}
 	},`
@@ -1169,7 +1173,6 @@ var (
 			ExecTime:                22,
 			LinesProcessedPerSecond: 23,
 			TotalBytesProcessed:     24,
-			Subqueries:              1,
 			TotalLinesProcessed:     25,
 			TotalEntriesReturned:    10,
 		},

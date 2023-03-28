@@ -2,11 +2,11 @@ package common
 
 import (
 	"flag"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/util"
-
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
