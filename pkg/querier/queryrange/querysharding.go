@@ -97,7 +97,7 @@ type astMapperware struct {
 	maxShards int
 }
 
-func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64) error {
+func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -110,7 +110,13 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 
 		if bytesPerShard > uint64(maxBytesRead) {
 			level.Warn(ast.logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
-			return httpgrpc.Errorf(http.StatusBadRequest, limErrQuerierTooManyBytesTmpl, statsBytesStr, maxBytesReadStr)
+
+			errorTmpl := limErrQuerierTooManyBytesShardableTmpl
+			if notShardable {
+				errorTmpl = limErrQuerierTooManyBytesUnshardableTmpl
+			}
+
+			return httpgrpc.Errorf(http.StatusBadRequest, errorTmpl, statsBytesStr, maxBytesReadStr)
 		}
 
 		level.Debug(ast.logger).Log("msg", "Query is within limits", "status", "accepted", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
@@ -168,7 +174,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
 	// Note, even if noop, bytesPerShard contains the bytes that'd be read for the whole expr without sharding
-	if err = ast.checkQuerySizeLimit(ctx, bytesPerShard); err != nil {
+	if err = ast.checkQuerySizeLimit(ctx, bytesPerShard, noop); err != nil {
 		return nil, err
 	}
 

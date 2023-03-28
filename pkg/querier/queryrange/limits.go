@@ -34,11 +34,13 @@ import (
 )
 
 const (
-	limitErrTmpl          = "maximum of series (%d) reached for a single query"
-	maxSeriesErrTmpl      = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
-	requiredLabelsErrTmpl = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
-	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
-	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
+	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
+	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
+	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesTmpl            = "query too large to execute on a single querier: (query: %s, limit: %s). Consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings"
+	limErrQuerierTooManyBytesShardableTmpl   = "not shardable query too large to execute on a single querier: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesUnshardableTmpl = "shard query is too big to execute on a single querier: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
 )
 
 var (
@@ -333,7 +335,9 @@ func (q *querySizeLimiter) guessLimitName() string {
 	if q.limitErrorTmpl == limErrQueryTooManyBytesTmpl {
 		return "MaxQueryBytesRead"
 	}
-	if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl {
+	if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl ||
+		q.limitErrorTmpl == limErrQuerierTooManyBytesShardableTmpl ||
+		q.limitErrorTmpl == limErrQuerierTooManyBytesUnshardableTmpl {
 		return "MaxQuerierBytesRead"
 	}
 	return "unknown"
