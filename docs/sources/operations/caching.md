@@ -78,7 +78,7 @@ To enable and configure Memcached:
                memcached_client:
                  host: <chunk cache memcached host>
                  service: <port name of memcached service>
-	   write_dedupe_cache_config: {
+           write_dedupe_cache_config:
              memcached:
                batch_size: 100
                parallelism: 100
@@ -101,9 +101,9 @@ To enable and configure Memcached:
                    timeout: 500ms
                    update_interval: 1m
            ```
-	1. Configure the index queries cache
-	   ```yaml
-	   storage_config:
+        1. Configure the index queries cache
+           ```yaml
+           storage_config:
              index_queries_cache_config:
                memcached:
                  batch_size: 100
@@ -112,4 +112,4 @@ To enable and configure Memcached:
                  host: <memcached host>,
                  service: <port name of memcached service>
                  consistent_hash: true
-	   ```
+           ```
