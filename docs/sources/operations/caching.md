@@ -66,7 +66,8 @@ To enable and configure Memcached:
              service: memcache
              default_validity: 12h
        ```
-    1. If the Loki configuration is used
+    1. If the Loki configuration is used modify the following three sections in
+       the Loki configuration file.
         1. Configure the chunk and index write cache
            ```yaml
            chunk_store_config:
