@@ -634,6 +634,7 @@ func fetchChunkBySeries(
 	}
 	metrics.chunks.WithLabelValues(statusMatched).Add(float64(len(allChunks)))
 	metrics.series.WithLabelValues(statusMatched).Add(float64(len(chksBySeries)))
+	stats.FromContext(ctx).AddStoreStreams(int64(len(chksBySeries)))
 	metrics.batches.WithLabelValues(statusMatched).Observe(float64(len(allChunks)))
 	metrics.batches.WithLabelValues(statusDiscarded).Observe(float64(len(chunks) - len(allChunks)))
 

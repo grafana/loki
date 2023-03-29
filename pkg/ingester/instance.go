@@ -380,6 +380,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		expr.Matchers(),
 		shard,
 		func(stream *stream) error {
+			stats.AddIngesterStreams(1)
 			iter, err := stream.Iterator(ctx, stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err

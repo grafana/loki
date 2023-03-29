@@ -68,6 +68,7 @@ message Summary {
   int64 totalEntriesReturned = 8 [(gogoproto.jsontag) = "totalEntriesReturned"];
   int64 splits = 9 [(gogoproto.jsontag) = "splits"];
   int64 shards = 10 [(gogoproto.jsontag) = "shards"];
+  int64 totalStreams = 11 [(gogoproto.jsontag) = "totalStreams"];
 }
 
 message Querier {
@@ -91,6 +92,9 @@ message Ingester {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+
+  // Total number of streams matched
+  int64 totalStreams = 6 [(gogoproto.jsontag) = "totalStreams"];
 }
 
 message Store {
@@ -105,6 +109,9 @@ message Store {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "chunk"
   ];
+
+  // Total number of streams matched
+  int64 totalStreams = 5 [(gogoproto.jsontag) = "totalStreams"];
 }
 
 message Chunk {

@@ -162,9 +162,12 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration,
 	}
 
 	r.Summary.TotalEntriesReturned = int64(totalEntriesReturned)
+
+	r.Summary.TotalStreams = r.Querier.Store.TotalStreams + r.Ingester.Store.TotalStreams + r.Ingester.TotalStreams
 }
 
 func (s *Store) Merge(m Store) {
+	s.TotalStreams += m.TotalStreams
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.ChunksDownloadTime += m.ChunksDownloadTime
@@ -190,6 +193,7 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalBatches += m.TotalBatches
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
+	i.TotalStreams += m.TotalStreams
 	i.TotalReached += m.TotalReached
 }
 
@@ -307,6 +311,14 @@ func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
 }
 
+func (c *Context) AddIngesterStreams(i int64) {
+	atomic.AddInt64(&c.ingester.TotalStreams, i)
+}
+
+func (c *Context) AddStoreStreams(i int64) {
+	atomic.AddInt64(&c.store.TotalStreams, i)
+}
+
 // AddCacheEntriesFound counts the number of cache entries requested and found
 func (c *Context) AddCacheEntriesFound(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
@@ -413,6 +425,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.CompressedBytes)),
 		"Ingester.TotalDuplicates", r.Ingester.Store.Chunk.TotalDuplicates,
 
+		"Querier.TotalStreams", r.Querier.Store.TotalStreams,
 		"Querier.TotalChunksRef", r.Querier.Store.TotalChunksRef,
 		"Querier.TotalChunksDownloaded", r.Querier.Store.TotalChunksDownloaded,
 		"Querier.ChunksDownloadTime", time.Duration(r.Querier.Store.ChunksDownloadTime),

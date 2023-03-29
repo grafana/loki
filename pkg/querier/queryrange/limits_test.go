@@ -339,6 +339,15 @@ func Test_WeightedParallelism(t *testing.T) {
   schema: v12
 `,
 		},
+		{
+			desc: "end configs",
+			periods: `
+- from: "2022-01-02"
+  store: tsdb
+  object_store: gcs
+  schema: v12
+`,
+		},
 	} {
 		var confs []config.PeriodConfig
 		require.Nil(t, yaml.Unmarshal([]byte(cfgs.periods), &confs))
