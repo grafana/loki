@@ -1,5 +1,7 @@
 ## Main
 
+- [8930](https://github.com/grafana/loki/pull/8930) **periklis**: Fix makefile target operatorhub
+
 ## 0.2.0 (2023-03-27)
 
 - [8651](https://github.com/grafana/loki/pull/8651) **periklis**: Prepare Community Loki Operator release v0.2.0
