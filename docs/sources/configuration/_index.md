@@ -2510,6 +2510,9 @@ shard_streams:
 
 # Define a list of required selector labels.
 [required_label_matchers: <list of strings>]
+
+# Minimum number of label matchers a query should contain.
+[required_number_label_matchers: <int>]
 ```
 
 ### frontend_worker

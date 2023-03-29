@@ -169,7 +169,8 @@ type Limits struct {
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
-	RequiredLabels []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredLabels       []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredNumberLabels int      `yaml:"required_number_label_matchers,omitempty" json:"required_number_label_matchers,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 }
 
 type StreamRetention struct {
@@ -691,6 +692,10 @@ func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*valida
 
 func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
 	return o.getOverridesForUser(userID).RequiredLabels
+}
+
+func (o *Overrides) RequiredNumberLabels(ctx context.Context, userID string) int {
+	return o.getOverridesForUser(userID).RequiredNumberLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
