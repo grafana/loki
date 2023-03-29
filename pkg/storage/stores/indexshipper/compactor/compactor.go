@@ -169,7 +169,7 @@ type Compactor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	limits           *validation.Overrides
+	limits           Limits
 	retentionWorkDir string
 	chunkClient      client.Client
 	registerer       prometheus.Registerer
@@ -185,7 +185,7 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer, fsconfig local.FSConfig) (*Compactor, error) {
+func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer, fsconfig local.FSConfig) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
