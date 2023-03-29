@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	util_storage "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
@@ -26,7 +26,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete(t *testing.T) {
 	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
 
 	// Check remainingFilesAfterDelete
-	diskUsage, _ := util_storage.DiskUsage(chunksDir)
+	diskUsage, _ := util.DiskUsage(chunksDir)
 	diskUsage.UsedPercent = 100.0
 	diskUsage.All = bytesFullDisk
 
@@ -49,7 +49,7 @@ func TestDeletion_DeleteChunksBasedOnBlockSize_delete_none(t *testing.T) {
 	require.Equal(t, totalFiles, len(files), "Number of files should be "+strconv.Itoa(totalFiles))
 
 	// Check remainingFilesAfterDelete
-	diskUsage, _ := util_storage.DiskUsage(chunksDir)
+	diskUsage, _ := util.DiskUsage(chunksDir)
 	diskUsage.UsedPercent = float64(sizeBasedRetentionPercentage - 10) // 70 < 80 No need to delete
 	diskUsage.All = bytesFullDisk
 	require.NoError(t, DeleteChunksBasedOnBlockSize(context.Background(), chunksDir, diskUsage, sizeBasedRetentionPercentage))
