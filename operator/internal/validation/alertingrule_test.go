@@ -103,7 +103,7 @@ var att = []struct {
 			"testing-rule",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(1).Child("Name"),
+					field.NewPath("spec").Child("groups").Index(1).Child("name"),
 					"first",
 					lokiv1.ErrGroupNamesNotUnique.Error(),
 				),
@@ -125,7 +125,7 @@ var att = []struct {
 			"testing-rule",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(0).Child("Interval"),
+					field.NewPath("spec").Child("groups").Index(0).Child("interval"),
 					"1mo",
 					lokiv1.ErrParseEvaluationInterval.Error(),
 				),
@@ -154,7 +154,7 @@ var att = []struct {
 			"testing-rule",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("For"),
+					field.NewPath("spec").Child("groups").Index(0).Child("rules").Index(0).Child("for"),
 					"10years",
 					lokiv1.ErrParseAlertForPeriod.Error(),
 				),
@@ -181,7 +181,7 @@ var att = []struct {
 			"testing-rule",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(0).Child("rules").Index(0).Child("expr"),
 					"this is not a valid expression",
 					lokiv1.ErrParseLogQLExpression.Error(),
 				),
@@ -208,7 +208,7 @@ var att = []struct {
 			"testing-rule",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(0).Child("Rules").Index(0).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(0).Child("rules").Index(0).Child("expr"),
 					`{message=~".+"}`,
 					lokiv1.ErrParseLogQLNotSample.Error(),
 				),

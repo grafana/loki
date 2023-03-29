@@ -49,9 +49,7 @@
     target: 'compactor',
   } else {},
 
-  compactor_ports: [
-    containerPort.new(name='http-metrics', port=$._config.http_listen_port),
-  ],
+  compactor_ports:: $.util.defaultPorts,
 
   compactor_container:: if $._config.using_boltdb_shipper then
     container.new('compactor', $._images.compactor) +
