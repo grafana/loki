@@ -208,7 +208,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			desc:                     "Non shardable query too big",
 			query:                    `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
 			maxQuerierBytesSize:      10,
-			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "100 B", "10 B"),
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
 		},
 		{
@@ -224,7 +224,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			query:               `count_over_time({app="foo"} |= "foo" [1h])`,
 			maxQuerierBytesSize: 10,
 
-			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "100 B", "10 B"),
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
 		},
 		{
@@ -240,7 +240,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			query:               `count_over_time({app="bar"} |= "bar" [1h]) - sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
 			maxQuerierBytesSize: 100,
 
-			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "500 B", "100 B"),
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "500 B", "100 B"),
 			expectedStatsHandlerHits: 2,
 		},
 		{
@@ -248,7 +248,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			query:               `count_over_time({app="foo"} |= "foo" [1h]) - sum_over_time({app="bar"} |= "bar" | unwrap foo [1h])`,
 			maxQuerierBytesSize: 100,
 
-			err:                      fmt.Sprintf(limErrQuerierTooManyBytesTmpl, "500 B", "100 B"),
+			err:                      fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "500 B", "100 B"),
 			expectedStatsHandlerHits: 2,
 		},
 	} {

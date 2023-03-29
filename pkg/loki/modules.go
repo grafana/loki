@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"hash/fnv"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -1020,7 +1020,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
 	}
 
-	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.EvaluationJitter, rand.NewSource(time.Now().UnixNano()))
+	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.Evaluation.MaxJitter, fnv.New32a(), logger)
 
 	return nil, nil
 }
