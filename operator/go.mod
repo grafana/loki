@@ -3,7 +3,7 @@ module github.com/grafana/loki/operator
 go 1.19
 
 require (
-	github.com/ViaQ/logerr/v2 v2.0.0
+	github.com/ViaQ/logerr/v2 v2.1.0
 	github.com/go-logr/logr v1.2.3
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
@@ -16,16 +16,18 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/prometheus/common v0.37.0
 	github.com/prometheus/prometheus v1.8.2-0.20220303173753-edfe657b5405
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.2
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.26.2
-	k8s.io/apimachinery v0.26.2
+	k8s.io/api v0.26.3
+	k8s.io/apimachinery v0.26.3
 	k8s.io/apiserver v0.26.2
 	k8s.io/client-go v0.26.2
-	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
+	k8s.io/utils v0.0.0-20230313181309-38a27ef9d749
 	sigs.k8s.io/controller-runtime v0.14.5
 	sigs.k8s.io/yaml v1.3.0
 )
+
+require github.com/grafana/loki/operator/apis/loki v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
@@ -113,7 +115,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.4.0 // indirect
+	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/weaveworks/common v0.0.0-20220916164235-da3fde973eec // indirect
@@ -160,3 +162,5 @@ replace github.com/prometheus/exporter-toolkit => github.com/prometheus/exporter
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.39.1
 
 replace github.com/go-kit/log => github.com/dannykopping/go-kit-log v0.2.2-0.20221002180827-5591c1641b6b
+
+replace github.com/grafana/loki/operator/apis/loki => ./apis/loki

@@ -134,7 +134,6 @@ func testOptions() *manifests.Options {
 }
 
 func testOptions_withSharding() *manifests.Options {
-
 	// Generate a list of dummy rules to create a large amount of data
 	// that should result in sharding the rules ConfigMap
 	// In this case, each Alerting rule amounts to 598 bytes of ConfigMap data
