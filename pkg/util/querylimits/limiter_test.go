@@ -127,8 +127,10 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxEntriesLimitPerQuery: 10,
 		QueryTimeout:            model.Duration(30 * time.Second),
-		RequiredNumberLabels:    10,
 		MaxQueryBytesRead:       10,
+		// In this case, the higher it is, the more restrictive.
+		// Therefore, we return the query-time limit as it's more restrictive than the original.
+		RequiredNumberLabels: 100,
 	}
 
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
@@ -160,8 +162,10 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 		MaxQueryLookback:        model.Duration(29 * time.Second),
 		MaxEntriesLimitPerQuery: 9,
 		QueryTimeout:            model.Duration(29 * time.Second),
-		RequiredNumberLabels:    9,
 		MaxQueryBytesRead:       9,
+		// In this case, the higher it is, the more restrictive.
+		// Therefore, we return the original limit as it's more restrictive than the query-time limit.
+		RequiredNumberLabels: 10,
 	}
 
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
