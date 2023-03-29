@@ -1,5 +1,8 @@
 ## Main
 
+
+- [8911](https://github.com/grafana/loki/pull/8911) **aminesnow**: Update LokiStack annotaion on RulerConfig delete
+
 ## 0.2.0 (2023-03-27)
 
 - [8651](https://github.com/grafana/loki/pull/8651) **periklis**: Prepare Community Loki Operator release v0.2.0
