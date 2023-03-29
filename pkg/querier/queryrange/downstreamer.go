@@ -92,12 +92,6 @@ type instance struct {
 	parallelism int
 	locks       chan struct{}
 	handler     queryrangebase.Handler
-	accumulator DownstreamAccumulator
-}
-
-type DownstreamAccumulator interface {
-	Accumulate(ctx context.Context, acc logqlmodel.Result) error
-	Result() []logqlmodel.Result
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
