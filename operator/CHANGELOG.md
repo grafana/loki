@@ -1,9 +1,11 @@
 ## Main
 
 - [8930](https://github.com/grafana/loki/pull/8930) **periklis**: Fix makefile target operatorhub
+- [8911](https://github.com/grafana/loki/pull/8911) **aminesnow**: Update LokiStack annotaion on RulerConfig delete
 
 ## 0.2.0 (2023-03-27)
 
+- [8912](https://github.com/grafana/loki/pull/8912) **periklis**: Add missing replaces directives for release v0.2.0
 - [8651](https://github.com/grafana/loki/pull/8651) **periklis**: Prepare Community Loki Operator release v0.2.0
 - [8881](https://github.com/grafana/loki/pull/8881) **periklis**: Provide community bundle for openshift community hub
 - [8863](https://github.com/grafana/loki/pull/8863) **periklis**: Break the API types out into their own module

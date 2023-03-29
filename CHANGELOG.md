@@ -53,6 +53,8 @@
 * [8474](https://github.com/grafana/loki/pull/8474) **farodin91**: Add support for short-lived S3 session tokens
 * [8774](https://github.com/grafana/loki/pull/8774) **slim-bean**: Add new logql template functions `bytes`, `duration`, `unixEpochMillis`, `unixEpochNanos`, `toDateInZone`, `b64Enc`, and `b64Dec`
 * [8670](https://github.com/grafana/loki/pull/8670) **salvacorts** Introduce two new limits to refuse log and metric queries that would read too much data.
+* [8918](https://github.com/grafana/loki/pull/8918) **salvacorts** Introduce limit to require at least a number label matchers on metric and log queries.
+* [8909](https://github.com/grafana/loki/pull/8909) **salvacorts** Requests to `/loki/api/v1/index/stats` are split in 24h intervals.
 
 ##### Fixes
 

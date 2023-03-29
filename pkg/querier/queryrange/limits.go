@@ -37,6 +37,7 @@ const (
 	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
 	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
+	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
 	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 	limErrQuerierTooManyBytesTmpl            = "query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings"
 	limErrQuerierTooManyBytesUnshardableTmpl = "un-shardable query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
@@ -59,6 +60,7 @@ type Limits interface {
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
 	RequiredLabels(context.Context, string) []string
+	RequiredNumberLabels(context.Context, string) int
 	MaxQueryBytesRead(context.Context, string) int
 	MaxQuerierBytesRead(context.Context, string) int
 }
@@ -229,11 +231,6 @@ func newQuerySizeLimiter(
 		q.statsHandler = statsHandler[0]
 	}
 
-	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-	statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
-	q.statsHandler = statsSplitTimeMiddleware.Wrap(q.statsHandler)
-
 	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
 	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
 	q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
@@ -368,8 +365,8 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
-		statsBytesStr := humanize.Bytes(bytesRead)
-		maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
+		statsBytesStr := humanize.IBytes(bytesRead)
+		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
 		if bytesRead > uint64(maxBytesRead) {
 			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
@@ -741,6 +738,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 		present = append(present, m.Name)
 	}
 
+	// Enforce RequiredLabels limit
 	for _, tenant := range tenants {
 		required := limits.RequiredLabels(req.Context(), tenant)
 		var missing []string
@@ -754,5 +752,17 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 			return fmt.Errorf(requiredLabelsErrTmpl, strings.Join(missing, ", "), strings.Join(present, ", "))
 		}
 	}
+
+	// Enforce RequiredNumberLabels limit.
+	// The reason to enforce this one after RequiredLabels is to avoid users
+	// from adding enough label matchers to pass the RequiredNumberLabels limit but then
+	// having to modify them to use the ones required by RequiredLabels.
+	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(req.Context(), id) }
+	if requiredNumberLabels := validation.SmallestPositiveNonZeroIntPerTenant(tenants, requiredNumberLabelsCapture); requiredNumberLabels > 0 {
+		if len(present) < requiredNumberLabels {
+			return fmt.Errorf(requiredNumberLabelsErrTmpl, strings.Join(present, ", "), len(present), requiredNumberLabels)
+		}
+	}
+
 	return nil
 }
