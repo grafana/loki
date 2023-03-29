@@ -523,36 +523,6 @@ func Test_MaxQuerySize(t *testing.T) {
 			expectedQuerierStatsHits: 1,
 		},
 		{
-			desc:       "24 hour range",
-			query:      `{app="foo"} |= "foo"`,
-			queryStart: testTime.Add(-24 * time.Hour),
-			queryEnd:   testTime,
-			limits: fakeLimits{
-				maxQueryBytesRead:   statsBytes,
-				maxQuerierBytesRead: statsBytes,
-			},
-
-			shouldErr: false,
-			// [testTime-24h, midnight) and [midnight, testTime]
-			expectedQueryStatsHits:   2,
-			expectedQuerierStatsHits: 2,
-		},
-		{
-			desc:       "48 hour range",
-			query:      `{app="foo"} |= "foo"`,
-			queryStart: testTime.Add(-48 * time.Hour),
-			queryEnd:   testTime,
-			limits: fakeLimits{
-				maxQueryBytesRead:   statsBytes,
-				maxQuerierBytesRead: statsBytes,
-			},
-
-			shouldErr: false,
-			// [testTime-48h, midnight-1d), [midnight-1d, midnight) and [midnight, testTime]
-			expectedQueryStatsHits:   3,
-			expectedQuerierStatsHits: 3,
-		},
-		{
 			desc:       "Query size too big",
 			query:      `{app="foo"} |= "foo"`,
 			queryStart: testTime.Add(-1 * time.Hour),

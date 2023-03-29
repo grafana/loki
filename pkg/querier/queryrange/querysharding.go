@@ -105,8 +105,8 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 
 	maxQuerierBytesReadCapture := func(id string) int { return ast.limits.MaxQuerierBytesRead(ctx, id) }
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxQuerierBytesReadCapture); maxBytesRead > 0 {
-		statsBytesStr := humanize.Bytes(bytesPerShard)
-		maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
+		statsBytesStr := humanize.IBytes(bytesPerShard)
+		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
 		if bytesPerShard > uint64(maxBytesRead) {
 			level.Warn(ast.logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
