@@ -603,8 +603,8 @@ func (acc *accumulatedStreams) Pop() any {
 
 	stream := acc.streams[0]
 	cpy := *stream
-	cpy.Entries = cpy.Entries[len(stream.Entries)-1:]
 	cpy.Entries = []logproto.Entry{cpy.Entries[len(stream.Entries)-1]}
+	stream.Entries = stream.Entries[:len(stream.Entries)-1]
 
 	acc.count--
 
