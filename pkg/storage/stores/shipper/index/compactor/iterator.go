@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/util"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -32,7 +33,7 @@ func ForEachChunk(ctx context.Context, bucket *bbolt.Bucket, config config.Perio
 	var current retention.ChunkEntry
 
 	for key, _ := cursor.First(); key != nil && ctx.Err() == nil; key, _ = cursor.Next() {
-		ref, ok, err := parseChunkRef(decodeKey(key))
+		ref, ok, err := util.ParseChunkRef(util.DecodeKey(key))
 		if err != nil {
 			return err
 		}
