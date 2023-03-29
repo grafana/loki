@@ -22,6 +22,7 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+{{< responsive-table >}}
 <table>
 	<thead>
 		<th>Key</th>
@@ -112,6 +113,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
@@ -166,6 +176,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for backend pods</td>
@@ -204,7 +223,7 @@ null
 		<tr>
 			<td>backend.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -222,7 +241,7 @@ null
 		<tr>
 			<td>backend.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -687,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.0"
+"v1.6.2"
 </pre>
 </td>
 		</tr>
@@ -784,9 +803,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }}"
+"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -997,6 +1016,33 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.customBackendUrl</td>
+			<td>string</td>
+			<td>Override Backend URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customReadUrl</td>
+			<td>string</td>
+			<td>Override Read URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customWriteUrl</td>
+			<td>string</td>
+			<td>Override Write URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
@@ -1008,9 +1054,9 @@ See values.yaml
 		<tr>
 			<td>gateway.nginxConfig.httpSnippet</td>
 			<td>string</td>
-			<td>Allows appending custom configuration to the http block</td>
+			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1547,6 +1593,7 @@ true
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
+  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -1638,7 +1685,7 @@ true
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
-"main-5e53303"
+null
 </pre>
 </td>
 		</tr>
@@ -1834,7 +1881,6 @@ true
     "accountKey": null,
     "accountName": null,
     "requestTimeout": null,
-    "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
   },
@@ -1888,6 +1934,24 @@ true
 			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tenants</td>
+			<td>list</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memberlist.service.publishNotReadyAddresses</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -1997,9 +2061,11 @@ true
 		<tr>
 			<td>monitoring.dashboards.labels</td>
 			<td>object</td>
-			<td>Additional labels for the dashboards ConfigMap</td>
+			<td>Labels for the dashboards ConfigMap</td>
 			<td><pre lang="json">
-{}
+{
+  "grafana_dashboard": "1"
+}
 </pre>
 </td>
 		</tr>
@@ -2180,6 +2246,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.namespace</td>
+			<td>string</td>
+			<td>Alternative namespace to create PrometheusRule resources in</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -2329,9 +2404,9 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.interval</td>
 			<td>string</td>
-			<td>ServiceMonitor scrape interval</td>
+			<td>ServiceMonitor scrape interval Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at least 1/4 rate interval.</td>
 			<td><pre lang="json">
-null
+"15s"
 </pre>
 </td>
 		</tr>
@@ -2723,7 +2798,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 		</tr>
@@ -3052,11 +3127,29 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -3128,7 +3221,7 @@ null
 			<td>int</td>
 			<td>Number of replicas for the single binary</td>
 			<td><pre lang="json">
-1
+0
 </pre>
 </td>
 		</tr>
@@ -3555,6 +3648,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.lifecycle</td>
 			<td>object</td>
 			<td>Lifecycle for the write container</td>
@@ -3569,6 +3671,15 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -3656,7 +3767,7 @@ null
 		<tr>
 			<td>write.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3674,7 +3785,7 @@ null
 		<tr>
 			<td>write.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -3691,4 +3802,5 @@ null
 		</tr>
 	</tbody>
 </table>
+{{< /responsive-table >}}
 

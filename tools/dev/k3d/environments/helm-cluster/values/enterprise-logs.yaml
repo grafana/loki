@@ -1,4 +1,8 @@
 ---
+loki:
+  querier:
+    multi_tenant_queries_enabled: true
+
 enterprise:
   enabled: true
   adminToken:
@@ -13,11 +17,17 @@ enterprise:
       - name: team-a
         namespace: k3d-helm-cluster
 monitoring:
+  dashboards:
+    namespace: k3d-helm-cluster
   selfMonitoring:
     tenant:
       name: loki
       secretNamespace: k3d-helm-cluster
   serviceMonitor:
+    labels:
+      release: "prometheus"
+  rules:
+    namespace: k3d-helm-cluster
     labels:
       release: "prometheus"
 minio:

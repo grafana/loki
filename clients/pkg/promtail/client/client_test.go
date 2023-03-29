@@ -3,9 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -24,7 +22,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -38,24 +35,20 @@ var logEntries = []api.Entry{
 	{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line0123456789"}},
 }
 
-type receivedReq struct {
-	tenantID string
-	pushReq  logproto.PushRequest
-}
-
 func TestClient_Handle(t *testing.T) {
 	tests := map[string]struct {
-		clientBatchSize       int
-		clientBatchWait       time.Duration
-		clientMaxRetries      int
-		clientMaxLineSize     int
-		clientTenantID        string
-		clientDropRateLimited bool
-		serverResponseStatus  int
-		inputEntries          []api.Entry
-		inputDelay            time.Duration
-		expectedReqs          []receivedReq
-		expectedMetrics       string
+		clientBatchSize           int
+		clientBatchWait           time.Duration
+		clientMaxRetries          int
+		clientMaxLineSize         int
+		clientMaxLineSizeTruncate bool
+		clientTenantID            string
+		clientDropRateLimited     bool
+		serverResponseStatus      int
+		inputEntries              []api.Entry
+		inputDelay                time.Duration
+		expectedReqs              []receivedReq
+		expectedMetrics           string
 	}{
 		"batch log entries together until the batch size is reached": {
 			clientBatchSize:      10,
@@ -80,17 +73,31 @@ func TestClient_Handle(t *testing.T) {
                                # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                                # TYPE promtail_dropped_entries_total counter
                                promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                                promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
                                promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                               # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                               # TYPE promtail_mutated_entries_total counter
+                               promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                               # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                               # TYPE promtail_mutated_bytes_total counter
+                               promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                               promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                               promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                        `,
 		},
-		"log entries have max_line_size exceeded": {
-			clientBatchSize:      10,
-			clientBatchWait:      100 * time.Millisecond,
-			clientMaxRetries:     3,
-			clientMaxLineSize:    10, // any log line more than this length should be discarded
-			serverResponseStatus: 200,
-			inputEntries:         []api.Entry{logEntries[0], logEntries[1], logEntries[6]}, // this logEntries[6] entries has line more than size 10
+		"dropping log entries that have max_line_size exceeded": {
+			clientBatchSize:           10,
+			clientBatchWait:           100 * time.Millisecond,
+			clientMaxRetries:          3,
+			clientMaxLineSize:         10, // any log line more than this length should be discarded
+			clientMaxLineSizeTruncate: false,
+			serverResponseStatus:      200,
+			inputEntries:              []api.Entry{logEntries[0], logEntries[1], logEntries[6]}, // this logEntries[6] entries has line more than size 10
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -104,9 +111,66 @@ func TestClient_Handle(t *testing.T) {
                                # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                                # TYPE promtail_dropped_entries_total counter
                                promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 1
                                promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
                                promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
-                               promtail_dropped_entries_total{host="__HOST__",reason="max_line_size_limited",tenant=""} 1
+                               # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                               # TYPE promtail_mutated_entries_total counter
+                               promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                       `,
+		},
+		"truncating log entries that have max_line_size exceeded": {
+			clientBatchSize:           10,
+			clientBatchWait:           100 * time.Millisecond,
+			clientMaxRetries:          3,
+			clientMaxLineSize:         10,
+			clientMaxLineSizeTruncate: true,
+			serverResponseStatus:      200,
+			inputEntries:              []api.Entry{logEntries[0], logEntries[1], logEntries[6]}, // logEntries[6]'s line is greater than 10 bytes
+			expectedReqs: []receivedReq{
+				{
+					tenantID: "",
+					pushReq: logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{
+						logEntries[0].Entry,
+						logEntries[1].Entry,
+						{
+							Timestamp: logEntries[6].Entry.Timestamp,
+							Line:      logEntries[6].Line[:10],
+						},
+					}}}},
+				},
+			},
+			expectedMetrics: `
+                               # HELP promtail_sent_entries_total Number of log entries sent to the ingester.
+                               # TYPE promtail_sent_entries_total counter
+                               promtail_sent_entries_total{host="__HOST__"} 3.0
+                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
+                               # TYPE promtail_dropped_entries_total counter
+                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                               # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                               # TYPE promtail_mutated_entries_total counter
+                               promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 1
+                               promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                               promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 4
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                        `,
 		},
 
@@ -134,8 +198,21 @@ func TestClient_Handle(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                        `,
 		},
 		"retry send a batch up to backoff's max retries in case the server responds with a 5xx": {
@@ -162,8 +239,21 @@ func TestClient_Handle(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 1
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                               # HELP promtail_sent_entries_total Number of log entries sent to the ingester.
                               # TYPE promtail_sent_entries_total counter
                               promtail_sent_entries_total{host="__HOST__"} 0
@@ -185,8 +275,21 @@ func TestClient_Handle(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 1
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                               # HELP promtail_sent_entries_total Number of log entries sent to the ingester.
                               # TYPE promtail_sent_entries_total counter
                               promtail_sent_entries_total{host="__HOST__"} 0
@@ -216,8 +319,21 @@ func TestClient_Handle(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 1
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                               # HELP promtail_sent_entries_total Number of log entries sent to the ingester.
                               # TYPE promtail_sent_entries_total counter
                               promtail_sent_entries_total{host="__HOST__"} 0
@@ -240,8 +356,21 @@ func TestClient_Handle(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 1
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant=""} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                               # HELP promtail_sent_entries_total Number of log entries sent to the ingester.
                               # TYPE promtail_sent_entries_total counter
                               promtail_sent_entries_total{host="__HOST__"} 0
@@ -267,8 +396,21 @@ func TestClient_Handle(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__", reason="ingester_error", tenant="tenant-default"} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-default"} 0
                               promtail_dropped_entries_total{host="__HOST__", reason="rate_limited", tenant="tenant-default"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-default"} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-default"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-default"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-default"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-default"} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant="tenant-default"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant="tenant-default"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant="tenant-default"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant="tenant-default"} 0
                        `,
 		},
 		"batch log entries together honoring the tenant ID overridden while processing the pipeline stages": {
@@ -301,12 +443,43 @@ func TestClient_Handle(t *testing.T) {
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-1"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-2"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-default"} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-1"} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-2"} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-default"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-1"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-2"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-default"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-1"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-2"} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-default"} 0
+                              # HELP promtail_mutated_entries_total The total number of log entries that have been mutated.
+                              # TYPE promtail_mutated_entries_total counter
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-1"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-2"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="ingester_error",tenant="tenant-default"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-1"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-2"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="line_too_long",tenant="tenant-default"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-1"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-2"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="rate_limited",tenant="tenant-default"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-1"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-2"} 0
+                              promtail_mutated_entries_total{host="__HOST__",reason="stream_limited",tenant="tenant-default"} 0
+                              # HELP promtail_mutated_bytes_total The total number of bytes that have been mutated.
+                              # TYPE promtail_mutated_bytes_total counter
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant="tenant-1"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant="tenant-2"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="ingester_error",tenant="tenant-default"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant="tenant-1"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant="tenant-2"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="line_too_long",tenant="tenant-default"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant="tenant-1"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant="tenant-2"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="rate_limited",tenant="tenant-default"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant="tenant-1"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant="tenant-2"} 0
+                              promtail_mutated_bytes_total{host="__HOST__",reason="stream_limited",tenant="tenant-default"} 0
                        `,
 		},
 	}
@@ -319,7 +492,7 @@ func TestClient_Handle(t *testing.T) {
 			receivedReqsChan := make(chan receivedReq, 10)
 
 			// Start a local HTTP server
-			server := httptest.NewServer(createServerHandler(receivedReqsChan, testData.serverResponseStatus))
+			server := newTestRemoteWriteServer(receivedReqsChan, testData.serverResponseStatus)
 			require.NotNil(t, server)
 			defer server.Close()
 
@@ -342,7 +515,7 @@ func TestClient_Handle(t *testing.T) {
 			}
 
 			m := NewMetrics(reg)
-			c, err := New(m, cfg, 0, testData.clientMaxLineSize, log.NewNopLogger())
+			c, err := New(m, cfg, 0, testData.clientMaxLineSize, testData.clientMaxLineSizeTruncate, log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Send all the input log entries
@@ -378,7 +551,7 @@ func TestClient_Handle(t *testing.T) {
 			fmt.Printf("Expected reqs: %#v\n", testData.expectedReqs)
 
 			expectedMetrics := strings.Replace(testData.expectedMetrics, "__HOST__", serverURL.Host, -1)
-			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
+			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total", "promtail_mutated_entries_total", "promtail_mutated_bytes_total")
 			assert.NoError(t, err)
 		})
 	}
@@ -421,6 +594,7 @@ func TestClient_StopNow(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                        `,
@@ -442,6 +616,7 @@ func TestClient_StopNow(t *testing.T) {
                               # HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
                               # TYPE promtail_dropped_entries_total counter
                               promtail_dropped_entries_total{host="__HOST__",reason="ingester_error",tenant=""} 0
+                              promtail_dropped_entries_total{host="__HOST__",reason="line_too_long",tenant=""} 0
                               promtail_dropped_entries_total{host="__HOST__",reason="rate_limited",tenant=""} 1
                               promtail_dropped_entries_total{host="__HOST__",reason="stream_limited",tenant=""} 0
                               # HELP promtail_sent_entries_total Number of log entries sent to the ingester.
@@ -459,7 +634,7 @@ func TestClient_StopNow(t *testing.T) {
 			receivedReqsChan := make(chan receivedReq, 10)
 
 			// Start a local HTTP server
-			server := httptest.NewServer(createServerHandler(receivedReqsChan, c.serverResponseStatus))
+			server := newTestRemoteWriteServer(receivedReqsChan, c.serverResponseStatus)
 			require.NotNil(t, server)
 			defer server.Close()
 
@@ -481,7 +656,7 @@ func TestClient_StopNow(t *testing.T) {
 			}
 
 			m := NewMetrics(reg)
-			cl, err := New(m, cfg, 0, 0, log.NewNopLogger())
+			cl, err := New(m, cfg, 0, 0, false, log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Send all the input log entries
@@ -527,24 +702,6 @@ func TestClient_StopNow(t *testing.T) {
 	}
 }
 
-func createServerHandler(receivedReqsChan chan receivedReq, status int) http.HandlerFunc {
-	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// Parse the request
-		var pushReq logproto.PushRequest
-		if err := util.ParseProtoReader(req.Context(), req.Body, int(req.ContentLength), math.MaxInt32, &pushReq, util.RawSnappy); err != nil {
-			rw.WriteHeader(500)
-			return
-		}
-
-		receivedReqsChan <- receivedReq{
-			tenantID: req.Header.Get("X-Scope-OrgID"),
-			pushReq:  pushReq,
-		}
-
-		rw.WriteHeader(status)
-	})
-}
-
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (r RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -557,7 +714,7 @@ func Test_Tripperware(t *testing.T) {
 	var called bool
 	c, err := NewWithTripperware(metrics, Config{
 		URL: flagext.URLValue{URL: url},
-	}, 0, 0, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
+	}, 0, 0, false, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
 		return RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			require.Equal(t, r.URL.String(), "http://foo.com")
 			called = true

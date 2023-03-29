@@ -189,8 +189,14 @@
         "lifesciences": {
             "component": "lifesciences"
         },
+        "longrunning": {
+            "component": "longrunning"
+        },
         "managedidentities": {
             "component": "managedidentities"
+        },
+        "maps": {
+            "component": "maps"
         },
         "mediatranslation": {
             "component": "mediatranslation"

@@ -14,7 +14,7 @@ enterprise:
         secret:
           secretName: gel-secrets
           items:
-          - key: gel-license.jwt
+          - key: license.jwt
             path: license.jwt
           - key: gcp_service_account.json
             path: gcp_service_account.json
@@ -43,7 +43,7 @@ write:
       secret:
         secretName: gel-secrets
         items:
-        - key: gel-license.jwt
+        - key: license.jwt
           path: license.jwt
         - key: gcp_service_account.json
           path: gcp_service_account.json
@@ -60,7 +60,7 @@ read:
       secret:
         secretName: gel-secrets
         items:
-        - key: gel-license.jwt
+        - key: license.jwt
           path: license.jwt
         - key: gcp_service_account.json
           path: gcp_service_account.json
@@ -77,7 +77,7 @@ gateway:
       secret:
         secretName: gel-secrets
         items:
-        - key: gel-license.jwt
+        - key: license.jwt
           path: license.jwt
         - key: gcp_service_account.json
           path: gcp_service_account.json

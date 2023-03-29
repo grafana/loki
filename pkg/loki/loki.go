@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"os"
 	rt "runtime"
+	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
@@ -54,6 +57,7 @@ import (
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
@@ -100,6 +104,8 @@ type Config struct {
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
 
 	Common common.Config `yaml:"common,omitempty"`
+
+	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
 }
 
 // RegisterFlags registers flag.
@@ -133,6 +139,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	//TODO(trevorwhitney): flip this to false with Loki 3.0
 	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
 		"The default will be flipped to false in the next Loki release.")
+
+	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -335,7 +343,7 @@ type Loki struct {
 	Server                   *server.Server
 	InternalServer           *server.Server
 	ring                     *ring.Ring
-	overrides                *validation.Overrides
+	Overrides                limiter.CombinedLimits
 	tenantConfigs            *runtime.TenantConfigs
 	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
@@ -348,6 +356,7 @@ type Loki struct {
 	tableManager             *index.TableManager
 	frontend                 Frontend
 	ruler                    *base_ruler.Ruler
+	ruleEvaluator            ruler.Evaluator
 	RulerStorage             rulestore.RuleStore
 	rulerAPI                 *base_ruler.API
 	stopper                  queryrange.Stopper
@@ -363,6 +372,8 @@ type Loki struct {
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
+
+	ingesterRelease *atomic.Bool
 }
 
 // New makes a new Loki.
@@ -465,11 +476,13 @@ func (t *Loki) Run(opts RunOpts) error {
 		return err
 	}
 
+	shutdownRequested := atomic.NewBool(false)
+
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
+		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 	}
-	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
+	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
@@ -513,6 +526,13 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.SignalHandler = signals.NewHandler(t.Server.Log)
 	go func() {
 		t.SignalHandler.Loop()
+		shutdownRequested.Store(true)
+
+		if t.Cfg.ShutdownDelay > 0 {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v before shutting down services", t.Cfg.ShutdownDelay))
+			time.Sleep(t.Cfg.ShutdownDelay)
+		}
+
 		sm.StopAsync()
 	}()
 
@@ -542,8 +562,13 @@ func (t *Loki) Run(opts RunOpts) error {
 	return err
 }
 
-func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
+func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if shutdownRequested.Load() {
+			level.Debug(util_log.Logger).Log("msg", "application is stopping")
+			http.Error(w, "Application is stopping", http.StatusServiceUnavailable)
+			return
+		}
 		if !sm.IsHealthy() {
 			msg := bytes.Buffer{}
 			msg.WriteString("Some services are not Running:\n")
@@ -603,6 +628,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
+	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
@@ -626,11 +652,12 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, UsageReport, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
-		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, UsageReport},
+		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
 		TableManager:             {Server, UsageReport},
 		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
 		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV, IndexGatewayRing},
@@ -641,6 +668,39 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
 		MemberlistKV:             {Server},
+	}
+
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
+		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		// Ensure query limiter embeds overrides after they've been
+		// created.
+		deps[QueryLimiter] = []string{Overrides}
+		deps[QueryLimitsInterceptors] = []string{}
+
+		// Ensure query limits tripperware embeds the query frontend
+		// tripperware after it's been created. Any additional
+		// middleware/tripperware you want to add to the querier or
+		// frontend must happen inject a dependence on the query limits
+		// tripperware.
+		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
+
+		deps[Querier] = append(deps[Querier], QueryLimiter)
+
+		// The frontend receives a tripperware. Make sure it uses the
+		// wrapped one.
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
+
+		// query frontend tripperware uses t.Overrides. Make sure it
+		// uses the one wrapped by query limiter.
+		deps[QueryFrontendTripperware] = append(deps[QueryFrontendTripperware], QueryLimiter)
+
+		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
+			return err
+		}
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.

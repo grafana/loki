@@ -63,8 +63,8 @@ Where default_value is the value to use if the environment variable is undefined
 
 **Note**: With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
-slashes with single slashes. Because of this every use of a slash `\` needs to
-be replaced with a double slash `\\`
+backslashes with single backslashes. Because of this every use of a backslash `\` needs to
+be replaced with a double backslash `\\`
 
 ### Generic placeholders
 
@@ -186,6 +186,12 @@ Loki:
 # URL for the Distributor. Path to the push API needs to be included.
 # Example: http://example.com:3100/loki/api/v1/push
 url: <string>
+
+# Custom HTTP headers to be sent along with each push request.
+# Be aware that headers that are set by Promtail itself (e.g. X-Scope-OrgID) can't be overwritten.
+headers:
+  # Example: CF-Access-Client-Id: xxx
+  [ <labelname>: <labelvalue> ... ]
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
 # it assumes Loki is running in single-tenant mode and no X-Scope-OrgID header
@@ -346,6 +352,9 @@ job_name: <string>
 
 # Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
 [gcplog: <gcplog_config>]
+
+# Configuration describing how to get Azure Event Hubs messages.
+[azure_event_hub: <azure_event_hub_config>]
 
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
@@ -657,7 +666,7 @@ config:
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
   # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
+  # the extracted value must be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
 ```
@@ -714,7 +723,7 @@ config:
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
   # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
+  # the extracted value must be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
 
@@ -871,6 +880,8 @@ Note the `server` configuration is the same as [server](#server).
 Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
 This can be used to send NDJSON or plaintext logs.
 
+The readiness of the loki_push_api server can be checked using the endpoint `/ready`.
+
 ```yaml
 # The push server configuration options
 [server: <server_config>]
@@ -1007,6 +1018,57 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_logname`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+
+### Azure Event Hubs
+
+The `azure_event_hubs` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. For more information, see the [Azure Event Hubs documentation](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
+
+To learn more about streaming Azure logs to an Azure Event Hubs, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
+
+Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
+
+```yaml
+# Event Hubs namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+fully_qualified_namespace: <string> | default = ""
+
+# Event Hubs to consume (Required).
+event_hubs:
+    [ - <string> ... ]
+
+# Event Hubs ConnectionString for authentication on Azure Cloud (Required).
+connection_string: <string> | default = "range"
+
+# The consumer group id.
+[group_id: <string> | default = "promtail"]
+
+# If Promtail should pass on the timestamp from the incoming message or not.
+# When false Promtail will assign the current timestamp to the log when it was processed.
+[use_incoming_timestamp: <bool> | default = false]
+
+# If Promtail should ignore messages that don't match the schema for Azure resource logs.
+# Schema is described here https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema.
+[disallow_custom_messages: <bool> | default = false]
+
+# Labels optionally hold labels to associate with each log line.
+[labels]:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+### Available Labels
+
+When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
+
+**Available Labels:**
+
+- `__azure_event_hubs_category`: The log category of the message when a message is an application log.
+
+The following list of labels is discovered using the Kafka endpoint in Event Hubs.
+
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: The consumer group member id.
+- `__meta_kafka_group_id`: The consumer group id.
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 ### kafka
 
@@ -1942,8 +2004,10 @@ The optional `limits_config` block configures global limits for this instance of
 # 0 means it is disabled.
 [max_streams: <int> | default = 0]
 
-Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+# Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
 [max_line_size: <int> | default = 0]
+# Whether to truncate lines that exceed max_line_size. No effect if max_line_size is disabled
+[max_line_size_truncate: <bool> | default = false]
 ```
 
 ## target_config

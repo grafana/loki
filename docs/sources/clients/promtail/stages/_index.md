@@ -16,6 +16,7 @@ Parsing stages:
   - [logfmt]({{<relref "logfmt">}}): Extract data by parsing the log line as logfmt.
   - [replace]({{<relref "replace">}}): Replace data using a regular expression.
   - [multiline]({{<relref "multiline">}}): Merge multiple lines into a multiline block.
+  - [geoip]({{<relref "geoip">}}): Extract geoip data from extracted labels.
 
 Transform stages:
 
@@ -31,6 +32,7 @@ Action stages:
   - [labelallow]({{<relref "labelallow">}}): Allow label set for the log entry.
   - [labels]({{<relref "labels">}}): Update the label set for the log entry.
   - [limit]({{<relref "limit">}}): Limit the rate lines will be sent to Loki.
+  - [sampling]({{<relref "sampling">}}): Sampling the lines will be sent to Loki.
   - [static_labels]({{<relref "static_labels">}}): Add static-labels to the log entry. 
   - [metrics]({{<relref "metrics">}}): Calculate metrics based on extracted data.
   - [tenant]({{<relref "tenant">}}): Set the tenant ID value to use for the log entry.

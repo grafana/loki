@@ -152,6 +152,7 @@ func (p *positions) run() {
 	}()
 
 	ticker := time.NewTicker(p.cfg.SyncPeriod)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-p.quit:

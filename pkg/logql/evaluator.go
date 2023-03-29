@@ -232,7 +232,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newVectorIterator(val, q.Step().Nanoseconds(), q.Start().UnixNano(), q.End().UnixNano()), nil
+		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -472,9 +472,13 @@ func rangeAggEvaluator(
 		return nil, err
 	}
 	if expr.Operation == syntax.OpRangeTypeAbsent {
+		absentLabels, err := absentLabels(expr)
+		if err != nil {
+			return nil, err
+		}
 		return &absentRangeVectorEvaluator{
 			iter: iter,
-			lbs:  absentLabels(expr),
+			lbs:  absentLabels,
 		}, nil
 	}
 	return &rangeVectorEvaluator{
@@ -495,8 +499,8 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
-		// Errors are not allowed in metrics.
-		if s.Metric.Has(logqlmodel.ErrorLabel) {
+		// Errors are not allowed in metrics unless they've been specifically requested.
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
@@ -527,8 +531,8 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
-		// Errors are not allowed in metrics.
-		if s.Metric.Has(logqlmodel.ErrorLabel) {
+		// Errors are not allowed in metrics unless they've been specifically requested.
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
@@ -771,8 +775,11 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				ls, rs = rs, ls
 			}
 		}
-
-		if merged := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op)); merged != nil {
+		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		if err != nil {
+			return nil, err
+		}
+		if merged != nil {
 			// replace with labels specified by expr
 			merged.Metric = metric
 			results = append(results, *merged)
@@ -886,29 +893,39 @@ func literalStepEvaluator(
 	inverted bool,
 	returnBool bool,
 ) (StepEvaluator, error) {
+	val, err := lit.Value()
+	if err != nil {
+		return nil, err
+	}
+	var mergeErr error
+
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
 			ok, ts, vec := eval.Next()
-
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
+
 				literalPoint := promql.Sample{
 					Metric: sample.Metric,
-					Point:  promql.Point{T: ts, V: lit.Value()},
+					Point:  promql.Point{T: ts, V: val},
 				}
 
 				left, right := &literalPoint, &sample
 				if inverted {
 					left, right = right, left
 				}
-
-				if merged := syntax.MergeBinOp(
+				merged, err := syntax.MergeBinOp(
 					op,
 					left,
 					right,
 					!returnBool,
 					syntax.IsComparisonOperator(op),
-				); merged != nil {
+				)
+				if err != nil {
+					mergeErr = err
+					return false, 0, nil
+				}
+				if merged != nil {
 					results = append(results, *merged)
 				}
 			}
@@ -916,40 +933,45 @@ func literalStepEvaluator(
 			return ok, ts, results
 		},
 		eval.Close,
-		eval.Error,
+		func() error {
+			if mergeErr != nil {
+				return mergeErr
+			}
+			return eval.Error()
+		},
 	)
 }
 
 // vectorIterator return simple vector like (1).
 type vectorIterator struct {
-	step, end, current int64
-	val                float64
+	stepMs, endMs, currentMs int64
+	val                      float64
 }
 
 func newVectorIterator(val float64,
-	step, start, end int64) *vectorIterator {
-	if step == 0 {
-		step = 1
+	stepMs, startMs, endMs int64) *vectorIterator {
+	if stepMs == 0 {
+		stepMs = 1
 	}
 	return &vectorIterator{
-		val:     val,
-		step:    step,
-		end:     end,
-		current: start - step,
+		val:       val,
+		stepMs:    stepMs,
+		endMs:     endMs,
+		currentMs: startMs - stepMs,
 	}
 }
 
 func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
-	r.current = r.current + r.step
-	if r.current > r.end {
+	r.currentMs = r.currentMs + r.stepMs
+	if r.currentMs > r.endMs {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
 	vectorPoint := promql.Sample{
-		Point: promql.Point{T: r.current, V: r.val},
+		Point: promql.Point{T: r.currentMs, V: r.val},
 	}
 	results = append(results, vectorPoint)
-	return true, r.current, results
+	return true, r.currentMs, results
 }
 
 func (r *vectorIterator) Close() error {
@@ -1010,12 +1032,16 @@ func labelReplaceEvaluator(
 }
 
 // This is to replace missing timeseries during absent_over_time aggregation.
-func absentLabels(expr syntax.SampleExpr) labels.Labels {
+func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	m := labels.Labels{}
 
-	lm := expr.Selector().Matchers()
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	lm := selector.Matchers()
 	if len(lm) == 0 {
-		return m
+		return m, nil
 	}
 
 	empty := []string{}
@@ -1033,5 +1059,5 @@ func absentLabels(expr syntax.SampleExpr) labels.Labels {
 	for _, v := range empty {
 		m = labels.NewBuilder(m).Del(v).Labels(nil)
 	}
-	return m
+	return m, nil
 }

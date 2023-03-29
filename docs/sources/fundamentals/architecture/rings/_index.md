@@ -32,7 +32,7 @@ These components need to be connected into a hash ring:
 These components can optionally be connected into a hash ring:
 - index gateway
 
-In an architecture that has three distributors and three ingestors defined,
+In an architecture that has three distributors and three ingesters defined,
 the hash rings for these components connect the instances of same-type components.
 
 ![distributor and ingester rings](./ring-overview.png)

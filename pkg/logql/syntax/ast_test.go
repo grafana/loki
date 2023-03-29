@@ -172,6 +172,13 @@ func Test_SampleExpr_String(t *testing.T) {
 			"(.*):.*"
 		)
 		`,
+		`(((
+			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) 
+				or on ()  
+				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60)) 
+				or on ()  
+				((sum by(typename,pool,commandname,colo) (sum_over_time({_namespace_="appspace", _schema_="appspace-1h", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) / 60))`,
+		`{app="foo"} | logfmt code="response.code", IPAddress="host"`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -249,7 +256,8 @@ func TestMatcherGroups(t *testing.T) {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			expr, err := ParseExpr(tc.query)
 			require.Nil(t, err)
-			out := MatcherGroups(expr)
+			out, err := MatcherGroups(expr)
+			require.Nil(t, err)
 			require.Equal(t, tc.exp, out)
 		})
 	}
@@ -595,7 +603,7 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 }
 
 func Test_MergeBinOpVectors_Filter(t *testing.T) {
-	res := MergeBinOp(
+	res, err := MergeBinOp(
 		OpTypeGT,
 		&promql.Sample{
 			Point: promql.Point{V: 2},
@@ -606,6 +614,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		true,
 		true,
 	)
+	require.NoError(t, err)
 
 	// ensure we return the left hand side's value (2) instead of the
 	// comparison operator's result (1: the truthy answer)

@@ -42,7 +42,6 @@ import (
 	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/wal"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -182,6 +181,7 @@ type Interface interface {
 	// deprecated
 	LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
+	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -235,7 +235,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -503,7 +503,8 @@ func (i *Ingester) running(ctx context.Context) error {
 	return serviceError
 }
 
-// Called after running exits, when Ingester transitions to Stopping state.
+// stopping is called when Ingester transitions to Stopping state.
+//
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
@@ -524,8 +525,8 @@ func (i *Ingester) stopping(_ error) error {
 
 	i.streamRateCalculator.Stop()
 
-	// In case the flag to terminate on shutdown is set we need to mark the
-	// ingester service as "failed", so Loki will shut down entirely.
+	// In case the flag to terminate on shutdown is set or this instance is marked to release its resources,
+	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
 		return modules.ErrStopProcess
@@ -567,6 +568,19 @@ func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
+//
+// Internally, when triggered, this handler will configure the ingester service to release their resources whenever a SIGTERM is received.
+// Releasing resources meaning flushing data, deleting tokens, and removing itself from the ring.
+func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
+	level.Info(util_log.Logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
+	i.lifecycler.SetFlushOnShutdown(true)
+	i.lifecycler.SetUnregisterOnShutdown(true)
+	i.terminateOnShutdown = true
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 }
 
 // ShutdownHandler handles a graceful shutdown of the ingester service and

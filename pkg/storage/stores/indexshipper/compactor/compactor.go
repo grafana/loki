@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -30,7 +28,9 @@ import (
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // Here is how the generic compactor works:
@@ -97,7 +97,7 @@ type Config struct {
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos.")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos, cos.")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
@@ -171,6 +171,12 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
+type Limits interface {
+	deletion.Limits
+	retention.Limits
+	DefaultLimits() *validation.Limits
+}
+
 func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer, fsconfig local.FSConfig) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
@@ -238,7 +244,7 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
+func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -281,7 +287,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 	return nil
 }
 
-func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Overrides) error {
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -677,7 +683,7 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []retention.IntervalFilter) {
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, filter.Func) {
 	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
 		return expired, nonDeletedIntervals
 	}
