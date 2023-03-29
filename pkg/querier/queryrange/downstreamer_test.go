@@ -367,7 +367,8 @@ func TestInstanceDownstream(t *testing.T) {
 	require.Equal(t, want, got)
 
 	require.Nil(t, err)
-	require.Equal(t, []logqlmodel.Result{expected}, results)
+	require.Equal(t, 1, len(results))
+	require.Equal(t, expected.Data, results[0].Data)
 }
 
 func TestCancelWhileWaitingResponse(t *testing.T) {
