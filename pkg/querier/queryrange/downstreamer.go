@@ -344,39 +344,7 @@ func (a *logsAccumulator) Accumulate(acc logqlmodel.Result) error {
 }
 
 func (a *logsAccumulator) Result() logqlmodel.Result {
-	m := make(map[string]*logproto.Stream, a.accumulatedStreams.Len())
-	result := make(logqlmodel.Streams, 0, a.accumulatedStreams.Len())
-	for x := a.accumulatedStreams.Pop(); x != nil; x = a.accumulatedStreams.Pop() {
-		s := x.(*logproto.Stream)
-
-		if prior, ok := m[s.Labels]; !ok {
-			m[s.Labels] = s
-		} else {
-			prior.Entries = append(prior.Entries, s.Entries...)
-		}
-	}
-
-	for _, s := range m {
-		sort.Slice(s.Entries, func(i, j int) bool {
-			// sort in reverse order since accumulated streams tracks the inverse order
-			switch a.accumulatedStreams.order {
-			case logproto.BACKWARD:
-				return !s.Entries[i].Timestamp.After(s.Entries[j].Timestamp)
-			default:
-				return !s.Entries[i].Timestamp.Before(s.Entries[j].Timestamp)
-			}
-		})
-		result = append(result, *s)
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Labels < result[j].Labels
-	})
-
-	return logqlmodel.Result{
-		// stats & headers are already aggregated in the context
-		Data: result,
-	}
+	return a.accumulatedStreams.Result()
 }
 
 type bufferedAccumulator struct {
@@ -622,4 +590,27 @@ func (acc *accumulatedStreams) Pop() any {
 	}
 
 	return &cpy
+}
+
+// Note: can only be called once as it will alter stream ordreing.
+func (acc *accumulatedStreams) Result() logqlmodel.Result {
+	// sort streams by label
+	sort.Slice(acc.streams, func(i, j int) bool {
+		return acc.streams[i].Labels < acc.streams[j].Labels
+	})
+
+	streams := make(logqlmodel.Streams, 0, len(acc.streams))
+
+	for _, s := range acc.streams {
+		// sort entries by timestamp, inversely based on direction
+		sort.Slice(s.Entries, func(i, j int) bool {
+			return acc.less(s.Entries[j].Timestamp, s.Entries[i].Timestamp)
+		})
+		streams = append(streams, *s)
+	}
+
+	return logqlmodel.Result{
+		// stats & headers are already aggregated in the context
+		Data: streams,
+	}
 }
