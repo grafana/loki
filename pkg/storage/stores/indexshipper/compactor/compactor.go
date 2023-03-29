@@ -630,7 +630,10 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	c.indexStorageClient.RefreshIndexListCache(ctx)
 
 	tables, err := c.indexStorageClient.ListTables(ctx)
-
+	if err != nil {
+		status = statusFailure
+		return err
+	}
 	// process most recent tables first
 	sortTablesByRange(tables)
 
