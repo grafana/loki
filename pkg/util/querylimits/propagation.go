@@ -26,7 +26,7 @@ type QueryLimits struct {
 	MaxEntriesLimitPerQuery int              `json:"maxEntriesLimitPerQuery,omitempty"`
 	QueryTimeout            model.Duration   `json:"queryTimeout,omitempty"`
 	RequiredLabels          []string         `json:"requiredLabels,omitempty"`
-	RequiredNumberLabels    int              `json:"requiredNumberLabelMatchers,omitempty"`
+	RequiredNumberLabels    int              `json:"minimumLabelsNumber,omitempty"`
 	MaxQueryBytesRead       flagext.ByteSize `json:"maxQueryBytesRead,omitempty"`
 }
 

@@ -2505,7 +2505,7 @@ shard_streams:
 [required_label_matchers: <list of strings>]
 
 # Minimum number of label matchers a query should contain.
-[required_number_label_matchers: <int>]
+[minimum_labels_number: <int>]
 ```
 
 ### frontend_worker
