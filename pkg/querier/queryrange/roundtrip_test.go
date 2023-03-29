@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -444,6 +445,56 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestIndexStatsTripperware(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &logproto.IndexStatsRequest{
+		Matchers: `{job="varlogs"}`,
+		From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
+		Through:  model.TimeFromUnixNano(testTime.UnixNano()),
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	response := logproto.IndexStatsResponse{
+		Streams: 100,
+		Chunks:  200,
+		Bytes:   300,
+		Entries: 400,
+	}
+
+	count, h := indexStatsResult(response)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
+	// 2 queries
+	require.Equal(t, 2, *count)
+	require.NoError(t, err)
+	indexStatsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	res, ok := indexStatsResponse.(*IndexStatsResponse)
+	require.Equal(t, true, ok)
+
+	// make sure we return unique series since responses from
+	// SplitByInterval middleware might have duplicate series
+	require.Equal(t, response.Streams*2, res.Response.Streams)
+	require.Equal(t, response.Chunks*2, res.Response.Chunks)
+	require.Equal(t, response.Bytes*2, res.Response.Bytes)
+	require.Equal(t, response.Entries*2, res.Response.Entries)
+	require.NoError(t, err)
+}
+
 func TestLogNoFilter(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
@@ -560,6 +611,10 @@ func TestPostQueries(t *testing.T) {
 		}),
 		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected instant roundtripper called")
+			return nil, nil
+		}),
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected indexStats roundtripper called")
 			return nil, nil
 		}),
 		fakeLimits{},
