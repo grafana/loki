@@ -222,7 +222,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		status, _ = server.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	if err != nil {
 		serverutil.WriteError(err, w)
