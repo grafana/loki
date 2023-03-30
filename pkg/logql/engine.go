@@ -322,7 +322,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	lim := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, q.limits.MaxQueryRange)
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, q.limits.maxQueryInterval)
 	if lim != 0 {
 		err = q.checkLimits(expr, lim)
 		if err != nil {
