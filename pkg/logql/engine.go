@@ -325,7 +325,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
 	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, maxIntervalCapture)
 	if maxQueryInterval != 0 {
-		err = q.checkLimits(expr, maxQueryInterval)
+		err = q.checkIntervalLimit(expr, maxQueryInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -413,7 +413,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	return result, stepEvaluator.Error()
 }
 
-func (q *query) checkLimits(expr syntax.SampleExpr, limit time.Duration) error {
+func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
 	var err error
 	expr.Walk(func(e interface{}) {
 		switch e := e.(type) {

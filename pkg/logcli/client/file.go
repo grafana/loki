@@ -191,7 +191,7 @@ func (l *limiter) MaxQuerySeries(ctx context.Context, userID string) int {
 }
 
 func (l *limiter) MaxQueryRange(ctx context.Context, userID string) time.Duration {
-	return time.Second
+	return 0 * time.Second
 }
 
 func (l *limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
