@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"math"
 	"time"
 
@@ -14,7 +15,7 @@ var (
 // Limits allow the engine to fetch limits for a given users.
 type Limits interface {
 	MaxQuerySeries(userID string) int
-	MaxQueryRange(userID string) time.Duration
+	MaxQueryInterval(ctx context.Context, userID string) time.Duration
 	QueryTimeout(userID string) time.Duration
 	BlockedQueries(userID string) []*validation.BlockedQuery
 }

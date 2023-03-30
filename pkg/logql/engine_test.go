@@ -2434,7 +2434,7 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.Error(t, err)
-				require.ErrorIs(t, err, logqlmodel.ErrRangeLimit)
+				require.ErrorIs(t, err, logqlmodel.ErrIntervalLimit)
 			} else {
 				require.NoError(t, err)
 			}

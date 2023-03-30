@@ -322,9 +322,9 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, q.limits.maxQueryInterval)
-	if lim != 0 {
-		err = q.checkLimits(expr, lim)
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, q.limits.MaxQueryRange)
+	if maxQueryInterval != 0 {
+		err = q.checkLimits(expr, maxQueryInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -419,7 +419,7 @@ func (q *query) checkLimits(expr syntax.SampleExpr, limit time.Duration) error {
 			if e.Left == nil || e.Left.Interval <= limit {
 				return
 			}
-			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrRangeLimit, e.Left.Interval, limit)
+			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, e.Left.Interval, limit)
 		}
 	})
 	return err
