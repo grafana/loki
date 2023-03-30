@@ -254,7 +254,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 			if s.debug {
 				startTime := time.Now()
 				defer func() {
-					level.Debug(util_log.Logger).Log("msg", "get rates from ingester", "duration", time.Now().Sub(startTime), "ingester", c.addr)
+					level.Debug(util_log.Logger).Log("msg", "get rates from ingester", "duration", time.Since(startTime), "ingester", c.addr)
 				}()
 			}
 			ctx, cancel := context.WithTimeout(ctx, s.ingesterTimeout)
