@@ -264,6 +264,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:    r.Path,
 				StartTs: start,
 				EndTs:   end,
+				Query:   r.Query,
 			})
 		})
 	default:
