@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 // Context key type used to avoid collisions
@@ -22,6 +23,7 @@ const (
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type QueryLimits struct {
 	MaxQueryLength          model.Duration   `json:"maxQueryLength,omitempty"`
+	MaxQueryRange           model.Duration   `json:"maxQueryInterval,omitempty"`
 	MaxQueryLookback        model.Duration   `json:"maxQueryLookback,omitempty"`
 	MaxEntriesLimitPerQuery int              `json:"maxEntriesLimitPerQuery,omitempty"`
 	QueryTimeout            model.Duration   `json:"queryTimeout,omitempty"`
