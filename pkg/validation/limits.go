@@ -169,7 +169,7 @@ type Limits struct {
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
-	RequiredLabels       []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 }
 
