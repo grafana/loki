@@ -2277,6 +2277,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 30d1h]
 
+# Limit the length of the [range] inside a range query. Default is 0 or
+# unlimited
+# CLI flag: -querier.max-query-range
+[max_query_range: <duration> | default = 0s]
+
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 32]
