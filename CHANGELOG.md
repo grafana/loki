@@ -68,6 +68,7 @@
 * [8448](https://github.com/grafana/loki/pull/8665) **sandeepsukhani**: deletion: fix issue in processing delete requests with tsdb index
 * [8753](https://github.com/grafana/loki/pull/8753) **slim-bean** A zero value for retention_period will now disable retention.
 * [8732](https://github.com/grafana/loki/pull/8732) **abaguas**: azure: respect retry config before cancelling the context
+* [8959](https://github.com/grafana/loki/pull/8959) **periklis**: Align common instance_addr with memberlist advertise_addr
 
 ##### Changes
 
