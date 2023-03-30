@@ -3,6 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -443,6 +445,56 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestIndexStatsTripperware(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &logproto.IndexStatsRequest{
+		Matchers: `{job="varlogs"}`,
+		From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
+		Through:  model.TimeFromUnixNano(testTime.UnixNano()),
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	response := logproto.IndexStatsResponse{
+		Streams: 100,
+		Chunks:  200,
+		Bytes:   300,
+		Entries: 400,
+	}
+
+	count, h := indexStatsResult(response)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
+	// 2 queries
+	require.Equal(t, 2, *count)
+	require.NoError(t, err)
+	indexStatsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	res, ok := indexStatsResponse.(*IndexStatsResponse)
+	require.Equal(t, true, ok)
+
+	// make sure we return unique series since responses from
+	// SplitByInterval middleware might have duplicate series
+	require.Equal(t, response.Streams*2, res.Response.Streams)
+	require.Equal(t, response.Chunks*2, res.Response.Chunks)
+	require.Equal(t, response.Bytes*2, res.Response.Bytes)
+	require.Equal(t, response.Entries*2, res.Response.Entries)
+	require.NoError(t, err)
+}
+
 func TestLogNoFilter(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
@@ -561,6 +613,10 @@ func TestPostQueries(t *testing.T) {
 			t.Error("unexpected instant roundtripper called")
 			return nil, nil
 		}),
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected indexStats roundtripper called")
+			return nil, nil
+		}),
 		fakeLimits{},
 	).RoundTrip(req)
 	require.NoError(t, err)
@@ -653,6 +709,118 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 	}
 }
 
+func TestTripperware_RequiredNumberLabels(t *testing.T) {
+
+	const noErr = ""
+
+	for _, tc := range []struct {
+		desc                 string
+		query                string
+		requiredNumberLabels int
+		response             parser.Value
+		expectedError        string
+	}{
+		{
+			desc:                 "Log query - Limit disabled",
+			query:                `{foo="foo"}`,
+			requiredNumberLabels: 0,
+			expectedError:        noErr,
+			response:             streams,
+		},
+		{
+			desc:                 "Log query - Below limit",
+			query:                `{foo="foo"}`,
+			requiredNumberLabels: 2,
+			expectedError:        fmt.Sprintf(requiredNumberLabelsErrTmpl, "foo", 1, 2),
+			response:             nil,
+		},
+		{
+			desc:                 "Log query - On limit",
+			query:                `{foo="foo", bar="bar"}`,
+			requiredNumberLabels: 2,
+			expectedError:        noErr,
+			response:             streams,
+		},
+		{
+			desc:                 "Log query - Over limit",
+			query:                `{foo="foo", bar="bar", baz="baz"}`,
+			requiredNumberLabels: 2,
+			expectedError:        noErr,
+			response:             streams,
+		},
+		{
+			desc:                 "Metric query - Limit disabled",
+			query:                `count_over_time({foo="foo"} [1m])`,
+			requiredNumberLabels: 0,
+			expectedError:        noErr,
+			response:             vector,
+		},
+		{
+			desc:                 "Metric query - Below limit",
+			query:                `count_over_time({foo="foo"} [1m])`,
+			requiredNumberLabels: 2,
+			expectedError:        fmt.Sprintf(requiredNumberLabelsErrTmpl, "foo", 1, 2),
+			response:             nil,
+		},
+		{
+			desc:                 "Metric query - On limit",
+			query:                `count_over_time({foo="foo", bar="bar"} [1m])`,
+			requiredNumberLabels: 2,
+			expectedError:        noErr,
+			response:             vector,
+		},
+		{
+			desc:                 "Metric query - Over limit",
+			query:                `count_over_time({foo="foo", bar="bar", baz="baz"} [1m])`,
+			requiredNumberLabels: 2,
+			expectedError:        noErr,
+			response:             vector,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			limits := fakeLimits{
+				maxQueryParallelism:  1,
+				requiredNumberLabels: tc.requiredNumberLabels,
+			}
+			tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			if stopper != nil {
+				defer stopper.Stop()
+			}
+			require.NoError(t, err)
+
+			rt, err := newfakeRoundTripper()
+			require.NoError(t, err)
+			defer rt.Close()
+			_, h := promqlResult(tc.response)
+			rt.setHandler(h)
+
+			lreq := &LokiRequest{
+				Query:     tc.query,
+				Limit:     1000,
+				StartTs:   testTime.Add(-6 * time.Hour),
+				EndTs:     testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query_range",
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			req, err := LokiCodec.EncodeRequest(ctx, lreq)
+			require.NoError(t, err)
+
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+
+			_, err = tpw(rt).RoundTrip(req)
+			if tc.expectedError != noErr {
+				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, tc.expectedError), err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_getOperation(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -735,6 +903,7 @@ type fakeLimits struct {
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
+	requiredNumberLabels    int
 	maxQueryBytesRead       int
 	maxQuerierBytesRead     int
 }
@@ -799,6 +968,10 @@ func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.Blocke
 
 func (f fakeLimits) RequiredLabels(context.Context, string) []string {
 	return f.requiredLabels
+}
+
+func (f fakeLimits) RequiredNumberLabels(ctx context.Context, s string) int {
+	return f.requiredNumberLabels
 }
 
 func counter() (*int, http.Handler) {

@@ -2502,7 +2502,10 @@ shard_streams:
 [blocked_queries: <blocked_query...>]
 
 # Define a list of required selector labels.
-[required_label_matchers: <list of strings>]
+[required_labels: <list of strings>]
+
+# Minimum number of label matchers a query should contain.
+[minimum_labels_number: <int>]
 ```
 
 ### frontend_worker
@@ -4309,6 +4312,18 @@ backoff_config:
 # IAM Auth Endpoint for authentication.
 # CLI flag: -<prefix>.cos.auth-endpoint
 [auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
+
+# Compute resource token file path.
+# CLI flag: -<prefix>.cos.cr-token-file-path
+[cr_token_file_path: <string> | default = ""]
+
+# Name of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-name
+[trusted_profile_name: <string> | default = ""]
+
+# ID of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-id
+[trusted_profile_id: <string> | default = ""]
 ```
 
 ### local_storage_config

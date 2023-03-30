@@ -17,9 +17,6 @@
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_boltdb_shipper then 24 else super.index_period_hours,
     loki+: if self.using_boltdb_shipper then {
-      chunk_store_config+: {
-        write_dedupe_cache_config:: {},
-      },
       storage_config+: {
         boltdb_shipper+: {
           shared_store: $._config.boltdb_shipper_shared_store,
