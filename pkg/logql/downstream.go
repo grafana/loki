@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -210,6 +212,25 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	results, err := ev.Downstreamer.Downstream(ctx, queries)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, res := range results {
+		// TODO(owen-d/ewelch): Shard counts should be set by the querier
+		// so we don't have to do it in tricky ways in multiple places.
+		// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
+		// for another example
+		if res.Statistics.Summary.Shards == 0 {
+			res.Statistics.Summary.Shards = 1
+		}
+
+		stats.JoinResults(ctx, res.Statistics)
+	}
+
+	for _, res := range results {
+		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+			break
+		}
 	}
 
 	return results, nil

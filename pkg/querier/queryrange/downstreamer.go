@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -297,13 +297,6 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 }
 
 func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc logqlmodel.Result) error {
-	// Set a shard count to 1 which will allow the stats to correctly aggregate all the shards executed in the query.
-	acc.Statistics.Summary.Shards = 1
-	stats.JoinResults(ctx, acc.Statistics)
-	if err := metadata.JoinHeaders(ctx, acc.Headers); err != nil {
-		level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
-	}
-
 	// on first pass, determine which accumulator to use
 	if a.accumulatedStreams == nil && a.bufferedAccumulator == nil {
 		a.build(acc)
@@ -355,6 +348,9 @@ type accumulatedStreams struct {
 	labelmap     map[string]int
 	streams      []*logproto.Stream
 	order        logproto.Direction
+
+	stats   stats.Result        // for accumulating statistics from downstream requests
+	headers map[string][]string // for accumulating headers from downstream requests
 }
 
 func newStreamAccumulator(order logproto.Direction, limit int) *accumulatedStreams {
@@ -362,6 +358,8 @@ func newStreamAccumulator(order logproto.Direction, limit int) *accumulatedStrea
 		labelmap: make(map[string]int),
 		order:    order,
 		limit:    limit,
+
+		headers: make(map[string][]string),
 	}
 }
 
@@ -584,13 +582,38 @@ func (acc *accumulatedStreams) Result() logqlmodel.Result {
 		streams = append(streams, *s)
 	}
 
-	return logqlmodel.Result{
+	res := logqlmodel.Result{
 		// stats & headers are already aggregated in the context
-		Data: streams,
+		Data:       streams,
+		Statistics: acc.stats,
+		Headers:    make([]*definitions.PrometheusResponseHeader, 0, len(acc.headers)),
 	}
+
+	for name, vals := range acc.headers {
+		res.Headers = append(
+			res.Headers,
+			&definitions.PrometheusResponseHeader{
+				Name:   name,
+				Values: vals,
+			},
+		)
+	}
+
+	return res
 }
 
 func (acc *accumulatedStreams) Accumulate(x logqlmodel.Result) error {
+	// TODO(owen-d/ewelch): Shard counts should be set by the querier
+	// so we don't have to do it in tricky ways in multiple places.
+	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
+	// for another example.
+	if x.Statistics.Summary.Shards == 0 {
+		x.Statistics.Summary.Shards = 1
+	}
+
+	metadata.ExtendHeaders(acc.headers, x.Headers)
+	acc.stats.Merge(x.Statistics)
+
 	switch got := x.Data.(type) {
 	case logqlmodel.Streams:
 		for i := range got {
