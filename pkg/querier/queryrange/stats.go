@@ -175,7 +175,6 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				switch r := req.(type) {
 				case *LokiLabelNamesRequest:
 					data.label = getLabelNameFromLabelsQuery(r.Path)
-					data.match = []string{r.GetQuery()}
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}
