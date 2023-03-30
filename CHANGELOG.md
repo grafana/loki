@@ -11,6 +11,7 @@
 #### Promtail
 
 ##### Enhancements
+* [8953](https://github.com/grafana/loki/pull/8953) **dannykopping**: Querier: block queries by hash.
 * [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
 
 ## 2.8.0 (2023-03-??)
