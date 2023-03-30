@@ -650,3 +650,35 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		Point: promql.Point{V: 2},
 	}, res)
 }
+
+func TestFilterReodering(t *testing.T) {
+	t.Run("it makes sure line filters are as early in the pipeline stages as possible", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "foo" |= "next" | logfmt |="bar" |="baz" | line_format "{{.foo}}" |="1" |="2" | logfmt |="3"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 5)
+		require.Equal(t, `|= "foo" |= "next" |= "bar" |= "baz" | logfmt | line_format "{{.foo}}" |= "1" |= "2" |= "3" | logfmt`, MultiStageExpr(stages).String())
+	})
+}
+
+var result bool
+
+func BenchmarkReorderedPipeline(b *testing.B) {
+	logfmtLine := []byte(`level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`)
+
+	logExpr := `{container_name="app"} | logfmt |= "slow"`
+	l, err := ParseLogSelector(logExpr, true)
+	require.NoError(b, err)
+
+	p, err := l.Pipeline()
+	require.NoError(b, err)
+
+	sp := p.ForStream(labels.Labels{})
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_, _, result = sp.Process(0, logfmtLine)
+	}
+}

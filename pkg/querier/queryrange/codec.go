@@ -187,10 +187,6 @@ func (r *LokiLabelNamesRequest) WithQuery(query string) queryrangebase.Request {
 	return &new
 }
 
-func (r *LokiLabelNamesRequest) GetQuery() string {
-	return ""
-}
-
 func (r *LokiLabelNamesRequest) GetStep() int64 {
 	return 0
 }
@@ -260,6 +256,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			StartTs: *req.Start,
 			EndTs:   *req.End,
 			Path:    r.URL.Path,
+			Query:   req.Query,
 		}, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
@@ -346,6 +343,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"query": []string{request.GetQuery()},
 		}
 
 		u := &url.URL{

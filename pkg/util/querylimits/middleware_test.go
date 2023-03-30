@@ -33,6 +33,7 @@ func Test_MiddlewareWithHeader(t *testing.T) {
 		model.Duration(1 * time.Second),
 		[]string{"foo", "bar"},
 		10,
+		10,
 	}
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
