@@ -148,7 +148,6 @@ FindQueue:
 			}
 
 			q.metrics.queueLength.WithLabelValues(tenant).Dec()
-			q.metrics.dequeueCount.WithLabelValues(tenant, querierID).Inc()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
