@@ -610,9 +610,8 @@ func (acc *accumulatedStreams) Accumulate(x logqlmodel.Result) error {
 	if x.Statistics.Summary.Shards == 0 {
 		x.Statistics.Summary.Shards = 1
 	}
-
-	metadata.ExtendHeaders(acc.headers, x.Headers)
 	acc.stats.Merge(x.Statistics)
+	metadata.ExtendHeaders(acc.headers, x.Headers)
 
 	switch got := x.Data.(type) {
 	case logqlmodel.Streams:

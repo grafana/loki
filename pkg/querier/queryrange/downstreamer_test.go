@@ -556,6 +556,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 
 			got, ok := acc.Result()[0].Data.(logqlmodel.Streams)
 			require.Equal(t, true, ok)
+			require.Equal(t, int64(nQueries), acc.Result()[0].Statistics.Summary.Shards)
 
 			// each stream should have the top 3 entries
 			for i := 0; i < streamsPerQuery; i++ {
