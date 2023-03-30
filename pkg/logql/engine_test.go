@@ -2411,7 +2411,7 @@ func TestEngine_MaxSeries(t *testing.T) {
 }
 
 func TestEngine_MaxRangeInterval(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{rangeLimit: 24 * time.Hour}, log.NewNopLogger())
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{rangeLimit: 24 * time.Hour, maxSeries: 100000}, log.NewNopLogger())
 
 	for _, test := range []struct {
 		qs             string
