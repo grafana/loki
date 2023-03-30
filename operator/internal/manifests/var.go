@@ -41,6 +41,7 @@ const (
 	configVolumeName       = "config"
 	rulesStorageVolumeName = "rules"
 	storageVolumeName      = "storage"
+	rulePartsSeparator     = "___"
 
 	walDirectory          = "/tmp/wal"
 	dataDirectory         = "/tmp/loki"
@@ -180,9 +181,14 @@ func RulerName(stackName string) string {
 	return fmt.Sprintf("%s-ruler", stackName)
 }
 
-// RulesConfigMapName is the name of the alerting rules configmap
+// RulesConfigMapName is the name of the alerting/recording rules configmap
 func RulesConfigMapName(stackName string) string {
 	return fmt.Sprintf("%s-rules", stackName)
+}
+
+// RulesStorageVolumeName is the name of the rules volume
+func RulesStorageVolumeName() string {
+	return rulesStorageVolumeName
 }
 
 // GatewayName is the name of the lokiStack-gateway statefulset

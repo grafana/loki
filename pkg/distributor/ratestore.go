@@ -229,7 +229,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 
 		resp, err := c.client.GetStreamRates(ctx, &logproto.StreamRatesRequest{})
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to get stream rates", "err", err)
+			level.Error(util_log.Logger).Log("msg", "unable to get stream rates from ingester", "ingester", c.addr, "err", err)
 			s.metrics.rateRefreshFailures.WithLabelValues(c.addr).Inc()
 		}
 

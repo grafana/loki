@@ -2,12 +2,12 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 )
 
@@ -58,16 +58,14 @@ type RequestQueue struct {
 	queues  *tenantQueues
 	stopped bool
 
-	queueLength       *prometheus.GaugeVec   // Per tenant and reason.
-	discardedRequests *prometheus.CounterVec // Per tenant.
+	metrics *Metrics
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
-		queueLength:             queueLength,
-		discardedRequests:       discardedRequests,
+		metrics:                 metrics,
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -95,9 +93,24 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return errors.New("no queue found")
 	}
 
+	// Optimistically increase queue counter for tenant instead of doing separate
+	// get and set operations, because _most_ of the time the increased value is
+	// smaller than the max queue length.
+	// We need to keep track of queue length separately because the size of the
+	// buffered channel is the same across all sub-queues which would allow
+	// enqueuing more items than there are allowed at tenant level.
+	queueLen := q.queues.perUserQueueLen.Inc(tenant)
+	if queueLen > q.queues.maxUserQueueSize {
+		q.metrics.discardedRequests.WithLabelValues(tenant).Inc()
+		// decrement, because we already optimistically increased the counter
+		q.queues.perUserQueueLen.Dec(tenant)
+		return ErrTooManyRequests
+	}
+
 	select {
 	case queue.Chan() <- req:
-		q.queueLength.WithLabelValues(tenant).Inc()
+		q.metrics.queueLength.WithLabelValues(tenant).Inc()
+		q.metrics.enqueueCount.WithLabelValues(tenant, fmt.Sprint(len(path))).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 		if successFn != nil {
@@ -105,7 +118,9 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		}
 		return nil
 	default:
-		q.discardedRequests.WithLabelValues(tenant).Inc()
+		q.metrics.discardedRequests.WithLabelValues(tenant).Inc()
+		// decrement, because we already optimistically increased the counter
+		q.queues.perUserQueueLen.Dec(tenant)
 		return ErrTooManyRequests
 	}
 }
@@ -148,7 +163,8 @@ FindQueue:
 				q.queues.deleteQueue(tenant)
 			}
 
-			q.queueLength.WithLabelValues(tenant).Dec()
+			q.queues.perUserQueueLen.Dec(tenant)
+			q.metrics.queueLength.WithLabelValues(tenant).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()

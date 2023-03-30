@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -683,6 +684,20 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Data:       names,
 			Statistics: mergedStats,
 		}, nil
+	case *IndexStatsResponse:
+		headers := responses[0].(*IndexStatsResponse).Headers
+		stats := make([]*indexStats.Stats, len(responses))
+		for i, res := range responses {
+			stats[i] = res.(*IndexStatsResponse).Response
+		}
+
+		mergedIndexStats := indexStats.MergeStats(stats...)
+
+		return &IndexStatsResponse{
+			Response: &mergedIndexStats,
+			Headers:  headers,
+		}, nil
+
 	default:
 		return nil, errors.New("unknown response in merging responses")
 	}
