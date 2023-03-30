@@ -327,6 +327,9 @@ func TestInstanceDownstream(t *testing.T) {
 			Data: LokiData{
 				Result: []logproto.Stream{{
 					Labels: `{foo="bar"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 0), Line: "foo"},
+					},
 				}},
 			},
 			Statistics: stats.Result{

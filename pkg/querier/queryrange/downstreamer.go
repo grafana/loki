@@ -264,7 +264,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 // over the limit to keep memory pressure down while other subqueries
 // are executing.
 type downstreamAccumulator struct {
-	*logsAccumulator
+	*accumulatedStreams
 	*bufferedAccumulator
 	params logql.Params
 	n      int // number of queries, used to build slice size
@@ -284,9 +284,8 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 			direction = logproto.BACKWARD
 		}
 
-		a.logsAccumulator = &logsAccumulator{
-			accumulatedStreams: newStreamAccumulator(direction, int(a.params.Limit())),
-		}
+		a.accumulatedStreams = newStreamAccumulator(direction, int(a.params.Limit()))
+
 	} else {
 		a.bufferedAccumulator = &bufferedAccumulator{
 			results: make([]logqlmodel.Result, a.n),
@@ -304,47 +303,22 @@ func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc l
 	}
 
 	// on first pass, determine which accumulator to use
-	if a.logsAccumulator == nil && a.bufferedAccumulator == nil {
+	if a.accumulatedStreams == nil && a.bufferedAccumulator == nil {
 		a.build(acc)
 	}
 
-	if a.logsAccumulator != nil {
-		return a.logsAccumulator.Accumulate(acc)
+	if a.accumulatedStreams != nil {
+		return a.accumulatedStreams.Accumulate(acc)
 	} else {
 		return a.bufferedAccumulator.Accumulate(acc, index)
 	}
 }
 
 func (a *downstreamAccumulator) Result() []logqlmodel.Result {
-	if a.logsAccumulator != nil {
-		return []logqlmodel.Result{a.logsAccumulator.Result()}
+	if a.accumulatedStreams != nil {
+		return []logqlmodel.Result{a.accumulatedStreams.Result()}
 	}
 	return a.bufferedAccumulator.Result()
-}
-
-type logsAccumulator struct {
-	accumulatedStreams *accumulatedStreams
-}
-
-func (a *logsAccumulator) merge(s logqlmodel.Streams) {
-	for i := range s {
-		x := s[i]
-		a.accumulatedStreams.Push(&x)
-	}
-}
-
-func (a *logsAccumulator) Accumulate(acc logqlmodel.Result) error {
-	switch got := acc.Data.(type) {
-	case logqlmodel.Streams:
-		a.merge(got)
-	default:
-		return fmt.Errorf("unexpected response type during response result accumulation. Got (%T), wanted %s", got, logqlmodel.ValueTypeStreams)
-	}
-	return nil
-}
-
-func (a *logsAccumulator) Result() logqlmodel.Result {
-	return a.accumulatedStreams.Result()
 }
 
 type bufferedAccumulator struct {
@@ -613,4 +587,16 @@ func (acc *accumulatedStreams) Result() logqlmodel.Result {
 		// stats & headers are already aggregated in the context
 		Data: streams,
 	}
+}
+
+func (acc *accumulatedStreams) Accumulate(x logqlmodel.Result) error {
+	switch got := x.Data.(type) {
+	case logqlmodel.Streams:
+		for i := range got {
+			acc.Push(&got[i])
+		}
+	default:
+		return fmt.Errorf("unexpected response type during response result accumulation. Got (%T), wanted %s", got, logqlmodel.ValueTypeStreams)
+	}
+	return nil
 }
