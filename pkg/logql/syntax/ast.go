@@ -285,13 +285,14 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 }
 
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
+	right.Ty = left.Ty
+
 	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
 		left.Or = right
 		return left
 	}
 
 	// !(left or right) == (!left and !right).
-	right.Ty = left.Ty
 	return newNestedLineFilterExpr(left, right)
 }
 

@@ -408,6 +408,25 @@ func Test_FilterMatcher(t *testing.T) {
 	}
 }
 
+func TestOrLineFilterTypes(t *testing.T) {
+	for _, tt := range []struct {
+		ty labels.MatchType
+	}{
+		{labels.MatchEqual},
+		{labels.MatchNotEqual},
+		{labels.MatchRegexp},
+		{labels.MatchNotRegexp},
+	} {
+		t.Run("right inherits left's type", func(t *testing.T) {
+			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
+			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+
+			_ = newOrLineFilter(left, right)
+			require.Equal(t, tt.ty, right.Ty)
+		})
+	}
+}
+
 func TestStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  string
