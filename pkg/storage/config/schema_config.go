@@ -22,6 +22,7 @@ import (
 const (
 	// Supported storage clients
 
+	StorageTypeAlibabaCloud   = "alibabacloud"
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
@@ -39,6 +40,7 @@ const (
 	StorageTypeLocal          = "local"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
+	StorageTypeCOS            = "cos"
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
 	TSDBType          = "tsdb"

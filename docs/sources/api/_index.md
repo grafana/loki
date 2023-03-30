@@ -483,6 +483,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
+- `query`: A set of log stream selector that selects the streams to match and return label values for `<name>`. Example: `{"app": "myapp", "environment": "dev"}`
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -620,6 +621,17 @@ POST /flush
 backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
+
+### Tell ingester to release all resources on next SIGTERM
+
+```
+POST /ingester/prepare_shutdown
+```
+
+`/ingester/prepare_shutdown` will prepare the ingester to release resources on the next SIGTERM signal,
+where releasing resources means flushing data and unregistering from the ingester ring.
+This endpoint supersedes any YAML configurations and isn't necessary if the ingester is already
+configured to unregister from the ring or to flush on shutdown.
 
 ## Flush in-memory chunks and shut down
 

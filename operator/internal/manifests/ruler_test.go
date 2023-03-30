@@ -109,7 +109,7 @@ func TestNewRulerStatefulSet_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T) {
-	sts := manifests.NewRulerStatefulSet(manifests.Options{
+	opts := manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -122,23 +122,50 @@ func TestNewRulerStatefulSet_MountsRulesInPerTenantIDSubDirectories(t *testing.T
 		},
 		Tenants: manifests.Tenants{
 			Configs: map[string]manifests.TenantConfig{
-				"tenant-a": {RuleFiles: []string{"rule-a-alerts.yaml", "rule-b-recs.yaml"}},
-				"tenant-b": {RuleFiles: []string{"rule-a-alerts.yaml", "rule-b-recs.yaml"}},
+				"tenant-a": {RuleFiles: []string{"test-rules-0___tenant-a___rule-a-alerts.yaml", "test-rules-0___tenant-a___rule-b-recs.yaml"}},
+				"tenant-b": {RuleFiles: []string{"test-rules-0___tenant-b___rule-a-alerts.yaml", "test-rules-0___tenant-b___rule-b-recs.yaml"}},
 			},
 		},
-	})
+		RulesConfigMapNames: []string{"config"},
+	}
+	sts := manifests.NewRulerStatefulSet(opts)
 
 	vs := sts.Spec.Template.Spec.Volumes
 
-	var (
-		volumeNames []string
-		volumeItems []corev1.KeyToPath
-	)
+	var volumeNames []string
 	for _, v := range vs {
 		volumeNames = append(volumeNames, v.Name)
-		volumeItems = append(volumeItems, v.ConfigMap.Items...)
 	}
 
 	require.NotEmpty(t, volumeNames)
-	require.NotEmpty(t, volumeItems)
+}
+
+func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
+	// Create a large config map which will be split into 2 shards
+	opts := testOptions_withSharding()
+	rulesCMShards, err := manifests.RulesConfigMapShards(opts)
+	require.NoError(t, err)
+	require.NotNil(t, rulesCMShards)
+	require.Len(t, rulesCMShards, 2)
+
+	for _, shard := range rulesCMShards {
+		opts.RulesConfigMapNames = append(opts.RulesConfigMapNames, shard.Name)
+	}
+
+	// Create the Ruler StatefulSet and mount the ConfigMap shards into the Ruler pod
+	sts := manifests.NewRulerStatefulSet(*opts)
+
+	vs := sts.Spec.Template.Spec.Volumes
+
+	var volumeNames []string
+	var volumeProjections []corev1.VolumeProjection
+	for _, v := range vs {
+		volumeNames = append(volumeNames, v.Name)
+		if v.Name == manifests.RulesStorageVolumeName() {
+			volumeProjections = append(volumeProjections, v.Projected.Sources...)
+		}
+	}
+
+	require.Len(t, volumeNames, 2)
+	require.Len(t, volumeProjections, 2)
 }

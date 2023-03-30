@@ -194,6 +194,9 @@ resuming the target without skipping logs.
 
 Read the [configuration]({{< relref "configuration#windows_events" >}}) section for more information.
 
+See the [eventlogmessage]({{<relref "stages/eventlogmessage/">}}) stage for extracting
+data from the `message`.
+
 ## GCP Log scraping
 
 Promtail supports scraping cloud resource logs such as GCS bucket logs, load balancer logs, and Kubernetes cluster logs from GCP.
@@ -342,6 +345,31 @@ For sending messages via UDP:
 *.* action(type="omfwd" protocol="udp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format")
 ```
 
+## Azure Event Hubs
+
+Promtail supports reading messages from Azure Event Hubs.
+Targets can be configured using the `azure_event_hubs` stanza:
+
+```yaml
+- job_name: azure_event_hubs
+  azure_event_hubs:
+    group_id: "mygroup"
+    fully_qualified_namespace: my-namespace.servicebus.windows.net:9093
+    connection_string: "my-connection-string"
+    event_hubs:
+      - event-hub-name
+    labels:
+      job: azure_event_hub
+  relabel_configs:
+    - action: replace
+      source_labels:
+        - __azure_event_hubs_category
+      target_label: category
+```
+
+Only `fully_qualified_namespace`, `connection_string` and `event_hubs` are required fields.
+Read the [configuration]({{< relref "../../configuration/#azure-event-hubs" >}}) section for more information.
+
 ## Kafka
 
 Promtail supports reading message from Kafka using a consumer group.
@@ -379,7 +407,8 @@ scrape_configs:
 ```
 
 Only the `brokers` and `topics` are required.
-Read the [configuration]({{< relref "configuration#kafka" >}}) section for more information.
+Read the [configuration]({{< relref "configuration/#kafka" >}}) section for more information.
+
 
 ## GELF
 

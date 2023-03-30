@@ -22,7 +22,7 @@ To deploy a different version change `variable.version` default value or specify
 from command line:
 
 ```shell
-nomad job run -var="version=2.7.2" job.nomad.hcl
+nomad job run -var="version=2.7.5" job.nomad.hcl
 ```
 
 ### Scale Loki

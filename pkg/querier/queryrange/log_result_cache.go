@@ -89,7 +89,8 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return l.next.Do(ctx, req)
 	}
 
-	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, l.limits.MaxCacheFreshness)
+	cacheFreshnessCapture := func(id string) time.Duration { return l.limits.MaxCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if req.GetEnd() > maxCacheTime {
 		return l.next.Do(ctx, req)

@@ -24,10 +24,12 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
@@ -201,6 +203,11 @@ var (
 			Desc:       "The azure_storage_config block configures the connection to Azure object storage backend.",
 		},
 		{
+			Name:       "alibabacloud_storage_config",
+			StructType: reflect.TypeOf(alibaba.OssConfig{}),
+			Desc:       "The alibabacloud_storage_config block configures the connection to Alibaba Cloud Storage object storage backend.",
+		},
+		{
 			Name:       "gcs_storage_config",
 			StructType: reflect.TypeOf(gcp.GCSConfig{}),
 			Desc:       "The gcs_storage_config block configures the connection to Google Cloud Storage object storage backend.",
@@ -219,6 +226,11 @@ var (
 			Name:       "swift_storage_config",
 			StructType: reflect.TypeOf(openstack.SwiftConfig{}),
 			Desc:       "The swift_storage_config block configures the connection to OpenStack Object Storage (Swift) object storage backend.",
+		},
+		{
+			Name:       "cos_storage_config",
+			StructType: reflect.TypeOf(ibmcloud.COSConfig{}),
+			Desc:       "The cos_storage_config block configures the connection to IBM Cloud Object Storage (COS) backend.",
 		},
 		{
 			Name:       "local_storage_config",

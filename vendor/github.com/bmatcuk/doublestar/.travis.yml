@@ -1,8 +1,13 @@
 language: go
 
 go:
-  - 1.11
   - 1.12
+  - 1.13
+  - 1.14
+
+os:
+  - linux
+  - windows
 
 before_install:
   - go get -t -v ./...

@@ -21,6 +21,7 @@ import (
 	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/pool"
@@ -124,15 +125,15 @@ func decodeCheckpointRecord(rec []byte, s *Series) error {
 	cpy := make([]byte, len(rec))
 	copy(cpy, rec)
 
-	switch RecordType(cpy[0]) {
-	case CheckpointRecord:
+	switch wal.RecordType(cpy[0]) {
+	case wal.CheckpointRecord:
 		return proto.Unmarshal(cpy[1:], s)
 	default:
 		return errors.Errorf("unexpected record type: %d", rec[0])
 	}
 }
 
-func encodeWithTypeHeader(m *Series, typ RecordType, buf []byte) ([]byte, error) {
+func encodeWithTypeHeader(m *Series, typ wal.RecordType, buf []byte) ([]byte, error) {
 	size := m.Size()
 	if cap(buf) < size+1 {
 		buf = make([]byte, size+1)
@@ -370,7 +371,7 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 	size := s.Size() + 1 // +1 for header
 	buf := recordBufferPool.Get(size).([]byte)[:size]
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord, buf)
+	b, err := encodeWithTypeHeader(s, wal.CheckpointRecord, buf)
 	if err != nil {
 		return err
 	}

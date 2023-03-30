@@ -47,7 +47,7 @@ jobs:
          ( IFS=$','; echo "${TAGS[*]}" )
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v2
+       uses: docker/build-push-action@v4
        with:
          context: ./operator
          push: true
@@ -85,10 +85,10 @@ jobs:
          ( IFS=$','; echo "${TAGS[*]}" )
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v2
+       uses: docker/build-push-action@v4
        with:
-         context: ./operator
-         file: ./operator/bundle.Dockerfile
+         context: ./operator/bundle/openshift
+         file: ./operator/bundle/openshift/bundle.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
 
@@ -124,7 +124,7 @@ jobs:
          ( IFS=$','; echo "${TAGS[*]}" )
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v2
+       uses: docker/build-push-action@v4
        with:
          context: ./operator
          file: ./operator/calculator.Dockerfile

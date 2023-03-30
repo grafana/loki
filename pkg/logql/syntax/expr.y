@@ -53,9 +53,12 @@ import (
   LabelFormatExpr         *LabelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
-  JSONExpressionParser    *JSONExpressionParser
-  JSONExpression          log.JSONExpression
-  JSONExpressionList      []log.JSONExpression
+
+  LabelExtractionExpression     log.LabelExtractionExpr
+  LabelExtractionExpressionList []log.LabelExtractionExpr
+  JSONExpressionParser          *JSONExpressionParser
+  LogfmtExpressionParser        *LogfmtExpressionParser
+
   UnwrapExpr              *UnwrapExpr
   DecolorizeExpr          *DecolorizeExpr
   OffsetExpr              *OffsetExpr
@@ -107,9 +110,10 @@ import (
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
-%type <JSONExpressionParser>  jsonExpressionParser
-%type <JSONExpression>        jsonExpression
-%type <JSONExpressionList>    jsonExpressionList
+%type <LabelExtractionExpression>        labelExtractionExpression
+%type <LabelExtractionExpressionList>    labelExtractionExpressionList
+%type <LogfmtExpressionParser>           logfmtExpressionParser
+%type <JSONExpressionParser>             jsonExpressionParser
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
 %type <IPLabelFilter>         ipLabelFilter
@@ -256,6 +260,7 @@ pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
+  | PIPE logfmtExpressionParser  { $$ = $2 }
   | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE decolorizeExpr          { $$ = $2 }
@@ -286,7 +291,10 @@ labelParser:
   ;
 
 jsonExpressionParser:
-    JSON jsonExpressionList { $$ = newJSONExpressionParser($2) }
+    JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
+  
+logfmtExpressionParser:
+    LOGFMT labelExtractionExpressionList { $$ = newLogfmtExpressionParser($2)}
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
@@ -318,13 +326,13 @@ labelFilter:
     | labelFilter OR labelFilter                     { $$ = log.NewOrLabelFilter($1, $3 ) }
     ;
 
-jsonExpression:
-    IDENTIFIER EQ STRING { $$ = log.NewJSONExpr($1, $3) }
-  | IDENTIFIER { $$ = log.NewJSONExpr($1, $1) }
+labelExtractionExpression:
+    IDENTIFIER EQ STRING { $$ = log.NewLabelExtractionExpr($1, $3) }
+  | IDENTIFIER           { $$ = log.NewLabelExtractionExpr($1, $1) }
 
-jsonExpressionList:
-    jsonExpression                          { $$ = []log.JSONExpression{$1} }
-  | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
+labelExtractionExpressionList:
+    labelExtractionExpression                                     { $$ = []log.LabelExtractionExpr{$1} }
+  | labelExtractionExpressionList COMMA labelExtractionExpression { $$ = append($1, $3) }
   ;
 
 ipLabelFilter:

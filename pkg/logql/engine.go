@@ -99,7 +99,7 @@ func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return expr.Selector(), nil
+	return expr.Selector()
 }
 
 // Querier allows a LogQL expression to fetch an EntryIterator for a
@@ -262,8 +262,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	tenants, _ := tenant.TenantIDs(ctx)
-	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
-
+	timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
@@ -299,7 +299,7 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	blocker := newQueryBlocker(ctx, q)
 
 	for _, tenant := range tenants {
-		if blocker.isBlocked(tenant) {
+		if blocker.isBlocked(ctx, tenant) {
 			QueriesBlocked.WithLabelValues(tenant).Inc()
 			return true
 		}
@@ -322,7 +322,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, q.limits.MaxQueryRange)
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, maxIntervalCapture)
 	if maxQueryInterval != 0 {
 		err = q.checkLimits(expr, maxQueryInterval)
 		if err != nil {
@@ -341,7 +342,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
@@ -426,9 +428,13 @@ func (q *query) checkLimits(expr syntax.SampleExpr, limit time.Duration) error {
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql_parser.Value, error) {
+	value, err := expr.Value()
+	if err != nil {
+		return nil, err
+	}
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
-		V: expr.Value(),
+		V: value,
 	}
 
 	if GetRangeType(q.params) == InstantType {
@@ -449,7 +455,10 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 	}
 
 	if GetRangeType(q.params) == InstantType {
-		return s, nil
+		return promql.Vector{promql.Sample{
+			Point:  promql.Point{T: q.params.Start().UnixMilli(), V: value},
+			Metric: labels.Labels{},
+		}}, nil
 	}
 
 	return PopulateMatrixFromScalar(s, q.params), nil

@@ -234,13 +234,7 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) error {
 	if existing.CreationTimestamp.IsZero() {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
-	existing.Spec.PodManagementPolicy = desired.Spec.PodManagementPolicy
 	existing.Spec.Replicas = desired.Spec.Replicas
-	for i := range existing.Spec.VolumeClaimTemplates {
-		existing.Spec.VolumeClaimTemplates[i].TypeMeta = desired.Spec.VolumeClaimTemplates[i].TypeMeta
-		existing.Spec.VolumeClaimTemplates[i].ObjectMeta = desired.Spec.VolumeClaimTemplates[i].ObjectMeta
-		existing.Spec.VolumeClaimTemplates[i].Spec = desired.Spec.VolumeClaimTemplates[i].Spec
-	}
 	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
 		return err
 	}

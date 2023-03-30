@@ -2,7 +2,6 @@ package targets
 
 import (
 	"fmt"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -11,6 +10,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/azureeventhubs"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
@@ -27,18 +27,19 @@ import (
 )
 
 const (
-	FileScrapeConfigs    = "fileScrapeConfigs"
-	JournalScrapeConfigs = "journalScrapeConfigs"
-	SyslogScrapeConfigs  = "syslogScrapeConfigs"
-	GcplogScrapeConfigs  = "gcplogScrapeConfigs"
-	PushScrapeConfigs    = "pushScrapeConfigs"
-	WindowsEventsConfigs = "windowsEventsConfigs"
-	KafkaConfigs         = "kafkaConfigs"
-	GelfConfigs          = "gelfConfigs"
-	CloudflareConfigs    = "cloudflareConfigs"
-	DockerConfigs        = "dockerConfigs"
-	DockerSDConfigs      = "dockerSDConfigs"
-	HerokuDrainConfigs   = "herokuDrainConfigs"
+	FileScrapeConfigs           = "fileScrapeConfigs"
+	JournalScrapeConfigs        = "journalScrapeConfigs"
+	SyslogScrapeConfigs         = "syslogScrapeConfigs"
+	GcplogScrapeConfigs         = "gcplogScrapeConfigs"
+	PushScrapeConfigs           = "pushScrapeConfigs"
+	WindowsEventsConfigs        = "windowsEventsConfigs"
+	KafkaConfigs                = "kafkaConfigs"
+	GelfConfigs                 = "gelfConfigs"
+	CloudflareConfigs           = "cloudflareConfigs"
+	DockerConfigs               = "dockerConfigs"
+	DockerSDConfigs             = "dockerSDConfigs"
+	HerokuDrainConfigs          = "herokuDrainConfigs"
+	AzureEventHubsScrapeConfigs = "azureeventhubsScrapeConfigs"
 )
 
 var (
@@ -103,6 +104,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
 		case cfg.KafkaConfig != nil:
 			targetScrapeConfigs[KafkaConfigs] = append(targetScrapeConfigs[KafkaConfigs], cfg)
+		case cfg.AzureEventHubsConfig != nil:
+			targetScrapeConfigs[AzureEventHubsScrapeConfigs] = append(targetScrapeConfigs[AzureEventHubsScrapeConfigs], cfg)
 		case cfg.GelfConfig != nil:
 			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
 		case cfg.CloudflareConfig != nil:
@@ -209,7 +212,7 @@ func NewTargetManagers(
 				scrapeConfigs,
 			)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make syslog target manager")
+				return nil, errors.Wrap(err, "failed to make gcplog target manager")
 			}
 			targetManagers = append(targetManagers, pubsubTargetManager)
 		case PushScrapeConfigs:
@@ -241,6 +244,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make kafka target manager")
 			}
 			targetManagers = append(targetManagers, kafkaTargetManager)
+		case AzureEventHubsScrapeConfigs:
+			azureEventHubsTargetManager, err := azureeventhubs.NewTargetManager(reg, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Azure Event Hubs target manager")
+			}
+			targetManagers = append(targetManagers, azureEventHubsTargetManager)
 		case GelfConfigs:
 			gelfTargetManager, err := gelf.NewTargetManager(gelfMetrics, logger, client, scrapeConfigs)
 			if err != nil {

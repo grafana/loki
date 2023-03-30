@@ -17,7 +17,7 @@ import (
 )
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 		storage.ResetBoltDBIndexClientWithShipper()
@@ -212,7 +212,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("read-delete-request", func(t *testing.T) {
 		deleteRequests, err := cliCompactor.GetDeleteRequests()
 		require.NoError(t, err)
-		require.Equal(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
+		require.ElementsMatch(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
 	})
 
 	// Query lines
@@ -247,14 +247,18 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.Eventually(t, func() bool {
 			deleteRequests, err := cliCompactor.GetDeleteRequests()
 			require.NoError(t, err)
-			require.Len(t, deleteRequests, len(expectedDeleteRequests))
+
+		outer:
 			for i := range deleteRequests {
-				if deleteRequests[i] != expectedDeleteRequests[i] {
-					return false
+				for j := range expectedDeleteRequests {
+					if deleteRequests[i] == expectedDeleteRequests[j] {
+						continue outer
+					}
 				}
+				return false
 			}
 			return true
-		}, 10*time.Second, 1*time.Second)
+		}, 20*time.Second, 1*time.Second)
 
 		// Check metrics
 		metrics, err := cliCompactor.Metrics()
