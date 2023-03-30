@@ -35,6 +35,8 @@ overrides:
         types: filter,limited
 ```
 
+NOTE: changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file]({{<relref "../configuration/#runtime-configuration-file">}}).
+
 The available query types are:
 
 - `metric`: a query with an aggregation, e.g. `sum(rate({env="prod"}[1m]))`
