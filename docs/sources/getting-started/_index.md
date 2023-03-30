@@ -36,6 +36,10 @@ The test environment uses Docker compose to instantiate these parts, each in its
 - [Docker](https://docs.docker.com/install)
 - [Docker Compose](https://docs.docker.com/compose/install)
 
+## Note
+The instruction only cover for system running on x86_64 architecture.
+It is not designed for arm/arm64 architecture.
+
 ## Obtain the test environment
 
 1. Create a directory called `evaluate-loki` for the test environment. Make `evaluate-loki` your current working directory:
