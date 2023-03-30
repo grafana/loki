@@ -215,6 +215,7 @@ func (e *PipelineExpr) HasFilter() bool {
 
 type LineFilterExpr struct {
 	Left  *LineFilterExpr
+	Or    *LineFilterExpr
 	Ty    labels.MatchType
 	Match string
 	Op    string
@@ -227,6 +228,17 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 		Match: match,
 		Op:    op,
 	}
+}
+
+func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
+	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
+		left.Or = right
+		return left
+	}
+
+	// !(left or right) == (!left and !right).
+	right.Ty = left.Ty
+	return newNestedLineFilterExpr(left, right)
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
@@ -302,10 +314,17 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 			}
 			acc = append(acc, next)
 		default:
-			next, err := log.NewFilter(curr.Match, curr.Ty)
+			var next log.Filterer
+			var err error
+			if curr.Or != nil {
+				next, err = newOrFilter(curr)
+			} else {
+				next, err = log.NewFilter(curr.Match, curr.Ty)
+			}
 			if err != nil {
 				return nil, err
 			}
+
 			acc = append(acc, next)
 		}
 	}
@@ -321,6 +340,23 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	}
 
 	return log.NewAndFilters(acc), nil
+}
+
+func newOrFilter(f *LineFilterExpr) (log.Filterer, error) {
+	orFilter, err := log.NewFilter(f.Match, f.Ty)
+	if err != nil {
+		return nil, err
+	}
+
+	for or := f.Or; or != nil; or = or.Or {
+		filter, err := log.NewFilter(or.Match, or.Ty)
+		if err != nil {
+			return nil, err
+		}
+		orFilter = log.ChainOrFilter(orFilter, filter)
+	}
+
+	return orFilter, nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {

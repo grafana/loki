@@ -67,12 +67,12 @@ func (n notFilter) ToStage() Stage {
 	}
 }
 
-// newNotFilter creates a new filter which matches only if the base filter doesn't match.
+// NewNotFilter creates a new filter which matches only if the base filter doesn't match.
 // If the base filter is a `or` it will recursively simplify with `and` operations.
-func newNotFilter(base Filterer) Filterer {
+func NewNotFilter(base Filterer) Filterer {
 	// not(a|b) = not(a) and not(b) , and operation can't benefit from this optimization because both legs always needs to be executed.
 	if or, ok := base.(orFilter); ok {
-		return NewAndFilter(newNotFilter(or.left), newNotFilter(or.right))
+		return NewAndFilter(NewNotFilter(or.left), NewNotFilter(or.right))
 	}
 	return notFilter{Filterer: base}
 }
@@ -209,8 +209,8 @@ func newOrFilter(left Filterer, right Filterer) Filterer {
 	}
 }
 
-// chainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
-func chainOrFilter(curr, new Filterer) Filterer {
+// ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
+func ChainOrFilter(curr, new Filterer) Filterer {
 	if curr == nil {
 		return new
 	}
@@ -244,7 +244,7 @@ func newRegexpFilter(re string, match bool) (Filterer, error) {
 	if match {
 		return f, nil
 	}
-	return newNotFilter(f), nil
+	return NewNotFilter(f), nil
 }
 
 func (r regexpFilter) Filter(line []byte) bool {
@@ -409,7 +409,7 @@ func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
 	case labels.MatchEqual:
 		return newContainsFilter([]byte(match), false), nil
 	case labels.MatchNotEqual:
-		return newNotFilter(newContainsFilter([]byte(match), false)), nil
+		return NewNotFilter(newContainsFilter([]byte(match), false)), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -425,7 +425,7 @@ func NewLabelFilter(match string, mt labels.MatchType) (Filterer, error) {
 	case labels.MatchEqual:
 		return newEqualFilter([]byte(match), false), nil
 	case labels.MatchNotEqual:
-		return newNotFilter(newEqualFilter([]byte(match), false)), nil
+		return NewNotFilter(newEqualFilter([]byte(match), false)), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -455,7 +455,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 	if match {
 		return f, nil
 	}
-	return newNotFilter(f), nil
+	return NewNotFilter(f), nil
 }
 
 // simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
@@ -588,25 +588,25 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, 
 		}
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = chainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = ChainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = chainOrFilter(curr, newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
+			curr = ChainOrFilter(curr, newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
 		case syntax.OpConcat:
 			f, ok := simplifyConcat(alt, literal)
 			if !ok {
 				return nil, false
 			}
-			curr = chainOrFilter(curr, f)
+			curr = ChainOrFilter(curr, f)
 		case syntax.OpStar:
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 				return nil, false
 			}
-			curr = chainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = ChainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		default:
 			return nil, false
 		}

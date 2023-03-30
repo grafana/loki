@@ -41,6 +41,7 @@ import (
   LabelParser             *LabelParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
+  OrFilter                *LineFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -64,7 +65,7 @@ import (
   OffsetExpr              *OffsetExpr
   DropLabel               log.DropLabel
   DropLabels              []log.DropLabel
-  DropLabelsExpr          *DropLabelsExpr 
+  DropLabelsExpr          *DropLabelsExpr
 }
 
 %start root
@@ -102,6 +103,7 @@ import (
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
 %type <LineFilter>            lineFilter
+%type <OrFilter>              orFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
 %type <DropLabelsExpr>        dropLabelsExpr
@@ -272,13 +274,21 @@ filterOp:
   IP { $$ = OpFilterIP }
   ;
 
+orFilter:
+    STRING                                              { $$ = newLineFilterExpr(labels.MatchEqual, "", $1) }
+  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(labels.MatchEqual, $1, $3) }
+  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", $1), $3) }
+  ;
+
 lineFilter:
     filter STRING                                                   { $$ = newLineFilterExpr($1, "", $2) }
   | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
+  | filter STRING OR orFilter                                       { $$ = newOrLineFilter(newLineFilterExpr($1, "", $2), $4) }
   ;
 
 lineFilters:
     lineFilter                { $$ = $1 }
+  | lineFilter OR orFilter    { $$ = newOrLineFilter($1, $3)}
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
@@ -292,7 +302,7 @@ labelParser:
 
 jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
-  
+
 logfmtExpressionParser:
     LOGFMT labelExtractionExpressionList { $$ = newLogfmtExpressionParser($2)}
 
@@ -374,7 +384,7 @@ numberFilter:
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
 
-dropLabel: 
+dropLabel:
       IDENTIFIER { $$ = log.NewDropLabel(nil, $1) }
     | matcher { $$ = log.NewDropLabel($1, "") }
 
