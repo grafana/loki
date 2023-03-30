@@ -3793,6 +3793,10 @@ dynamodb:
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -s3.http.timeout
+  [timeout: <duration> | default = 5m]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -4067,6 +4071,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -<prefix>.storage.s3.http.timeout
+  [timeout: <duration> | default = 5m]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
