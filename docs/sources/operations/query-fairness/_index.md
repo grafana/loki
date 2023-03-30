@@ -9,9 +9,7 @@ weight: 101
 
 Loki uses [shuffle sharding]({{<relref "../shuffle-sharding/_index.md">}})
 to minimize impact across tenants in case of querier failures or misbehaving
-neighbouring tenants. However, there are use-cases where a Loki installation
-only has a handful of very large tenants with a lot of actors (humans,
-applications, ...).
+neighbouring tenants.
 
 When there are potentially a lot of different users using the same tenant to
 query logs, such as users accessing Loki from Grafana or via LogCLI or other
@@ -27,7 +25,9 @@ and they are enabled by default.
 ## What are hierarchical queues and how do they work
 
 To understand hierarchical queues, we first need to know that in the scheduler
-component each tenant has it's own FIFO queue where (sub-)queries are enqueued.
+component each tenant has it's own first in first out (FIFO) queue where
+sub-queries are enqueued. Sub-queries are queries that result from splitting
+and sharding of a query sent by a client using HTTP.
 Depending on whether shuffle sharding is turned off or on, either all queriers
 or a subset of those queriers are allowed to dequeue from a tenant queue.
 
@@ -35,9 +35,10 @@ Tenant queues are the first level of the queue hierarchy. When a tenant
 executes a query without any further controls, all of its sub-queries are
 enqueued to the first level queue.
 
-However, tenant queues can also have sub-queues. When a task (sub-request) is
-dequeued, the dequeuing algorithm of the queue picks a task round robin across
-the first level (local queue) and all its sub-queues.
+However, tenant queues can also have sub-queues.
+When a querier dequeues the next item from a tenant queue for it to be
+processed, the algorithm returns a sub-query round robin across the first level
+(local queue) and all it's sub-queues.
 
 ![Hierarchical queues](./hierarchical-queues.png)
 
@@ -79,7 +80,7 @@ Even when there are tasks in the local queue of the tenant, the local queue get
 
 With N actors, each actor get 1/Nth of their share.
 
-Since explained implementation and the header name already suggest, it is
+As the explained implementation and the header name already suggest, it is
 possible to enqueue queries several levels deep. To do so, you can construct a
 path to the sub-queue using the `|` delimiter in the header value, as shown in
 the following examples.
@@ -100,10 +101,10 @@ or its respective YAML configuration block:
 
 ```yaml
 query_scheduler:
-  max_queue_hierarchy_levels: 3
+  max_queue_hierarchy_levels: 2
 ```
 
-It is advised to keep the levels at a reasonable level (ideally 1 to 2 levels),
+It is advised to keep the levels at a reasonable level (ideally 1 to 3 levels),
 both for performance reasons as well as for the understanding of how query
 fairness is ensured across all sub-queues.
 
@@ -113,9 +114,9 @@ In the examples above the client that invoked the query directly against Loki al
 HTTP header that controls where in the queue tree the tasks are enqueued. However, as an operator,
 you would usually want to avoid this scenario and control yourself where the header is set.
 
-When using Grafana as Loki UI, you can for example create multiple datasources
+When using Grafana as the Loki user interface, you can, for example, create multiple datasources
 with the same tenant, but with a different additional HTTP header
-`X-Loki-Scope-Actor` and restrict what Grafana user can use which datasource.
+`X-Loki-Scope-Actor` and restrict which Grafana user can use which datasource.
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.
