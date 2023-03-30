@@ -297,9 +297,7 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (int, []logproto.Entry, []entryWithError) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
-		defer func() {
-			sp.LogKV("event", "stream finished to store entries")
-		}()
+		defer sp.LogKV("event", "stream finished to store entries")
 	}
 
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
@@ -429,9 +427,7 @@ func (s *stream) reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSa
 func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("event", "stream started to cut chunk")
-		defer func() {
-			sp.LogKV("event", "stream finished to cut chunk")
-		}()
+		defer sp.LogKV("event", "stream finished to cut chunk")
 	}
 	// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 	chunk := &s.chunks[len(s.chunks)-1]

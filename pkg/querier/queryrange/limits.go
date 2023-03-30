@@ -416,8 +416,6 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 }
 
 func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "seriesLimiter.Do")
-	defer sp.Finish()
 	// no need to fire a request if the limit is already reached.
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
@@ -538,9 +536,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 			for {
 				select {
 				case w := <-intermediate:
-					sp, ctx := opentracing.StartSpanFromContext(w.ctx, "roundTrip.do")
-					defer sp.Finish()
-					resp, err := rt.do(ctx, w.req)
+					resp, err := rt.do(w.ctx, w.req)
 					w.result <- result{response: resp, err: err}
 				case <-ctx.Done():
 					return
@@ -552,10 +548,6 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	response, err := rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			w := newWork(ctx, r)
-			if sp := opentracing.SpanFromContext(w.ctx); sp != nil {
-				sp.LogKV("event", "new work invoked")
-				defer sp.LogKV("event", "new work done")
-			}
 			select {
 			case intermediate <- w:
 			case <-ctx.Done():

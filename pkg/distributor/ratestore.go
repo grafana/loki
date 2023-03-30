@@ -100,7 +100,7 @@ func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
 }
 
 func (s *rateStore) updateAllRates(ctx context.Context) error {
-	clients, err := s.getClients()
+	clients, err := s.getClients(ctx)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting ingester clients", "err", err)
 		s.metrics.rateRefreshFailures.WithLabelValues("ring").Inc()
@@ -127,9 +127,11 @@ type rateStats struct {
 }
 
 func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "started to update rates")
-		defer sp.LogKV("event", "finished to update rates")
+	if s.debug {
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV("event", "started to update rates")
+			defer sp.LogKV("event", "finished to update rates")
+		}
 	}
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
@@ -190,9 +192,11 @@ func (s *rateStore) anyShardingEnabled() bool {
 }
 
 func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("started to aggregate by shard")
-		defer sp.LogKV("finished to aggregate by shard")
+	if s.debug {
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV("started to aggregate by shard")
+			defer sp.LogKV("finished to aggregate by shard")
+		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
 
@@ -222,9 +226,11 @@ func max(a, b int64) int64 {
 }
 
 func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "started to get rates from ingesters")
-		defer sp.LogKV("event", "finished to get rates from ingesters")
+	if s.debug {
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV("event", "started to get rates from ingesters")
+			defer sp.LogKV("event", "finished to get rates from ingesters")
+		}
 	}
 
 	parallelClients := make(chan ingesterClient, len(clients))
@@ -296,12 +302,12 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 	return streamRates
 }
 
-func (s *rateStore) getClients() ([]ingesterClient, error) {
+func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {
 	if s.debug {
-		dur := time.Now()
-		defer func() {
-			level.Info(util_log.Logger).Log("msg", "rate store get clients", "duration", dur)
-		}()
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV("event", "ratestore started getting clients")
+			defer sp.LogKV("event", "ratestore finished getting clients")
+		}
 	}
 
 	ingesters, err := s.ring.GetAllHealthy(ring.Read)
