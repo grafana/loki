@@ -375,9 +375,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err := func() error {
 		sp := opentracing.SpanFromContext(ctx)
 		if sp != nil {
-			sp.LogKV("event", "distributor querying ingesters ring")
+			sp.LogKV("event", "started to query ingesters ring")
 			defer func() {
-				sp.LogKV("event", "distributor finished querying ingesters ring")
+				sp.LogKV("event", "finished to query ingesters ring")
 			}()
 		}
 

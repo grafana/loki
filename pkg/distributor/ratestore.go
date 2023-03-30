@@ -127,9 +127,9 @@ type rateStats struct {
 }
 
 func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
-	if s.debug {
-		sp, _ := opentracing.StartSpanFromContext(ctx, "rateStore.updateRates")
-		defer sp.Finish()
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started to update rates")
+		defer sp.LogKV("event", "finished to update rates")
 	}
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
@@ -190,9 +190,9 @@ func (s *rateStore) anyShardingEnabled() bool {
 }
 
 func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
-	if s.debug {
-		sp, _ := opentracing.StartSpanFromContext(ctx, "aggregateByShard")
-		defer sp.Finish()
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("started to aggregate by shard")
+		defer sp.LogKV("finished to aggregate by shard")
 	}
 	rates := map[string]map[uint64]expiringRate{}
 
@@ -222,10 +222,9 @@ func max(a, b int64) int64 {
 }
 
 func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
-	if s.debug {
-		sp, spanCtx := opentracing.StartSpanFromContext(ctx, "rateStore.getRates")
-		defer sp.Finish()
-		ctx = spanCtx
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started to get rates from ingesters")
+		defer sp.LogKV("event", "finished to get rates from ingesters")
 	}
 
 	parallelClients := make(chan ingesterClient, len(clients))
@@ -249,7 +248,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 			if s.debug {
 				startTime := time.Now()
 				defer func() {
-					level.Debug(util_log.Logger).Log("msg", "getRatesFromIngester", "duration", time.Now().Sub(startTime), "ingester", c.addr)
+					level.Debug(util_log.Logger).Log("msg", "get rates from ingester", "duration", time.Now().Sub(startTime), "ingester", c.addr)
 				}()
 			}
 			ctx, cancel := context.WithTimeout(ctx, s.ingesterTimeout)
