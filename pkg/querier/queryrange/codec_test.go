@@ -371,8 +371,8 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	r := &http.Request{URL: u}
 	req, err := LokiCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	// require.Equal(t, "toEncode.StartTs", req.(*LokiLabelNamesRequest).StartTs)
-	// require.Equal(t, "", req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, start, req.(*LokiLabelNamesRequest).StartTs)
+	require.Equal(t, end, req.(*LokiLabelNamesRequest).EndTs)
 	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 
