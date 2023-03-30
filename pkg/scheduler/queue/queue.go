@@ -93,6 +93,18 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return errors.New("no queue found")
 	}
 
+	// Optimistically increase queue counter for tenant.
+	// We need to keep track of queue length separately because the size of the
+	// buffered channel is the same across all sub-queues which would allow
+	// enqueuing more items than there are allowed at tenant level.
+	queueLen := q.queues.perUserQueueLen.Inc(tenant)
+	if queueLen > q.queues.maxUserQueueSize {
+		q.metrics.discardedRequests.WithLabelValues(tenant).Inc()
+		// decrement, because we already optimistically increased the counter
+		q.queues.perUserQueueLen.Dec(tenant)
+		return ErrTooManyRequests
+	}
+
 	select {
 	case queue.Chan() <- req:
 		q.metrics.queueLength.WithLabelValues(tenant).Inc()
@@ -105,6 +117,8 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return nil
 	default:
 		q.metrics.discardedRequests.WithLabelValues(tenant).Inc()
+		// decrement, because we already optimistically increased the counter
+		q.queues.perUserQueueLen.Dec(tenant)
 		return ErrTooManyRequests
 	}
 }
@@ -147,6 +161,7 @@ FindQueue:
 				q.queues.deleteQueue(tenant)
 			}
 
+			q.queues.perUserQueueLen.Dec(tenant)
 			q.metrics.queueLength.WithLabelValues(tenant).Dec()
 			q.metrics.dequeueCount.WithLabelValues(tenant, querierID).Inc()
 
