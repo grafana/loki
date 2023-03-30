@@ -454,11 +454,11 @@ func newStreams(start, end time.Time, delta time.Duration, n int, direction logp
 
 func TestAccumulatedStreams(t *testing.T) {
 	lim := 30
-	n_streams := 10
+	nStreams := 10
 	start, end := 0, 10
 	// for a logproto.BACKWARD query, we use a min heap based on FORWARD
 	// to store the _earliest_ timestamp of the _latest_ entries, up to `limit`
-	xs := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, n_streams, logproto.BACKWARD)
+	xs := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, nStreams, logproto.BACKWARD)
 	acc := newStreamAccumulator(logproto.FORWARD, lim)
 	for _, x := range xs {
 		acc.Push(x)
@@ -466,8 +466,8 @@ func TestAccumulatedStreams(t *testing.T) {
 
 	for i := 0; i < lim; i++ {
 		got := acc.Pop().(*logproto.Stream)
-		require.Equal(t, fmt.Sprintf(`{n="%d"}`, i%n_streams), got.Labels)
-		exp := (n_streams*(end-start) - lim + i) / n_streams
+		require.Equal(t, fmt.Sprintf(`{n="%d"}`, i%nStreams), got.Labels)
+		exp := (nStreams*(end-start) - lim + i) / nStreams
 		require.Equal(t, time.Unix(int64(exp), 0), got.Entries[0].Timestamp)
 	}
 
@@ -493,7 +493,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 		Data: x,
 	}
 
-	acc.Accumulate(context.Background(), 0, result)
+	require.Nil(t, acc.Accumulate(context.Background(), 0, result))
 
 	res := acc.Result()[0]
 	got, ok := res.Data.(logqlmodel.Streams)
@@ -513,7 +513,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 // sub-results from different queries.
 func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 	for _, direction := range []logproto.Direction{logproto.BACKWARD, logproto.FORWARD} {
-		t.Run(fmt.Sprintf("%s", direction), func(t *testing.T) {
+		t.Run(direction.String(), func(t *testing.T) {
 			nQueries := 10
 			delta := 10 // 10 entries per stream, 1s apart
 			streamsPerQuery := 10

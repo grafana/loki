@@ -164,7 +164,9 @@ func (in instance) For(
 			if resp.err != nil {
 				return nil, resp.err
 			}
-			acc.Accumulate(ctx, resp.i, resp.res)
+			if err := acc.Accumulate(ctx, resp.i, resp.res); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return acc.Result(), nil
@@ -309,9 +311,8 @@ func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc l
 
 	if a.accumulatedStreams != nil {
 		return a.accumulatedStreams.Accumulate(acc)
-	} else {
-		return a.bufferedAccumulator.Accumulate(acc, index)
 	}
+	return a.bufferedAccumulator.Accumulate(acc, index)
 }
 
 func (a *downstreamAccumulator) Result() []logqlmodel.Result {
