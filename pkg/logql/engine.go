@@ -414,15 +414,12 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 func (q *query) checkLimits(expr syntax.SampleExpr, limit time.Duration) error {
 	var err error
 	expr.Walk(func(e interface{}) {
-		switch e.(type) {
+		switch e := e.(type) {
 		case *syntax.RangeAggregationExpr:
-			l := e.(*syntax.RangeAggregationExpr).Left
-			if l != nil {
-				if l.Interval > limit {
-					err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrRangeLimit, l.Interval, limit)
-				}
+			if e.Left == nil || e.Left.Interval <= limit {
+				return
 			}
-			return
+			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrRangeLimit, e.Left.Interval, limit)
 		}
 	})
 	return err
