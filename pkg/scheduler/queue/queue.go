@@ -93,7 +93,9 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return errors.New("no queue found")
 	}
 
-	// Optimistically increase queue counter for tenant.
+	// Optimistically increase queue counter for tenant instead of doing separate
+	// get and set operations, because _most_ of the time the increased value is
+	// smaller than the max queue length.
 	// We need to keep track of queue length separately because the size of the
 	// buffered channel is the same across all sub-queues which would allow
 	// enqueuing more items than there are allowed at tenant level.
