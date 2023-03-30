@@ -2419,6 +2419,8 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 		expectLimitErr bool
 	}{
 		{`topk(1,rate(({app=~"foo|bar"})[2d]))`, logproto.FORWARD, true},
+		{`topk(1,rate(({app=~"foo|bar"})[1d]))`, logproto.FORWARD, false},
+		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			q := eng.Query(LiteralParams{
