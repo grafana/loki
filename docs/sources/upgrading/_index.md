@@ -33,6 +33,8 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+## 2.7.0
+
 ### Loki
 
 #### Change in LogQL behavior
