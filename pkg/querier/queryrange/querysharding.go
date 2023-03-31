@@ -39,6 +39,7 @@ func NewQueryShardMiddleware(
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
+	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -52,7 +53,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards)
+		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards, statsHandler...)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -75,26 +76,35 @@ func newASTMapperware(
 	metrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
+	statsHandler ...queryrangebase.Handler,
 ) *astMapperware {
-	return &astMapperware{
-		confs:     confs,
-		logger:    log.With(logger, "middleware", "QueryShard.astMapperware"),
-		limits:    limits,
-		next:      next,
-		ng:        logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
-		metrics:   metrics,
-		maxShards: maxShards,
+	ast := &astMapperware{
+		confs:        confs,
+		logger:       log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:       limits,
+		next:         next,
+		statsHandler: next,
+		ng:           logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		metrics:      metrics,
+		maxShards:    maxShards,
 	}
+
+	if len(statsHandler) > 0 {
+		ast.statsHandler = statsHandler[0]
+	}
+
+	return ast
 }
 
 type astMapperware struct {
-	confs     ShardingConfigs
-	logger    log.Logger
-	limits    Limits
-	next      queryrangebase.Handler
-	ng        *logql.DownstreamEngine
-	metrics   *logql.MapperMetrics
-	maxShards int
+	confs        ShardingConfigs
+	logger       log.Logger
+	limits       Limits
+	next         queryrangebase.Handler
+	statsHandler queryrangebase.Handler
+	ng           *logql.DownstreamEngine
+	metrics      *logql.MapperMetrics
+	maxShards    int
 }
 
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
@@ -157,7 +167,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
 		ast.maxShards,
 		r,
-		ast.next,
+		ast.statsHandler,
 		ast.limits,
 	)
 	if !ok {

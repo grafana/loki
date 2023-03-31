@@ -29,7 +29,7 @@ func (p IndexStatsExtractor) ResponseWithoutHeaders(resp queryrangebase.Response
 	}
 }
 
-func NewIndexStatsCache(
+func NewIndexStatsCacheMiddleware(
 	log log.Logger,
 	limits Limits,
 	merger queryrangebase.Merger,

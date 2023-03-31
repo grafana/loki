@@ -355,6 +355,7 @@ func NewLogFilterTripperware(
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
 					0, // 0 is unlimited shards
+					statsHandler,
 				),
 			)
 		} else {
@@ -594,6 +595,7 @@ func NewMetricTripperware(
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
 					0, // 0 is unlimited shards
+					statsHandler,
 				),
 			)
 		} else {
@@ -663,6 +665,7 @@ func NewInstantMetricTripperware(
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
 					0, // 0 is unlimited shards
+					statsHandler,
 				),
 			)
 		}
@@ -696,7 +699,7 @@ func NewIndexStatsTripperware(
 	var cacheMiddleware queryrangebase.Middleware
 	if cfg.CacheResults {
 		var err error
-		cacheMiddleware, err = NewIndexStatsCache(
+		cacheMiddleware, err = NewIndexStatsCacheMiddleware(
 			log,
 			limits,
 			codec,
