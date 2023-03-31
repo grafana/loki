@@ -67,6 +67,7 @@ type SingleTenantTSDBIdentifier struct {
 	Checksum      uint32
 }
 
+// str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
 	return fmt.Sprintf(
 		"%d-%s-%d-%d-%x.tsdb",
@@ -138,6 +139,7 @@ type MultitenantTSDBIdentifier struct {
 	ts       time.Time
 }
 
+// Name builds filename with format <file-creation-ts> + `-` + `<nodeName>
 func (id MultitenantTSDBIdentifier) Name() string {
 	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
 }
