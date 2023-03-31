@@ -10,13 +10,27 @@ import (
 )
 
 type FakeStatusWriter struct {
-	PatchStub        func(context.Context, client.Object, client.Patch, ...client.PatchOption) error
+	CreateStub        func(context.Context, client.Object, client.Object, ...client.SubResourceCreateOption) error
+	createMutex       sync.RWMutex
+	createArgsForCall []struct {
+		arg1 context.Context
+		arg2 client.Object
+		arg3 client.Object
+		arg4 []client.SubResourceCreateOption
+	}
+	createReturns struct {
+		result1 error
+	}
+	createReturnsOnCall map[int]struct {
+		result1 error
+	}
+	PatchStub        func(context.Context, client.Object, client.Patch, ...client.SubResourcePatchOption) error
 	patchMutex       sync.RWMutex
 	patchArgsForCall []struct {
 		arg1 context.Context
 		arg2 client.Object
 		arg3 client.Patch
-		arg4 []client.PatchOption
+		arg4 []client.SubResourcePatchOption
 	}
 	patchReturns struct {
 		result1 error
@@ -24,12 +38,12 @@ type FakeStatusWriter struct {
 	patchReturnsOnCall map[int]struct {
 		result1 error
 	}
-	UpdateStub        func(context.Context, client.Object, ...client.UpdateOption) error
+	UpdateStub        func(context.Context, client.Object, ...client.SubResourceUpdateOption) error
 	updateMutex       sync.RWMutex
 	updateArgsForCall []struct {
 		arg1 context.Context
 		arg2 client.Object
-		arg3 []client.UpdateOption
+		arg3 []client.SubResourceUpdateOption
 	}
 	updateReturns struct {
 		result1 error
@@ -41,14 +55,78 @@ type FakeStatusWriter struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeStatusWriter) Patch(arg1 context.Context, arg2 client.Object, arg3 client.Patch, arg4 ...client.PatchOption) error {
+func (fake *FakeStatusWriter) Create(arg1 context.Context, arg2 client.Object, arg3 client.Object, arg4 ...client.SubResourceCreateOption) error {
+	fake.createMutex.Lock()
+	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
+	fake.createArgsForCall = append(fake.createArgsForCall, struct {
+		arg1 context.Context
+		arg2 client.Object
+		arg3 client.Object
+		arg4 []client.SubResourceCreateOption
+	}{arg1, arg2, arg3, arg4})
+	stub := fake.CreateStub
+	fakeReturns := fake.createReturns
+	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4})
+	fake.createMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2, arg3, arg4...)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeStatusWriter) CreateCallCount() int {
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
+	return len(fake.createArgsForCall)
+}
+
+func (fake *FakeStatusWriter) CreateCalls(stub func(context.Context, client.Object, client.Object, ...client.SubResourceCreateOption) error) {
+	fake.createMutex.Lock()
+	defer fake.createMutex.Unlock()
+	fake.CreateStub = stub
+}
+
+func (fake *FakeStatusWriter) CreateArgsForCall(i int) (context.Context, client.Object, client.Object, []client.SubResourceCreateOption) {
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
+	argsForCall := fake.createArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
+}
+
+func (fake *FakeStatusWriter) CreateReturns(result1 error) {
+	fake.createMutex.Lock()
+	defer fake.createMutex.Unlock()
+	fake.CreateStub = nil
+	fake.createReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeStatusWriter) CreateReturnsOnCall(i int, result1 error) {
+	fake.createMutex.Lock()
+	defer fake.createMutex.Unlock()
+	fake.CreateStub = nil
+	if fake.createReturnsOnCall == nil {
+		fake.createReturnsOnCall = make(map[int]struct {
+			result1 error
+		})
+	}
+	fake.createReturnsOnCall[i] = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeStatusWriter) Patch(arg1 context.Context, arg2 client.Object, arg3 client.Patch, arg4 ...client.SubResourcePatchOption) error {
 	fake.patchMutex.Lock()
 	ret, specificReturn := fake.patchReturnsOnCall[len(fake.patchArgsForCall)]
 	fake.patchArgsForCall = append(fake.patchArgsForCall, struct {
 		arg1 context.Context
 		arg2 client.Object
 		arg3 client.Patch
-		arg4 []client.PatchOption
+		arg4 []client.SubResourcePatchOption
 	}{arg1, arg2, arg3, arg4})
 	stub := fake.PatchStub
 	fakeReturns := fake.patchReturns
@@ -69,13 +147,13 @@ func (fake *FakeStatusWriter) PatchCallCount() int {
 	return len(fake.patchArgsForCall)
 }
 
-func (fake *FakeStatusWriter) PatchCalls(stub func(context.Context, client.Object, client.Patch, ...client.PatchOption) error) {
+func (fake *FakeStatusWriter) PatchCalls(stub func(context.Context, client.Object, client.Patch, ...client.SubResourcePatchOption) error) {
 	fake.patchMutex.Lock()
 	defer fake.patchMutex.Unlock()
 	fake.PatchStub = stub
 }
 
-func (fake *FakeStatusWriter) PatchArgsForCall(i int) (context.Context, client.Object, client.Patch, []client.PatchOption) {
+func (fake *FakeStatusWriter) PatchArgsForCall(i int) (context.Context, client.Object, client.Patch, []client.SubResourcePatchOption) {
 	fake.patchMutex.RLock()
 	defer fake.patchMutex.RUnlock()
 	argsForCall := fake.patchArgsForCall[i]
@@ -105,13 +183,13 @@ func (fake *FakeStatusWriter) PatchReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakeStatusWriter) Update(arg1 context.Context, arg2 client.Object, arg3 ...client.UpdateOption) error {
+func (fake *FakeStatusWriter) Update(arg1 context.Context, arg2 client.Object, arg3 ...client.SubResourceUpdateOption) error {
 	fake.updateMutex.Lock()
 	ret, specificReturn := fake.updateReturnsOnCall[len(fake.updateArgsForCall)]
 	fake.updateArgsForCall = append(fake.updateArgsForCall, struct {
 		arg1 context.Context
 		arg2 client.Object
-		arg3 []client.UpdateOption
+		arg3 []client.SubResourceUpdateOption
 	}{arg1, arg2, arg3})
 	stub := fake.UpdateStub
 	fakeReturns := fake.updateReturns
@@ -132,13 +210,13 @@ func (fake *FakeStatusWriter) UpdateCallCount() int {
 	return len(fake.updateArgsForCall)
 }
 
-func (fake *FakeStatusWriter) UpdateCalls(stub func(context.Context, client.Object, ...client.UpdateOption) error) {
+func (fake *FakeStatusWriter) UpdateCalls(stub func(context.Context, client.Object, ...client.SubResourceUpdateOption) error) {
 	fake.updateMutex.Lock()
 	defer fake.updateMutex.Unlock()
 	fake.UpdateStub = stub
 }
 
-func (fake *FakeStatusWriter) UpdateArgsForCall(i int) (context.Context, client.Object, []client.UpdateOption) {
+func (fake *FakeStatusWriter) UpdateArgsForCall(i int) (context.Context, client.Object, []client.SubResourceUpdateOption) {
 	fake.updateMutex.RLock()
 	defer fake.updateMutex.RUnlock()
 	argsForCall := fake.updateArgsForCall[i]
@@ -171,6 +249,8 @@ func (fake *FakeStatusWriter) UpdateReturnsOnCall(i int, result1 error) {
 func (fake *FakeStatusWriter) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.createMutex.RLock()
+	defer fake.createMutex.RUnlock()
 	fake.patchMutex.RLock()
 	defer fake.patchMutex.RUnlock()
 	fake.updateMutex.RLock()

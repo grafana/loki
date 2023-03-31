@@ -77,6 +77,8 @@ message FrontendToScheduler {
   string userID = 4;
   httpgrpc.HTTPRequest httpRequest = 5;
   bool statsEnabled = 6;
+  // Path to queue to which the request will be enqueued.
+  repeated string queuePath = 7;
 }
 
 enum SchedulerToFrontendStatus {

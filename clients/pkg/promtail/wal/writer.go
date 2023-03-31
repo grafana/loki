@@ -27,6 +27,14 @@ const (
 	minimumCleanSegmentsEvery = time.Second
 )
 
+// WriterEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
+// they can subscribe to events by adding themselves as subscribers on the Writer with writer.Subscribe.
+type WriterEventSubscriber interface {
+	// WriteCleanup is implemented by WriteTo, who can subscribe to these type of events for cleaning up the series cache
+	// entries that originated from deleted segments.
+	WriteCleanup
+}
+
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
 // writes incoming entries to a WAL.
 // Also, since Writer is responsible for all changing operations over the WAL, therefore a routine is run for cleaning
@@ -38,6 +46,9 @@ type Writer struct {
 	once        sync.Once
 	wal         WAL
 	entryWriter *entryWriter
+
+	subscribersLock sync.Mutex
+	subscribers     []WriterEventSubscriber
 
 	reclaimedOldSegmentsSpaceCounter *prometheus.CounterVec
 
@@ -148,6 +159,7 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	}
 	// find the most recent, or head segment to avoid cleaning it up
 	lastSegment := -1
+	maxReclaimed := -1
 	for _, segment := range segments {
 		if lastSegment < segment.number {
 			lastSegment = segment.number
@@ -161,9 +173,28 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 			}
 			level.Debug(wrt.log).Log("msg", "Deleted old wal segment", "segmentNum", segment.number)
 			wrt.reclaimedOldSegmentsSpaceCounter.WithLabelValues().Add(float64(segment.size))
+			// keep track of the largest segment number reclaimed
+			if segment.number > maxReclaimed {
+				maxReclaimed = segment.number
+			}
+		}
+	}
+	// if we reclaimed at least one segment, notify all subscribers
+	if maxReclaimed != -1 {
+		wrt.subscribersLock.Lock()
+		defer wrt.subscribersLock.Unlock()
+		for _, subscriber := range wrt.subscribers {
+			subscriber.SeriesReset(maxReclaimed)
 		}
 	}
 	return nil
+}
+
+// Subscribe adds a new WriterEventSubscriber that will receive Writer events.
+func (wrt *Writer) Subscribe(subscriber WriterEventSubscriber) {
+	wrt.subscribersLock.Lock()
+	defer wrt.subscribersLock.Unlock()
+	wrt.subscribers = append(wrt.subscribers, subscriber)
 }
 
 // entryWriter writes api.Entry to a WAL, keeping in memory a single Record object that's reused

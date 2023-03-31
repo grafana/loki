@@ -1634,83 +1634,6 @@
                         "show": false
                      }
                   ]
-               },
-               {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
-                  "datasource": "$datasource",
-                  "fill": 1,
-                  "gridPos": { },
-                  "id": 19,
-                  "legend": {
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "show": true,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
-                  "links": [ ],
-                  "nullPointMode": "null as zero",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
-                  "span": 6,
-                  "stack": false,
-                  "steppedLine": false,
-                  "targets": [
-                     {
-                        "expr": "loki_boltdb_shipper_query_readiness_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
-                        "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "duration",
-                        "legendLink": null,
-                        "step": 10
-                     }
-                  ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
-                  "title": "Query Readiness Duration",
-                  "tooltip": {
-                     "shared": true,
-                     "sort": 2,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "s",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": 0,
-                        "show": true
-                     },
-                     {
-                        "format": "short",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": false
-                     }
-                  ]
                }
             ],
             "repeat": null,
@@ -1732,7 +1655,7 @@
                   "dashes": false,
                   "datasource": "$datasource",
                   "fill": 1,
-                  "id": 20,
+                  "id": 19,
                   "legend": {
                      "avg": false,
                      "current": false,
@@ -1833,7 +1756,7 @@
                   "dashes": false,
                   "datasource": "$datasource",
                   "fill": 1,
-                  "id": 21,
+                  "id": 20,
                   "legend": {
                      "avg": false,
                      "current": false,
@@ -1934,7 +1857,7 @@
                   "dashes": false,
                   "datasource": "$datasource",
                   "fill": 1,
-                  "id": 22,
+                  "id": 21,
                   "legend": {
                      "avg": false,
                      "current": false,
@@ -2021,7 +1944,7 @@
                   "datasource": "$datasource",
                   "fill": 1,
                   "gridPos": { },
-                  "id": 23,
+                  "id": 22,
                   "legend": {
                      "avg": false,
                      "current": false,
@@ -2098,7 +2021,7 @@
                   "datasource": "$datasource",
                   "fill": 1,
                   "gridPos": { },
-                  "id": 24,
+                  "id": 23,
                   "legend": {
                      "avg": false,
                      "current": false,
@@ -2200,7 +2123,7 @@
                   "datasource": "$datasource",
                   "fill": 1,
                   "gridPos": { },
-                  "id": 25,
+                  "id": 24,
                   "legend": {
                      "avg": false,
                      "current": false,
@@ -2302,7 +2225,7 @@
                   "datasource": "$datasource",
                   "fill": 1,
                   "gridPos": { },
-                  "id": 26,
+                  "id": 25,
                   "legend": {
                      "avg": false,
                      "current": false,

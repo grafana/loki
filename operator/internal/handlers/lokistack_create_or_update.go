@@ -8,7 +8,6 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
@@ -197,9 +196,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	var (
-		alertingRules  []lokiv1beta1.AlertingRule
-		recordingRules []lokiv1beta1.RecordingRule
-		rulerConfig    *lokiv1beta1.RulerConfigSpec
+		alertingRules  []lokiv1.AlertingRule
+		recordingRules []lokiv1.RecordingRule
+		rulerConfig    *lokiv1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
 		ocpAmEnabled   bool
 		ocpUWAmEnabled bool
@@ -254,13 +253,13 @@ func CreateOrUpdateLokiStack(
 		// Clean up ruler resources
 		err = rules.RemoveRulesConfigMap(ctx, req, k)
 		if err != nil {
-			ll.Error(err, "failed to remove rules configmap")
+			ll.Error(err, "failed to remove rules ConfigMap")
 			return err
 		}
 
 		err = rules.RemoveRuler(ctx, req, k)
 		if err != nil {
-			ll.Error(err, "failed to remove ruler statefulset")
+			ll.Error(err, "failed to remove ruler StatefulSet")
 			return err
 		}
 	}

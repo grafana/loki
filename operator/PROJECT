@@ -38,10 +38,36 @@ resources:
   domain: grafana.com
   group: loki
   kind: AlertingRule
+  path: github.com/grafana/loki/operator/apis/loki/v1
+  version: v1
+  webhooks:
+    conversion: true
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: grafana.com
+  group: loki
+  kind: AlertingRule
   path: github.com/grafana/loki/operator/apis/loki/v1beta1
   version: v1beta1
   webhooks:
     validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: grafana.com
+  group: loki
+  kind: RecordingRule
+  path: github.com/grafana/loki/operator/apis/loki/v1
+  version: v1
+  webhooks:
+    validation: true
+    conversion: true
     webhookVersion: v1
 - api:
     crdVersion: v1
@@ -55,6 +81,15 @@ resources:
   webhooks:
     validation: true
     webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: grafana.com
+  group: loki
+  kind: RulerConfig
+  path: github.com/grafana/loki/operator/apis/loki/v1
+  version: v1
 - api:
     crdVersion: v1
     namespaced: true

@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -186,10 +187,6 @@ func (r *LokiLabelNamesRequest) WithQuery(query string) queryrangebase.Request {
 	return &new
 }
 
-func (r *LokiLabelNamesRequest) GetQuery() string {
-	return ""
-}
-
 func (r *LokiLabelNamesRequest) GetStep() int64 {
 	return 0
 }
@@ -259,6 +256,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			StartTs: *req.Start,
 			EndTs:   *req.End,
 			Path:    r.URL.Path,
+			Query:   req.Query,
 		}, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
@@ -281,6 +279,11 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
+	}
+
+	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+	if actor != "" {
+		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
 	switch request := r.(type) {
@@ -340,6 +343,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"query": []string{request.GetQuery()},
 		}
 
 		u := &url.URL{
@@ -521,6 +525,18 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
+		case loghttp.ResultTypeScalar:
+			return &LokiPromResponse{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: resp.Status,
+					Data: queryrangebase.PrometheusData{
+						ResultType: loghttp.ResultTypeScalar,
+						Result:     toProtoScalar(resp.Data.Result.(loghttp.Scalar)),
+					},
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
+				},
+				Statistics: resp.Data.Statistics,
+			}, nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%s)", string(resp.Data.ResultType))
 		}
@@ -608,7 +624,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 
 		promResponses := make([]queryrangebase.Response, 0, len(responses))
 		for _, res := range responses {
-			mergedStats.Merge(res.(*LokiPromResponse).Statistics)
+			mergedStats.MergeSplit(res.(*LokiPromResponse).Statistics)
 			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
 		}
 		promRes, err := queryrangebase.PrometheusCodec.MergeResponse(promResponses...)
@@ -630,6 +646,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// only unique series should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiSeriesResponse)
+			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
 				if _, ok := uniqueSeries[series.String()]; !ok {
 					lokiSeriesData = append(lokiSeriesData, series)
@@ -639,9 +656,10 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}
 
 		return &LokiSeriesResponse{
-			Status:  lokiSeriesRes.Status,
-			Version: lokiSeriesRes.Version,
-			Data:    lokiSeriesData,
+			Status:     lokiSeriesRes.Status,
+			Version:    lokiSeriesRes.Version,
+			Data:       lokiSeriesData,
+			Statistics: mergedStats,
 		}, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
@@ -651,6 +669,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// only unique name should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiLabelNamesResponse)
+			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, labelName := range lokiResult.Data {
 				if _, ok := uniqueNames[labelName]; !ok {
 					names = append(names, labelName)
@@ -660,10 +679,25 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}
 
 		return &LokiLabelNamesResponse{
-			Status:  labelNameRes.Status,
-			Version: labelNameRes.Version,
-			Data:    names,
+			Status:     labelNameRes.Status,
+			Version:    labelNameRes.Version,
+			Data:       names,
+			Statistics: mergedStats,
 		}, nil
+	case *IndexStatsResponse:
+		headers := responses[0].(*IndexStatsResponse).Headers
+		stats := make([]*indexStats.Stats, len(responses))
+		for i, res := range responses {
+			stats[i] = res.(*IndexStatsResponse).Response
+		}
+
+		mergedIndexStats := indexStats.MergeStats(stats...)
+
+		return &IndexStatsResponse{
+			Response: &mergedIndexStats,
+			Headers:  headers,
+		}, nil
+
 	default:
 		return nil, errors.New("unknown response in merging responses")
 	}
@@ -802,6 +836,19 @@ func toProtoVector(v loghttp.Vector) []queryrangebase.SampleStream {
 			Labels: logproto.FromMetricsToLabelAdapters(s.Metric),
 		})
 	}
+	return res
+}
+
+func toProtoScalar(v loghttp.Scalar) []queryrangebase.SampleStream {
+	res := make([]queryrangebase.SampleStream, 0, 1)
+
+	res = append(res, queryrangebase.SampleStream{
+		Samples: []logproto.LegacySample{{
+			Value:       float64(v.Value),
+			TimestampMs: v.Timestamp.UnixNano() / 1e6,
+		}},
+		Labels: nil,
+	})
 	return res
 }
 
@@ -1023,7 +1070,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 
 	for _, res := range responses {
 		lokiResult := res.(*LokiResponse)
-		mergedStats.Merge(lokiResult.Statistics)
+		mergedStats.MergeSplit(lokiResult.Statistics)
 		lokiResponses = append(lokiResponses, lokiResult)
 	}
 
