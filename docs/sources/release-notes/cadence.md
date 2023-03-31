@@ -12,7 +12,7 @@ Loki releases (this includes [Promtail](/clients/promtail), [Loki Canary](/opera
 naming scheme: `MAJOR`.`MINOR`.`PATCH`.
 
 - `MAJOR` (roughly once a year): these releases include large new features & possible backwards-compatibility breaks.
-- `MINOR` (roughly once a quarter): these releases include new features which do not break backwards-compatibility.
+- `MINOR` (roughly once a quarter): these releases include new features which generally do not break backwards-compatibility, but from time to time we might introduce _minor_ breaking changes, and we will specify these in our upgrade docs.
 - `PATCH` (roughly once or twice a month): these releases include bug & security fixes which do not break backwards-compatibility.
 
 > **NOTE:** While our naming scheme resembles [Semantic Versioning](https://semver.org/), at this time we do not strictly follow its
