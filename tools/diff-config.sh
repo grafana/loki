@@ -32,6 +32,6 @@ get_config "${OLD_LOKI}" | parse_config > "${old_config}"
 get_config "${NEW_LOKI}" | parse_config > "${new_config}"
 
 diff --color=always \
-	--side-by-side \
+  --side-by-side \
   "${old_config}" \
   "${new_config}"
