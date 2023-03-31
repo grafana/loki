@@ -19,7 +19,7 @@ This guide will walk you through migrating to the `loki` Helm Chart, v3.0 or hig
 
 We recommend having a Grafana instance available to monitor both the existing and new clusters, to make sure there is no data loss during the migration process. The `loki` chart ships with self-monitoring features, including dashboards. These are useful for monitoring the health of the new cluster as it spins up.
 
-Start by updating your existing Grafana Agent or Promtail config (whatever is scraping logs from your environment) to _exclude_ the new deployment. The new `loki` chart ships with it's own self-monitoring mechanisms, and we want to make sure it's not scraped twice, which would produce duplicate logs. The best way to do this is via a relabel config that will drop logs from the new deployment, for example something like:
+Start by updating your existing Grafana Agent or Promtail config (whatever is scraping logs from your environment) to _exclude_ the new deployment. The new `loki` chart ships with its own self-monitoring mechanisms, and we want to make sure it's not scraped twice, which would produce duplicate logs. The best way to do this is via a relabel config that will drop logs from the new deployment, for example something like:
 
 ```yaml
 - source_labels:

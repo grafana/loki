@@ -458,6 +458,10 @@ rate_store:
   # updating rates
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
+
+  # If enabled, detailed logs and spans will be emitted.
+  # CLI flag: -distributor.rate-store.debug
+  [debug: <boolean> | default = false]
 ```
 
 ### querier
@@ -2276,6 +2280,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # The limit to length of chunk store queries. 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 30d1h]
+
+# Limit the length of the [range] inside a range query. Default is 0 or
+# unlimited
+# CLI flag: -querier.max-query-range
+[max_query_range: <duration> | default = 0s]
 
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
