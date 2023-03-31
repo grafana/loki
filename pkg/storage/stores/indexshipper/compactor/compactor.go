@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	compactor_util "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/util"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -395,7 +397,14 @@ func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 	// Turn your paths into chunk refs with index_util.ParseChunkRef(index_util.DecodeKey([]byte("absolute path")))
 	// Pass the list of to delete to RunSizeCompaction
 
-	var toDelete []retention.ChunkRef
+	diskUsage, err := util.DiskUsage(c.fsConfig.Directory)
+
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
+	}
+
+	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
+	toDelete, _ := chunksToDelete(diskUsage, c.fsConfig.Directory, c.cfg.RetentionDiskSpacePercentage)
 	_ = c.RunSizeCompaction(ctx, toDelete) // just log this error so the service doesn't exit
 	return nil
 }
@@ -833,6 +842,18 @@ func sortTablesByRange(tables []string) {
 
 }
 
+func sortTablesByRangeOldestFirst(tables []string) {
+	tableRanges := make(map[string]model.Interval)
+	for _, table := range tables {
+		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
+	}
+
+	sort.Slice(tables, func(i, j int) bool {
+		// less than if end time is before produces an oldest first sort order
+		return tableRanges[tables[i]].End.Before(tableRanges[tables[j]].End)
+	})
+}
+
 func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
@@ -841,4 +862,60 @@ func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return schemaCfg, true
+}
+
+func chunksToDelete(diskUsage util.DiskStatus, directory string, cleanupThreshold int) ([]retention.ChunkRef, error) {
+	var toDelete []retention.ChunkRef
+	files, err := os.ReadDir(directory)
+	bytesToDelete := bytesToDelete(diskUsage, cleanupThreshold)
+	bytesDeleted := 0.0
+	level.Info(util_log.Logger).Log("msg", "bytesToDelete", bytesToDelete)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if diskUsage.UsedPercent < float64(cleanupThreshold) {
+		return nil, nil
+	}
+
+	// Sorting by the last modified time
+	sort.Slice(files, func(i, j int) bool {
+		infoI, _ := files[i].Info()
+		infoJ, _ := files[j].Info()
+		return infoI.ModTime().Before(infoJ.ModTime())
+	})
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		info, _ := file.Info()
+		if bytesToDelete < (bytesDeleted + float64(info.Size())) {
+			break
+		}
+
+		bytesDeleted = bytesDeleted + float64(info.Size())
+		level.Info(util_log.Logger).Log("msg", "block size retention exceeded, removing file", "filepath", file.Name())
+
+		fullPath := directory + "/" + file.Name()
+		chunkRef, _, err := compactor_util.ParseChunkRef(compactor_util.DecodeKey([]byte(fullPath)))
+		if err != nil {
+			continue
+		}
+
+		toDelete = append(toDelete, chunkRef)
+	}
+	return toDelete, nil
+}
+
+func bytesToDelete(diskUsage util.DiskStatus, cleanupThreshold int) (bytes float64) {
+	percentajeToBeDeleted := diskUsage.UsedPercent - float64(cleanupThreshold)
+
+	if percentajeToBeDeleted < 0.0 {
+		percentajeToBeDeleted = 0.0
+	}
+
+	return ((percentajeToBeDeleted / 100) * float64(diskUsage.All))
 }

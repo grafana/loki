@@ -11,6 +11,8 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+// TODO: Delete this file or move compactor functions here
+
 func DeleteChunksBasedOnBlockSize(ctx context.Context, directory string, diskUsage util.DiskStatus, cleanupThreshold int) error {
 	if diskUsage.UsedPercent >= float64(cleanupThreshold) {
 		if err := purgeOldFiles(diskUsage, directory, cleanupThreshold); err != nil {

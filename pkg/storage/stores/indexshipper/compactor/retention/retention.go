@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/grafana/dskit/services"
@@ -107,22 +108,6 @@ func NewSizeBasedRetentionCleaner(
 	}, nil
 }
 
-func (c *SizeBasedRetentionCleaner) RunIteration(ctx context.Context) error {
-	diskUsage, err := util.DiskUsage(c.workingDirectory)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
-	}
-	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
-
-	err = DeleteChunksBasedOnBlockSize(ctx, c.workingDirectory, diskUsage, c.cleanupThreshold)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
-	}
-
-	// don't return error, otherwise timer service would stop.
-	return nil
-}
-
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
 	MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error)
@@ -136,8 +121,16 @@ type Marker struct {
 	markTimeout      time.Duration
 }
 
+var mu sync.Mutex
+var metrics *markerMetrics
+
 func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
-	metrics := newMarkerMetrics(r)
+	mu.Lock()
+	defer mu.Unlock()
+
+	if metrics == nil {
+		metrics = newMarkerMetrics(r)
+	}
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
