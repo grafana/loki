@@ -17,6 +17,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.3
 
+- [BUGFIX] Add projected volume type to psp
+
 
 ## 4.9.0
 
