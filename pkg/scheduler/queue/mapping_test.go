@@ -10,20 +10,20 @@ func TestQueueMapping(t *testing.T) {
 	// Individual sub-tests in this test case are reflecting a scenario and need
 	// to be executed in sequential order.
 
-	m := &Mapping[*LeafQueue]{}
+	m := &Mapping[*TreeQueue]{}
 	m.Init(16)
 
 	require.Equal(t, m.Len(), 0)
 
 	t.Run("put item to mapping", func(t *testing.T) {
-		q1 := newLeafQueue(10, "queue-1")
+		q1 := newTreeQueue(10, "queue-1")
 		m.Put(q1.Name(), q1)
 		require.Equal(t, 1, m.Len())
 		require.Equal(t, []string{"queue-1"}, m.Keys())
 	})
 
 	t.Run("insert order is preserved if there is no empty slot", func(t *testing.T) {
-		q2 := newLeafQueue(10, "queue-2")
+		q2 := newTreeQueue(10, "queue-2")
 		m.Put(q2.Name(), q2)
 		require.Equal(t, 2, m.Len())
 		require.Equal(t, []string{"queue-1", "queue-2"}, m.Keys())
@@ -33,14 +33,14 @@ func TestQueueMapping(t *testing.T) {
 		ok := m.Remove("queue-1")
 		require.True(t, ok)
 		require.Equal(t, 1, m.Len())
-		q3 := newLeafQueue(10, "queue-3")
+		q3 := newTreeQueue(10, "queue-3")
 		m.Put(q3.Name(), q3)
 		require.Equal(t, 2, m.Len())
 		require.Equal(t, []string{"queue-3", "queue-2"}, m.Keys())
 	})
 
 	t.Run("insert order is preserved across keys and values", func(t *testing.T) {
-		q4 := newLeafQueue(10, "queue-4")
+		q4 := newTreeQueue(10, "queue-4")
 		m.Put(q4.Name(), q4)
 		require.Equal(t, 3, m.Len())
 		for idx, v := range m.Values() {
@@ -61,24 +61,31 @@ func TestQueueMapping(t *testing.T) {
 	})
 
 	t.Run("get next item based on index must not skip when items are removed", func(t *testing.T) {
-		item := m.GetNext(StartIndex)
+		item, err := m.GetNext(-1)
+		require.Nil(t, err)
 		require.Equal(t, "queue-3", item.Name())
-		item = m.GetNext(item.Pos())
+		item, err = m.GetNext(item.Pos())
+		require.Nil(t, err)
 		require.Equal(t, "queue-2", item.Name())
 		m.Remove(item.Name())
-		item = m.GetNext(item.Pos())
+		item, err = m.GetNext(item.Pos())
+		require.Nil(t, err)
 		require.Equal(t, "queue-4", item.Name())
 	})
 
-	t.Run("get next item out of range returns first item", func(t *testing.T) {
-		item := m.GetNext(100)
-		require.Equal(t, "queue-3", item.Name())
+	t.Run("get next item out of range returns ErrOutOfBounds", func(t *testing.T) {
+		item, err := m.GetNext(100)
+		require.Nil(t, item)
+		require.ErrorIs(t, err, ErrOutOfBounds)
+
 	})
 
 	t.Run("get next item skips empty slots", func(t *testing.T) {
-		item := m.GetNext(100)
+		item, err := m.GetNext(-1)
+		require.Nil(t, err)
 		require.Equal(t, "queue-3", item.Name())
-		item = m.GetNext(item.Pos())
+		item, err = m.GetNext(item.Pos())
+		require.Nil(t, err)
 		require.Equal(t, "queue-4", item.Name())
 	})
 

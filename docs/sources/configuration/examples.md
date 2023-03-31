@@ -333,3 +333,92 @@ storage_config:
       kms_key_id: 0987dcba-09fe-87dc-65ba-ab0987654321
 ```
 
+
+## 11-COS-HMAC-Example.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. HMAC will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
+
+```
+
+
+## 12-COS-APIKey-Example.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. APIKey will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    api_key: <api_key_to_authenticate_with_cos>
+    service_instance_id: <cos_service_instance_id>
+    auth_endpoint: <iam_endpoint_for_authentication>
+
+```
+
+
+## 13-COS-Trusted-Profile-Example.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. 
+# A trusted profile will be used for authenticating with COS. We can either pass
+# the trusted profile name or trusted profile ID along with the compute resource token file.
+# If we pass both trusted profile name and trusted profile ID it should be of 
+# the same trusted profile.
+# In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
+# For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    auth_endpoint: <iam_endpoint_for_authentication>
+    cr_token_file_path: <path_to_compute_resource_token>
+    trusted_profile_name: <name_of_the_trusted_profile> # You can also use trusted_profile_id instead of trusted_profile_name
+
+```
+

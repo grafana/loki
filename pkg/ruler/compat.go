@@ -7,12 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -27,6 +21,11 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -49,12 +48,15 @@ type RulesLimits interface {
 	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
 	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
+
+	RulerRemoteEvaluationTimeout(userID string) time.Duration
+	RulerRemoteEvaluationMaxResponseSize(userID string) int64
 }
 
-// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
+// queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
-	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
 		if !checker.isReady(userID) {
@@ -62,21 +64,10 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyC
 		}
 
 		adjusted := t.Add(-overrides.EvaluationDelay(userID))
-		params := logql.NewLiteralParams(
-			qs,
-			adjusted,
-			adjusted,
-			0,
-			0,
-			logproto.FORWARD,
-			0,
-			nil,
-		)
-		q := engine.Query(params)
+		res, err := evaluator.Eval(ctx, qs, adjusted)
 
-		res, err := q.Exec(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("rule evaluation failed: %w", err)
 		}
 		switch v := res.Data.(type) {
 		case promql.Vector:
@@ -89,7 +80,7 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyC
 		default:
 			return nil, errors.New("rule result is not a vector or scalar")
 		}
-	})
+	}
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
@@ -128,7 +119,7 @@ const MetricsPrefix = "loki_ruler_wal_"
 
 var registry storageRegistry
 
-func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
+func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
 	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
 
 	registry = newWALRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)
@@ -143,8 +134,8 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
-		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFn := queryFunc(evaluator, overrides, registry, userID)
+		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the
 		// manager.This is used to back the memstore
@@ -153,7 +144,7 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:      registry,
 			Queryable:       memStore,
-			QueryFunc:       queryFunc,
+			QueryFunc:       queryFn,
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String()),

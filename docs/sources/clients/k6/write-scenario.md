@@ -42,7 +42,7 @@ These parameters can be adjusted in the load test:
 * The number of virtual users (VUs)
 
     VUs can be used to control the amount of parallelism with which logs should
-    be pushed. Every VU runs it's own loop of iterations.
+    be pushed. Every VU runs its own loop of iterations.
     Therfore, the number of VUs has the most impact on
     the generated log throughput.
     Since generating logs is CPU-intensive, there is a threshold above which

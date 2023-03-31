@@ -13,7 +13,9 @@ weight: 100
 toc: true
 ---
 
-Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation) and  [Swift](https://docs.openstack.org/swift/latest/) for LokiStack object storage.
+Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation) and  [Swift](https://docs.openstack.org/swift/latest/) for LokiStack object storage.  
+
+_Note_: Upon setting up LokiStack for any object storage provider, you should configure a logging collector that references the LokiStack in order to view the logs.
 
 ## AWS S3
 
@@ -152,35 +154,66 @@ Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.
 
 ### Requirements
 
-* Deploy the [OpenShift Data Foundation](https://access.redhat.com/documentation/en-us/red_hat_openshift_data_foundation/4.10) on your cluster.
-
-* Create a bucket via an ObjectBucketClaim.
+* Deploy the [OpenShift Data Foundation](https://access.redhat.com/documentation/en-us/red_hat_openshift_data_foundation/4.12) on your cluster.
 
 
 ### Installation
 
 * Deploy the Loki Operator to your cluster.
-
-* Create an Object Storage secret with keys as follows:
-
-    ```console
-    kubectl create secret generic lokistack-dev-odf \
-      --from-literal=bucketnames="<BUCKET_NAME>" \
-      --from-literal=endpoint="https://s3.openshift-storage.svc" \
-      --from-literal=access_key_id="<ACCESS_KEY_ID>" \
-      --from-literal=access_key_secret="<ACCESS_KEY_SECRET>"
-    ```
-
-    where `lokistack-dev-odf` is the secret name. You can copy the values for `BUCKET_NAME`, `ACCESS_KEY_ID` and `ACCESS_KEY_SECRET` from your ObjectBucketClaim's accompanied secret.
-
-* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
+* Create an ObjectBucketClaim in `openshift-logging` namespace:
 
   ```yaml
+    apiVersion: objectbucket.io/v1alpha1
+    kind: ObjectBucketClaim
+    metadata:
+      name: loki-bucket-odf
+      namespace: openshift-logging
+    spec:
+      generateBucketName: loki-bucket-odf
+  ```
+
+* Get bucket properties from the associated ConfigMap:
+  ```console
+  BUCKET_HOST=$(kubectl get -n openshift-logging configmap loki-bucket-odf -o jsonpath='{.data.BUCKET_HOST}')
+  BUCKET_NAME=$(kubectl get -n openshift-logging configmap loki-bucket-odf -o jsonpath='{.data.BUCKET_NAME}')
+  BUCKET_PORT=$(kubectl get -n openshift-logging configmap loki-bucket-odf -o jsonpath='{.data.BUCKET_PORT}')
+  ```
+
+* Get bucket access key from the associated Secret:
+  ```console
+  ACCESS_KEY_ID=$(kubectl get -n openshift-logging secret loki-bucket-odf -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' | base64 -d)
+  SECRET_ACCESS_KEY=$(kubectl get -n openshift-logging secret loki-bucket-odf -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' | base64 -d)
+  ```
+
+  * Create an Object Storage secret with keys as follows:
+
+  ```console
+    kubectl create -n openshift-logging secret generic lokistack-dev-odf \
+    --from-literal=access_key_id="${ACCESS_KEY_ID}" \
+    --from-literal=access_key_secret="${SECRET_ACCESS_KEY}" \
+    --from-literal=bucketnames="${BUCKET_NAME}" \
+    --from-literal=endpoint="https://${BUCKET_HOST}:${BUCKET_PORT}"
+  ```
+
+  Where `lokistack-dev-odf` is the secret name. The values for `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `BUCKET_NAME`, `BUCKET_HOST` and `BUCKET_PORT` are taken from your ObjectBucketClaim's accompanied secret and ConfigMap.
+
+* Create an instance of [LokiStack](../../hack/lokistack_gateway_ocp.yaml) by referencing the secret name and type as `s3`:
+
+  ```yaml
+  apiVersion: loki.grafana.com/v1
+  kind: LokiStack
+  metadata:
+    name: logging-loki
+    namespace: openshift-logging
   spec:
     storage:
       secret:
         name: lokistack-dev-odf
         type: s3
+      tls:
+        caName: openshift-service-ca.crt
+    tenants:
+      mode: openshift-logging
   ```
 
 ## Swift

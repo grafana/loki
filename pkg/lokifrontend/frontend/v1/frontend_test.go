@@ -126,13 +126,10 @@ func TestFrontendCheckReady(t *testing.T) {
 		{"no url, no clients is not ready", 0, "not ready: number of queriers connected to query-frontend is 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &queue.Metrics{
-				QueueLength:       prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-				DiscardedRequests: prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-			}
+			qm := queue.NewMetrics("query_frontend", nil)
 			f := &Frontend{
 				log:          log.NewNopLogger(),
-				requestQueue: queue.NewRequestQueue(5, 0, m),
+				requestQueue: queue.NewRequestQueue(5, 0, qm),
 			}
 			for i := 0; i < tt.connectedClients; i++ {
 				f.requestQueue.RegisterQuerierConnection("test")

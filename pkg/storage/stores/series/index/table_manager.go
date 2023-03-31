@@ -43,7 +43,7 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m.syncTableDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "table_manager_sync_duration_seconds",
-		Help:      "Time spent synching tables.",
+		Help:      "Time spent syncing tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 
@@ -325,7 +325,7 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 	}
 
 	expected := m.calculateExpectedTables()
-	level.Debug(util_log.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
+	level.Debug(util_log.Logger).Log("msg", "syncing tables", "expected_tables", len(expected))
 
 	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
 	if err != nil {

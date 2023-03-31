@@ -2444,6 +2444,38 @@ func TestEngine_MaxSeries(t *testing.T) {
 	}
 }
 
+func TestEngine_MaxRangeInterval(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{rangeLimit: 24 * time.Hour, maxSeries: 100000}, log.NewNopLogger())
+
+	for _, test := range []struct {
+		qs             string
+		direction      logproto.Direction
+		expectLimitErr bool
+	}{
+		{`topk(1,rate(({app=~"foo|bar"})[2d]))`, logproto.FORWARD, true},
+		{`topk(1,rate(({app=~"foo|bar"})[1d]))`, logproto.FORWARD, false},
+		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
+	} {
+		t.Run(test.qs, func(t *testing.T) {
+			q := eng.Query(LiteralParams{
+				qs:        test.qs,
+				start:     time.Unix(0, 0),
+				end:       time.Unix(100000, 0),
+				step:      60 * time.Second,
+				direction: test.direction,
+				limit:     1000,
+			})
+			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			if test.expectLimitErr {
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrIntervalLimit)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // go test -mod=vendor ./pkg/logql/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 func BenchmarkRangeQuery100000(b *testing.B) {
 	benchmarkRangeQuery(int64(100000), b)

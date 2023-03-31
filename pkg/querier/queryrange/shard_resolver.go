@@ -11,8 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -20,6 +18,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
 )
 
 func shardResolverForConf(
@@ -31,12 +31,14 @@ func shardResolverForConf(
 	maxShards int,
 	r queryrangebase.Request,
 	handler queryrangebase.Handler,
+	limits Limits,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == config.TSDBType {
 		return &dynamicShardResolver{
 			ctx:             ctx,
 			logger:          logger,
 			handler:         handler,
+			limits:          limits,
 			from:            model.Time(r.GetStart()),
 			through:         model.Time(r.GetEnd()),
 			maxParallelism:  maxParallelism,
@@ -54,6 +56,7 @@ type dynamicShardResolver struct {
 	ctx     context.Context
 	handler queryrangebase.Handler
 	logger  log.Logger
+	limits  Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -61,37 +64,34 @@ type dynamicShardResolver struct {
 	defaultLookback time.Duration
 }
 
-func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
-	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
-	defer sp.Finish()
-	// We try to shard subtrees in the AST independently if possible, although
-	// nested binary expressions can make this difficult. In this case,
-	// we query the index stats for all matcher groups then sum the results.
-	grps, err := syntax.MatcherGroups(e)
-	if err != nil {
-		return 0, err
-	}
+// getStatsForMatchers returns the index stats for all the groups in matcherGroups.
+func getStatsForMatchers(
+	ctx context.Context,
+	logger log.Logger,
+	statsHandler queryrangebase.Handler,
+	start, end model.Time,
+	matcherGroups []syntax.MatcherRange,
+	parallelism int,
+	defaultLookback ...time.Duration,
+) ([]*stats.Stats, error) {
+	startTime := time.Now()
 
-	// If there are zero matchers groups, we'll inject one to query everything
-	if len(grps) == 0 {
-		grps = append(grps, syntax.MatcherRange{})
-	}
-
-	results := make([]*stats.Stats, 0, len(grps))
-
-	start := time.Now()
-	if err := concurrency.ForEachJob(ctx, len(grps), r.maxParallelism, func(ctx context.Context, i int) error {
-		matchers := syntax.MatchersString(grps[i].Matchers)
-		diff := grps[i].Interval + grps[i].Offset
-		adjustedFrom := r.from.Add(-diff)
-		if grps[i].Interval == 0 {
-			adjustedFrom = adjustedFrom.Add(-r.defaultLookback)
+	results := make([]*stats.Stats, len(matcherGroups))
+	if err := concurrency.ForEachJob(ctx, len(matcherGroups), parallelism, func(ctx context.Context, i int) error {
+		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
+		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
+		adjustedFrom := start.Add(-diff)
+		if matcherGroups[i].Interval == 0 && len(defaultLookback) > 0 {
+			// For limited instant queries, when start == end, the queries would return
+			// zero results. Prometheus has a concept of "look back amount of time for instant queries"
+			// since metric data is sampled at some configurable scrape_interval (commonly 15s, 30s, or 1m).
+			// We copy that idea and say "find me logs from the past when start=end".
+			adjustedFrom = adjustedFrom.Add(-defaultLookback[0])
 		}
 
-		adjustedThrough := r.through.Add(-grps[i].Offset)
+		adjustedThrough := end.Add(-matcherGroups[i].Offset)
 
-		start := time.Now()
-		resp, err := r.handler.Do(r.ctx, &logproto.IndexStatsRequest{
+		resp, err := statsHandler.Do(ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
 			Through:  adjustedThrough,
 			Matchers: matchers,
@@ -105,32 +105,58 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 			return fmt.Errorf("expected *IndexStatsResponse while querying index, got %T", resp)
 		}
 
-		results = append(results, casted.Response)
-		level.Debug(sp).Log(
+		results[i] = casted.Response
+
+		level.Debug(logger).Log(
 			append(
 				casted.Response.LoggingKeyValues(),
 				"msg", "queried index",
 				"type", "single",
 				"matchers", matchers,
-				"duration", time.Since(start),
+				"duration", time.Since(startTime),
 				"from", adjustedFrom.Time(),
 				"through", adjustedThrough.Time(),
 				"length", adjustedThrough.Sub(adjustedFrom),
 			)...,
 		)
+
 		return nil
 	}); err != nil {
-		return 0, err
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
+	defer sp.Finish()
+	log := spanlogger.FromContext(r.ctx)
+	defer log.Finish()
+
+	start := time.Now()
+
+	// We try to shard subtrees in the AST independently if possible, although
+	// nested binary expressions can make this difficult. In this case,
+	// we query the index stats for all matcher groups then sum the results.
+	grps, err := syntax.MatcherGroups(e)
+	if err != nil {
+		return stats.Stats{}, err
+	}
+
+	// If there are zero matchers groups, we'll inject one to query everything
+	if len(grps) == 0 {
+		grps = append(grps, syntax.MatcherRange{})
+	}
+
+	results, err := getStatsForMatchers(ctx, log, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	if err != nil {
+		return stats.Stats{}, err
 	}
 
 	combined := stats.MergeStats(results...)
-	factor := guessShardFactor(combined, r.maxShards)
 
-	var bytesPerShard = combined.Bytes
-	if factor > 0 {
-		bytesPerShard = combined.Bytes / uint64(factor)
-	}
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "queried index",
@@ -138,11 +164,39 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, error) {
 			"len", len(results),
 			"max_parallelism", r.maxParallelism,
 			"duration", time.Since(start),
+		)...,
+	)
+
+	return combined, nil
+}
+
+func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
+	defer log.Finish()
+
+	combined, err := r.GetStats(e)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	factor := guessShardFactor(combined, r.maxShards)
+
+	var bytesPerShard = combined.Bytes
+	if factor > 0 {
+		bytesPerShard = combined.Bytes / uint64(factor)
+	}
+
+	level.Debug(log).Log(
+		append(
+			combined.LoggingKeyValues(),
+			"msg", "Got shard factor",
 			"factor", factor,
 			"bytes_per_shard", strings.Replace(humanize.Bytes(bytesPerShard), " ", "", 1),
 		)...,
 	)
-	return factor, nil
+	return factor, bytesPerShard, nil
 }
 
 const (

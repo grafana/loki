@@ -45,13 +45,13 @@ type Report struct {
 }
 
 // sendReport sends the report to the stats server
-func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time) error {
+func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string) error {
 	report := buildReport(seed, interval)
 	out, err := jsoniter.MarshalIndent(report, "", " ")
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, usageStatsURL, bytes.NewBuffer(out))
+	req, err := http.NewRequest(http.MethodPost, URL, bytes.NewBuffer(out))
 	if err != nil {
 		return err
 	}
