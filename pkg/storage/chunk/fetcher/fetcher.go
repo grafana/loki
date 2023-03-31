@@ -201,9 +201,10 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	// to the cache asynchronously in the background and we lose the context
 	var bytes int
 	for _, c := range fromStorage {
-		bytes += c.Size()
+		size := c.Data.Size()
+		bytes += size
 
-		chunkFetchedSize.WithLabelValues("store").Observe(float64(c.Size()))
+		chunkFetchedSize.WithLabelValues("store").Observe(float64(size))
 	}
 
 	st := stats.FromContext(ctx)
