@@ -136,7 +136,9 @@ func TestMetricsTripperware(t *testing.T) {
 		maxQuerierBytesRead:     100,
 	}
 	l = WithSplitByLimits(l, 4*time.Hour)
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{
+	noCacheTestCfg := testConfig
+	noCacheTestCfg.CacheResults = false
+	tpw, stopper, err := NewTripperware(noCacheTestCfg, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -179,8 +181,8 @@ func TestMetricsTripperware(t *testing.T) {
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	_, err = tpw(rt).RoundTrip(req)
 	require.Error(t, err)
-	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
+	require.Equal(t, 2, *statsCount)
 
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
@@ -195,6 +197,15 @@ func TestMetricsTripperware(t *testing.T) {
 	rt, err = newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
+
+	// Configure with cache
+	tpw, stopper, err = NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{
+		Configs: testSchemasTSDB,
+	}, nil, false, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
 
 	// testing split interval
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
@@ -227,7 +238,9 @@ func TestLogFilterTripperware(t *testing.T) {
 		maxQueryBytesRead:       1000,
 		maxQuerierBytesRead:     100,
 	}
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	noCacheTestCfg := testConfig
+	noCacheTestCfg.CacheResults = false
+	tpw, stopper, err := NewTripperware(noCacheTestCfg, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -293,8 +306,9 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestInstantQueryTripperware(t *testing.T) {
-	testShardingConfig := testConfig
-	testShardingConfig.ShardedQueries = true
+	testShardingConfigNoCache := testConfig
+	testShardingConfigNoCache.ShardedQueries = true
+	testShardingConfigNoCache.CacheResults = false
 	var l Limits = fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
@@ -303,7 +317,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testShardingConfigNoCache, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
