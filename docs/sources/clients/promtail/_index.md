@@ -7,7 +7,7 @@ weight: 10
 
 Promtail is an agent which ships the contents of local logs to a private Grafana Loki
 instance or [Grafana Cloud](/oss/loki). It is usually
-deployed to every machine that has applications needed to be monitored.
+deployed to every machine that runs applications which need to be monitored.
 
 It primarily:
 
@@ -46,7 +46,7 @@ parsed data to Loki. Important details are:
 * It relies on the `\n` character to separate the data into different log lines.
 * The max expected log line is 2MB bytes within the compressed file.
 * The data is decompressed in blocks of 4096 bytes. i.e: it first fetches a block of 4096 bytes
-  from the compressed file and process it. After processing this block and pushing the data to Loki,
+  from the compressed file and processes it. After processing this block and pushing the data to Loki,
   it fetches the following 4096 bytes, and so on.
 * It supports the following extensions:
   - `.gz`: Data will be decompressed with the native Gunzip Golang pkg (`pkg/compress/gzip`)
