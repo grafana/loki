@@ -14,7 +14,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -581,8 +580,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 }
 
 func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
-	step := math.Max64(1, req.GetStep())
-	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / step) * step
+	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	for i := range extents {
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {
