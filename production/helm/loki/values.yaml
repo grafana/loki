@@ -418,7 +418,7 @@ migrate:
     # -- Set to true if migrating from a distributed helm chart
     enabled: false
     # -- If migrating from a distributed service, provide the distributed deployment's
-    # memberlist service DNS so the new deployment can join it's ring.
+    # memberlist service DNS so the new deployment can join its ring.
     memberlistService: ""
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
@@ -529,11 +529,11 @@ monitoring:
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
-  # Self monitoring determines whether Loki should scrape it's own logs.
+  # Self monitoring determines whether Loki should scrape its own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
   # which is installed by default using the grafana-agent-operator sub-chart.
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
-  # scrape configs to scrape it's own logs with the labels expected by the included dashboards.
+  # scrape configs to scrape its own logs with the labels expected by the included dashboards.
   selfMonitoring:
     enabled: true
     # -- Tenant to use for self monitoring
