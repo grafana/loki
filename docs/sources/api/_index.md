@@ -269,8 +269,8 @@ accepts the following query parameters in the URL:
 
 - `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
-- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
-- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
+- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago. Loki returns results with timestamp greater or equal to this value.
+- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now. Loki returns results with timestamp lower than this value.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies to query types which produce a matrix response.
 - `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
