@@ -1,0 +1,166 @@
+scope: .laser
+synced_files:
+  - id: production/helm/loki/src/helm-test/Dockerfile
+    path: production/helm/loki/src/helm-test/Dockerfile
+    hash: "5038318149666182267"
+  - id: go.mod
+    path: go.mod
+    hash: "5279860772820529581"
+  - id: cmd/migrate/Dockerfile
+    path: cmd/migrate/Dockerfile
+    hash: "1290634648893645704"
+  - id: cmd/logcli/Dockerfile
+    path: cmd/logcli/Dockerfile
+    hash: "-5275907488139837285"
+  - id: cmd/loki/Dockerfile.cross
+    path: cmd/loki/Dockerfile.cross
+    hash: "-6819517418448646350"
+  - id: cmd/loki/Dockerfile.debug
+    path: cmd/loki/Dockerfile.debug
+    hash: "304522472743722421"
+  - id: cmd/loki/Dockerfile
+    path: cmd/loki/Dockerfile
+    hash: "1396470663109040328"
+  - id: cmd/loki-canary/Dockerfile.cross
+    path: cmd/loki-canary/Dockerfile.cross
+    hash: "5267598405578726505"
+  - id: cmd/loki-canary/Dockerfile
+    path: cmd/loki-canary/Dockerfile
+    hash: "-304990371465235625"
+  - id: cmd/logql-analyzer/Dockerfile
+    path: cmd/logql-analyzer/Dockerfile
+    hash: "-7320664287758247941"
+  - id: cmd/querytee/Dockerfile.cross
+    path: cmd/querytee/Dockerfile.cross
+    hash: "9110633485179040259"
+  - id: cmd/querytee/Dockerfile
+    path: cmd/querytee/Dockerfile
+    hash: "-8377687407702762287"
+  - id: clients/cmd/promtail/Dockerfile.cross
+    path: clients/cmd/promtail/Dockerfile.cross
+    hash: "3551552056243632174"
+  - id: clients/cmd/promtail/Dockerfile
+    path: clients/cmd/promtail/Dockerfile
+    hash: "-5602590009403153788"
+  - id: clients/cmd/promtail/Dockerfile.arm32
+    path: clients/cmd/promtail/Dockerfile.arm32
+    hash: "233155101541896769"
+  - id: tools/lambda-promtail/Dockerfile
+    path: tools/lambda-promtail/Dockerfile
+    hash: "-2713106654563007928"
+  - id: tools/dev/loki-boltdb-storage-s3/dev.dockerfile
+    path: tools/dev/loki-boltdb-storage-s3/dev.dockerfile
+    hash: "-6243819057516613303"
+  - id: tools/dev/k3d/jsonnetfile.lock.json
+    path: tools/dev/k3d/jsonnetfile.lock.json
+    hash: "-5682272560509732918"
+  - id: tools/dev/k3d/jsonnetfile.json
+    path: tools/dev/k3d/jsonnetfile.json
+    hash: "6670500835233010695"
+  - id: tools/dev/k3d/lib/k.libsonnet
+    path: tools/dev/k3d/lib/k.libsonnet
+    hash: "2826297302376228241"
+  - id: loki-build-image/Dockerfile
+    path: loki-build-image/Dockerfile
+    hash: "2102092591426628968"
+  - id: examples/getting-started/docker-compose.yaml
+    path: examples/getting-started/docker-compose.yaml
+    hash: "-2593718540713767496"
+  - id: tools/promtail.sh
+    path: tools/promtail.sh
+    hash: "384710955620476670"
+  - id: loki-build-image/Dockerfile
+    path: loki-build-image/Dockerfile
+    hash: "2102092591426628968"
+  - id: production/docker-compose.yaml
+    path: production/docker-compose.yaml
+    hash: "565703899359692447"
+  - id: production/docker/docker-compose.yaml
+    path: production/docker/docker-compose.yaml
+    hash: "-3802798746946319230"
+  - id: production/ksonnet/promtail/config.libsonnet
+    path: production/ksonnet/promtail/config.libsonnet
+    hash: "8291776469192934689"
+  - id: production/ksonnet/loki/images.libsonnet
+    path: production/ksonnet/loki/images.libsonnet
+    hash: "7046894947826918318"
+  - id: production/ksonnet/loki-simple-scalable/images.libsonnet
+    path: production/ksonnet/loki-simple-scalable/images.libsonnet
+    hash: "3294440632407618939"
+  - id: production/ksonnet/loki-simple-scalable/example/main.jsonnet
+    path: production/ksonnet/loki-simple-scalable/example/main.jsonnet
+    hash: "-8488406555366067426"
+  - id: production/ksonnet/loki-canary/config.libsonnet
+    path: production/ksonnet/loki-canary/config.libsonnet
+    hash: "5774726299570615245"
+  - id: production/nomad/loki/job.nomad.hcl
+    path: production/nomad/loki/job.nomad.hcl
+    hash: "8690548132565618970"
+  - id: production/nomad/loki-simple/job.nomad.hcl
+    path: production/nomad/loki-simple/job.nomad.hcl
+    hash: "-7679448763765965441"
+  - id: production/nomad/loki-distributed/job.nomad.hcl
+    path: production/nomad/loki-distributed/job.nomad.hcl
+    hash: "-8765508117145675226"
+  - id: production/helm/loki/Chart.yaml
+    path: production/helm/loki/Chart.yaml
+    hash: "-6158753487555794785"
+  - id: go.mod
+    path: go.mod
+    hash: "5279860772820529581"
+  - id: production/helm/loki/src/helm-test/Dockerfile
+    path: production/helm/loki/src/helm-test/Dockerfile
+    hash: "5038318149666182267"
+  - id: cmd/loki/Dockerfile.debug
+    path: cmd/loki/Dockerfile.debug
+    hash: "304522472743722421"
+  - id: cmd/loki-canary/Dockerfile
+    path: cmd/loki-canary/Dockerfile
+    hash: "-304990371465235625"
+  - id: cmd/logcli/Dockerfile
+    path: cmd/logcli/Dockerfile
+    hash: "-5275907488139837285"
+  - id: cmd/loki/Dockerfile.cross
+    path: cmd/loki/Dockerfile.cross
+    hash: "-6819517418448646350"
+  - id: cmd/loki-canary/Dockerfile.cross
+    path: cmd/loki-canary/Dockerfile.cross
+    hash: "5267598405578726505"
+  - id: cmd/loki/Dockerfile
+    path: cmd/loki/Dockerfile
+    hash: "1396470663109040328"
+  - id: cmd/migrate/Dockerfile
+    path: cmd/migrate/Dockerfile
+    hash: "1290634648893645704"
+  - id: cmd/logql-analyzer/Dockerfile
+    path: cmd/logql-analyzer/Dockerfile
+    hash: "-7320664287758247941"
+  - id: cmd/querytee/Dockerfile
+    path: cmd/querytee/Dockerfile
+    hash: "-8377687407702762287"
+  - id: cmd/querytee/Dockerfile.cross
+    path: cmd/querytee/Dockerfile.cross
+    hash: "9110633485179040259"
+  - id: clients/cmd/docker-driver/Dockerfile
+    path: clients/cmd/docker-driver/Dockerfile
+    hash: "-5675917359057661563"
+  - id: clients/cmd/promtail/Dockerfile.debug
+    path: clients/cmd/promtail/Dockerfile.debug
+    hash: "2812826519982059433"
+  - id: tools/lambda-promtail/Dockerfile
+    path: tools/lambda-promtail/Dockerfile
+    hash: "-2713106654563007928"
+  - id: tools/dev/loki-boltdb-storage-s3/dev.dockerfile
+    path: tools/dev/loki-boltdb-storage-s3/dev.dockerfile
+    hash: "-6243819057516613303"
+  - id: loki-build-image/Dockerfile
+    path: loki-build-image/Dockerfile
+    hash: "2102092591426628968"
+static_vars:
+  - name: go_version
+    value: 1.20.2
+  - name: alpine_version
+    value: 3.16.4
+  - name: loki_latest_release
+    value: 2.7.5
+dynamic_vars: []

@@ -1,0 +1,8 @@
+{
+  _images+:: {
+    loki: 'grafana/loki:{{loki_latest_release}}',
+
+    read: self.loki,
+    write: self.loki,
+  },
+}
