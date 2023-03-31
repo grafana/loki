@@ -213,6 +213,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 			// start time earlier than start time of the table interval we are querying.
 			// for all other splits, consider only chunks that have from >= interval.Start
 			// so that we start after the start time of the index table we are querying.
+			// TODO: Maybe we don't need it anymore
 			if idx == 0 || chk.From() >= interval.Start {
 				return true
 			}
