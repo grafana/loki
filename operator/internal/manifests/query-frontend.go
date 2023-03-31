@@ -37,6 +37,10 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -77,6 +81,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 					"-target=query-frontend",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: &corev1.Probe{
 					ProbeHandler: corev1.ProbeHandler{
@@ -143,7 +148,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(opts.Stack.Template.QueryFrontend.Replicas),
+			Replicas: pointer.Int32(opts.Stack.Template.QueryFrontend.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

@@ -3,9 +3,11 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	reflect "reflect"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -27,7 +29,7 @@ type DownstreamHandler struct {
 }
 
 func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
-	if params.Start().Equal(params.End()) {
+	if logql.GetRangeType(params) == logql.InstantType {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
 			Limit:     params.Limit(),
@@ -64,7 +66,7 @@ func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer 
 	// We may increase parallelism above the default,
 	// ensure we don't end up bottlenecking here.
 	if user, err := tenant.TenantID(ctx); err == nil {
-		if x := h.limits.MaxQueryParallelism(user); x > 0 {
+		if x := h.limits.MaxQueryParallelism(ctx, user); x > 0 {
 			p = x
 		}
 	}
@@ -90,9 +92,11 @@ type instance struct {
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		req := ParamsToLokiRequest(qry.Params, qry.Shards).WithQuery(qry.Expr.String())
-		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
+		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
+		defer sp.Finish()
+		logger := spanlogger.FromContext(ctx)
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep())
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {

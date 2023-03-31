@@ -163,8 +163,8 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartYesterday,
 				End:   indexStartToday + 1000,
 			},
-			expectedNumChunks:  298, // 2 chunks not included at indexStartYesterday since start time is not inclusive
-			expectedNumEntries: 298,
+			expectedNumChunks:  300,
+			expectedNumEntries: 300,
 			expectedNumStreams: 2,
 		},
 		{
@@ -173,8 +173,8 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartToday,
 				End:   indexStartToday + 1000,
 			},
-			expectedNumChunks:  99, // 1 chunk not included at indexStartToday since start time is not inclusive
-			expectedNumEntries: 99,
+			expectedNumChunks:  100,
+			expectedNumEntries: 100,
 			expectedNumStreams: 1,
 		},
 		{
@@ -183,8 +183,8 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartToday + 50,
 				End:   indexStartToday + 60,
 			},
-			expectedNumChunks:  9, // start and end are not inclusive
-			expectedNumEntries: 9,
+			expectedNumChunks:  10, // end time not inclusive
+			expectedNumEntries: 10,
 			expectedNumStreams: 1,
 		},
 		{

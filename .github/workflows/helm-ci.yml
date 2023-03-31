@@ -24,6 +24,9 @@ jobs:
               exit 1
           fi
 
+      - name: Lint Yaml
+        run: make helm-lint
+
       - name: Lint Code Base
         uses: docker://github/super-linter:v3.12.0
         env:
@@ -57,7 +60,7 @@ jobs:
           python-version: 3.7
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.3.1
+        uses: helm/chart-testing-action@v2.4.0
 
       - name: Run chart-testing (list-changed)
         id: list-changed

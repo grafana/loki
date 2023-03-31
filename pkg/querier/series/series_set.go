@@ -191,7 +191,7 @@ func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(ss.Metric),
+			labels:  MetricToLabels(ss.Metric),
 			samples: ss.Values,
 		})
 	}
@@ -203,14 +203,14 @@ func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(m.Metric),
+			labels:  MetricToLabels(m.Metric),
 			samples: nil,
 		})
 	}
 	return NewConcreteSeriesSet(series)
 }
 
-func metricToLabels(m model.Metric) labels.Labels {
+func MetricToLabels(m model.Metric) labels.Labels {
 	ls := make(labels.Labels, 0, len(m))
 	for k, v := range m {
 		ls = append(ls, labels.Label{

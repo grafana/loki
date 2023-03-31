@@ -33,6 +33,50 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### Change in LogQL behavior
+
+When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
+was kept.
+
+#### Default retention_period has changed
+
+This change will affect you if you have:
+```yaml
+compactor:
+  retention_enabled: true
+```
+
+And did *not* define a `retention_period` in `limits_config`, thus relying on the previous default of `744h`
+
+In this release the default has been changed to `0s`.
+
+A value of `0s` is the same as "retain forever" or "disable retention".
+
+If, **and only if**, you wish to retain the previous default of 744h, apply this config.
+```yaml
+limits_config:
+  retention_period: 744h
+```
+
+**Please note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
+only in 2.8 and forward releases does the zero value disable retention.
+
+#### metrics.go log line `subqueries` replaced with `splits` and `shards`
+
+The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
+
+In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+
+There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
+
+In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in the statistics API data returned but just for backwards compatibility, the value will always be zero now.
+
+Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
+
+Note: currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+
 ### Promtail
 
 #### The go build tag `promtail_journal_enabled` was introduced
@@ -41,7 +85,7 @@ The go build tag `promtail_journal_enabled` should be passed to include Journal 
 If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
 
 ```shell
-go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
@@ -309,7 +353,7 @@ Following 2 compactor configs that were defined as command line arguments in jso
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
-# Supported types: gcs, s3, azure, swift, filesystem.
+# Supported types: gcs, s3, azure, swift, cos, filesystem.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 ```
@@ -445,7 +489,7 @@ We decided the default would be better to disable this sleep behavior but anyone
 * [4624](https://github.com/grafana/loki/pull/4624) **chaudum**: Disable chunk transfers in jsonnet lib
 
 This changes a few default values, resulting in the ingester WAL now being on by default,
-and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for its WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
 
 Previous defaults:
 ```yaml

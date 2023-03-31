@@ -17,9 +17,6 @@
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_boltdb_shipper then 24 else super.index_period_hours,
     loki+: if self.using_boltdb_shipper then {
-      chunk_store_config+: {
-        write_dedupe_cache_config:: {},
-      },
       storage_config+: {
         boltdb_shipper+: {
           shared_store: $._config.boltdb_shipper_shared_store,
@@ -49,9 +46,7 @@
     target: 'compactor',
   } else {},
 
-  compactor_ports: [
-    containerPort.new(name='http-metrics', port=$._config.http_listen_port),
-  ],
+  compactor_ports:: $.util.defaultPorts,
 
   compactor_container:: if $._config.using_boltdb_shipper then
     container.new('compactor', $._images.compactor) +

@@ -120,14 +120,14 @@ With Journal support on Ubuntu, run with the following commands:
 
 ```bash
 $ sudo apt install -y libsystemd-dev
-$ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 
 With Journal support on CentOS, run with the following commands:
 
 ```bash
 $ sudo yum install -y systemd-devel
-$ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 
 Otherwise, to build Promtail without Journal support, run `go build`

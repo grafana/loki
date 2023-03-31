@@ -1,11 +1,40 @@
 ## Main/Unreleased
 
+#### Loki
+
+##### Enhancements
+
+* [8953](https://github.com/grafana/loki/pull/8953) **dannykopping**: Querier: block queries by hash.
+* [8851](https://github.com/grafana/loki/pull/8851) **jeschkies**: Introduce limit to require a set of labels for selecting streams.
+
+##### Fixes
+
+* [8971](https://github.com/grafana/loki/pull/8971) **dannykopping**: Stats: fix `Cache.Chunk.BytesSent` statistic and loki_chunk_fetcher_fetched_size_bytes metric with correct chunk size.
+* [8979](https://github.com/grafana/loki/pull/8979) **slim-bean**: Fix the case where a logs query with start time == end time was returning logs when none should be returned.
+
 ### All Changes
+
+#### Promtail
+
+##### Enhancements
+* [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
+
+## 2.8.0 (2023-03-??)
 
 #### Loki
 
 ##### Enhancements
 
+* [8824](https://github.com/grafana/loki/pull/8824) **periklis**: Expose optional label matcher for label values handler
+* [8939](https://github.com/grafana/loki/pull/8939) **Suruthi-G-K**: Loki: Add support for trusted profile authentication in COS client.
+* [8852](https://github.com/grafana/loki/pull/8852) **wtchangdm**: Loki: Add `route_randomly` to Redis options.
+* [8848](https://github.com/grafana/loki/pull/8848) **dannykopping**: Ruler: add configurable rule evaluation jitter.
+* [8826](https://github.com/grafana/loki/pull/8826) **amankrsingh2000**: Loki: Add support for IBM cloud object storage as storage client.
+* [8752](https://github.com/grafana/loki/pull/8752) **chaudum**: Add query fairness control across actors within a tenant to scheduler, which can be enabled by passing the `X-Loki-Actor-Path` header to the HTTP request of the query.
+* [8786](https://github.com/grafana/loki/pull/8786) **DylanGuedes**: Ingester: add new /ingester/prepare_shutdown endpoint.
+* [8744](https://github.com/grafana/loki/pull/8744) **dannykopping**: Ruler: remote rule evaluation.
+* [8727](https://github.com/grafana/loki/pull/8727) **cstyan** **jeschkies**: Propagate per-request limit header to querier.
+* [8682](https://github.com/grafana/loki/pull/8682) **dannykopping**: Add fetched chunk size distribution metric `loki_chunk_fetcher_fetched_size_bytes`.
 * [8532](https://github.com/grafana/loki/pull/8532) **justcompile**: Adds Storage Class option to S3 objects
 * [7951](https://github.com/grafana/loki/pull/7951) **MichelHollands**: Add a count template function to line_format and label_format.
 * [7380](https://github.com/grafana/loki/pull/7380) **liguozhong**: metrics query: range vector support streaming agg when no overlap.
@@ -30,6 +59,11 @@
 * [8259](https://github.com/grafana/loki/pull/8259) **mar4uk**: Extract push.proto from the logproto package to the separate module.
 * [7906](https://github.com/grafana/loki/pull/7906) **kavirajk**: Add API endpoint that formats LogQL expressions and support new `fmt` subcommand in `logcli` to format LogQL query.
 * [6675](https://github.com/grafana/loki/pull/6675) **btaani**: Add logfmt expression parser for selective extraction of labels from logfmt formatted logs
+* [8474](https://github.com/grafana/loki/pull/8474) **farodin91**: Add support for short-lived S3 session tokens
+* [8774](https://github.com/grafana/loki/pull/8774) **slim-bean**: Add new logql template functions `bytes`, `duration`, `unixEpochMillis`, `unixEpochNanos`, `toDateInZone`, `b64Enc`, and `b64Dec`
+* [8670](https://github.com/grafana/loki/pull/8670) **salvacorts** Introduce two new limits to refuse log and metric queries that would read too much data.
+* [8918](https://github.com/grafana/loki/pull/8918) **salvacorts** Introduce limit to require at least a number label matchers on metric and log queries.
+* [8909](https://github.com/grafana/loki/pull/8909) **salvacorts** Requests to `/loki/api/v1/index/stats` are split in 24h intervals.
 
 ##### Fixes
 
@@ -37,22 +71,19 @@
 * [7880](https://github.com/grafana/loki/pull/7880) **sandeepsukhani**: consider range and offset in queries while looking for schema config for query sharding.
 * [7937](https://github.com/grafana/loki/pull/7937) **ssncferreira**: Deprecate CLI flag `-ruler.wal-cleaer.period` and replace it with `-ruler.wal-cleaner.period`.
 * [7966](https://github.com/grafana/loki/pull/7966) **sandeepsukhani**: Fix query-frontend request load balancing when using k8s service.
-* [7988](https://github.com/grafana/loki/pull/7988) **ashwanthgoli** store: write overlapping chunks to multiple stores.
-* [7925](https://github.com/grafana/loki/pull/7925) **sandeepsukhani**: Fix bugs in logs results caching causing query-frontend to return logs outside of query window.
-* [8120](https://github.com/grafana/loki/pull/8120) **ashwanthgoli** fix panic on hitting /scheduler/ring when ring is disabled.
 * [8251](https://github.com/grafana/loki/pull/8251) **sandeepsukhani** index-store: fix indexing of chunks overlapping multiple schemas.
 * [8151](https://github.com/grafana/loki/pull/8151) **sandeepsukhani** fix log deletion with line filters.
 * [8448](https://github.com/grafana/loki/pull/8448) **chaudum**: Fix bug in LogQL parser that caused certain queries that contain a vector expression to fail.
-* [8531](https://github.com/grafana/loki/pull/8531) **garrettlish**: logql: fix panics when cloning a special query
+* [8448](https://github.com/grafana/loki/pull/8665) **sandeepsukhani**: deletion: fix issue in processing delete requests with tsdb index
+* [8753](https://github.com/grafana/loki/pull/8753) **slim-bean** A zero value for retention_period will now disable retention.
+* [8732](https://github.com/grafana/loki/pull/8732) **abaguas**: azure: respect retry config before cancelling the context
 
 ##### Changes
 
 * [8315](https://github.com/grafana/loki/pull/8315) **thepalbi** Relicense and export `pkg/ingester` WAL code to be used in Promtail's WAL.
- 
-##### Build
+* [8761](https://github.com/grafana/loki/pull/8761) **slim-bean** Remove "subqueries" from the metrics.go log line and instead provide `splits` and `shards`
 
-* [8575](https://github.com/grafana/loki/pull/8575) **MichelHollands** Update build image to go 1.20.1 and alpine 3.16.4.
-* [8583](https://github.com/grafana/loki/pull/8583) **MichelHollands** Use 0.28.1 build image and update go and alpine versions.
+##### Build
 
 #### Promtail
 
@@ -72,8 +103,6 @@
 ##### Fixes
 
 * [8231](https://github.com/grafana/loki/pull/8231) **CCOLLOT**: Lambda-promtail: fix flushing behavior of batches, leading to a significant increase in performance.
-* [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
-* [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
 ##### Changes
 
@@ -95,6 +124,8 @@
 #### Jsonnet
 
 * [7923](https://github.com/grafana/loki/pull/7923) **manohar-koukuntla**: Add zone aware ingesters in jsonnet deployment
+* [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
+* [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 
 ##### Fixes
 
@@ -107,6 +138,40 @@
 ### Notes
 
 ### Dependencies
+
+## 2.7.5 (2023-03-28)
+
+#### Loki
+
+##### Fixes
+
+* [7924](https://github.com/grafana/loki/pull/7924) **jeschkies**: Flush buffered logger on exit
+
+## 2.7.4 (2023-02-24)
+
+#### Loki
+
+##### Fixes
+
+* [8531](https://github.com/grafana/loki/pull/8531) **garrettlish**: logql: fix panics when cloning a special query
+* [8120](https://github.com/grafana/loki/pull/8120) **ashwanthgoli**: fix panic on hitting /scheduler/ring when ring is disabled.
+* [7988](https://github.com/grafana/loki/pull/7988) **ashwanthgoli**: store: write overlapping chunks to multiple stores.
+* [7925](https://github.com/grafana/loki/pull/7925) **sandeepsukhani**: Fix bugs in logs results caching causing query-frontend to return logs outside of query window.
+
+##### Build
+
+* [8575](https://github.com/grafana/loki/pull/8575) **MichelHollands**: Update build image to go 1.20.1 and alpine 3.16.4.
+* [8583](https://github.com/grafana/loki/pull/8583) **MichelHollands**: Use 0.28.1 build image and update go and alpine versions.
+
+#### Promtail
+
+##### Enhancements
+
+##### Fixes
+
+* [8497](https://github.com/grafana/loki/pull/8497) **kavirajk**: Fix `cri` tags treating different streams as the same
+* [7771](https://github.com/grafana/loki/pull/7771) **GeorgeTsilias**: Handle nil error on target Details() call.
+* [7461](https://github.com/grafana/loki/pull/7461) **MarNicGit**: Promtail: Fix collecting userdata field from Windows Event Log
 
 ## 2.7.3 (2023-02-01)
 

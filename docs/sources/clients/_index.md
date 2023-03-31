@@ -78,3 +78,4 @@ when using or writing a third-party client.
 - [mjaron-tinyloki-java](https://github.com/mjfryc/mjaron-tinyloki-java) (Java)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
+- [ilogtail](https://github.com/alibaba/ilogtail) (Go)
