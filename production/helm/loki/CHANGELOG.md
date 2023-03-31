@@ -15,10 +15,21 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix dns port in network-policy
 
+## 4.10.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.3
+
+
+## 4.9.0
+
+- [CHANGE] Changed version of Loki to 2.7.5
+
+
+- [BUGFIX] Fix role/PSP mapping
+
 ## 4.8.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.2
-
 
 ## 4.7
 

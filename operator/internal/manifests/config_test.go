@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -180,6 +179,84 @@ func randomConfigOptions() manifests.Options {
 				},
 			},
 		},
+	}
+}
+
+func TestConfigOptions_GossipRingConfig(t *testing.T) {
+	tt := []struct {
+		desc        string
+		spec        lokiv1.LokiStackSpec
+		wantOptions config.GossipRing
+	}{
+		{
+			desc: "defaults",
+			spec: lokiv1.LokiStackSpec{},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "defaults with empty config",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected any instance addr",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						InstanceAddrType: lokiv1.InstanceAddrDefault,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "user selected podIP instance addr",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						InstanceAddrType: lokiv1.InstanceAddrPodIP,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			inOpt := manifests.Options{
+				Name:      "my-stack",
+				Namespace: "my-ns",
+				Stack:     tc.spec,
+			}
+			options := manifests.ConfigOptions(inOpt)
+			require.Equal(t, tc.wantOptions, options.GossipRing)
+		})
 	}
 }
 
@@ -415,10 +492,10 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
@@ -451,10 +528,10 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
@@ -530,10 +607,10 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
@@ -583,10 +660,10 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
@@ -657,34 +734,34 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
 							Endpoints: []string{"http://my-alertmanager"},
 						},
-						Overrides: map[string]v1beta1.RulerOverrides{
+						Overrides: map[string]lokiv1.RulerOverrides{
 							"application": {
-								AlertManagerOverrides: &v1beta1.AlertManagerSpec{
+								AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 									ExternalURL:    "external",
 									ExternalLabels: map[string]string{"external": "label"},
 									EnableV2:       false,
 									Endpoints:      []string{"http://application-alertmanager"},
-									DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+									DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 										EnableSRV:       false,
 										RefreshInterval: "3m",
 									},
-									Client: &v1beta1.AlertManagerClientConfig{
-										TLS: &v1beta1.AlertManagerClientTLSConfig{
+									Client: &lokiv1.AlertManagerClientConfig{
+										TLS: &lokiv1.AlertManagerClientTLSConfig{
 											ServerName: pointer.String("application.svc"),
 											CAPath:     pointer.String("/tenant/application/alertmanager/ca.crt"),
 											CertPath:   pointer.String("/tenant/application/alertmanager/cert.crt"),
 											KeyPath:    pointer.String("/tenant/application/alertmanager/cert.key"),
 										},
-										HeaderAuth: &v1beta1.AlertManagerClientHeaderAuth{
+										HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
 											Type:        pointer.String("Bearer"),
 											Credentials: pointer.String("letmeinplz"),
 										},
@@ -692,23 +769,23 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 								},
 							},
 							"other-tenant": {
-								AlertManagerOverrides: &v1beta1.AlertManagerSpec{
+								AlertManagerOverrides: &lokiv1.AlertManagerSpec{
 									ExternalURL:    "external1",
 									ExternalLabels: map[string]string{"external1": "label1"},
 									EnableV2:       false,
 									Endpoints:      []string{"http://other-alertmanager"},
-									DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+									DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 										EnableSRV:       true,
 										RefreshInterval: "5m",
 									},
-									Client: &v1beta1.AlertManagerClientConfig{
-										TLS: &v1beta1.AlertManagerClientTLSConfig{
+									Client: &lokiv1.AlertManagerClientConfig{
+										TLS: &lokiv1.AlertManagerClientTLSConfig{
 											ServerName: pointer.String("other.svc"),
 											CAPath:     pointer.String("/tenant/other/alertmanager/ca.crt"),
 											CertPath:   pointer.String("/tenant/other/alertmanager/cert.crt"),
 											KeyPath:    pointer.String("/tenant/other/alertmanager/cert.key"),
 										},
-										BasicAuth: &v1beta1.AlertManagerClientBasicAuth{
+										BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
 											Username: pointer.String("user"),
 											Password: pointer.String("pass"),
 										},
@@ -788,10 +865,10 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
@@ -865,10 +942,10 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},
@@ -924,10 +1001,10 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 					},
 				},
 				Ruler: manifests.Ruler{
-					Spec: &v1beta1.RulerConfigSpec{
-						AlertManagerSpec: &v1beta1.AlertManagerSpec{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
-							DiscoverySpec: &v1beta1.AlertManagerDiscoverySpec{
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
 								EnableSRV:       false,
 								RefreshInterval: "2m",
 							},

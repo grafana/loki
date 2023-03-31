@@ -955,7 +955,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			"unsharded",
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 			},
 		},
@@ -969,7 +969,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				nil,
 			),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 				labels.MustNewMatcher(
 					labels.MatchEqual,
@@ -1496,7 +1496,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbFiles, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index", indexTables[1].Name()))
 	require.NoError(t, err)
 	require.Len(t, tsdbFiles, 1)
-	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
+	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
 	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)

@@ -10,12 +10,14 @@ import (
 // Those errors are useful for comparing error returned by the engine.
 // e.g. errors.Is(err,logqlmodel.ErrParse) let you know if this is a ast parsing error.
 var (
-	ErrParse          = errors.New("failed to parse the log query")
-	ErrPipeline       = errors.New("failed execute pipeline")
-	ErrLimit          = errors.New("limit reached while evaluating the query")
-	ErrBlocked        = errors.New("query blocked by policy")
-	ErrorLabel        = "__error__"
-	ErrorDetailsLabel = "__error_details__"
+	ErrParse           = errors.New("failed to parse the log query")
+	ErrPipeline        = errors.New("failed execute pipeline")
+	ErrLimit           = errors.New("limit reached while evaluating the query")
+	ErrIntervalLimit   = errors.New("[interval] value exceeds limit")
+	ErrBlocked         = errors.New("query blocked by policy")
+	ErrorLabel         = "__error__"
+	PreserveErrorLabel = "__preserve_error__"
+	ErrorDetailsLabel  = "__error_details__"
 )
 
 // ParseError is what is returned when we failed to parse.

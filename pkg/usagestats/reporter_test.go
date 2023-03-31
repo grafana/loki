@@ -79,14 +79,13 @@ func Test_ReportLoop(t *testing.T) {
 		clusterIDs = append(clusterIDs, received.ClusterID)
 		rw.WriteHeader(http.StatusOK)
 	}))
-	usageStatsURL = server.URL
 
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{
 		Directory: t.TempDir(),
 	})
 	require.NoError(t, err)
 
-	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
+	r, err := NewReporter(Config{Leader: true, Enabled: true, UsageStatsURL: server.URL}, kv.Config{
 		Store: "inmemory",
 	}, objectClient, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
 	require.NoError(t, err)

@@ -1,0 +1,7 @@
+{"records": [
+  "I am valid json",
+  "Me too",
+  {
+    "MyKey": "MyValue"
+  }
+]}

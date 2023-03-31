@@ -10,7 +10,6 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/status"
@@ -81,7 +80,7 @@ var (
 			Kind: "ConfigMap",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack-rules",
+			Name:      "my-stack-rules-0",
 			Namespace: "some-ns",
 		},
 	}
@@ -1445,7 +1444,7 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 	}
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		_, ok := out.(*lokiv1beta1.RulerConfig)
+		_, ok := out.(*lokiv1.RulerConfig)
 		if ok {
 			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
 		}
@@ -1476,6 +1475,18 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 		return nil
 	}
 
+	k.ListStub = func(_ context.Context, list client.ObjectList, options ...client.ListOption) error {
+		switch list.(type) {
+		case *corev1.ConfigMapList:
+			k.SetClientObjectList(list, &corev1.ConfigMapList{
+				Items: []corev1.ConfigMap{
+					rulesCM,
+				},
+			})
+		}
+		return nil
+	}
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
@@ -1490,7 +1501,7 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 
 	// Get should return ruler resources
 	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		_, ok := out.(*lokiv1beta1.RulerConfig)
+		_, ok := out.(*lokiv1.RulerConfig)
 		if ok {
 			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
 		}

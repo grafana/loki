@@ -3,9 +3,10 @@ package ruler
 import (
 	"context"
 	"errors"
-	"github.com/prometheus/prometheus/model/rulefmt"
 	"sync"
 	"time"
+
+	"github.com/prometheus/prometheus/model/rulefmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

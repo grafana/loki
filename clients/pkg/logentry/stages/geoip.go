@@ -38,7 +38,7 @@ const (
 var fields = map[GeoIPFields]string{
 	CITYNAME:        "geoip_city_name",
 	COUNTRYNAME:     "geoip_country_name",
-	CONTINENTNAME:   "geoip_continet_name",
+	CONTINENTNAME:   "geoip_continent_name",
 	CONTINENTCODE:   "geoip_continent_code",
 	LOCATION:        "geoip_location",
 	POSTALCODE:      "geoip_postal_code",
