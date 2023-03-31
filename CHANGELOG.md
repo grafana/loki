@@ -30,6 +30,12 @@
 
 ### Dependencies
 
+## 2.7.6 (yyyy-mm-dd)
+
+##### Enhancements
+
+* [8824](https://github.com/grafana/loki/pull/8824) **periklis**: Expose optional label matcher for label values handler
+
 ## 2.7.5 (2023-03-28)
 
 #### Loki

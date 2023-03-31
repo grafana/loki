@@ -131,6 +131,7 @@ message LabelRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = true
   ];
+  string query = 5; // Naming this query instead of match because this should be with queryrangebase.Request interface
 }
 
 message LabelResponse {
