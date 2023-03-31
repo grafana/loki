@@ -266,10 +266,14 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 // over the limit to keep memory pressure down while other subqueries
 // are executing.
 type downstreamAccumulator struct {
-	*accumulatedStreams
-	*bufferedAccumulator
+	acc    resultAccumulator
 	params logql.Params
 	n      int // number of queries, used to build slice size
+}
+
+type resultAccumulator interface {
+	Accumulate(logqlmodel.Result, int) error
+	Result() []logqlmodel.Result
 }
 
 func newDownstreamAccumulator(params logql.Params, nQueries int) *downstreamAccumulator {
@@ -286,10 +290,10 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 			direction = logproto.BACKWARD
 		}
 
-		a.accumulatedStreams = newStreamAccumulator(direction, int(a.params.Limit()))
+		a.acc = newStreamAccumulator(direction, int(a.params.Limit()))
 
 	} else {
-		a.bufferedAccumulator = &bufferedAccumulator{
+		a.acc = &bufferedAccumulator{
 			results: make([]logqlmodel.Result, a.n),
 		}
 
@@ -298,21 +302,19 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 
 func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc logqlmodel.Result) error {
 	// on first pass, determine which accumulator to use
-	if a.accumulatedStreams == nil && a.bufferedAccumulator == nil {
+	if a.acc == nil {
 		a.build(acc)
 	}
 
-	if a.accumulatedStreams != nil {
-		return a.accumulatedStreams.Accumulate(acc)
-	}
-	return a.bufferedAccumulator.Accumulate(acc, index)
+	return a.acc.Accumulate(acc, index)
 }
 
 func (a *downstreamAccumulator) Result() []logqlmodel.Result {
-	if a.accumulatedStreams != nil {
-		return []logqlmodel.Result{a.accumulatedStreams.Result()}
+	if a.acc == nil {
+		return nil
 	}
-	return a.bufferedAccumulator.Result()
+	return a.acc.Result()
+
 }
 
 type bufferedAccumulator struct {
@@ -566,7 +568,7 @@ func (acc *accumulatedStreams) Pop() any {
 }
 
 // Note: can only be called once as it will alter stream ordreing.
-func (acc *accumulatedStreams) Result() logqlmodel.Result {
+func (acc *accumulatedStreams) Result() []logqlmodel.Result {
 	// sort streams by label
 	sort.Slice(acc.streams, func(i, j int) bool {
 		return acc.streams[i].Labels < acc.streams[j].Labels
@@ -599,10 +601,10 @@ func (acc *accumulatedStreams) Result() logqlmodel.Result {
 		)
 	}
 
-	return res
+	return []logqlmodel.Result{res}
 }
 
-func (acc *accumulatedStreams) Accumulate(x logqlmodel.Result) error {
+func (acc *accumulatedStreams) Accumulate(x logqlmodel.Result, _ int) error {
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
 	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
