@@ -99,6 +99,8 @@ func (cfg *Config) Validate() error {
 	return storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
+// GetUniqueUploaderName builds a unique uploader name using IngesterName + `-` + <nanosecond-timestamp>.
+// The name is persisted in the configured ActiveIndexDirectory and reused when already exists.
 func (cfg *Config) GetUniqueUploaderName() (string, error) {
 	uploader := fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().UnixNano())
 
