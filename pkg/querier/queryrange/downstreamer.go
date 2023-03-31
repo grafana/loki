@@ -29,7 +29,7 @@ type DownstreamHandler struct {
 }
 
 func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
-	if params.Start().Equal(params.End()) {
+	if logql.GetRangeType(params) == logql.InstantType {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
 			Limit:     params.Limit(),
