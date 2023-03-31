@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -421,7 +422,7 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 			if e.Left == nil || e.Left.Interval <= limit {
 				return
 			}
-			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, e.Left.Interval, limit)
+			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Left.Interval), model.Duration(limit))
 		}
 	})
 	return err
