@@ -1496,7 +1496,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbFiles, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index", indexTables[1].Name()))
 	require.NoError(t, err)
 	require.Len(t, tsdbFiles, 1)
-	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
+	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
 	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 	require.NoError(t, err)
