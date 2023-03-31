@@ -492,7 +492,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 
 	count, h := indexStatsResult(response)
 	rt.setHandler(h)
-	resp, err := tpw(rt).RoundTrip(req)
+	_, err = tpw(rt).RoundTrip(req)
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
@@ -501,20 +501,19 @@ func TestIndexStatsTripperware(t *testing.T) {
 	// It should have the answer already so the query handler shouldn't be hit
 	count, h = indexStatsResult(response)
 	rt.setHandler(h)
-	resp, err = tpw(rt).RoundTrip(req)
+	resp, err := tpw(rt).RoundTrip(req)
 	require.NoError(t, err)
 	require.Equal(t, 0, *count)
 
 	// Test the response is the expected
 	indexStatsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
 	res, ok := indexStatsResponse.(*IndexStatsResponse)
 	require.Equal(t, true, ok)
 	require.Equal(t, response.Streams*2, res.Response.Streams)
 	require.Equal(t, response.Chunks*2, res.Response.Chunks)
 	require.Equal(t, response.Bytes*2, res.Response.Bytes)
 	require.Equal(t, response.Entries*2, res.Response.Entries)
-	require.NoError(t, err)
-
 }
 
 func TestLogNoFilter(t *testing.T) {
