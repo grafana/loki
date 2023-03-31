@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -74,6 +75,7 @@ type Storage struct {
 	Swift        openstack.SwiftConfig     `yaml:"swift"`
 	FSConfig     FilesystemConfig          `yaml:"filesystem"`
 	Hedging      hedging.Config            `yaml:"hedging"`
+	COS          ibmcloud.COSConfig        `yaml:"cos"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -85,6 +87,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.BOS.RegisterFlagsWithPrefix(prefix, f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix, f)
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
+	s.COS.RegisterFlagsWithPrefix(prefix, f)
 }
 
 type FilesystemConfig struct {

@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-39f2856
+    containerImage: docker.io/grafana/loki-operator:main-99acb9b
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -2003,6 +2003,15 @@ spec:
 
     * Kubernetes Custom Resources: Use Kubernetes custom resources to deploy and manage Loki, Alerting rules, Recording rules, and related components.
     * Simplified Deployment Configuration: Configure the fundamentals of Loki like tenants, limits, replication factor and storage from a native Kubernetes resource.
+    ### Feature Gates
+
+    The Loki Operator Bundle provides a set of feature gates that enable/disable specific feature depending on the target Kubernetes distribution. The following feature gates are enabled by default:
+    * `lokiStackGateway`: Enables reconciling the reverse-proxy lokistack-gateway component for multi-tenant authentication/authorization traffic control to Loki.
+    * `runtimeSeccompProfile`: Enables the restricted seccomp profile on all Lokistack components.
+    * `lokiStackWebhook`: Enables the LokiStack CR validation and conversion webhooks.
+    * `alertingRuleWebhook`: Enables the AlertingRule CR validation webhook.
+    * `recordingRuleWebhook`: Enables the RecordingRule CR validation webhook.
+    * `rulerConfigWebhook`: Enables the RulerConfig CR validation webhook.
 
     ### Before you start
 
@@ -2038,4 +2047,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
+  replaces: loki-operator.v0.1.0
   version: 0.0.0

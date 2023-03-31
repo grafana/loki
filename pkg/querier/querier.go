@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -364,6 +365,14 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 		return nil, err
 	}
 
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
@@ -401,7 +410,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			)
 
 			if req.Values {
-				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			} else {
 				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 			}
@@ -683,10 +692,10 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 	}
 	maxQueryLength := limits.MaxQueryLength(ctx, userID)
 	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), model.Duration(maxQueryLength))
 	}
 	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "this data is no longer available, it is past now - max_query_lookback (%s)", maxQueryLookback)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooOld, model.Duration(maxQueryLookback))
 	}
 	return from, through, nil
 }

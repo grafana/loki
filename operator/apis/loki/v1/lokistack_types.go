@@ -30,11 +30,15 @@ type LokiStackSizeType string
 
 const (
 	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with extra small resources/limits requirements and without HA support.
-	// This size is ultimately dedicated for development and demo purposes.
-	// DO NOT USE THIS IN PRODUCTION!
+	// with NO resource requirements and without HA support.
 	//
-	// FIXME: Add clear description of ingestion/query performance expectations.
+	// This is ONLY for development, testing, or demos
+	// on limited single-node clusters.
+	// There are NO performance guarantees.
+	// LokiStack will use whatever resources are available,
+	// and WILL NOT FUNCTION CORRECTLY if there is not enough memory or CPU.
+	//
+	// DO NOT USE THIS IN PRODUCTION!
 	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
 
 	// SizeOneXSmall defines the size of a single Loki deployment
@@ -955,6 +959,7 @@ type LokiStackStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:resource:categories=logging
+// +kubebuilder:webhook:path=/validate-loki-grafana-com-v1-lokistack,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=lokistacks,verbs=create;update,versions=v1,name=vlokistack.loki.grafana.com,admissionReviewVersions=v1
 
 // LokiStack is the Schema for the lokistacks API
 //

@@ -285,7 +285,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.6.2
+  version: v1.6.3
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -418,7 +418,7 @@ migrate:
     # -- Set to true if migrating from a distributed helm chart
     enabled: false
     # -- If migrating from a distributed service, provide the distributed deployment's
-    # memberlist service DNS so the new deployment can join it's ring.
+    # memberlist service DNS so the new deployment can join its ring.
     memberlistService: ""
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
@@ -529,11 +529,11 @@ monitoring:
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
-  # Self monitoring determines whether Loki should scrape it's own logs.
+  # Self monitoring determines whether Loki should scrape its own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
   # which is installed by default using the grafana-agent-operator sub-chart.
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
-  # scrape configs to scrape it's own logs with the labels expected by the included dashboards.
+  # scrape configs to scrape its own logs with the labels expected by the included dashboards.
   selfMonitoring:
     enabled: true
     # -- Tenant to use for self monitoring
@@ -1129,8 +1129,10 @@ gateway:
     htpasswd: >-
       {{ if .Values.loki.tenants }}
 
+
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
+
 
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
