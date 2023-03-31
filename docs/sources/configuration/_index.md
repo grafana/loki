@@ -458,6 +458,10 @@ rate_store:
   # updating rates
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
+
+  # If enabled, detailed logs and spans will be emitted.
+  # CLI flag: -distributor.rate-store.debug
+  [debug: <boolean> | default = false]
 ```
 
 ### querier
