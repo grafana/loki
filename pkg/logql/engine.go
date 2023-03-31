@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -320,7 +321,21 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalVector(ctx, vec)
 	}
 
-	expr, err := optimizeSampleExpr(expr)
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, maxIntervalCapture)
+	if maxQueryInterval != 0 {
+		err = q.checkIntervalLimit(expr, maxQueryInterval)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	expr, err = optimizeSampleExpr(expr)
 	if err != nil {
 		return nil, err
 	}
@@ -331,10 +346,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
 	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
@@ -404,6 +415,20 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	sort.Sort(result)
 
 	return result, stepEvaluator.Error()
+}
+
+func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
+	var err error
+	expr.Walk(func(e interface{}) {
+		switch e := e.(type) {
+		case *syntax.RangeAggregationExpr:
+			if e.Left == nil || e.Left.Interval <= limit {
+				return
+			}
+			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Left.Interval), model.Duration(limit))
+		}
+	})
+	return err
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql_parser.Value, error) {
