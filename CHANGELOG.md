@@ -17,7 +17,12 @@
 #### Promtail
 
 ##### Enhancements
+
 * [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
+
+##### Fixes
+
+* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
 
 ## 2.8.0 (2023-03-??)
 
