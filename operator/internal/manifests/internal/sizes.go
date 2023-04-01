@@ -30,61 +30,7 @@ type ResourceRequirements struct {
 // ResourceRequirementsTable defines the default resource requests and limits for each size
 var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 	lokiv1.SizeOneXExtraSmall: {
-		Querier: corev1.ResourceRequirements{
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("3Gi"),
-			},
-		},
-		Ruler: ResourceRequirements{
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("2Gi"),
-			},
-			PVCSize: resource.MustParse("10Gi"),
-		},
-		Ingester: ResourceRequirements{
-			PVCSize: resource.MustParse("10Gi"),
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("1Gi"),
-			},
-		},
-		Distributor: corev1.ResourceRequirements{
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("500Mi"),
-			},
-		},
-		QueryFrontend: corev1.ResourceRequirements{
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("200m"),
-				corev1.ResourceMemory: resource.MustParse("500Mi"),
-			},
-		},
-		Compactor: ResourceRequirements{
-			PVCSize: resource.MustParse("10Gi"),
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("1Gi"),
-			},
-		},
-		Gateway: corev1.ResourceRequirements{
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("100m"),
-				corev1.ResourceMemory: resource.MustParse("256Mi"),
-			},
-		},
-		IndexGateway: ResourceRequirements{
-			PVCSize: resource.MustParse("50Gi"),
-			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("500m"),
-				corev1.ResourceMemory: resource.MustParse("1Gi"),
-			},
-		},
-		WALStorage: ResourceRequirements{
-			PVCSize: resource.MustParse("150Gi"),
-		},
+		// No requirements, can be deployed on any size of cluster. NOT FOR USE IN PRODUCTION.
 	},
 	lokiv1.SizeOneXSmall: {
 		Querier: corev1.ResourceRequirements{

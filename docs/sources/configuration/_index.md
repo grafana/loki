@@ -458,6 +458,10 @@ rate_store:
   # updating rates
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
+
+  # If enabled, detailed logs and spans will be emitted.
+  # CLI flag: -distributor.rate-store.debug
+  [debug: <boolean> | default = false]
 ```
 
 ### querier
@@ -779,7 +783,7 @@ The `ruler` block configures the Loki ruler.
 # options instead.
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
-  # local, bos)
+  # local, bos, cos)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = ""]
 
@@ -807,6 +811,10 @@ storage:
   # The CLI flags prefix for this block configuration is: ruler.storage
   [swift: <swift_storage_config>]
 
+  # Configures backend rule storage for IBM Cloud Object Storage (COS).
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [cos: <cos_storage_config>]
+
   # Configures backend rule storage for a local file system directory.
   local:
     # Directory to scan for rules
@@ -816,11 +824,6 @@ storage:
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
-
-# Upper bound of random duration to wait before rule evaluation to avoid
-# contention during concurrent execution of rules. Set 0 to disable (default).
-# CLI flag: -ruler.evaluation-jitter
-[evaluation_jitter: <duration> | default = 0s]
 
 # Comma-separated list of Alertmanager URLs to send notifications to. Each
 # Alertmanager URL is treated as a separate group in the configuration. Multiple
@@ -1109,6 +1112,12 @@ evaluation:
   # locally.
   # CLI flag: -ruler.evaluation.mode
   [mode: <string> | default = "local"]
+
+  # Upper bound of random duration to wait before rule evaluation to avoid
+  # contention during concurrent execution of rules. Jitter is calculated
+  # consistently for a given rule. Set 0 to disable (default).
+  # CLI flag: -ruler.evaluation.max-jitter
+  [max_jitter: <duration> | default = 0s]
 
   query_frontend:
     # GRPC listen address of the query-frontend(s). Must be a DNS address
@@ -1785,6 +1794,10 @@ hedging:
 # in period_config.
 [named_stores: <named_stores_config>]
 
+# The cos_storage_config block configures the connection to IBM Cloud Object
+# Storage (COS) backend.
+[cos: <cos_storage_config>]
+
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
 # CLI flag: -store.index-cache-validity
@@ -1807,16 +1820,16 @@ hedging:
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
 
-# Configures storing index in an Object Store (GCS/S3/Azure/Swift/Filesystem) in
-# the form of boltdb files. Required fields only required when boltdb-shipper is
-# defined in config.
+# Configures storing index in an Object Store
+# (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required
+# fields only required when boltdb-shipper is defined in config.
 boltdb_shipper:
   # Directory where ingesters would write index files which would then be
   # uploaded by shipper to configured storage
   # CLI flag: -boltdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure,
+  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
   # filesystem
   # CLI flag: -boltdb.shipper.shared-store
   [shared_store: <string> | default = ""]
@@ -1880,7 +1893,7 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure,
+  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
   # filesystem
   # CLI flag: -tsdb.shipper.shared-store
   [shared_store: <string> | default = ""]
@@ -1975,7 +1988,7 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos.
+# azure, swift, filesystem, bos, cos.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -2268,6 +2281,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 30d1h]
 
+# Limit the length of the [range] inside a range query. Default is 0 or
+# unlimited
+# CLI flag: -querier.max-query-range
+[max_query_range: <duration> | default = 0s]
+
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 32]
@@ -2493,7 +2511,10 @@ shard_streams:
 [blocked_queries: <blocked_query...>]
 
 # Define a list of required selector labels.
-[required_label_matchers: <list of strings>]
+[required_labels: <list of strings>]
+
+# Minimum number of label matchers a query should contain.
+[minimum_labels_number: <int>]
 ```
 
 ### frontend_worker
@@ -2910,6 +2931,10 @@ Configuration for usage report.
 # Enable anonymous usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
+
+# URL to which reports are sent
+# CLI flag: -reporting.usage-stats-url
+[usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 
 ### common
@@ -2971,6 +2996,11 @@ storage:
     # The maximum of hedge requests allowed per seconds.
     # CLI flag: -common.storage.hedge-max-per-second
     [max_per_second: <int> | default = 5]
+
+  # The cos_storage_config block configures the connection to IBM Cloud Object
+  # Storage (COS) backend.
+  # The CLI flags prefix for this block configuration is: common.storage
+  [cos: <cos_storage_config>]
 
 [persist_tokens: <boolean>]
 
@@ -4226,6 +4256,89 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 [request_timeout: <duration> | default = 5s]
 ```
 
+### cos_storage_config
+
+The `cos_storage_config` block configures the connection to IBM Cloud Object Storage (COS) backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common.storage`
+- `ruler.storage`
+
+&nbsp;
+
+```yaml
+# Set this to `true` to force the request to use path-style addressing.
+# CLI flag: -<prefix>.cos.force-path-style
+[forcepathstyle: <boolean> | default = false]
+
+# Comma separated list of bucket names to evenly distribute chunks over.
+# CLI flag: -<prefix>.cos.buckets
+[bucketnames: <string> | default = ""]
+
+# COS Endpoint to connect to.
+# CLI flag: -<prefix>.cos.endpoint
+[endpoint: <string> | default = ""]
+
+# COS region to use.
+# CLI flag: -<prefix>.cos.region
+[region: <string> | default = ""]
+
+# COS HMAC Access Key ID.
+# CLI flag: -<prefix>.cos.access-key-id
+[access_key_id: <string> | default = ""]
+
+# COS HMAC Secret Access Key.
+# CLI flag: -<prefix>.cos.secret-access-key
+[secret_access_key: <string> | default = ""]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  # CLI flag: -<prefix>.cos.http.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's response
+  # headers after fully writing the request.
+  # CLI flag: -<prefix>.cos.http.response-header-timeout
+  [response_header_timeout: <duration> | default = 0s]
+
+# Configures back off when cos get Object.
+backoff_config:
+  # Minimum backoff time when cos get Object.
+  # CLI flag: -<prefix>.cos.min-backoff
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum backoff time when cos get Object.
+  # CLI flag: -<prefix>.cos.max-backoff
+  [max_period: <duration> | default = 3s]
+
+  # Maximum number of times to retry when cos get Object.
+  # CLI flag: -<prefix>.cos.max-retries
+  [max_retries: <int> | default = 5]
+
+# IAM API key to access COS.
+# CLI flag: -<prefix>.cos.api-key
+[api_key: <string> | default = ""]
+
+# COS service instance id to use.
+# CLI flag: -<prefix>.cos.service-instance-id
+[service_instance_id: <string> | default = ""]
+
+# IAM Auth Endpoint for authentication.
+# CLI flag: -<prefix>.cos.auth-endpoint
+[auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
+
+# Compute resource token file path.
+# CLI flag: -<prefix>.cos.cr-token-file-path
+[cr_token_file_path: <string> | default = ""]
+
+# Name of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-name
+[trusted_profile_name: <string> | default = ""]
+
+# ID of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-id
+[trusted_profile_id: <string> | default = ""]
+```
+
 ### local_storage_config
 
 The `local_storage_config` block configures the usage of local file system as object storage backend.
@@ -4263,6 +4376,8 @@ Named store from this example can be used by setting object_store to store-1 in 
 [alibabacloud: <map of string to alibabacloud_storage_config>]
 
 [swift: <map of string to swift_storage_config>]
+
+[cos: <map of string to cos_storage_config>]
 ```
 
 ## Runtime Configuration file

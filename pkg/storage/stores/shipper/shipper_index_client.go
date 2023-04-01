@@ -4,10 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"path"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,7 +13,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
@@ -90,7 +86,7 @@ func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.L
 	}
 
 	if i.cfg.Mode != indexshipper.ModeReadOnly {
-		uploader, err := i.getUploaderName()
+		uploader, err := i.cfg.GetUniqueUploaderName()
 		if err != nil {
 			return err
 		}
@@ -110,33 +106,6 @@ func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.L
 	i.querier = index.NewQuerier(i.writer, i.indexShipper)
 
 	return nil
-}
-
-func (i *indexClient) getUploaderName() (string, error) {
-	uploader := fmt.Sprintf("%s-%d", i.cfg.IngesterName, time.Now().UnixNano())
-
-	uploaderFilePath := path.Join(i.cfg.ActiveIndexDirectory, "uploader", "name")
-	if err := util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
-		return "", err
-	}
-
-	_, err := os.Stat(uploaderFilePath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
-			return "", err
-		}
-	} else {
-		ub, err := os.ReadFile(uploaderFilePath)
-		if err != nil {
-			return "", err
-		}
-		uploader = string(ub)
-	}
-
-	return uploader, nil
 }
 
 func (i *indexClient) Stop() {
