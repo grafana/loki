@@ -128,7 +128,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 // Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
 // If querier finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
-func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error) {
+func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, string, error) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -142,11 +142,11 @@ FindQueue:
 	}
 
 	if q.stopped {
-		return nil, last, ErrStopped
+		return nil, last, "", ErrStopped
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, last, err
+		return nil, last, "", err
 	}
 
 	for {
@@ -169,7 +169,7 @@ FindQueue:
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
 
-			return request, last, nil
+			return request, last, tenant, nil
 		}
 	}
 

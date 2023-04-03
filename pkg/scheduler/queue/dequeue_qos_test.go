@@ -80,7 +80,7 @@ func BenchmarkQueryFairness(t *testing.B) {
 					defer requestQueue.UnregisterQuerierConnection(id)
 					idx := StartIndex
 					for ctx.Err() == nil {
-						r, newIdx, err := requestQueue.Dequeue(ctx, idx, id)
+						r, newIdx, _, err := requestQueue.Dequeue(ctx, idx, id)
 						if err != nil {
 							if err != context.Canceled {
 								t.Log("Dequeue() returned error:", err)
@@ -156,7 +156,7 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 
 	idx := StartIndexWithLocalQueue
 	for ctx.Err() == nil {
-		r, newIdx, err := requestQueue.Dequeue(ctx, idx, "querier")
+		r, newIdx, _, err := requestQueue.Dequeue(ctx, idx, "querier")
 		if err != nil {
 			if err != context.Canceled {
 				t.Log("Dequeue() returned error:", err)

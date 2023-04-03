@@ -195,7 +195,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	lastIndex := queue.StartIndex
 
 	for {
-		reqWrapper, idx, err := f.requestQueue.Dequeue(server.Context(), lastIndex, querierID)
+		reqWrapper, idx, _, err := f.requestQueue.Dequeue(server.Context(), lastIndex, querierID)
 		if err != nil {
 			return err
 		}

@@ -10,33 +10,9 @@ import (
 	"sort"
 	"time"
 
+	schedulerutil "github.com/grafana/loki/pkg/scheduler/util"
 	"github.com/grafana/loki/pkg/util"
 )
-
-type intPointerMap map[string]*int
-
-func (tqs intPointerMap) Inc(key string) int {
-	ptr, ok := tqs[key]
-	if !ok {
-		size := 1
-		tqs[key] = &size
-		return size
-	}
-	(*ptr)++
-	return *ptr
-}
-
-func (tqs intPointerMap) Dec(key string) int {
-	ptr, ok := tqs[key]
-	if !ok {
-		return 0
-	}
-	(*ptr)--
-	if *ptr == 0 {
-		delete(tqs, key)
-	}
-	return *ptr
-}
 
 // querier holds information about a querier registered in the queue.
 type querier struct {
@@ -56,7 +32,7 @@ type tenantQueues struct {
 	mapping *Mapping[*tenantQueue]
 
 	maxUserQueueSize int
-	perUserQueueLen  intPointerMap
+	perUserQueueLen  schedulerutil.IntPointerMap
 
 	// How long to wait before removing a querier which has got disconnected
 	// but hasn't notified about a graceful shutdown.
@@ -102,7 +78,7 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 	return &tenantQueues{
 		mapping:          mm,
 		maxUserQueueSize: maxUserQueueSize,
-		perUserQueueLen:  make(intPointerMap),
+		perUserQueueLen:  make(schedulerutil.IntPointerMap),
 		forgetDelay:      forgetDelay,
 		queriers:         map[string]*querier{},
 		sortedQueriers:   nil,

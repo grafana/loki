@@ -76,7 +76,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				for j := 0; j < queriers; j++ {
 					idx := StartIndexWithLocalQueue
 					for x := 0; x < maxOutstandingPerTenant*numTenants/queriers; x++ {
-						r, nidx, err := queues[i].Dequeue(ctx, idx, querierNames[j])
+						r, nidx, _, err := queues[i].Dequeue(ctx, idx, querierNames[j])
 						if r == nil {
 							break
 						}
@@ -151,7 +151,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	querier2wg.Add(1)
 	go func() {
 		defer querier2wg.Done()
-		_, _, err := queue.Dequeue(ctx, StartIndex, "querier-2")
+		_, _, _, err := queue.Dequeue(ctx, StartIndex, "querier-2")
 		require.NoError(t, err)
 	}()
 
@@ -318,9 +318,9 @@ func TestMaxQueueSize(t *testing.T) {
 		assert.Equal(t, err, ErrTooManyRequests)
 
 		// dequeue and enqueue some items
-		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
+		_, _, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
 		assert.NoError(t, err)
-		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
+		_, _, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
 		assert.NoError(t, err)
 
 		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil))

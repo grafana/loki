@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	schedulerutil "github.com/grafana/loki/pkg/scheduler/util"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
@@ -79,6 +80,9 @@ type Scheduler struct {
 
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
+
+	enqueueBatchLogger *schedulerutil.BatchLogger
+	dequeueBatchLogger *schedulerutil.BatchLogger
 
 	pendingRequestsMu sync.Mutex
 	pendingRequests   map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
@@ -180,8 +184,10 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	})
 
 	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
+	s.enqueueBatchLogger = schedulerutil.NewBatchLogger(s.log, 5*time.Second, "processed enqueue operations")
+	s.dequeueBatchLogger = schedulerutil.NewBatchLogger(s.log, 5*time.Second, "processed dequeue operations")
 
-	svcs := []services.Service{s.requestQueue, s.activeUsers}
+	svcs := []services.Service{s.requestQueue, s.activeUsers, s.enqueueBatchLogger, s.dequeueBatchLogger}
 
 	if cfg.UseSchedulerRing {
 		s.shouldRun.Store(false)
@@ -423,6 +429,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 
 	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
+	s.enqueueBatchLogger.Inc(fmt.Sprintf("%s:%v", req.tenantID, queuePath))
 	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
 		shouldCancel = false
 
@@ -462,11 +469,13 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
 	for s.isRunningOrStopping() {
-		req, idx, err := s.requestQueue.Dequeue(querier.Context(), lastIndex, querierID)
+		req, idx, tenant, err := s.requestQueue.Dequeue(querier.Context(), lastIndex, querierID)
 		if err != nil {
 			return err
 		}
 		lastIndex = idx
+
+		s.dequeueBatchLogger.Inc(fmt.Sprintf("%s:%s", tenant, querierID))
 
 		// This really should not happen, but log additional information before the scheduler panics.
 		if req == nil {
