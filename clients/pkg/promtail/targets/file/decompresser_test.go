@@ -66,6 +66,7 @@ func BenchmarkReadlines(b *testing.B) {
 				running: atomic.NewBool(false),
 				handler: entryHandler,
 				path:    tc.file,
+				cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0},
 			}
 
 			for i := 0; i < b.N; i++ {
@@ -119,6 +120,7 @@ func TestOnelineFiles(t *testing.T) {
 			path:    file,
 			done:    make(chan struct{}),
 			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0},
 		}
 
 		d.readLines()
@@ -142,6 +144,7 @@ func TestOnelineFiles(t *testing.T) {
 			path:    file,
 			done:    make(chan struct{}),
 			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0},
 		}
 
 		d.readLines()
@@ -165,6 +168,7 @@ func TestOnelineFiles(t *testing.T) {
 			path:    file,
 			done:    make(chan struct{}),
 			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0},
 		}
 
 		d.readLines()
