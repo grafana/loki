@@ -114,15 +114,12 @@ func mountReader(f *os.File, logger log.Logger, format string) (reader io.Reader
 	case "gz":
 		decompressLib = "compress/gzip"
 		reader, err = gzip.NewReader(f)
-		break
 	case "z":
 		decompressLib = "compress/zlib"
 		reader, err = zlib.NewReader(f)
-		break
 	case "bz2":
 		decompressLib = "bzip2"
 		reader = bzip2.NewReader(f)
-		break
 	}
 
 	if err != nil && err != io.EOF {
