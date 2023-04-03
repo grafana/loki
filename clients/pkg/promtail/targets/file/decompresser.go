@@ -27,6 +27,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
 func supportedCompressedFormats() map[string]struct{} {
@@ -61,8 +62,13 @@ type decompressor struct {
 	size     int64
 }
 
-func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string) (*decompressor, error) {
+func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string, cfg *scrapeconfig.DecompressionConfig) (*decompressor, error) {
 	logger = log.With(logger, "component", "decompressor")
+
+	if cfg.InitialDelay > 0 {
+		level.Info(logger).Log("msg", "sleeping before starting decompression", "path", path, "duration", cfg.InitialDelay.String())
+		time.Sleep(cfg.InitialDelay)
+	}
 
 	pos, err := positions.Get(path)
 	if err != nil {

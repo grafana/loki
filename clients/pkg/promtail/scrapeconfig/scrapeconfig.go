@@ -50,6 +50,12 @@ type Config struct {
 	DockerSDConfigs        []*moby.DockerSDConfig `mapstructure:"docker_sd_configs,omitempty" yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig `mapstructure:",squash" yaml:",inline"`
 	Encoding               string                 `mapstructure:"encoding,omitempty" yaml:"encoding,omitempty"`
+	DecompressionCfg       *DecompressionConfig   `yaml:"decompression,omitempty"`
+}
+
+type DecompressionConfig struct {
+	Enabled      bool
+	InitialDelay time.Duration
 }
 
 type ServiceDiscoveryConfig struct {

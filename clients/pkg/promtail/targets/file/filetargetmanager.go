@@ -118,18 +118,18 @@ func NewFileTargetManager(
 		}
 
 		s := &targetSyncer{
-			metrics:            metrics,
-			log:                logger,
-			positions:          positions,
-			relabelConfig:      cfg.RelabelConfigs,
-			targets:            map[string]*FileTarget{},
-			droppedTargets:     []target.Target{},
-			hostname:           hostname,
-			entryHandler:       pipeline.Wrap(client),
-			targetConfig:       targetConfig,
-			fileEventWatchers:  map[string]chan fsnotify.Event{},
-			encoding:           cfg.Encoding,
-			inferDecompression: false,
+			metrics:           metrics,
+			log:               logger,
+			positions:         positions,
+			relabelConfig:     cfg.RelabelConfigs,
+			targets:           map[string]*FileTarget{},
+			droppedTargets:    []target.Target{},
+			hostname:          hostname,
+			entryHandler:      pipeline.Wrap(client),
+			targetConfig:      targetConfig,
+			fileEventWatchers: map[string]chan fsnotify.Event{},
+			encoding:          cfg.Encoding,
+			decompressCfg:     cfg.DecompressionCfg,
 		}
 		tm.syncers[cfg.JobName] = s
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
@@ -281,7 +281,7 @@ type targetSyncer struct {
 	relabelConfig []*relabel.Config
 	targetConfig  *Config
 
-	inferDecompression bool
+	decompressCfg *scrapeconfig.DecompressionConfig
 
 	encoding string
 }
@@ -333,11 +333,6 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				level.Info(s.log).Log("msg", "no path for target", "labels", labels.String())
 				s.metrics.failedTargets.WithLabelValues("no_path").Inc()
 				continue
-			}
-
-			inferDecompression, ok := labels[inferDecompressionLabel]
-			if ok && inferDecompression == "true" {
-				s.inferDecompression = true
 			}
 
 			pathExclude := labels[pathExcludeLabel]
@@ -446,7 +441,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 }
 
 func (s *targetSyncer) newTarget(path, pathExclude string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding, s.inferDecompression)
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding, s.decompressCfg)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

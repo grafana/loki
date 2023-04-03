@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
@@ -75,7 +76,7 @@ type FileTarget struct {
 
 	targetConfig *Config
 
-	inferDecompression bool
+	decompressCfg *scrapeconfig.DecompressionConfig
 
 	encoding string
 }
@@ -94,7 +95,7 @@ func NewFileTarget(
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 	encoding string,
-	inferDecompression bool,
+	decompressCfg *scrapeconfig.DecompressionConfig,
 ) (*FileTarget, error) {
 	t := &FileTarget{
 		logger:             logger,
@@ -112,7 +113,7 @@ func NewFileTarget(
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
 		encoding:           encoding,
-		inferDecompression: inferDecompression,
+		decompressCfg:      decompressCfg,
 	}
 
 	go t.run()
@@ -322,9 +323,9 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		var reader Reader
-		if t.inferDecompression && isCompressed(p) {
+		if t.decompressCfg != nil && t.decompressCfg.Enabled && isCompressed(p) {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
-			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding, t.decompressCfg)
 			if err != nil {
 				level.Error(t.logger).Log("msg", "failed to start decompressor", "error", err, "filename", p)
 				continue
