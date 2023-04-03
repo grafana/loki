@@ -30,11 +30,10 @@ import (
 )
 
 const (
-	pathLabel               = "__path__"
-	pathExcludeLabel        = "__path_exclude__"
-	hostLabel               = "__host__"
-	inferDecompressionLabel = "__infer_decompression__"
-	kubernetesPodNodeField  = "spec.nodeName"
+	pathLabel              = "__path__"
+	pathExcludeLabel       = "__path_exclude__"
+	hostLabel              = "__host__"
+	kubernetesPodNodeField = "spec.nodeName"
 )
 
 // FileTargetManager manages a set of targets.
