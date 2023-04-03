@@ -75,6 +75,8 @@ type FileTarget struct {
 
 	targetConfig *Config
 
+	inferDecompression bool
+
 	encoding string
 }
 
@@ -92,6 +94,7 @@ func NewFileTarget(
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 	encoding string,
+	inferDecompression bool,
 ) (*FileTarget, error) {
 	t := &FileTarget{
 		logger:             logger,
@@ -109,6 +112,7 @@ func NewFileTarget(
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
 		encoding:           encoding,
+		inferDecompression: inferDecompression,
 	}
 
 	go t.run()
@@ -318,7 +322,7 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		var reader Reader
-		if isCompressed(p) {
+		if t.inferDecompression && isCompressed(p) {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
 			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
 			if err != nil {
