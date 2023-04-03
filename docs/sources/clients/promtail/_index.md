@@ -41,9 +41,9 @@ drop, and the final metadata to attach to the log line. Refer to the docs for
 
 Promtail now has native support for ingesting compressed files by a mechanism
 that relies on file extensions. If a discovered target has an expected
-compression file extension and the label `__infer_decompression__: true`,
-Promtail will **lazily** decompress the compressed file and push the parsed data
-to Loki. Example of YAML configuration to decompress files:
+compression file extension and decompression is enabled, Promtail will
+**lazily** decompress the compressed file and push the parsed data to Loki.
+Example of YAML configuration to decompress files:
 
 ```yaml
 server:
@@ -55,13 +55,15 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 scrape_configs:
 - job_name: system
+  decompression:
+    enabled: true
+    initial_sleep: 10s
   static_configs:
   - targets:
       - localhost
     labels:
       job: varlogs
       __path__: /var/log/**.gz
-      __infer_decompression__: true
 ```
 
 Important details are:
