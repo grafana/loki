@@ -41,7 +41,7 @@ ifeq ($(VARIANT), openshift)
 ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
     REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
 endif
-    VERSION = v0.1.0-placeholder
+    VERSION = v0.1.0
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
