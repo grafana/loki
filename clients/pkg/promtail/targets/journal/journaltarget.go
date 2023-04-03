@@ -211,7 +211,7 @@ func journalTargetWithReader(
 					return
 				}
 
-				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+				level.Error(t.logger).Log("msg", "received unexpected error while following the journal", "err", err.Error())
 			}
 
 			// prevent tight loop
