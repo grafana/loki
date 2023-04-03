@@ -58,17 +58,14 @@ type decompressor struct {
 
 	decoder *encoding.Decoder
 
+	cfg *scrapeconfig.DecompressionConfig
+
 	position int64
 	size     int64
 }
 
 func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encodingFormat string, cfg *scrapeconfig.DecompressionConfig) (*decompressor, error) {
 	logger = log.With(logger, "component", "decompressor")
-
-	if cfg.InitialDelay > 0 {
-		level.Info(logger).Log("msg", "sleeping before starting decompression", "path", path, "duration", cfg.InitialDelay.String())
-		time.Sleep(cfg.InitialDelay)
-	}
 
 	pos, err := positions.Get(path)
 	if err != nil {
@@ -97,6 +94,7 @@ func newDecompressor(metrics *Metrics, logger log.Logger, handler api.EntryHandl
 		done:      make(chan struct{}),
 		position:  pos,
 		decoder:   decoder,
+		cfg:       cfg,
 	}
 
 	go decompressor.readLines()
@@ -172,6 +170,11 @@ func (t *decompressor) updatePosition() {
 func (t *decompressor) readLines() {
 	level.Info(t.logger).Log("msg", "read lines routine: started", "path", t.path)
 	t.running.Store(true)
+
+	if t.cfg.InitialDelay > 0 {
+		level.Info(t.logger).Log("msg", "sleeping before starting decompression", "path", t.path, "duration", t.cfg.InitialDelay.String())
+		time.Sleep(t.cfg.InitialDelay)
+	}
 
 	defer func() {
 		t.cleanupMetrics()
