@@ -56,6 +56,7 @@ type Config struct {
 type DecompressionConfig struct {
 	Enabled      bool
 	InitialDelay time.Duration `yaml:"initial_delay"`
+	Format       string
 }
 
 type ServiceDiscoveryConfig struct {

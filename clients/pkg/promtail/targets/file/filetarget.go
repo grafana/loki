@@ -323,7 +323,7 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		var reader Reader
-		if t.decompressCfg != nil && t.decompressCfg.Enabled && isCompressed(p) {
+		if t.decompressCfg != nil && t.decompressCfg.Enabled {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
 			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding, t.decompressCfg)
 			if err != nil {
@@ -342,18 +342,6 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 		t.readers[p] = reader
 	}
-}
-
-func isCompressed(p string) bool {
-	ext := filepath.Ext(p)
-
-	for format := range supportedCompressedFormats() {
-		if ext == format {
-			return true
-		}
-	}
-
-	return false
 }
 
 // stopTailingAndRemovePosition will stop the tailer and remove the positions entry.
