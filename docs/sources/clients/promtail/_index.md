@@ -97,7 +97,7 @@ Important details are:
 * Log rotations **aren't supported as of now**, mostly because it requires us modifying Promtail to
   rely on file inodes instead of file names. If you'd like to see support for it, please create a new
   issue on Github asking for it and explaining your use case.
-* If you compress a file under a folder being scrapped, Promtail might try to ingest your file before you finish compressing it. To avoid it, pick a `initial_delay` that is enough to avoid it.
+* If you compress a file under a folder being scraped, Promtail might try to ingest your file before you finish compressing it. To avoid it, pick a `initial_delay` that is enough to avoid it.
 * If you would like to see support for a compression protocol that isn't listed here, please
   create a new issue on Github asking for it and explaining your use case.
 
