@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
 type noopClient struct {
@@ -89,6 +90,7 @@ func TestGigantiqueGunzipFile(t *testing.T) {
 		path:    file,
 		done:    make(chan struct{}),
 		metrics: NewMetrics(prometheus.NewRegistry()),
+		cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0},
 	}
 
 	d.readLines()
