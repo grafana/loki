@@ -21,6 +21,7 @@ func NewBatchLogger(logger log.Logger, interval time.Duration, msg string) *Batc
 	bl := &BatchLogger{
 		logger: logger,
 		msg:    msg,
+		m:      make(IntPointerMap),
 	}
 	bl.Service = services.NewTimerService(interval, nil, bl.log, nil).WithName("batch logger")
 	return bl
