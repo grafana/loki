@@ -329,9 +329,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    # TODO: needed for 3rd target backend functionality
-    # revert to null or latest once this behavior is relased
-    tag: main-96f32b9f
+    tag: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   adminToken:
