@@ -39,11 +39,10 @@ drop, and the final metadata to attach to the log line. Refer to the docs for
 
 ### Support for compressed files
 
-Promtail now has native support for ingesting compressed files by a mechanism
-that relies on file extensions. If a discovered target has an expected
-compression file extension and decompression is enabled, Promtail will
+Promtail now has native support for ingesting compressed files.
+If a discovered target has decompression configured, Promtail will
 **lazily** decompress the compressed file and push the parsed data to Loki.
-Example of YAML configuration to decompress files:
+The Promtail configuration below examplifies how to to set up decompression:
 
 ```yaml
 server:
@@ -58,6 +57,7 @@ scrape_configs:
   decompression:
     enabled: true
     initial_sleep: 10s
+    format: gz
   static_configs:
   - targets:
       - localhost
@@ -84,7 +84,7 @@ Important details are:
 * `.zip` extension isn't supported as of now because it doesn't support some of the interfaces
   Promtail requires. We have plans to add support for it in the near future.
 * The decompression is quite CPU intensive and a lot of allocations are expected
-  to work, especially depending on the size of the file. You can expect the number
+  to occur, especially depending on the size of the file. You can expect the number
   of garbage collection runs and the CPU usage to skyrocket, but no memory leak is
   expected.
 * Positions are supported. That means that, if you interrupt Promtail after
@@ -97,6 +97,7 @@ Important details are:
 * Log rotations **aren't supported as of now**, mostly because it requires us modifying Promtail to
   rely on file inodes instead of file names. If you'd like to see support for it, please create a new
   issue on Github asking for it and explaining your use case.
+* If you compress a file under a folder being scrapped, Promtail might try to ingest your file before you finish compressing it. To avoid it, pick a `initial_delay` that is enough to avoid it.
 * If you would like to see support for a compression protocol that isn't listed here, please
   create a new issue on Github asking for it and explaining your use case.
 
