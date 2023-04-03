@@ -24,6 +24,14 @@
 
 * [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
 
+#### Mixins
+
+#### Enhancements
+
+#### Fixes
+
+* [8995](https://github.com/grafana/loki/pull/8995) **dannykopping**: Mixins: check that `memcached_index_writes` exists before using it in `boltdb_shipper`
+
 ## 2.8.0 (2023-03-??)
 
 #### Loki
