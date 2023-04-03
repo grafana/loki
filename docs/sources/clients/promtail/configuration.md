@@ -341,7 +341,7 @@ decompression:
   [enabled: <boolean> | default = false]
 
   # Initial delay to wait before starting the decompression.
-  # Specially useful in scenarios where compressed files are found before the compression is finished.
+  # Especially useful in scenarios where compressed files are found before the compression is finished.
   [initial_delay: <duration> | default = 0s]
 
   # Compression format. Supported formats are: 'gz', 'bz2' and 'z.
