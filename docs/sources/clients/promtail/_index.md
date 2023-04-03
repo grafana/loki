@@ -39,10 +39,32 @@ drop, and the final metadata to attach to the log line. Refer to the docs for
 
 ### Support for compressed files
 
-Promtail now has native support for ingesting compressed files by a mechanism that
-relies on file extensions. If a discovered file has an expected compression file
-extension, Promtail will **lazily** decompress the compressed file and push the
-parsed data to Loki. Important details are:
+Promtail now has native support for ingesting compressed files by a mechanism
+that relies on file extensions. If a discovered target has an expected
+compression file extension and the label `__infer_decompression__: true`,
+Promtail will **lazily** decompress the compressed file and push the parsed data
+to Loki. Example of YAML configuration to decompress files:
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+positions:
+  filename: /var/lib/promtail/positions.yaml
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs
+      __path__: /var/log/**.gz
+      __infer_decompression__: true
+```
+
+Important details are:
 * It relies on the `\n` character to separate the data into different log lines.
 * The max expected log line is 2MB bytes within the compressed file.
 * The data is decompressed in blocks of 4096 bytes. i.e: it first fetches a block of 4096 bytes
