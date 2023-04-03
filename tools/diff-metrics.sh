@@ -38,7 +38,7 @@ docker port "${loki1}"
 docker port "${loki2}"
 
 echo "Curl instances on ports above to get metrics."
-read -n 1 -p "Press enter to kill loki instances..."
+read -r -n 1 -p "Press enter to kill loki instances..."
 
 docker kill "${loki1}" "${loki2}"
 
