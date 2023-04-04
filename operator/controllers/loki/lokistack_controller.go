@@ -322,9 +322,10 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 						Name:      stack.Name,
 					},
 				})
-			}
+				r.Log.Info("Enqueued requests for LokiStack because of Storage Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
 
-			r.Log.Info("Enqueued requests for all LokiStacks because of Storage Secret resource change", "count", len(requests), "kind", obj.GetObjectKind())
+				return requests
+			}
 		}
 
 		return requests
