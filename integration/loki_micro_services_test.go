@@ -131,7 +131,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	})
 
 	t.Run("per-request-limits", func(t *testing.T) {
-		queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryLength": "1m"}`}})
+		queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryTimeRange": "1m"}`}})
 		cliQueryFrontendLimited := client.New(tenantID, "", tQueryFrontend.HTTPURL(), queryLimitsPolicy)
 		cliQueryFrontendLimited.Now = now
 
