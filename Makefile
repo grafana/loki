@@ -31,7 +31,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.1
+BUILD_IMAGE_VERSION := 0.28.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -743,9 +743,11 @@ format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
+
+GIT_TARGET_BRANCH ?= main
 check-format: format
 	# Only run diff on changed Go files.
-	@git diff --name-only HEAD main -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
+	@git diff --name-only HEAD $(GIT_TARGET_BRANCH) -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
 	|| (echo "Please format code by running 'make format' and committing the changes" && false)
 
 # Documentation related commands

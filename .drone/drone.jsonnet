@@ -558,7 +558,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki', container=false) { depends_on: ['check-generated-files'] },
       make('check-doc', container=false) { depends_on: ['loki'] },
-      make('check-format', container=false) { depends_on: ['loki'] },
+      make('check-format', container=false, args=[
+        'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
+      ]) { depends_on: ['loki'], when: onPRs },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
