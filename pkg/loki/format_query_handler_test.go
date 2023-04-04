@@ -49,7 +49,7 @@ func Test_formatQueryHandlerResponse(t *testing.T) {
 			err = json.NewDecoder(w.Body).Decode(&got)
 			require.NoError(t, err)
 
-			assert.Equal(t, got, tc.expected)
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
