@@ -28,11 +28,7 @@ func formatQueryHandler() http.HandlerFunc {
 			formatted = syntax.Prettify(expr)
 		}
 
-		resp := struct {
-			Status string `json:"status"`
-			Data   string `json:"data,omitempty"`
-			Err    string `json:"error,omitempty"`
-		}{
+		resp := FormatQueryResponse{
 			Status: status,
 			Data:   formatted,
 			Err:    errStr,
@@ -46,4 +42,10 @@ func formatQueryHandler() http.HandlerFunc {
 		}
 
 	}
+}
+
+type FormatQueryResponse struct {
+	Status string `json:"status"`
+	Data   string `json:"data,omitempty"`
+	Err    string `json:"error,omitempty"`
 }
