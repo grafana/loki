@@ -30,7 +30,21 @@ type ResourceRequirements struct {
 // ResourceRequirementsTable defines the default resource requests and limits for each size
 var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 	lokiv1.SizeOneXExtraSmall: {
-		// No requirements, can be deployed on any size of cluster. NOT FOR USE IN PRODUCTION.
+		Ruler: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+		},
+		Ingester: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+		},
+		Compactor: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+		},
+		IndexGateway: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+		},
+		WALStorage: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+		},
 	},
 	lokiv1.SizeOneXSmall: {
 		Querier: corev1.ResourceRequirements{
