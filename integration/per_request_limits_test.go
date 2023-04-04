@@ -31,7 +31,7 @@ func TestPerRequestLimits(t *testing.T) {
 
 	require.NoError(t, clu.Run())
 
-	queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryTimeRange": "1m"}`}})
+	queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryLength": "1m"}`}})
 	cliTenant := client.New("org1", "", tAll.HTTPURL(), queryLimitsPolicy)
 
 	// ingest log lines for tenant 1 and tenant 2.

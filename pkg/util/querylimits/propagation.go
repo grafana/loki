@@ -22,7 +22,7 @@ const (
 // NOTE: we use custom `model.Duration` instead of standard `time.Duration` because,
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type QueryLimits struct {
-	MaxQueryLength          model.Duration   `json:"maxQueryTimeRange,omitempty"`
+	MaxQueryLength          model.Duration   `json:"maxQueryLength,omitempty"`
 	MaxQueryRange           model.Duration   `json:"maxQueryInterval,omitempty"`
 	MaxQueryLookback        model.Duration   `json:"maxQueryLookback,omitempty"`
 	MaxEntriesLimitPerQuery int              `json:"maxEntriesLimitPerQuery,omitempty"`
