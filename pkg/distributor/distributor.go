@@ -284,7 +284,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
 	func() {
-		sp, _ := opentracing.StartSpanFromContext(ctx, "distributor.ValidatePushRequest")
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogKV("event", "start to validate request")
+			defer func() {
+				sp.LogKV("event", "finished to validate request")
+			}()
+		}
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
 			if len(stream.Entries) == 0 {
@@ -345,7 +351,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				streams = append(streams, streamTracker{stream: stream})
 			}
 		}
-		sp.Finish()
 	}()
 
 	// Return early if none of the streams contained entries
@@ -368,8 +373,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	ingesterDescs := map[string]ring.InstanceDesc{}
 
 	if err := func() error {
-		sp, _ := opentracing.StartSpanFromContext(ctx, "distributor.QueryIngestersRing")
-		defer sp.Finish()
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogKV("event", "started to query ingesters ring")
+			defer func() {
+				sp.LogKV("event", "finished to query ingesters ring")
+			}()
+		}
+
 		for i, key := range keys {
 			replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
 			if err != nil {

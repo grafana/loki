@@ -453,7 +453,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.28.1',
+    local build_image_tag = '0.28.2',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -641,7 +641,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
-    trigger+: onTagOrMain,
+    trigger: onTagOrMain {
+      ref: ['refs/heads/main', 'refs/tags/v*'],
+    },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [

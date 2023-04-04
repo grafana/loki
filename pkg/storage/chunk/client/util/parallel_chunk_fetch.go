@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -18,7 +19,9 @@ var decodeContextPool = sync.Pool{
 
 // GetParallelChunks fetches chunks in parallel (up to maxParallel).
 func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
-	log, ctx := spanlogger.New(ctx, "GetParallelChunks")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetParallelChunks")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 	log.LogFields(otlog.Int("requested", len(chunks)))
 
