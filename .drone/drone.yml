@@ -1266,9 +1266,7 @@ trigger:
   - tag
   ref:
   - refs/heads/main
-  - refs/heads/k???
   - refs/tags/v*
-  - refs/pull/*/head
 ---
 depends_on:
 - manifest
@@ -1732,6 +1730,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: b5d3d292a9e1f7edc909dd0aa28664f1aa5794f4abe639dc1df8d9bbea5b5c13
+hmac: f389a87506bab15ecdd6d043f51cce6e2a7aa5dc77f2a3d2bc0389576094361f
 
 ...
