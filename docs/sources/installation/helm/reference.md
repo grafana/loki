@@ -2210,6 +2210,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.additionalRuleLabels</td>
+			<td>object</td>
+			<td>Additional labels for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.alerting</td>
 			<td>bool</td>
 			<td>Include alerting rules</td>
