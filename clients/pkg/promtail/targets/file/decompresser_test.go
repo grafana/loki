@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
 type noopClient struct {
@@ -65,6 +66,7 @@ func BenchmarkReadlines(b *testing.B) {
 				running: atomic.NewBool(false),
 				handler: entryHandler,
 				path:    tc.file,
+				cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "gz"},
 			}
 
 			for i := 0; i < b.N; i++ {
@@ -89,6 +91,7 @@ func TestGigantiqueGunzipFile(t *testing.T) {
 		path:    file,
 		done:    make(chan struct{}),
 		metrics: NewMetrics(prometheus.NewRegistry()),
+		cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "gz"},
 	}
 
 	d.readLines()
@@ -117,6 +120,7 @@ func TestOnelineFiles(t *testing.T) {
 			path:    file,
 			done:    make(chan struct{}),
 			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "gz"},
 		}
 
 		d.readLines()
@@ -140,6 +144,7 @@ func TestOnelineFiles(t *testing.T) {
 			path:    file,
 			done:    make(chan struct{}),
 			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "bz2"},
 		}
 
 		d.readLines()
@@ -163,6 +168,7 @@ func TestOnelineFiles(t *testing.T) {
 			path:    file,
 			done:    make(chan struct{}),
 			metrics: NewMetrics(prometheus.NewRegistry()),
+			cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "gz"},
 		}
 
 		d.readLines()
