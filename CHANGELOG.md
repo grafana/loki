@@ -30,7 +30,7 @@
 
 #### Fixes
 
-* [8995](https://github.com/grafana/loki/pull/8995) **dannykopping**: Mixins: check that `memcached_index_writes` exists before using it in `boltdb_shipper`
+* [8995](https://github.com/grafana/loki/pull/8995) **dannykopping**: Mixins: Fix Jsonnet `RUNTIME ERROR` that occurs when you try to use the mixins with `use_boltdb_shipper: false`.
 
 ## 2.8.0 (2023-03-??)
 
