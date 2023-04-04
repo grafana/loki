@@ -843,7 +843,16 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
-	resp, err := instance.Label(ctx, req)
+
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	resp, err := instance.Label(ctx, req, matchers...)
 	if err != nil {
 		return nil, err
 	}

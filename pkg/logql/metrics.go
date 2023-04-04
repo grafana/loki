@@ -177,7 +177,7 @@ func RecordLabelQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
 	start, end time.Time,
-	label, status string,
+	label, query, status string,
 	stats logql_stats.Result,
 ) {
 	var (
@@ -199,6 +199,7 @@ func RecordLabelQueryMetrics(
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"label", label,
+		"query", query,
 		"splits", stats.Summary.Splits,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
