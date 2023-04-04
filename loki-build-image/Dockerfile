@@ -49,6 +49,7 @@ RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_li
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM golang:1.20.1 as faillint
 RUN GO111MODULE=on go install github.com/fatih/faillint@v1.11.0
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.7.0
 
 FROM golang:1.20.1 as delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
@@ -99,6 +100,7 @@ COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=buf /usr/bin/buf /usr/bin/buf
 COPY --from=drone /usr/local/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint
+COPY --from=faillint /go/bin/goimports /usr/bin/goimports
 COPY --from=delve /go/bin/dlv /usr/bin/dlv
 COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 COPY --from=nfpm /go/bin/nfpm /usr/bin/nfpm
