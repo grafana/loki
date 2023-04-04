@@ -38,7 +38,7 @@ The test environment uses Docker compose to instantiate these parts, each in its
 
 ## Note
 These instructions are for a system running on an x86_64 architecture.
-It is not designed for arm/arm64 architecture.
+It is not designed for an arm/arm64 architecture.
 
 ## Obtain the test environment
 
