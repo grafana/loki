@@ -74,6 +74,7 @@ type Config struct {
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
+	MaxFlushRetries     int               `yaml:"max_flush_retries"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
 	BlockSize           int               `yaml:"chunk_block_size"`
@@ -115,6 +116,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
+	f.IntVar(&cfg.MaxFlushRetries, "ingester.max-flush-retries", 0, "Max number of retries for a flush. 0 (default) means no max number of retries.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")

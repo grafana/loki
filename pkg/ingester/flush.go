@@ -78,6 +78,7 @@ type flushOp struct {
 	userID    string
 	fp        model.Fingerprint
 	immediate bool
+	try       int
 }
 
 func (o *flushOp) Key() string {
@@ -122,7 +123,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	firstTime, _ := stream.chunks[0].chunk.Bounds()
 	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
 		model.TimeFromUnixNano(firstTime.UnixNano()), instance.instanceID,
-		stream.fp, immediate,
+		stream.fp, immediate, 0,
 	})
 }
 
@@ -147,6 +148,11 @@ func (i *Ingester) flushLoop(j int) {
 		// If we're exiting & we failed to flush, put the failed operation
 		// back in the queue at a later point.
 		if op.immediate && err != nil {
+			if i.cfg.MaxFlushRetries > 0 && op.try > i.cfg.MaxFlushRetries {
+				continue
+			}
+			op.try += 1
+
 			op.from = op.from.Add(flushBackoff)
 			i.flushQueues[j].Enqueue(op)
 		}
