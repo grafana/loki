@@ -746,8 +746,7 @@ format:
 
 GIT_TARGET_BRANCH ?= main
 check-format: format
-	# Only run diff on changed Go files.
-	@git diff --name-only HEAD $(GIT_TARGET_BRANCH) -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
+	git diff --name-only HEAD $(GIT_TARGET_BRANCH) -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
 	|| (echo "Please format code by running 'make format' and committing the changes" && false)
 
 # Documentation related commands
