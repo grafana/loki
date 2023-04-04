@@ -335,6 +335,18 @@ job_name: <string>
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
 
+# Defines decompression behavior for the given scrape target.
+decompression:
+  # Whether decompression should be tried or not.
+  [enabled: <boolean> | default = false]
+
+  # Initial delay to wait before starting the decompression.
+  # Especially useful in scenarios where compressed files are found before the compression is finished.
+  [initial_delay: <duration> | default = 0s]
+
+  # Compression format. Supported formats are: 'gz', 'bz2' and 'z.
+  [format: <string> | default = ""]
+
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
 
