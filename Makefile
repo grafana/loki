@@ -744,8 +744,9 @@ format:
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
 check-format: format
-	@find . -name "*.go" | xargs git diff --exit-code -- \
-	|| (echo "Please format code by running 'make doc' and committing the changes" && false)
+	# Only run diff on changed Go files.
+	@git diff --name-only HEAD main -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
+	|| (echo "Please format code by running 'make format' and committing the changes" && false)
 
 # Documentation related commands
 
