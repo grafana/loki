@@ -30,10 +30,9 @@ type LokiStackSizeType string
 
 const (
 	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with NO resource requirements and without HA support.
+	// with minimal resource requirements and without HA support.
 	//
-	// This is ONLY for development, testing, or demos
-	// on limited single-node clusters.
+	// This is ONLY for development, testing, or demos on limited single-node clusters.
 	// There are NO performance guarantees.
 	// LokiStack will use whatever resources are available,
 	// and WILL NOT FUNCTION CORRECTLY if there is not enough memory or CPU.
