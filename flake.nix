@@ -26,7 +26,7 @@
                     "sha256-Mr45nJbpyzxo0ZPwx22JW2WrjyjI9FPpl+gZ7NIc6WQ=";
                 };
 
-                vendorSha256 =
+                vendorHash =
                   "sha256-pcbKg1ePN8pObS9EzP3QYjtaty27L9sroKUs/qEPtJo=";
 
                 ldflags = [
