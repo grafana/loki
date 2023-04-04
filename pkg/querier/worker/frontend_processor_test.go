@@ -67,8 +67,8 @@ func TestContextCancelStopsProcess(t *testing.T) {
 	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
-	pm := newProcessorManager(ctx, &mockProcessor{}, cc, "test")
-	pm.concurrency(1)
+	pm := newProcessorManager(ctx, log.NewNopLogger(), &mockProcessor{}, cc, "test")
+	pm.concurrency(1, 0)
 
 	test.Poll(t, time.Second, 1, func() interface{} {
 		return int(pm.currentProcessors.Load())

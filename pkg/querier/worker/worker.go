@@ -30,6 +30,8 @@ type Config struct {
 	MatchMaxConcurrency   bool `yaml:"match_max_concurrent"`
 	MaxConcurrentRequests int  `yaml:"-"` // Must be same as passed to LogQL Engine.
 
+	CPUCount int `yaml:"cpu_count"`
+
 	QuerierID string `yaml:"id"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
@@ -40,10 +42,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
 
 	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 3*time.Second, "How often to query DNS for query-frontend or query-scheduler address. Also used to determine how often to poll the scheduler-ring for addresses if the scheduler-ring is configured.")
-
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query-frontend or query-scheduler.")
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", true, "Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.")
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
+
+	f.IntVar(&cfg.CPUCount, "querier.worker-cpu-count", -1, "Number of CPU cores to utilize. -1 means runtime.NumCPU()")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
@@ -213,7 +216,7 @@ func (w *querierWorker) AddressAdded(address string) {
 		return
 	}
 
-	w.managers[address] = newProcessorManager(ctx, w.processor, conn, address)
+	w.managers[address] = newProcessorManager(ctx, w.logger, w.processor, conn, address)
 	// Called with lock.
 	w.resetConcurrency()
 }
@@ -267,7 +270,7 @@ func (w *querierWorker) resetConcurrency() {
 		}
 
 		totalConcurrency += concurrency
-		m.concurrency(concurrency)
+		m.concurrency(concurrency, w.cfg.CPUCount)
 		index++
 	}
 
