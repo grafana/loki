@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 
 	"net/http"
 	"net/http/httptest"
@@ -194,7 +195,7 @@ func Test_COSConfig(t *testing.T) {
 			errEmptyBucket,
 		},
 		{
-			"Access key ID and Secret Access key and APIKey is empty",
+			"Access key ID, Secret Access key, APIKey and CR token file path are empty",
 			COSConfig{
 				BucketNames:       "test",
 				Endpoint:          "test",
@@ -219,7 +220,18 @@ func Test_COSConfig(t *testing.T) {
 			errors.Wrap(errServiceInstanceID, errCOSConfig),
 		},
 		{
-			"valid config",
+			"CR token file path with empty trusted profile name and ID",
+			COSConfig{
+				BucketNames:     "test",
+				Endpoint:        "test",
+				Region:          "dummy",
+				AuthEndpoint:    "dummy",
+				CRTokenFilePath: "dummy",
+			},
+			errors.Wrap(errTrustedProfile, errCOSConfig),
+		},
+		{
+			"valid config with Access key ID and Secret Access key",
 			COSConfig{
 				BucketNames:     "test",
 				Endpoint:        "test",
@@ -241,13 +253,34 @@ func Test_COSConfig(t *testing.T) {
 			},
 			nil,
 		},
+		{
+			"valid config with trusted profile",
+			COSConfig{
+				BucketNames:        "test",
+				Endpoint:           "test",
+				Region:             "dummy",
+				AuthEndpoint:       "dummy",
+				CRTokenFilePath:    "dummy",
+				TrustedProfileName: "test",
+			},
+			nil,
+		},
 	}
 	for _, tt := range tests {
+		if crTokenFilePath := tt.cosConfig.CRTokenFilePath; crTokenFilePath != "" {
+			file, err := createTempFile(crTokenFilePath, "test-token")
+			require.NoError(t, err)
+			defer os.Remove(file.Name())
+
+			tt.cosConfig.CRTokenFilePath = file.Name()
+		}
+
 		cosClient, err := NewCOSObjectClient(tt.cosConfig, hedging.Config{})
 		if tt.expectedError != nil {
 			require.Equal(t, tt.expectedError.Error(), err.Error())
 			continue
 		}
+
 		require.NotNil(t, cosClient.cos)
 		require.NotNil(t, cosClient.hedgedCOS)
 		require.Equal(t, []string{tt.cosConfig.BucketNames}, cosClient.bucketNames)
@@ -466,43 +499,20 @@ func Test_APIKeyAuth(t *testing.T) {
 	tokenType := "Bearer"
 	resp := "testGet"
 
-	cosSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != fmt.Sprintf("%s %s", tokenType, testToken) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, resp)
-	}))
-	defer cosSvr.Close()
+	mockCosServer := mockCOSServer(testToken, tokenType, resp)
+	defer mockCosServer.Close()
 
-	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := token.Token{
-			AccessToken:  testToken,
-			RefreshToken: "test",
-			TokenType:    tokenType,
-			ExpiresIn:    int64((time.Hour * 24).Seconds()),
-			Expiration:   time.Now().Add(time.Hour * 24).Unix(),
-		}
-
-		data, err := json.Marshal(token)
-		require.NoError(t, err)
-
-		w.WriteHeader(http.StatusAccepted)
-		_, err = w.Write(data)
-		require.NoError(t, err)
-	}))
-
-	defer authServer.Close()
+	mockAuthServer := mockAuthServer(testToken, tokenType)
+	defer mockAuthServer.Close()
 
 	cosConfig := COSConfig{
 		BucketNames:       "dummy",
-		Endpoint:          cosSvr.URL,
+		Endpoint:          mockCosServer.URL,
 		Region:            "dummy",
 		APIKey:            flagext.SecretWithValue("dummy"),
 		ServiceInstanceID: "test",
 		ForcePathStyle:    true,
-		AuthEndpoint:      authServer.URL,
+		AuthEndpoint:      mockAuthServer.URL,
 		BackoffConfig: backoff.Config{
 			MaxRetries: 1,
 		},
@@ -517,4 +527,81 @@ func Test_APIKeyAuth(t *testing.T) {
 	data, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, resp, strings.Trim(string(data), "\n"))
+}
+
+func Test_TrustedProfileAuth(t *testing.T) {
+	testToken := "test"
+	tokenType := "Bearer"
+	resp := "testGet"
+
+	mockCosServer := mockCOSServer(testToken, tokenType, resp)
+	defer mockCosServer.Close()
+
+	mockAuthServer := mockAuthServer(testToken, tokenType)
+	defer mockAuthServer.Close()
+
+	file, err := createTempFile("crtoken", "test cr token")
+	require.NoError(t, err)
+	defer os.Remove(file.Name())
+
+	cosConfig := COSConfig{
+		BucketNames:        "dummy",
+		Endpoint:           mockCosServer.URL,
+		Region:             "dummy",
+		ForcePathStyle:     true,
+		AuthEndpoint:       mockAuthServer.URL,
+		CRTokenFilePath:    file.Name(),
+		TrustedProfileName: "test",
+		BackoffConfig: backoff.Config{
+			MaxRetries: 1,
+		},
+	}
+
+	cosClient, err := NewCOSObjectClient(cosConfig, hedging.Config{})
+	require.NoError(t, err)
+
+	reader, _, err := cosClient.GetObject(context.Background(), "key-1")
+	require.NoError(t, err)
+
+	data, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, resp, strings.Trim(string(data), "\n"))
+}
+
+func mockCOSServer(accessToken, tokenType, resp string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != fmt.Sprintf("%s %s", tokenType, accessToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		if _, err := fmt.Fprintln(w, resp); err != nil {
+			fmt.Println("failed to write data", err)
+			return
+		}
+	}))
+}
+
+func mockAuthServer(accessToken, tokenType string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := token.Token{
+			AccessToken:  accessToken,
+			RefreshToken: "test",
+			TokenType:    tokenType,
+			ExpiresIn:    int64((time.Hour * 24).Seconds()),
+			Expiration:   time.Now().Add(time.Hour * 24).Unix(),
+		}
+
+		data, err := json.Marshal(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		if _, err = w.Write(data); err != nil {
+			fmt.Println("failed to write data", err)
+			return
+		}
+	}))
 }

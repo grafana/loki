@@ -3,9 +3,10 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"github.com/grafana/loki/pkg/util"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"

@@ -46,6 +46,17 @@ func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Dura
 	return time.Duration(requestLimits.MaxQueryLookback)
 }
 
+// MaxQueryRange retruns the max query range/interval of a query.
+func (l *Limiter) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+	original := l.CombinedLimits.MaxQueryRange(ctx, userID)
+	requestLimits := ExtractQueryLimitsContext(ctx)
+	if requestLimits == nil || requestLimits.MaxQueryRange == 0 || time.Duration(requestLimits.MaxQueryRange) > original {
+		return original
+	}
+	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryRange", "tenant", userID, "query-limit", time.Duration(requestLimits.MaxQueryRange), "original-limit", original)
+	return time.Duration(requestLimits.MaxQueryRange)
+}
+
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
 func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.MaxEntriesLimitPerQuery(ctx, userID)
