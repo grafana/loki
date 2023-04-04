@@ -24,6 +24,14 @@
 
 * [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
 
+#### Mixins
+
+#### Enhancements
+
+#### Fixes
+
+* [8995](https://github.com/grafana/loki/pull/8995) **dannykopping**: Mixins: Fix Jsonnet `RUNTIME ERROR` that occurs when you try to use the mixins with `use_boltdb_shipper: false`.
+
 ## 2.8.0 (2023-03-??)
 
 #### Loki
