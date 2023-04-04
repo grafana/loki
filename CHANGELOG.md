@@ -1,4 +1,4 @@
-## Main/Unreleased
+## Next Patch / Unreleased
 
 #### Loki
 
@@ -11,7 +11,7 @@
 
 * [8971](https://github.com/grafana/loki/pull/8971) **dannykopping**: Stats: fix `Cache.Chunk.BytesSent` statistic and loki_chunk_fetcher_fetched_size_bytes metric with correct chunk size.
 
-### All Changes
+## 2.8.0 (2023-04-04)
 
 #### Loki
 
