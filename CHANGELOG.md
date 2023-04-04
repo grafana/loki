@@ -1,4 +1,4 @@
-## Main/Unreleased
+## Next Patch / Unreleased
 
 #### Loki
 
@@ -10,27 +10,6 @@
 ##### Fixes
 
 * [8971](https://github.com/grafana/loki/pull/8971) **dannykopping**: Stats: fix `Cache.Chunk.BytesSent` statistic and loki_chunk_fetcher_fetched_size_bytes metric with correct chunk size.
-
-### All Changes
-
-#### Promtail
-
-##### Enhancements
-
-* [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
-* [8994](https://github.com/grafana/loki/pull/8994) **DylanGuedes**: Promtail: Add new `decompression` configuration to customize the decompressor behavior.
-
-##### Fixes
-
-* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
-
-#### Mixins
-
-#### Enhancements
-
-#### Fixes
-
-* [8995](https://github.com/grafana/loki/pull/8995) **dannykopping**: Mixins: Fix Jsonnet `RUNTIME ERROR` that occurs when you try to use the mixins with `use_boltdb_shipper: false`.
 
 ## 2.8.0 (2023-04-04)
 
