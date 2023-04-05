@@ -176,6 +176,10 @@ limits_config:
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
+  {{- with .InstanceAddr }}
+  advertise_addr: {{ . }}
+  {{- end }}
+  advertise_port: {{ .BindPort }}
   bind_port: {{ .BindPort }}
   join_members:
     - {{ .MembersDiscoveryAddr }}:{{ .BindPort }}
