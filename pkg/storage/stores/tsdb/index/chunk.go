@@ -3,6 +3,7 @@ package index
 import (
 	"sort"
 
+	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/common/model"
 )
 
@@ -182,6 +183,20 @@ func (m *chunkPageMarker) combine(c ChunkMeta) {
 	if c.MaxTime > m.MaxTime {
 		m.MaxTime = c.MaxTime
 	}
+}
+
+func (m *chunkPageMarker) put(e *encoding.Encbuf, offset int) {
+	// put chunks, kb, entries, offset, mintime, maxtime
+	e.PutBE32(m.Chunks)
+	e.PutBE32(m.KB)
+	e.PutBE32(m.Entries)
+	e.PutUvarint(offset)
+	e.PutVarint64(m.MinTime)
+	e.PutVarint64(m.MaxTime - m.MinTime) // delta-encoded
+}
+
+func (m *chunkPageMarker) clear() {
+	*m = chunkPageMarker{}
 }
 
 // How many bytes must be allocated to encode this in TSDB.

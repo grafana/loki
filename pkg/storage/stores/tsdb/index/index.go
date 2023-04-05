@@ -511,7 +511,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 		w.buf2.PutUvarint32(valueIndex)
 	}
 
-	w.addChunks(chunks)
+	w.addChunks(chunks, &w.buf2, &w.buf1)
 
 	w.buf1.Reset()
 	w.buf1.PutUvarint(w.buf2.Len())
@@ -536,67 +536,71 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 	return nil
 }
 
-func (w *Writer) addChunks(chunks []ChunkMeta) {
+func (w *Writer) addChunks(chunks []ChunkMeta, primary, scratch *encoding.Encbuf) {
 	if w.Version > FormatV2 {
-		w.addChunksV3(chunks)
+		w.addChunksV3(chunks, primary, scratch)
 		return
 	}
-	w.addChunksPriorV3(chunks)
+	w.addChunksPriorV3(chunks, primary, scratch)
 }
 
-func (w *Writer) addChunksPriorV3(chunks []ChunkMeta) {
-	w.buf2.PutUvarint(len(chunks))
+func (w *Writer) addChunksPriorV3(chunks []ChunkMeta, primary, _ *encoding.Encbuf) {
+	primary.PutUvarint(len(chunks))
 
 	if len(chunks) > 0 {
 		c := chunks[0]
 		w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 
-		w.buf2.PutVarint64(c.MinTime)
-		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-		w.buf2.PutUvarint32(c.KB)
-		w.buf2.PutUvarint32(c.Entries)
-		w.buf2.PutBE32(c.Checksum)
+		primary.PutVarint64(c.MinTime)
+		primary.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+		primary.PutUvarint32(c.KB)
+		primary.PutUvarint32(c.Entries)
+		primary.PutBE32(c.Checksum)
 		t0 := c.MaxTime
 
 		for _, c := range chunks[1:] {
 			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 			// Encode the diff against previous chunk as varint
 			// instead of uvarint because chunks may overlap
-			w.buf2.PutVarint64(c.MinTime - t0)
-			w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-			w.buf2.PutUvarint32(c.KB)
-			w.buf2.PutUvarint32(c.Entries)
+			primary.PutVarint64(c.MinTime - t0)
+			primary.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+			primary.PutUvarint32(c.KB)
+			primary.PutUvarint32(c.Entries)
 			t0 = c.MaxTime
 
-			w.buf2.PutBE32(c.Checksum)
+			primary.PutBE32(c.Checksum)
 		}
 	}
 }
 
-func (w *Writer) addChunksV3(chunks []ChunkMeta) {
-	nMarkers := len(chunks) / ChunkPageSize
-	w.buf2.PutUvarint(nMarkers)
+func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encbuf) {
+	scratch.Reset()
+
 	// TODO(owen-d): store this somewhere else that doesn't duplicate on every
 	// series
-	w.buf2.PutUvarint(ChunkPageSize)
-	markersOffset := w.buf2.Len() // keep a pointer to the first marker
-	if nMarkers > 0 {
-		// we'll fill these later during chunk iteration
-		placeholder := make([]byte, chunkPageMarkerAllocSize*nMarkers)
-		w.buf2.PutBytes(placeholder)
-	}
+	scratch.PutUvarint(ChunkPageSize)
+	// pointer to where to write how long the markers are.
+	markersLnOffset := scratch.Len()
+	scratch.PutBE32(0) // placeholder for how long the markers section is
 
-	w.buf2.PutUvarint(len(chunks))
+	nMarkers := len(chunks) / ChunkPageSize
+	if len(chunks)%ChunkPageSize != 0 {
+		nMarkers++
+	}
+	scratch.PutUvarint(nMarkers)
+
+	primary.PutUvarint(len(chunks))
+	chunksStartOffset := primary.Len()
 
 	if len(chunks) > 0 {
 		c := chunks[0]
 		w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 
-		w.buf2.PutVarint64(c.MinTime)
-		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-		w.buf2.PutUvarint32(c.KB)
-		w.buf2.PutUvarint32(c.Entries)
-		w.buf2.PutBE32(c.Checksum)
+		primary.PutVarint64(c.MinTime)
+		primary.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+		primary.PutUvarint32(c.KB)
+		primary.PutUvarint32(c.Entries)
+		primary.PutBE32(c.Checksum)
 		t0 := c.MaxTime
 
 		var pageMarker chunkPageMarker
@@ -608,35 +612,45 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta) {
 			// increment i since we're starting from 1 offset
 			// and test if this is the last chunk in the page
 			if (i+1)%ChunkPageSize == ChunkPageSize-1 {
-				offset := w.buf2.Len() - markersOffset
-				markerNo := (i + 1) / ChunkPageSize
-				diff := markersOffset + markerNo*chunkPageMarkerAllocSize - w.buf2.Len()
-				// skip back to where we need to write the marker
-				w.buf2.Skip(diff)
-				// put chunks, kb, entries, offset, mintime, maxtime
-				w.buf2.PutBE32(pageMarker.Chunks)
-				w.buf2.PutBE32(pageMarker.KB)
-				w.buf2.PutBE32(pageMarker.Entries)
-				w.buf2.PutBE64(uint64(offset))
-				w.buf2.PutBE64int64(c.MinTime)
-				w.buf2.PutBE64int64(c.MaxTime - c.MinTime)
-
-				// reset to where we were
-				w.buf2.Skip(-diff)
+				pageMarker.put(scratch, primary.Len()-chunksStartOffset)
+				pageMarker.clear()
 			}
 
 			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 			// Encode the diff against previous chunk as varint
 			// instead of uvarint because chunks may overlap
-			w.buf2.PutVarint64(c.MinTime - t0)
-			w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-			w.buf2.PutUvarint32(c.KB)
-			w.buf2.PutUvarint32(c.Entries)
+			primary.PutVarint64(c.MinTime - t0)
+			primary.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+			primary.PutUvarint32(c.KB)
+			primary.PutUvarint32(c.Entries)
 			t0 = c.MaxTime
 
-			w.buf2.PutBE32(c.Checksum)
-
+			primary.PutBE32(c.Checksum)
 		}
+
+		if len(chunks)%ChunkPageSize != 0 {
+			// write partial page at the end
+			pageMarker.put(scratch, primary.Len()-chunksStartOffset)
+		}
+
+		// now that we're done, we have two buffers:
+		// 1. primary: the actual chunk data
+		// 2. scratch: the chunk page markers
+		// so it's time to combine them
+
+		// first, write the length of the markers section
+		diff := markersLnOffset - scratch.Len()
+		scratch.Skip(diff)
+		scratch.PutBE32(uint32(scratch.Len()))
+		scratch.Skip(-diff - 4)
+
+		a, b := scratch.Get(), primary.Get()
+		combined := make([]byte, len(a)+len(b))
+		combined = append(combined, a...)
+		combined = append(combined, b...)
+		scratch.Reset()
+		primary.Reset()
+		primary.PutBytes(combined)
 	}
 }
 
