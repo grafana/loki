@@ -7,7 +7,7 @@ aliases:
 ---
 # Labels
 
-Labels are key value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and I will use those in the coming examples.
+Labels are key value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and these will be used those in the coming examples.
 
 The scrape configs we provide with Grafana Loki define these labels, too. If you are using Prometheus, having consistent labels between Loki and Prometheus is one of Loki's superpowers, making it incredibly [easy to correlate your application metrics with your log data](/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/).
 
@@ -16,6 +16,8 @@ The scrape configs we provide with Grafana Loki define these labels, too. If you
 Labels in Loki perform a very important task: They define a stream. More specifically, the combination of every label key and value defines the stream. If just one label value changes, this creates a new stream.
 
 If you are familiar with Prometheus, the term used there is series; however, Prometheus has an additional dimension: metric name. Loki simplifies this in that there are no metric names, just labels, and we decided to use streams instead of series.
+
+If in doubt, always read our [best practices]({{<relref "/best-practices">}}) when it comes to defining labels as this will hopefully save you a lot of work.
 
 ## Format
 
