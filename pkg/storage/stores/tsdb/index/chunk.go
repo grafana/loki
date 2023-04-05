@@ -154,3 +154,42 @@ func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
 
 	return c[:j+copy(c[j:], c[j+1:])], true
 }
+
+// Some of these fields can realistically be 32bit, but
+// this gives us a lot of wiggle room and they're already
+// encoded only for every n-th chunk based on `ChunkPageSize`
+type chunkPageMarker struct {
+	// stats in this page.
+	// unused for now, but will be used to
+	// optimize statistics via downsampling
+	Chunks, KB, Entries uint32
+
+	// byte offset where this chunk starts relative
+	// to the chunks in this series
+	Offset uint64
+
+	// bounds associated with this page
+	MinTime, MaxTime int64
+}
+
+func (m *chunkPageMarker) combine(c ChunkMeta) {
+	m.Chunks++
+	m.KB += c.KB
+	m.Entries += c.Entries
+	if c.MinTime < m.MinTime {
+		m.MinTime = c.MinTime
+	}
+	if c.MaxTime > m.MaxTime {
+		m.MaxTime = c.MaxTime
+	}
+}
+
+// How many bytes must be allocated to encode this in TSDB.
+// 4 bytes for each int32 field
+// 8 bytes for each 64-bit field
+const chunkPageMarkerAllocSize = 4*3 + 8*3
+
+// Chunks per page. This is encoded into the binary
+// format and can thus be changed without needing a
+// new schema version
+const ChunkPageSize = 512

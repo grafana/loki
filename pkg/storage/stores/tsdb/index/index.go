@@ -51,6 +51,9 @@ const (
 	FormatV1 = 1
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
+	// FormatV3 represents 3 version of index. It adds support for
+	// paging through batches of chunks within a series
+	FormatV3 = 3
 
 	IndexFilename = "index"
 
@@ -243,11 +246,12 @@ func NewWriter(ctx context.Context, fn string) (*Writer, error) {
 	}
 
 	iw := &Writer{
-		ctx:   ctx,
-		f:     f,
-		fP:    fP,
-		fPO:   fPO,
-		stage: idxStageNone,
+		Version: FormatV3,
+		ctx:     ctx,
+		f:       f,
+		fP:      fP,
+		fPO:     fPO,
+		stage:   idxStageNone,
 
 		// Reusable memory.
 		buf1: encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0, 1<<22)}),
@@ -435,7 +439,7 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 func (w *Writer) writeMeta() error {
 	w.buf1.Reset()
 	w.buf1.PutBE32(MagicIndex)
-	w.buf1.PutByte(FormatV2)
+	w.buf1.PutByte(byte(w.Version))
 
 	return w.write(w.buf1.Get())
 }
@@ -507,6 +511,40 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 		w.buf2.PutUvarint32(valueIndex)
 	}
 
+	w.addChunks(chunks)
+
+	w.buf1.Reset()
+	w.buf1.PutUvarint(w.buf2.Len())
+
+	w.buf2.PutHash(w.crc32)
+
+	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeriesHash = labelHash
+	w.lastRef = ref
+
+	if ref%fingerprintInterval == 0 {
+		// series references are the 16-byte aligned offsets
+		// Do NOT ask me how long I debugged this particular bit >:O
+		sRef := w.f.pos / 16
+		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{sRef, labelHash})
+	}
+
+	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
+		return errors.Wrap(err, "write series data")
+	}
+
+	return nil
+}
+
+func (w *Writer) addChunks(chunks []ChunkMeta) {
+	if w.Version > FormatV2 {
+		w.addChunksV3(chunks)
+		return
+	}
+	w.addChunksPriorV3(chunks)
+}
+
+func (w *Writer) addChunksPriorV3(chunks []ChunkMeta) {
 	w.buf2.PutUvarint(len(chunks))
 
 	if len(chunks) > 0 {
@@ -533,28 +571,73 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 			w.buf2.PutBE32(c.Checksum)
 		}
 	}
+}
 
-	w.buf1.Reset()
-	w.buf1.PutUvarint(w.buf2.Len())
-
-	w.buf2.PutHash(w.crc32)
-
-	w.lastSeries = append(w.lastSeries[:0], lset...)
-	w.lastSeriesHash = labelHash
-	w.lastRef = ref
-
-	if ref%fingerprintInterval == 0 {
-		// series references are the 16-byte aligned offsets
-		// Do NOT ask me how long I debugged this particular bit >:O
-		sRef := w.f.pos / 16
-		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{sRef, labelHash})
+func (w *Writer) addChunksV3(chunks []ChunkMeta) {
+	nMarkers := len(chunks) / ChunkPageSize
+	w.buf2.PutUvarint(nMarkers)
+	// TODO(owen-d): store this somewhere else that doesn't duplicate on every
+	// series
+	w.buf2.PutUvarint(ChunkPageSize)
+	markersOffset := w.buf2.Len() // keep a pointer to the first marker
+	if nMarkers > 0 {
+		// we'll fill these later during chunk iteration
+		placeholder := make([]byte, chunkPageMarkerAllocSize*nMarkers)
+		w.buf2.PutBytes(placeholder)
 	}
 
-	if err := w.write(w.buf1.Get(), w.buf2.Get()); err != nil {
-		return errors.Wrap(err, "write series data")
-	}
+	w.buf2.PutUvarint(len(chunks))
 
-	return nil
+	if len(chunks) > 0 {
+		c := chunks[0]
+		w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
+
+		w.buf2.PutVarint64(c.MinTime)
+		w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+		w.buf2.PutUvarint32(c.KB)
+		w.buf2.PutUvarint32(c.Entries)
+		w.buf2.PutBE32(c.Checksum)
+		t0 := c.MaxTime
+
+		var pageMarker chunkPageMarker
+		pageMarker.combine(c)
+
+		for i, c := range chunks[1:] {
+			pageMarker.combine(c)
+
+			// increment i since we're starting from 1 offset
+			// and test if this is the last chunk in the page
+			if (i+1)%ChunkPageSize == ChunkPageSize-1 {
+				offset := w.buf2.Len() - markersOffset
+				markerNo := (i + 1) / ChunkPageSize
+				diff := markersOffset + markerNo*chunkPageMarkerAllocSize - w.buf2.Len()
+				// skip back to where we need to write the marker
+				w.buf2.Skip(diff)
+				// put chunks, kb, entries, offset, mintime, maxtime
+				w.buf2.PutBE32(pageMarker.Chunks)
+				w.buf2.PutBE32(pageMarker.KB)
+				w.buf2.PutBE32(pageMarker.Entries)
+				w.buf2.PutBE64(uint64(offset))
+				w.buf2.PutBE64int64(c.MinTime)
+				w.buf2.PutBE64int64(c.MaxTime - c.MinTime)
+
+				// reset to where we were
+				w.buf2.Skip(-diff)
+			}
+
+			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
+			// Encode the diff against previous chunk as varint
+			// instead of uvarint because chunks may overlap
+			w.buf2.PutVarint64(c.MinTime - t0)
+			w.buf2.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+			w.buf2.PutUvarint32(c.KB)
+			w.buf2.PutUvarint32(c.Entries)
+			t0 = c.MaxTime
+
+			w.buf2.PutBE32(c.Checksum)
+
+		}
+	}
 }
 
 func (w *Writer) startSymbols() error {
@@ -616,7 +699,7 @@ func (w *Writer) finishSymbols() error {
 	}
 
 	// Load in the symbol table efficiently for the rest of the index writing.
-	w.symbols, err = NewSymbols(RealByteSlice(w.symbolFile.Bytes()), FormatV2, int(w.toc.Symbols))
+	w.symbols, err = NewSymbols(RealByteSlice(w.symbolFile.Bytes()), w.Version, int(w.toc.Symbols))
 	if err != nil {
 		return errors.Wrap(err, "read symbols")
 	}
@@ -1240,7 +1323,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 {
+	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
@@ -1420,7 +1503,7 @@ func (s Symbols) Lookup(o uint32) (string, error) {
 		B: s.bs.Range(0, s.bs.Len()),
 	})
 
-	if s.version == FormatV2 {
+	if s.version >= FormatV2 {
 		if int(o) >= s.seen {
 			return "", errors.Errorf("unknown symbol offset %d", o)
 		}
@@ -1476,7 +1559,7 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	if lastSymbol != sym {
 		return 0, errors.Errorf("unknown symbol %q", sym)
 	}
-	if s.version == FormatV2 {
+	if s.version >= FormatV2 {
 		return uint32(res), nil
 	}
 	return uint32(s.bs.Len() - lastLen), nil
@@ -1666,9 +1749,9 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 	offsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
 		offset := id
-		// In version 2 series IDs are no longer exact references but series are 16-byte padded
+		// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 		// and the ID is the multiple of 16 of the actual position.
-		if r.version == FormatV2 {
+		if r.version >= FormatV2 {
 			offset = id * 16
 		}
 
@@ -1705,9 +1788,9 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
 func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
 	offset := id
-	// In version 2 series IDs are no longer exact references but series are 16-byte padded
+	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
-	if r.version == FormatV2 {
+	if r.version >= FormatV2 {
 		offset = id * 16
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
@@ -1731,9 +1814,9 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
 func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
 	offset := id
-	// In version 2 series IDs are no longer exact references but series are 16-byte padded
+	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
-	if r.version == FormatV2 {
+	if r.version >= FormatV2 {
 		offset = id * 16
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
