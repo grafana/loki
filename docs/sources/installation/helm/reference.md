@@ -15,7 +15,7 @@ keywords: []
 
 This is the generated reference for the Loki Helm Chart values.
 
-> **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
+> **Note:** This reference is for the [Loki Helm chart]([url](https://github.com/grafana/loki/tree/main/production/helm/loki)) version 3.0 or greater.
 > If you are using the `grafana/loki-stack` Helm chart from the community repo,
 > please refer to the `values.yaml` of the respective Github repository
 > [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts/loki-stack).
