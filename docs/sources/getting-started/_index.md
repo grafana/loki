@@ -8,9 +8,7 @@ aliases:
 
 # Getting started
 
-This guide assists the reader to create and use a simple Loki cluster.
-The cluster is intended for testing, development, and evaluation;
-it will not meet most production requirements.
+This guide assists the reader to create and use a simple Loki cluster. The cluster is intended for testing, development, and evaluation; it will not meet most production requirements.
 
 The test environment runs the [flog](https://github.com/mingrammer/flog) app to generate log lines.
 Promtail is the test environment's agent (or client) that captures the log lines and pushes them to the Loki cluster through a gateway.
@@ -22,10 +20,10 @@ Grafana provides a way to pose queries against the logs stored in Loki and visua
 
 The test environment uses Docker compose to instantiate these parts, each in its own container: 
 
-- One [single scalable deployment]({{<relref "../fundamentals/architecture/deployment-modes">}}) mode **Loki** instance has:
+- **Loki** in [Simple Scalable Deployment mode]({{<relref "../fundamentals/architecture/deployment-modes">}}) which consists of:
     - One Loki read component
     - One Loki write component
-    - **Minio** is Loki's storage back end in the test environment.
+    - **Minio** as Loki's storage back end in the test environment.
 - The **gateway** receives requests and redirects them to the appropriate container based on the request's URL.
 - **Flog** generates log lines.
 - **Promtail** scrapes the log lines from flog, and pushes them to Loki through the gateway.
