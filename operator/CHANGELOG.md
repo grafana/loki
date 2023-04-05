@@ -1,5 +1,6 @@
 ## Main
 
+- [8978](https://github.com/grafana/loki/pull/8978) **aminesnow**: Add watch for the object storage secret
 - [8958](https://github.com/grafana/loki/pull/8958) **periklis**: Align common instance addr with memberlist advertise addr
 - [8998](https://github.com/grafana/loki/pull/8998) **periklis**: Remove static placeholder suffix for openshift bundle
 - [8930](https://github.com/grafana/loki/pull/8930) **periklis**: Fix makefile target operatorhub
