@@ -33,7 +33,7 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 
 	traceID, ok := tracing.ExtractSampledTraceID(ctx)
 	if !ok {
-		return l
+		return log.With(l, "traceID", "NS-"+traceID)
 	}
 
 	return log.With(l, "traceID", traceID)
