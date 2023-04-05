@@ -213,6 +213,7 @@ There are two kind of scraping strategies: `pull` and `push`.
       project_id: "my-gcp-project"
       subscription: "my-pubsub-subscription"
       use_incoming_timestamp: false # default rewrite timestamps.
+      use_full_line: false # default use textPayload as log line.
       labels:
         job: "gcplog"
     relabel_configs:

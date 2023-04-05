@@ -22,6 +22,7 @@ func TestFormat(t *testing.T) {
 		labels               model.LabelSet
 		relabel              []*relabel.Config
 		useIncomingTimestamp bool
+		useFullLine          bool
 		expected             api.Entry
 	}{
 		{
@@ -100,11 +101,29 @@ func TestFormat(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "use-full-line",
+			msg: &pubsub.Message{
+				Data: []byte(withTextPayload),
+			},
+			labels: model.LabelSet{
+				"jobname": "pubsub-test",
+			},
+			expected: api.Entry{
+				Labels: model.LabelSet{
+					"jobname": "pubsub-test",
+				},
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      logTextPayload,
+				},
+			},
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := parseGCPLogsEntry(c.msg.Data, c.labels, nil, c.useIncomingTimestamp, c.relabel)
+			got, err := parseGCPLogsEntry(c.msg.Data, c.labels, nil, c.useIncomingTimestamp, c.useFullLine, c.relabel)
 
 			require.NoError(t, err)
 
@@ -130,5 +149,7 @@ func mustTime(t *testing.T, v string) time.Time {
 }
 
 const (
-	withAllFields = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
+	withAllFields   = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
+	logTextPayload  = "text-payload-log"
+	withTextPayload = `{"logName": "https://project/gcs", "textPayload": "` + logTextPayload + `", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
 )

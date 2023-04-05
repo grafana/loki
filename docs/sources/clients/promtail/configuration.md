@@ -1002,6 +1002,10 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# use_full_line force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+# By default, if `textPayload` is present in the line, then it's used as log line.
+[use_full_line: <boolean> | default = false]
+
 # If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
 # than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
 # and respond with a 503 HTTP status code.

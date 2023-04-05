@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// LogEntry that will be written to the pubsub topic.
+// GCPLogEntry that will be written to the pubsub topic.
 // According to the following spec.
 // https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry
 // nolint:revive
@@ -38,7 +38,7 @@ type GCPLogEntry struct {
 	// anyway we will be sending the entire entry to Loki.
 }
 
-func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.Labels, useIncomingTimestamp bool, relabelConfig []*relabel.Config) (api.Entry, error) {
+func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.Labels, useIncomingTimestamp, useFullLine bool, relabelConfig []*relabel.Config) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(data, &ge); err != nil {
@@ -101,8 +101,8 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 		}
 	}
 
-	// Send only `ge.textPaylload` as log line if its present.
-	if strings.TrimSpace(ge.TextPayload) != "" {
+	// Send only `ge.textPayload` as log line if its present and user don't explicitly ask for the whole log.
+	if !useFullLine && strings.TrimSpace(ge.TextPayload) != "" {
 		line = ge.TextPayload
 	}
 
