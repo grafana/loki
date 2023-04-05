@@ -14,7 +14,7 @@ Loki is a datastore optimized for efficiently holding log data.
 The efficient indexing of log data
 distinguishes Loki from other logging systems.
 Unlike other logging systems, a Loki index is built from labels,
-leaving the original log message unindexed.
+leaving the original log message unindexed leading fewer resources being required to index the data. In addition, unlike many logging systems, the original log message is stored within Object Storage instead of attached disks like expensive SSDs or HDDs. This makes Loki a very cost effective and powerful tool for log aggregation workloads.
 
 ![Loki overview](loki-overview-1.png)
 
@@ -34,6 +34,11 @@ and allows for efficient query execution.
 [LogQL]({{<relref "../../logql">}}) is the query language for Loki.
 
 ## Loki features
+
+
+-  **Log data is stored within Object Store only**
+
+    By leveraging Object Storage as the only data storage mechanism, Loki inherits the reliability and stability of the underlying Object Store. It also capitalizes on both the cost efficiency and operational simplicity of Object Storages over other storage mechanisms like locally attached SSD and HDDs.
 
 -  **Efficient memory usage for indexing the logs**
 
