@@ -15,8 +15,8 @@ keywords: []
 <!-- vale Grafana.Quotes = YES -->
 
 This tool helps to generate a Helm Charts `values.yaml` file based on specified
- expected ingestion, retention rate and node type. It will always configure a
- [scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment. The storage needs to be configured after generation.
+ expected ingestion, retention rate and node type. It will always configure Loki using our
+ [Simple Scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment mode. The storage needs to be configured after generation.
 
 <div id="app">
   <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
