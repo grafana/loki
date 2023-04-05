@@ -97,7 +97,7 @@ var (
 	createUpdateOrDeletePred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if e.ObjectOld.GetGeneration() == 0 && len(e.ObjectOld.GetAnnotations()) == 0 {
-				return true
+				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
 			}
 
 			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() ||
