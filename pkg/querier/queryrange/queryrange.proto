@@ -105,6 +105,7 @@ message LokiLabelNamesRequest {
     (gogoproto.nullable) = false
   ];
   string path = 3;
+  string query = 4;
 }
 
 message LokiLabelNamesResponse {

@@ -17,7 +17,7 @@ cache is configured to be in-memory by default.
 
 ## Before you begin
 
-- It is recommended to deploy four, or in the case of the Helm chart two, dedicated Memcached clusters.
+- It is recommended to deploy three, or in the case of the Helm chart two, dedicated Memcached clusters.
 - As of 2023-02-01, the `memcached:1.6.17-alpine` version of the library is recommended.
 - Consult the Loki ksonnet [memcached](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/memcached.libsonnet) deployment and the ksonnet [memcached library](https://github.com/grafana/jsonnet-libs/tree/master/memcached).
 
@@ -31,7 +31,7 @@ To enable and configure Memcached:
        ```
        --memory-limit=4096 --max-item-size=2m --conn-limit=1024
        ```
-    1. Query result, index queries and writes cache
+    1. Query result and index queries cache
        ```
        --memory-limit=1024 --max-item-size=5m --conn-limit=1024
        ```
@@ -78,14 +78,6 @@ To enable and configure Memcached:
                memcached_client:
                  host: <chunk cache memcached host>
                  service: <port name of memcached service>
-           write_dedupe_cache_config:
-             memcached:
-               batch_size: 100
-               parallelism: 100
-             memcached_client: 
-               host: <index writes memcached host>
-               service: <port name of memcached service>
-               consistent_hash: true
            ```
         1. Configure the query result cache
            ```yaml

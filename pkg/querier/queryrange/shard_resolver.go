@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 )
 
@@ -128,8 +129,10 @@ func getStatsForMatchers(
 }
 
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
-	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.GetStats")
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
+	log := spanlogger.FromContext(r.ctx)
+	defer log.Finish()
 
 	start := time.Now()
 
@@ -146,14 +149,14 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results, err := getStatsForMatchers(ctx, sp, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	results, err := getStatsForMatchers(ctx, log, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
 	}
 
 	combined := stats.MergeStats(results...)
 
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "queried index",
@@ -168,8 +171,10 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 }
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
-	sp, _ := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
 	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
+	defer log.Finish()
 
 	combined, err := r.GetStats(e)
 	if err != nil {
@@ -183,7 +188,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
 
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "Got shard factor",
