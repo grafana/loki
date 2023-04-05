@@ -353,7 +353,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
 	if err != nil {
-		level.Error(log).Log("msg", "failed to get schema config", "err", err)
+		level.Error(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
 		return q.next.Do(ctx, r)
 	}
 	if schemaCfg.IndexType != config.TSDBType {
