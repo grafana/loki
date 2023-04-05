@@ -50,6 +50,22 @@ func TestFormat(t *testing.T) {
 					Action:       "replace",
 					Replacement:  "$1",
 				},
+				{
+					SourceLabels: model.LabelNames{"__gcp_severity"},
+					Separator:    ";",
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "severity",
+					Action:       "replace",
+					Replacement:  "$1",
+				},
+				{
+					SourceLabels: model.LabelNames{"__gcp_labels_dataflow_googleapis_com_region"},
+					Separator:    ";",
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "region",
+					Action:       "replace",
+					Replacement:  "$1",
+				},
 			},
 			useIncomingTimestamp: true,
 			expected: api.Entry{
@@ -57,6 +73,8 @@ func TestFormat(t *testing.T) {
 					"jobname":              "pubsub-test",
 					"backend_service_name": "http-loki",
 					"bucket_name":          "loki-bucket",
+					"severity":             "INFO",
+					"region":               "europe-west1",
 				},
 				Entry: logproto.Entry{
 					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
@@ -149,7 +167,7 @@ func mustTime(t *testing.T, v string) time.Time {
 }
 
 const (
-	withAllFields   = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
+	withAllFields   = `{"logName": "https://project/gcs", "severity": "INFO", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z", "labels": {"dataflow.googleapis.com/region": "europe-west1"}}`
 	logTextPayload  = "text-payload-log"
-	withTextPayload = `{"logName": "https://project/gcs", "textPayload": "` + logTextPayload + `", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
+	withTextPayload = `{"logName": "https://project/gcs", "severity": "INFO", "textPayload": "` + logTextPayload + `", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z", "labels": {"dataflow.googleapis.com/region": "europe-west1"}}`
 )

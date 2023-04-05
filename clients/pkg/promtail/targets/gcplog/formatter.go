@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 )
 
 // GCPLogEntry that will be written to the pubsub topic.
@@ -31,6 +30,15 @@ type GCPLogEntry struct {
 	// The time the log entry was received by Logging.
 	// Its important that `Timestamp` is optional in GCE log entry.
 	ReceiveTimestamp string `json:"receiveTimestamp"`
+
+	// Optional. The severity of the log entry. The default value is DEFAULT.
+	// DEFAULT, DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY
+	// https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
+	Severity string `json:"severity"`
+
+	// Optional. A map of key, value pairs that provides additional information about the log entry.
+	// The labels can be user-defined or system-defined.
+	Labels map[string]string `json:"labels"`
 
 	TextPayload string `json:"textPayload"`
 
@@ -50,10 +58,16 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 	lbs := labels.NewBuilder(otherInternal)
 	lbs.Set("__gcp_logname", ge.LogName)
 	lbs.Set("__gcp_resource_type", ge.Resource.Type)
+	lbs.Set("__gcp_severity", ge.Severity)
+
+	// resource labels from gcp log entry. Add it as internal labels
+	for k, v := range ge.Resource.Labels {
+		lbs.Set("__gcp_resource_labels_"+convertToLokiCompatibleLabel(k), v)
+	}
 
 	// labels from gcp log entry. Add it as internal labels
-	for k, v := range ge.Resource.Labels {
-		lbs.Set("__gcp_resource_labels_"+util.SnakeCase(k), v)
+	for k, v := range ge.Labels {
+		lbs.Set("__gcp_labels_"+convertToLokiCompatibleLabel(k), v)
 	}
 
 	var processed labels.Labels

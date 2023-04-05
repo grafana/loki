@@ -233,8 +233,10 @@ It also supports `relabeling` and `pipeline` stages just like other targets.
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
   - `__gcp_logname`
+  - `__gcp_severity`
   - `__gcp_resource_type`
   - `__gcp_resource_labels_<NAME>`
+  - `__gcp_labels_<NAME>`
     In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
 
 ### Push
@@ -271,8 +273,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_subscription_name`
 - `__gcp_attributes_<NAME>`
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are
 transformed to `message_id` and `incoming_ts` through `relabel_configs`. All other internal labels, for example some other attribute,
