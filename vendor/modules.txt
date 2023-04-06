@@ -1031,6 +1031,9 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.53
 ## explicit; go 1.19
 github.com/miekg/dns
+# github.com/minio/highwayhash v1.0.2
+## explicit; go 1.15
+github.com/minio/highwayhash
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
@@ -1084,6 +1087,28 @@ github.com/munnerz/goautoneg
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 ## explicit
 github.com/mwitkow/go-conntrack
+# github.com/nats-io/jwt/v2 v2.3.0
+## explicit; go 1.16
+github.com/nats-io/jwt/v2
+# github.com/nats-io/nats-server/v2 v2.9.16-0.20230404221524-d14968cb4fac
+## explicit; go 1.19
+github.com/nats-io/nats-server/v2/conf
+github.com/nats-io/nats-server/v2/internal/ldap
+github.com/nats-io/nats-server/v2/logger
+github.com/nats-io/nats-server/v2/server
+github.com/nats-io/nats-server/v2/server/pse
+github.com/nats-io/nats-server/v2/server/sysmem
+# github.com/nats-io/nats.go v1.25.0
+## explicit; go 1.19
+github.com/nats-io/nats.go
+github.com/nats-io/nats.go/encoders/builtin
+github.com/nats-io/nats.go/util
+# github.com/nats-io/nkeys v0.4.4
+## explicit; go 1.19
+github.com/nats-io/nkeys
+# github.com/nats-io/nuid v1.0.1
+## explicit
+github.com/nats-io/nuid
 # github.com/ncw/swift v1.0.53
 ## explicit
 github.com/ncw/swift
@@ -1459,6 +1484,11 @@ go.opentelemetry.io/otel/trace
 # go.uber.org/atomic v1.10.0
 ## explicit; go 1.18
 go.uber.org/atomic
+# go.uber.org/automaxprocs v1.5.1
+## explicit; go 1.18
+go.uber.org/automaxprocs/internal/cgroups
+go.uber.org/automaxprocs/internal/runtime
+go.uber.org/automaxprocs/maxprocs
 # go.uber.org/goleak v1.2.1
 ## explicit; go 1.18
 go.uber.org/goleak
@@ -1484,10 +1514,21 @@ golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
+golang.org/x/crypto/chacha20
+golang.org/x/crypto/chacha20poly1305
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/curve25519/internal/field
+golang.org/x/crypto/ed25519
+golang.org/x/crypto/internal/alias
+golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/md4
+golang.org/x/crypto/nacl/box
+golang.org/x/crypto/nacl/secretbox
+golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
+golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
 # golang.org/x/exp v0.0.0-20230321023759-10a507213a29
@@ -1540,7 +1581,9 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
+golang.org/x/sys/windows/svc
 golang.org/x/sys/windows/svc/eventlog
+golang.org/x/sys/windows/svc/mgr
 # golang.org/x/term v0.8.0
 ## explicit; go 1.17
 golang.org/x/term

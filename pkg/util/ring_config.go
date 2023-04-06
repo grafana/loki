@@ -82,6 +82,7 @@ func (cfg *RingConfig) ToLifecyclerConfig(numTokens int, logger log.Logger) (rin
 		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
 		Zone:                cfg.InstanceZone,
 		HeartbeatPeriod:     cfg.HeartbeatPeriod,
+		HeartbeatTimeout:    cfg.HeartbeatTimeout,
 		TokensObservePeriod: 0,
 		NumTokens:           numTokens,
 	}, nil

@@ -42,6 +42,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -111,6 +112,7 @@ const (
 	Write                    string = "write"
 	Backend                  string = "backend"
 	Analytics                string = "analytics"
+	NATS                     string = "nats"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -168,6 +170,11 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	return s, nil
+}
+
+func (t *Loki) initNATS() (services.Service, error) {
+	t.Cfg.NATS.Cluster = !t.isModuleActive(All)
+	return nats.NewServer(t.Cfg.NATS)
 }
 
 func portFromAddr(addr string) int {
@@ -252,6 +259,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.NATS.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 
 	return t.runtimeConfig, err
 }
@@ -1070,6 +1078,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.NATS.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
@@ -1213,7 +1222,6 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 		managerMode = indexgateway.ServerMode
 	}
 	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
-
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
