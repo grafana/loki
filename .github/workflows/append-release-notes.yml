@@ -15,7 +15,7 @@ jobs:
         with:
           repository: "trevorwhitney/grafana-github-actions"
           path: ./actions
-          ref: release-notes-action
+          ref: d2320e2d28dee87520455ed4f7ab7522e088ea11
       - name: Install Actions
         run: npm install --production --prefix ./actions
       - name: Run release notes appender
