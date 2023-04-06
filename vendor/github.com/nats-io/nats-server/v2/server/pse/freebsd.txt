@@ -1,0 +1,30 @@
+/*
+ * Compile and run this as a C program to get the kinfo_proc offsets
+ * for your architecture.
+ * While FreeBSD works hard at binary-compatibility within an ABI, various
+ * we can't say for sure that these are right for _all_ use on a hardware
+ * platform.  The LP64 ifdef affects the offsets considerably.
+ *
+ * We use these offsets in hardware-specific files for FreeBSD, to avoid a cgo
+ * compilation-time dependency, allowing us to cross-compile for FreeBSD from
+ * other hardware platforms, letting us distribute binaries for FreeBSD.
+ */
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/user.h>
+
+#define SHOW_OFFSET(FIELD) printf(" KIP_OFF_%s = %zu\n", #FIELD, offsetof(struct kinfo_proc, ki_ ## FIELD))
+
+int main(int argc, char *argv[]) {
+	/* Uncomment these if you want some extra debugging aids:
+	SHOW_OFFSET(pid);
+	SHOW_OFFSET(ppid);
+	SHOW_OFFSET(uid);
+	*/
+	SHOW_OFFSET(size);
+	SHOW_OFFSET(rssize);
+	SHOW_OFFSET(pctcpu);
+}

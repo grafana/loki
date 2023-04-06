@@ -3,6 +3,7 @@ package loki
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"hash/fnv"
 	"net/http"
@@ -17,12 +18,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/dns"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	nats_server "github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -31,6 +35,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/automaxprocs/maxprocs"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
@@ -64,6 +69,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -108,6 +114,7 @@ const (
 	Write                    string = "write"
 	Backend                  string = "backend"
 	UsageReport              string = "usage-report"
+	NATS                     string = "nats"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -165,6 +172,227 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	return s, nil
+}
+
+type NATSConfig struct {
+	util.RingConfig `yaml:",inline"`
+	ClusterPort     int `yaml:"cluster_port"`
+	ClientPort      int `yaml:"client_port"`
+}
+
+func (cfg *NATSConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("nats.", "collectors/", f)
+	f.IntVar(&cfg.ClusterPort, "nats.cluster-port", 4248, "NATS cluster port.")
+	f.IntVar(&cfg.ClientPort, "nats.client-port", 4222, "NATS client port.")
+}
+
+func (t *Loki) initNATS() (services.Service, error) {
+	return NewNATSService(t.Cfg.NATS)
+}
+
+type NATSService struct {
+	services.Service
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+	ring               *ring.Ring
+
+	server *nats_server.Server
+	opts   *nats_server.Options
+}
+
+func NewNATSService(cfg NATSConfig) (services.Service, error) {
+	cfg.InstancePort = cfg.ClusterPort
+	ringStore, err := kv.NewClient(
+		cfg.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "nats"),
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	lcCfg, err := cfg.RingConfig.ToLifecyclerConfig(1, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	var delegate ring.BasicLifecyclerDelegate
+	delegate = ring.NewInstanceRegisterDelegate(ring.ACTIVE, lcCfg.NumTokens)
+	delegate = ring.NewLeaveOnStoppingDelegate(delegate, util_log.Logger)
+	delegate = ring.NewAutoForgetDelegate(4*lcCfg.HeartbeatTimeout, delegate, util_log.Logger)
+	lc, err := ring.NewBasicLifecycler(lcCfg, "nats", "nats", ringStore, delegate, util_log.Logger, prometheus.WrapRegistererWithPrefix("nats_", prometheus.DefaultRegisterer))
+	if err != nil {
+		return nil, err
+	}
+	ringCfg := cfg.ToRingConfig(1)
+	ringCfg.SubringCacheDisabled = true
+	ringClient, err := ring.New(ringCfg, "nats", "nats", util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+	opts := &nats_server.Options{
+		Port:       cfg.ClientPort,
+		ServerName: cfg.InstanceID,
+		Accounts:   []*nats_server.Account{nats_server.NewAccount("$SYS")},
+		Users: []*nats_server.User{
+			{Username: "loki", Password: "loki", Account: nats_server.NewAccount("$SYS")},
+		},
+		Cluster: nats_server.ClusterOpts{
+			Name:      "loki-nats-cluster",
+			Advertise: cfg.InstanceAddr + ":" + strconv.Itoa(cfg.InstancePort),
+			Port:      cfg.InstancePort,
+		},
+	}
+	natsServer := nats_server.New(opts)
+	if natsServer == nil {
+		return nil, fmt.Errorf("failed to create nats server")
+	}
+	natsServer.SetLoggerV2(NewNATSLogger(util_log.Logger), true, true, true)
+	subSvc, err := services.NewManager(lc, ringClient)
+	if err != nil {
+		return nil, err
+	}
+	s := &NATSService{
+		server:             natsServer,
+		subservicesWatcher: services.NewFailureWatcher(),
+		subservices:        subSvc,
+		opts:               opts,
+		ring:               ringClient,
+	}
+
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
+	return s, nil
+}
+
+type NATSFactory struct {
+	cfg NATSConfig
+
+	ring *ring.Ring
+}
+
+func NewNATSFactory(cfg NATSConfig) (*NATSFactory, error) {
+	ringStore, err := kv.NewClient(
+		cfg.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "nats"),
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	// Connect to a server
+	nc, _ := nats.Connect(nats.DefaultURL)
+	return &NATSFactory{cfg: cfg}, nil
+}
+
+type NATSLogger struct {
+	log.Logger
+}
+
+func NewNATSLogger(l log.Logger) *NATSLogger {
+	return &NATSLogger{log.With(l, "component", "nats")}
+}
+
+// Log a notice statement
+func (l NATSLogger) Noticef(format string, v ...interface{}) {
+	level.Info(l.Logger).Log("msg", fmt.Sprintf(format, v...))
+}
+
+// Log a warning statement
+func (l NATSLogger) Warnf(format string, v ...interface{}) {
+	level.Warn(l.Logger).Log("msg", fmt.Sprintf(format, v...))
+}
+
+// Log a fatal error
+func (l NATSLogger) Fatalf(format string, v ...interface{}) {
+	l.Logger.Log("msg", fmt.Sprintf(format, v...), "level", "fatal")
+}
+
+// Log an error
+func (l NATSLogger) Errorf(format string, v ...interface{}) {
+	level.Error(l.Logger).Log("msg", fmt.Sprintf(format, v...))
+}
+
+// Log a debug statement
+func (l NATSLogger) Debugf(format string, v ...interface{}) {
+	level.Debug(l.Logger).Log("msg", fmt.Sprintf(format, v...))
+}
+
+// Log a trace statement
+func (l NATSLogger) Tracef(format string, v ...interface{}) {
+	l.Logger.Log("msg", fmt.Sprintf(format, v...), "level", "trace")
+}
+
+func (s *NATSService) starting(ctx context.Context) error {
+	s.subservicesWatcher.WatchManager(s.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, s.subservices); err != nil {
+		return fmt.Errorf("failed to start subservices: %w", err)
+	}
+	all, _ := s.ring.GetAllHealthy(ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil))
+
+	routes := make([]*url.URL, 0, len(all.Instances))
+	for _, instance := range all.Instances {
+		u, err := url.Parse("nats://" + instance.Addr)
+		if err != nil {
+			continue
+		}
+		routes = append(routes, u)
+	}
+	s.opts.Routes = routes
+	return nil
+}
+
+func (s *NATSService) running(ctx context.Context) error {
+	go func() {
+		<-ctx.Done()
+		s.server.Shutdown()
+	}()
+	// should not do that if we already have a route. too many reload
+	// todo think about how to do that.
+	// go func() {
+
+	// 	for {
+	// 		select {
+	// 		case <-ctx.Done():
+	// 			return
+	// 		case <-time.After(2 * time.Second):
+	// 			if len(s.opts.Routes) > 0 {
+	// 				continue
+	// 			}
+	// 			all, _ := s.ring.GetAllHealthy(ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil))
+	// 			routes := make([]*url.URL, 0, len(all.Instances))
+	// 			for _, instance := range all.Instances {
+	// 				u, err := url.Parse("nats://" + instance.Addr)
+	// 				if err != nil {
+	// 					continue
+	// 				}
+	// 				routes = append(routes, u)
+	// 			}
+	// 			if len(routes) == 0 {
+	// 				continue
+	// 			}
+	// 			s.opts.Routes = routes
+	// 			s.server.ReloadOptions(s.opts)
+	// 		}
+	// 	}
+	// }()
+	if err := nats_server.Run(s.server); err != nil {
+		return err
+	}
+	// Adjust MAXPROCS if running under linux/cgroups quotas.
+	undo, err := maxprocs.Set(maxprocs.Logger(s.server.Debugf))
+	if err != nil {
+		s.server.Warnf("Failed to set GOMAXPROCS: %v", err)
+	} else {
+		defer undo()
+	}
+
+	s.server.WaitForShutdown()
+	return nil
+}
+
+func (s *NATSService) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
 func portFromAddr(addr string) int {
@@ -249,6 +477,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.NATS.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 
 	return t.runtimeConfig, err
 }
@@ -1052,6 +1281,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.NATS.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
@@ -1150,7 +1380,6 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 		managerMode = indexgateway.ServerMode
 	}
 	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
-
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}

@@ -96,6 +96,7 @@ type Config struct {
 	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist" doc:"hidden"`
+	NATS                NATSConfig                  `yaml:"nats,omitempty"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
@@ -136,7 +137,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
 	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
 
-	//TODO(trevorwhitney): flip this to false with Loki 3.0
+	// TODO(trevorwhitney): flip this to false with Loki 3.0
 	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
 		"The default will be flipped to false in the next Loki release.")
 
@@ -166,6 +167,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.UsageReport.RegisterFlags(f)
+	c.NATS.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -636,6 +638,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UsageReport, t.initUsageReport)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(NATS, t.initNATS)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -668,6 +671,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
 		MemberlistKV:             {Server},
+		NATS:                     {Server, MemberlistKV},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -742,7 +746,6 @@ func (t *Loki) setupModuleManager() error {
 			a[idx] = InternalServer
 			deps[key] = a
 		}
-
 	}
 
 	for mod, targets := range deps {

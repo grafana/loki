@@ -1,0 +1,38 @@
+project_name: nkeys
+release:
+  github:
+    owner: nats-io
+    name: nkeys
+  name_template: '{{.Tag}}'
+  draft: true
+builds:
+  - main: ./nk/main.go
+    ldflags: "-X main.Version={{.Tag}}_{{.Commit}}"
+    binary: nk
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+
+
+dist: build
+
+archive:
+  wrap_in_directory: true
+  name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm
+    }}v{{ .Arm }}{{ end }}'
+  format: zip
+
+checksum:
+  name_template: '{{ .ProjectName }}-v{{ .Version }}-checksums.txt'
+
+snapshot:
+  name_template: 'dev'
+
+nfpm:
+  formats:
+    - deb
+  bindir: /usr/local/bin
+  description: NKeys utility cli program
+  vendor: nats-io

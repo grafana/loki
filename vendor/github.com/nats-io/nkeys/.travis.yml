@@ -1,0 +1,35 @@
+language: go
+sudo: false
+
+arch:
+- amd64
+- ppc64le
+go:
+- 1.16.x
+- 1.15.x
+
+install:
+- go get -t ./...
+- go get github.com/mattn/goveralls
+- go get -u honnef.co/go/tools/cmd/staticcheck
+- go get -u github.com/client9/misspell/cmd/misspell
+
+before_script:
+- $(exit $(go fmt ./... | wc -l))
+- go vet ./...
+- misspell -error -locale US .
+- staticcheck ./...
+
+script:
+- go test -v
+- go test -v --race
+- go test -v -covermode=count -coverprofile=coverage.out
+- $HOME/gopath/bin/goveralls -coverprofile coverage.out -service travis-ci
+
+#deploy:
+#- provider: script
+#  skip_cleanup: true
+#  script: curl -sL http://git.io/goreleaser | bash
+#  on:
+#    tags: true
+#    condition: $TRAVIS_OS_NAME = linux
