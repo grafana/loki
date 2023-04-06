@@ -4,6 +4,17 @@ description: Promtail Scraping (Service Discovery)
 ---
 # Scraping
 
+Promtail currently supports scraping from the following sources:
+- Files
+- Kubernetes Discovery
+- Journal (Linux Only)
+- GCP Logs
+- Syslog
+- Kafka
+- GELF
+- Cloudflare
+- Heroku Drain
+
 ## File Target Discovery
 
 Promtail discovers locations of log files and extract labels from them through
