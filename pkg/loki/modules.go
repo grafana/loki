@@ -176,14 +176,16 @@ func (t *Loki) initServer() (services.Service, error) {
 
 type NATSConfig struct {
 	util.RingConfig `yaml:",inline"`
-	ClusterPort     int `yaml:"cluster_port"`
-	ClientPort      int `yaml:"client_port"`
+	ClusterPort     int  `yaml:"cluster_port"`
+	ClientPort      int  `yaml:"client_port"`
+	TraceLogging    bool `yaml:"trace_logging"`
 }
 
 func (cfg *NATSConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("nats.", "collectors/", f)
 	f.IntVar(&cfg.ClusterPort, "nats.cluster-port", 4248, "NATS cluster port.")
 	f.IntVar(&cfg.ClientPort, "nats.client-port", 4222, "NATS client port.")
+	f.BoolVar(&cfg.TraceLogging, "nats.trace-logging", false, "Enable NATS trace logging.")
 }
 
 func (t *Loki) initNATS() (services.Service, error) {
@@ -246,7 +248,7 @@ func NewNATSService(cfg NATSConfig) (services.Service, error) {
 	if natsServer == nil {
 		return nil, fmt.Errorf("failed to create nats server")
 	}
-	natsServer.SetLoggerV2(NewNATSLogger(util_log.Logger), true, true, true)
+	natsServer.SetLoggerV2(NewNATSLogger(util_log.Logger), true, cfg.TraceLogging, false)
 	subSvc, err := services.NewManager(lc, ringClient)
 	if err != nil {
 		return nil, err
@@ -266,22 +268,61 @@ func NewNATSService(cfg NATSConfig) (services.Service, error) {
 type NATSFactory struct {
 	cfg NATSConfig
 
-	ring *ring.Ring
+	ring               *ring.Ring
+	subservicesWatcher *services.FailureWatcher
+	subservices        *services.Manager
+	services.Service
 }
 
 func NewNATSFactory(cfg NATSConfig) (*NATSFactory, error) {
-	ringStore, err := kv.NewClient(
-		cfg.KVStore,
-		ring.GetCodec(),
-		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "nats"),
-		util_log.Logger,
-	)
+	ringCfg := cfg.ToRingConfig(1)
+	ringCfg.SubringCacheDisabled = true
+	ringClient, err := ring.New(ringCfg, "nats", "nats", util_log.Logger, prometheus.WrapRegistererWithPrefix("nats_factory", prometheus.DefaultRegisterer))
 	if err != nil {
 		return nil, err
 	}
-	// Connect to a server
-	nc, _ := nats.Connect(nats.DefaultURL)
-	return &NATSFactory{cfg: cfg}, nil
+	subSvc, err := services.NewManager(ringClient)
+	if err != nil {
+		return nil, err
+	}
+	s := &NATSFactory{
+		cfg:                cfg,
+		ring:               ringClient,
+		subservicesWatcher: services.NewFailureWatcher(),
+		subservices:        subSvc,
+	}
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
+
+	return s, nil
+}
+
+func (f *NATSFactory) starting(ctx context.Context) error {
+	f.subservicesWatcher.WatchManager(f.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
+		return fmt.Errorf("failed to start subservices: %w", err)
+	}
+	return nil
+}
+
+func (f *NATSFactory) running(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+func (f *NATSFactory) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
+}
+
+func (f *NATSFactory) GetConn() (*nats.Conn, error) {
+	// todo better discovery and connection pooling
+	all, _ := f.ring.GetAllHealthy(ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil))
+	if len(all.Instances) == 0 {
+		return nil, fmt.Errorf("no nats instances found")
+	}
+	// remove port from Addr
+	addr := strings.Split(all.Instances[0].Addr, ":")
+	return nats.Connect(fmt.Sprintf("nats://%s:%d", addr[0], f.cfg.ClientPort))
 }
 
 type NATSLogger struct {
@@ -509,7 +550,44 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDistributor() (services.Service, error) {
-	var err error
+	nastFactory, err := NewNATSFactory(t.Cfg.NATS)
+	if err != nil {
+		return nil, err
+	}
+	if err := services.StartAndAwaitRunning(context.Background(), nastFactory); err != nil {
+		return nil, err
+	}
+	go func() {
+		var conn *nats.Conn
+		for {
+			<-time.After(2 * time.Second)
+			conn, err = nastFactory.GetConn()
+			if err != nil {
+				level.Warn(util_log.Logger).Log("msg", "failed to get nats connection", "err", err)
+				continue
+			}
+			break
+		}
+
+		stream, err := conn.JetStream()
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to get jetstream", "err", err)
+			return
+		}
+
+		// todo read the doc and activate storage.
+		// stream.AddStream(&nats.StreamConfig{
+		// 	Name:     "foo",
+		// 	Subjects: []string{"foo"},
+		// })
+		ack, err := stream.Publish("{app=\"foo\"}", []byte(`foo`))
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to publish", "err", err)
+			return
+		}
+		level.Info(util_log.Logger).Log("msg", "published", "ack", ack)
+	}()
+
 	t.distributor, err = distributor.New(
 		t.Cfg.Distributor,
 		t.Cfg.IngesterClient,

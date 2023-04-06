@@ -18,11 +18,11 @@ builds:
 
 dist: build
 
-archive:
-  wrap_in_directory: true
-  name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm
+archives:
+  - name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm
     }}v{{ .Arm }}{{ end }}'
-  format: zip
+    wrap_in_directory: true
+    format: zip
 
 checksum:
   name_template: '{{ .ProjectName }}-v{{ .Version }}-checksums.txt'
@@ -30,9 +30,12 @@ checksum:
 snapshot:
   name_template: 'dev'
 
-nfpm:
-  formats:
-    - deb
-  bindir: /usr/local/bin
-  description: NKeys utility cli program
-  vendor: nats-io
+nfpms:
+  - file_name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Arch }}{{ if .Arm
+    }}v{{ .Arm }}{{ end }}'
+    maintainer: nats.io
+    description: NKeys utility cli program
+    vendor: nats-io
+    bindir: /usr/local/bin
+    formats:
+      - deb

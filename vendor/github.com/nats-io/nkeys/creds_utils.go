@@ -2,8 +2,8 @@ package nkeys
 
 import (
 	"bytes"
-	"errors"
 	"regexp"
+	"strings"
 )
 
 var userConfigRE = regexp.MustCompile(`\s*(?:(?:[-]{3,}.*[-]{3,}\r?\n)([\w\-.=]+)(?:\r?\n[-]{3,}.*[-]{3,}\r?\n))`)
@@ -19,7 +19,7 @@ func ParseDecoratedJWT(contents []byte) (string, error) {
 	raw := items[0][1]
 	tmp := make([]byte, len(raw))
 	copy(tmp, raw)
-	return string(tmp), nil
+	return strings.TrimSpace(string(tmp)), nil
 }
 
 // ParseDecoratedNKey takes a creds file, finds the NKey portion and creates a
@@ -42,12 +42,12 @@ func ParseDecoratedNKey(contents []byte) (KeyPair, error) {
 		}
 	}
 	if seed == nil {
-		return nil, errors.New("no nkey seed found")
+		return nil, ErrNoSeedFound
 	}
 	if !bytes.HasPrefix(seed, []byte("SO")) &&
 		!bytes.HasPrefix(seed, []byte("SA")) &&
 		!bytes.HasPrefix(seed, []byte("SU")) {
-		return nil, errors.New("doesn't contain a seed nkey")
+		return nil, ErrInvalidNkeySeed
 	}
 	kp, err := FromSeed(seed)
 	if err != nil {
@@ -68,7 +68,7 @@ func ParseDecoratedUserNKey(contents []byte) (KeyPair, error) {
 		return nil, err
 	}
 	if !bytes.HasPrefix(seed, []byte("SU")) {
-		return nil, errors.New("doesn't contain an user seed nkey")
+		return nil, ErrInvalidUserSeed
 	}
 	kp, err := FromSeed(seed)
 	if err != nil {

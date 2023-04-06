@@ -13,37 +13,30 @@
 
 // Package nkeys is an Ed25519 based public-key signature system that simplifies keys and seeds
 // and performs signing and verification.
+// It also supports encryption via x25519 keys and is compatible with https://pkg.go.dev/golang.org/x/crypto/nacl/box.
 package nkeys
 
-import (
-	"errors"
-)
+import "io"
 
 // Version is our current version
-const Version = "0.3.0"
-
-// Errors
-var (
-	ErrInvalidPrefixByte = errors.New("nkeys: invalid prefix byte")
-	ErrInvalidKey        = errors.New("nkeys: invalid key")
-	ErrInvalidPublicKey  = errors.New("nkeys: invalid public key")
-	ErrInvalidSeedLen    = errors.New("nkeys: invalid seed length")
-	ErrInvalidSeed       = errors.New("nkeys: invalid seed")
-	ErrInvalidEncoding   = errors.New("nkeys: invalid encoded key")
-	ErrInvalidSignature  = errors.New("nkeys: signature verification failed")
-	ErrCannotSign        = errors.New("nkeys: can not sign, no private key available")
-	ErrPublicKeyOnly     = errors.New("nkeys: no seed or private key available")
-	ErrIncompatibleKey   = errors.New("nkeys: incompatible key")
-)
+const Version = "0.4.4"
 
 // KeyPair provides the central interface to nkeys.
 type KeyPair interface {
 	Seed() ([]byte, error)
 	PublicKey() (string, error)
 	PrivateKey() ([]byte, error)
+	// Sign is only supported on Non CurveKeyPairs
 	Sign(input []byte) ([]byte, error)
+	// Verify is only supported on Non CurveKeyPairs
 	Verify(input []byte, sig []byte) error
 	Wipe()
+	// Seal is only supported on CurveKeyPair
+	Seal(input []byte, recipient string) ([]byte, error)
+	// SealWithRand is only supported on CurveKeyPair
+	SealWithRand(input []byte, recipient string, rr io.Reader) ([]byte, error)
+	// Open is only supported on CurveKey
+	Open(input []byte, sender string) ([]byte, error)
 }
 
 // CreateUser will create a User typed KeyPair.
@@ -86,9 +79,12 @@ func FromPublicKey(public string) (KeyPair, error) {
 
 // FromSeed will create a KeyPair capable of signing and verifying signatures.
 func FromSeed(seed []byte) (KeyPair, error) {
-	_, _, err := DecodeSeed(seed)
+	prefix, _, err := DecodeSeed(seed)
 	if err != nil {
 		return nil, err
+	}
+	if prefix == PrefixByteCurve {
+		return FromCurveSeed(seed)
 	}
 	copy := append([]byte{}, seed...)
 	return &kp{copy}, nil
