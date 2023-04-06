@@ -17,7 +17,7 @@ Labels in Loki perform a very important task: They define a stream. More specifi
 
 If you are familiar with Prometheus, the term used there is series; however, Prometheus has an additional dimension: metric name. Loki simplifies this in that there are no metric names, just labels, and we decided to use streams instead of series.
 
-If in doubt, always read our [best practices]({{<relref "/best-practices">}}) when it comes to defining labels as this will hopefully save you a lot of work.
+For more tips on defining and using labels, read the [best practices]({{<relref "/best-practices">}}).
 
 ## Format
 
