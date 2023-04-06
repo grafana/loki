@@ -163,18 +163,23 @@ type chunkPageMarker struct {
 	// stats in this page.
 	// unused for now, but will be used to
 	// optimize statistics via downsampling
-	Chunks, KB, Entries uint32
+	// ChunksRemaining denotes the number of chunks left
+	// in the series, starting from this page
+	ChunksRemaining int
+
+	// KB, Entries denote the KB and number of entries
+	// in each page
+	KB, Entries uint32
 
 	// byte offset where this chunk starts relative
 	// to the chunks in this series
-	Offset uint64
+	Offset int
 
 	// bounds associated with this page
 	MinTime, MaxTime int64
 }
 
 func (m *chunkPageMarker) combine(c ChunkMeta) {
-	m.Chunks++
 	m.KB += c.KB
 	m.Entries += c.Entries
 	if c.MinTime < m.MinTime {
@@ -185,9 +190,9 @@ func (m *chunkPageMarker) combine(c ChunkMeta) {
 	}
 }
 
-func (m *chunkPageMarker) put(e *encoding.Encbuf, offset int) {
+func (m *chunkPageMarker) encode(e *encoding.Encbuf, offset int, chunksRemaining int) {
 	// put chunks, kb, entries, offset, mintime, maxtime
-	e.PutBE32(m.Chunks)
+	e.PutUvarint(chunksRemaining)
 	e.PutBE32(m.KB)
 	e.PutBE32(m.Entries)
 	e.PutUvarint(offset)
@@ -199,12 +204,45 @@ func (m *chunkPageMarker) clear() {
 	*m = chunkPageMarker{}
 }
 
-// How many bytes must be allocated to encode this in TSDB.
-// 4 bytes for each int32 field
-// 8 bytes for each 64-bit field
-const chunkPageMarkerAllocSize = 4*3 + 8*3
+func (m *chunkPageMarker) decode(d *encoding.Decbuf) {
+	m.ChunksRemaining = d.Uvarint()
+	m.KB = d.Be32()
+	m.Entries = d.Be32()
+	m.Offset = d.Uvarint()
+	m.MinTime = d.Varint64()
+	m.MaxTime = m.MinTime + d.Varint64()
+}
 
 // Chunks per page. This is encoded into the binary
 // format and can thus be changed without needing a
 // new schema version
 const ChunkPageSize = 512
+
+type chunkPageMarkers []chunkPageMarker
+
+func (xs chunkPageMarkers) Len() int           { return len(xs) }
+func (xs chunkPageMarkers) Less(i, j int) bool { return xs[i].MinTime < xs[j].MinTime }
+func (xs chunkPageMarkers) Swap(i, j int)      { xs[i], xs[j] = xs[j], xs[i] }
+
+// Find the offset from which we need to start checking
+func (xs chunkPageMarkers) Find(from, through int64) (i int, prevMaxT int64, found bool) {
+	i = sort.Search(len(xs), func(i int) bool {
+		return overlap(from, through, xs[i].MinTime, xs[i].MaxTime) || xs[i].MinTime >= through
+	})
+
+	// All chunks were before our time range
+	if i == len(xs) {
+		return i, 0, false
+	}
+
+	// No markers with overlap
+	if xs[i].MinTime >= through {
+		return i, 0, false
+	}
+
+	if i > 0 {
+		prevMaxT = xs[i-1].MaxTime
+	}
+
+	return i, prevMaxT, true
+}

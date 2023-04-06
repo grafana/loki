@@ -2,8 +2,12 @@ package index
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
+	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/prometheus/prometheus/storage"
+	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
 )
 
@@ -364,6 +368,76 @@ func TestChunkMetas_Drop(t *testing.T) {
 			chunkMetasCopy, chunkFound := chunkMetasCopy.Drop(tc.toDrop)
 			require.Equal(t, tc.expectedChunkFound, chunkFound)
 			require.Equal(t, tc.expectedChunkMetas, chunkMetasCopy)
+		})
+	}
+}
+
+// TestChunkPageMarkerEncodeDecode tests that the chunk page marker can be encoded and decoded.
+func TestChunkPageMarkerEncodeDecode(t *testing.T) {
+	// Create a chunk page marker.
+	marker := chunkPageMarker{
+		ChunksRemaining: 1,
+		KB:              2,
+		Entries:         3,
+		Offset:          4,
+		MinTime:         5,
+		MaxTime:         6,
+	}
+
+	// Encode the chunk page marker.
+	encbuf := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+	marker.encode(&encbuf, 4, 1)
+	bs := RealByteSlice(encbuf.Get())
+
+	// decode
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(bs, bs.Len()))
+	var decMarker chunkPageMarker
+	decMarker.decode(&d)
+
+	// Verify the decoded chunk page marker.
+	require.Equal(t, marker, decMarker)
+}
+
+func mkChks(n int) (chks []ChunkMeta) {
+	for i := 0; i < n; i++ {
+		chks = append(chks, chkFrom(i))
+	}
+	return chks
+}
+
+func chkFrom(i int) ChunkMeta {
+	return ChunkMeta{
+		Checksum: uint32(i),
+		MinTime:  int64(i),
+		MaxTime:  int64(i + 1),
+		KB:       uint32(i),
+		Entries:  uint32(i),
+	}
+}
+
+func TestChunkEncodingRoundTrip(t *testing.T) {
+	for _, version := range []int{
+		FormatV2,
+		FormatV3,
+	} {
+		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
+			nChks := 8
+			chks := mkChks(nChks)
+			var w Writer
+			w.Version = version
+			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			w.addChunks(chks, &primary, &scratch)
+
+			decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+			dec := &Decoder{
+				chunksSample: map[storage.SeriesRef]*chunkSamples{},
+			}
+
+			dst := []ChunkMeta{}
+			require.Nil(t, dec.readChunks(version, &decbuf, 0, 0, math.MaxInt64, &dst))
+
+			require.Equal(t, chks, dst)
 		})
 	}
 }
