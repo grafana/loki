@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-99acb9b
-    createdAt: "2023-04-05T13:06:07Z"
+    createdAt: "2023-04-06T11:19:03Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -492,6 +492,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:gcs
         - urn:alm:descriptor:com.tectonic.ui:select:s3
         - urn:alm:descriptor:com.tectonic.ui:select:swift
+        - urn:alm:descriptor:com.tectonic.ui:select:alibabacloud
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
