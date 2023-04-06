@@ -25,7 +25,7 @@ Example:
 {{ .path | replace " " "_" | trunc 5 | upper }}
 ```
 
-For function that returns a `bool` such as `contains`, `eq`, `hasPrefix` and `hasSuffix`, you can apply `AND` / `OR` and nested if logic.
+For function that returns a `bool` such as `contains`, `eq`, `hasPrefix` and `hasSuffix`, you can apply `AND` / `OR` and nested `if` logic.
 
 Example:
 
