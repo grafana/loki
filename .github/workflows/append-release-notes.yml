@@ -3,6 +3,7 @@ name: Append to Release Notes
 on:
   pull_request_target:
     types:
+      - closed
       - labeled
 
 jobs:
@@ -17,11 +18,11 @@ jobs:
           ref: release-notes-action
       - name: Install Actions
         run: npm install --production --prefix ./actions
-      - name: Run backport
+      - name: Run release notes appender
         uses: ./actions/release-notes-appender
         with:
           metricsWriteAPIKey: ${{secrets.GRAFANA_MISC_STATS_API_KEY}}
           token: ${{secrets.GH_BOT_ACCESS_TOKEN}}
-          labelsToAdd: "backport"
+          labelsToAdd: "release-notes"
           title: "[{{base}}] {{originalTitle}}"
           releaseNotesFile: docs/sources/release-notes/v2-8.md
