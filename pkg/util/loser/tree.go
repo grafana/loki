@@ -107,7 +107,8 @@ func (t *Tree[E, S]) replayGames(pos int) {
 	// At the start, pos is a leaf node, and is the winner at that level.
 	n := parent(pos)
 	for n != 0 {
-		if t.less(t.nodes[n].value, t.nodes[pos].value) {
+		// Not less than == greater than or equal to
+		if !t.less(t.nodes[pos].value, t.nodes[n].value) {
 			loser := pos
 			// Record pos as the loser here, and the old loser is the new winner.
 			pos = t.nodes[n].index

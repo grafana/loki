@@ -95,6 +95,21 @@ var testCases = []struct {
 		want: NewList(1, 2, 3, 4, 5),
 	},
 	{
+		name: "two lists, largest value in first list equal to maximum",
+		args: []*List{NewList(1, math.MaxUint64), NewList(2, 3)},
+		want: NewList(1, 2, 3, math.MaxUint64),
+	},
+	{
+		name: "two lists, largest value in second list equal to maximum",
+		args: []*List{NewList(1, 3), NewList(2, math.MaxUint64)},
+		want: NewList(1, 2, 3, math.MaxUint64),
+	},
+	{
+		name: "two lists, largest value in both lists equal to maximum",
+		args: []*List{NewList(1, math.MaxUint64), NewList(2, math.MaxUint64)},
+		want: NewList(1, 2, math.MaxUint64, math.MaxUint64),
+	},
+	{
 		name: "three lists",
 		args: []*List{NewList(1, 3), NewList(2, 4), NewList(5)},
 		want: NewList(1, 2, 3, 4, 5),
