@@ -120,7 +120,26 @@ func TestFormat(t *testing.T) {
 			},
 		},
 		{
-			name: "use-full-line",
+			name:        "use-full-line",
+			useFullLine: true,
+			msg: &pubsub.Message{
+				Data: []byte(withTextPayload),
+			},
+			labels: model.LabelSet{
+				"jobname": "pubsub-test",
+			},
+			expected: api.Entry{
+				Labels: model.LabelSet{
+					"jobname": "pubsub-test",
+				},
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      withTextPayload,
+				},
+			},
+		},
+		{
+			name: "use-text-payload",
 			msg: &pubsub.Message{
 				Data: []byte(withTextPayload),
 			},
