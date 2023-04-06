@@ -38,7 +38,7 @@ and allows for efficient query execution.
 
 -  **Log data is stored within Object Store only**
 
-    By leveraging Object Storage as the only data storage mechanism, Loki inherits the reliability and stability of the underlying Object Store. It also capitalizes on both the cost efficiency and operational simplicity of Object Storages over other storage mechanisms like locally attached SSD and HDDs.
+    By leveraging object storage as the only data storage mechanism, Loki inherits the reliability and stability of the underlying object store. It also capitalizes on both the cost efficiency and operational simplicity of object storage over other storage mechanisms like locally attached solid state drives (SSD) and hard disk drives (HDD).
 
 -  **Efficient memory usage for indexing the logs**
 
