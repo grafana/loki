@@ -3512,6 +3512,33 @@ null
 		<tr>
 			<td>read.service.annotations</td>
 			<td>object</td>
+			<td>Annotations for the read Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.clusterIP</td>
+			<td>string</td>
+			<td>ClusterIP of the read Service</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.type</td>
+			<td>string</td>
+			<td>Type of the read Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.serviceLabels</td>
+			<td>object</td>
 			<td>Annotations for read Service</td>
 			<td><pre lang="json">
 {}
@@ -4820,6 +4847,33 @@ null
 		</tr>
 		<tr>
 			<td>write.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for the write Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.clusterIP</td>
+			<td>string</td>
+			<td>ClusterIP of the write Service</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.type</td>
+			<td>string</td>
+			<td>Type of the write Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.serviceLabels</td>
 			<td>object</td>
 			<td>Annotations for write Service</td>
 			<td><pre lang="json">
