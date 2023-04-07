@@ -21,8 +21,15 @@ metadata:
     {{- with .Values.read.service.annotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
+  {{- with .Values.read.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.read.service.type }}
+  {{- with .Values.read.service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
   ports:
     - name: http-metrics
       port: 3100
