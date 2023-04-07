@@ -420,24 +420,41 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 		FormatV2,
 		FormatV3,
 	} {
-		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
-			nChks := 8
-			chks := mkChks(nChks)
-			var w Writer
-			w.Version = version
-			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
-			scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
-			w.addChunks(chks, &primary, &scratch)
+		for _, nChks := range []int{
+			0,
+			8,
+		} {
+			for _, pageSize := range []int{
+				4,
+				5,
+				8,
+				10,
+				ChunkPageSize,
+			} {
+				t.Run(fmt.Sprintf("version %d nChks %d pageSize %d", version, nChks, pageSize), func(t *testing.T) {
+					chks := mkChks(nChks)
+					var w Writer
+					w.Version = version
+					primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+					scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+					w.addChunks(chks, &primary, &scratch, pageSize)
 
-			decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
-			dec := &Decoder{
-				chunksSample: map[storage.SeriesRef]*chunkSamples{},
+					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+					dec := &Decoder{
+						chunksSample: map[storage.SeriesRef]*chunkSamples{},
+					}
+
+					dst := []ChunkMeta{}
+					require.Nil(t, dec.readChunks(version, &decbuf, 0, 0, math.MaxInt64, &dst))
+
+					if len(chks) == 0 {
+						require.Equal(t, 0, len(dst))
+					} else {
+						require.Equal(t, chks, dst)
+					}
+				})
 			}
+		}
 
-			dst := []ChunkMeta{}
-			require.Nil(t, dec.readChunks(version, &decbuf, 0, 0, math.MaxInt64, &dst))
-
-			require.Equal(t, chks, dst)
-		})
 	}
 }
