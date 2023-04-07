@@ -25,7 +25,6 @@ func main() {
 	exitErr("setting up", err)
 
 	_, overrides, clientMetrics := defaultConfigs()
-	// store, err := storage.NewStore(cfg.StorageConfig, chunkStoreCfg, cfg.SchemaConfig, storeLimits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 
 	flag.Parse()
 

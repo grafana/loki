@@ -100,6 +100,3 @@ func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []stri
 
 	return nil
 }
-
-// series [avg, p50, p90, p99, max]
-// chunks per series[avg, p50, p90, p99, max]
