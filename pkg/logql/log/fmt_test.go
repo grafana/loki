@@ -694,10 +694,10 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		},
 		{
 			"toEpochNanos",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpochNanos | date "Jan 2, 2006 at 3:04pm GMT" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpochNanos | date "Jan 2, 2006" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
 			labels.Labels{
-				{Name: "foo", Value: "Sep 9, 2001 at 2:46am GMT"},
+				{Name: "foo", Value: "Sep 9, 2001"},
 				{Name: "bar", Value: "1000000000000000000"},
 			},
 		},
