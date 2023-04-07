@@ -5,10 +5,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // Test all sort variants

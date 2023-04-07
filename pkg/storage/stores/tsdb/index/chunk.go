@@ -3,8 +3,9 @@ package index
 import (
 	"sort"
 
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // Meta holds information about a chunk of data.
