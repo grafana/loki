@@ -88,6 +88,14 @@ func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	return nil
 }
 
+func (t TableRanges) TableNameFor(table int64) (string, bool) {
+	cfg := t.ConfigForTableNumber(table)
+	if cfg == nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s%d", cfg.IndexTables.Prefix, table), true
+}
+
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
 	// used when working with config
