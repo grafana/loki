@@ -1,4 +1,4 @@
-package client
+package utils
 
 import (
 	"math"
@@ -9,19 +9,20 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-type receivedReq struct {
-	tenantID string
-	pushReq  logproto.PushRequest
+// RemoteWriteRequest wraps the received logs remote write request that is received.
+type RemoteWriteRequest struct {
+	TenantID string
+	Request  logproto.PushRequest
 }
 
-// newTestMoreWriteServer creates a new httpserver.Server that can handle remote write request. When a request is handled,
+// NewRemoteWriteServer creates and starts a new httpserver.Server that can handle remote write request. When a request is handled,
 // the received entries are written to receivedChan, and status is responded.
-func newTestRemoteWriteServer(receivedChan chan receivedReq, status int) *httptest.Server {
+func NewRemoteWriteServer(receivedChan chan RemoteWriteRequest, status int) *httptest.Server {
 	server := httptest.NewServer(createServerHandler(receivedChan, status))
 	return server
 }
 
-func createServerHandler(receivedReqsChan chan receivedReq, receivedOKStatus int) http.HandlerFunc {
+func createServerHandler(receivedReqsChan chan RemoteWriteRequest, receivedOKStatus int) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		// Parse the request
 		var pushReq logproto.PushRequest
@@ -30,9 +31,9 @@ func createServerHandler(receivedReqsChan chan receivedReq, receivedOKStatus int
 			return
 		}
 
-		receivedReqsChan <- receivedReq{
-			tenantID: req.Header.Get("X-Scope-OrgID"),
-			pushReq:  pushReq,
+		receivedReqsChan <- RemoteWriteRequest{
+			TenantID: req.Header.Get("X-Scope-OrgID"),
+			Request:  pushReq,
 		}
 
 		rw.WriteHeader(receivedOKStatus)

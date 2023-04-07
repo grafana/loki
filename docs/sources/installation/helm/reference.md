@@ -369,9 +369,9 @@ null
 		<tr>
 			<td>enterprise.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-"main-96f32b9f"
+null
 </pre>
 </td>
 		</tr>
@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.2"
+"v1.6.3"
 </pre>
 </td>
 		</tr>
@@ -805,7 +805,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1993,7 +1993,7 @@ false
 		<tr>
 			<td>migrate.fromDistributed.memberlistService</td>
 			<td>string</td>
-			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join it's ring.</td>
+			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join its ring.</td>
 			<td><pre lang="json">
 ""
 </pre>

@@ -1,5 +1,18 @@
 ## Main
 
+- [8661](https://github.com/grafana/loki/pull/8661) **xuanyunhui**: Add a new Object Storage Type for AlibabaCloud OSS
+- [9036](https://github.com/grafana/loki/pull/9036) **periklis**: Update Loki operand to v2.8.0
+- [8978](https://github.com/grafana/loki/pull/8978) **aminesnow**: Add watch for the object storage secret
+- [8958](https://github.com/grafana/loki/pull/8958) **periklis**: Align common instance addr with memberlist advertise addr
+- [8998](https://github.com/grafana/loki/pull/8998) **periklis**: Remove static placeholder suffix for openshift bundle
+- [8930](https://github.com/grafana/loki/pull/8930) **periklis**: Fix makefile target operatorhub
+- [8911](https://github.com/grafana/loki/pull/8911) **aminesnow**: Update LokiStack annotaion on RulerConfig delete
+
+## 0.2.0 (2023-03-27)
+
+- [8912](https://github.com/grafana/loki/pull/8912) **periklis**: Add missing replaces directives for release v0.2.0
+- [8651](https://github.com/grafana/loki/pull/8651) **periklis**: Prepare Community Loki Operator release v0.2.0
+- [8881](https://github.com/grafana/loki/pull/8881) **periklis**: Provide community bundle for openshift community hub
 - [8863](https://github.com/grafana/loki/pull/8863) **periklis**: Break the API types out into their own module
 - [8878](https://github.com/grafana/loki/pull/8878) **periklis**: Refactor all type validations into own package
 - [8875](https://github.com/grafana/loki/pull/8875) **Red-GV**: Remove mutations to non-updatable statefulset fields

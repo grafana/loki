@@ -269,7 +269,7 @@ Signature: `contains(s string, src string) bool`
 Examples:
 
 ```template
-{{ if .err contains "ErrTimeout" }} timeout {{end}}
+{{ if contains .err "ErrTimeout" }} timeout {{end}}
 {{ if contains "he" "hello" }} yes {{end}}
 ```
 
@@ -285,7 +285,7 @@ Signatures:
 Examples:
 
 ```template
-{{ if .err hasSuffix "Timeout" }} timeout {{end}}
+{{ if hasSuffix .err "Timeout" }} timeout {{end}}
 {{ if hasPrefix "he" "hello" }} yes {{end}}
 ```
 

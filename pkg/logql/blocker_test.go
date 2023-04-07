@@ -121,6 +121,22 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			}, nil,
 		},
 		{
+			"correct FNV32 hash matches",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: HashedQuery(defaultQuery),
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
+			"incorrect FNV32 hash does not match",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: HashedQuery(defaultQuery) + 1,
+				},
+			}, nil,
+		},
+		{
 			"no blocked queries",
 			defaultQuery, []*validation.BlockedQuery{}, nil,
 		},

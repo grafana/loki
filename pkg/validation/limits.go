@@ -85,6 +85,7 @@ type Limits struct {
 	MaxQuerySeries             int            `yaml:"max_query_series" json:"max_query_series"`
 	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange              model.Duration `yaml:"max_query_range" json:"max_query_range"`
 	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
@@ -97,8 +98,10 @@ type Limits struct {
 	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
 
 	// Ruler defaults and limits.
 
@@ -167,7 +170,8 @@ type Limits struct {
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
-	RequiredLabels []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 }
 
 type StreamRetention struct {
@@ -218,6 +222,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series that is returned by a metric query. When the limit is reached an error is returned.")
+	_ = l.MaxQueryRange.Set("0s")
+	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
 	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
 
@@ -231,6 +237,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MinShardingLookback.Set("0s")
 	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit queries that can be sharded. Queries within the time range of now and now minus this sharding lookback are not sharded. The default value of 0s disables the lookback, causing sharding of all queries at all times.")
+
+	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "Max number of bytes a query can fetch. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
+	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
 
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -436,6 +445,11 @@ func (o *Overrides) MaxQuerySeries(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
+// MaxQueryRange returns the limit for the max [range] value that can be in a range query
+func (o *Overrides) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryRange)
+}
+
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
@@ -481,6 +495,16 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
+}
+
+// MaxQueryBytesRead returns the maximum bytes a query can read.
+func (o *Overrides) MaxQueryBytesRead(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
+}
+
+// MaxQuerierBytesRead returns the maximum bytes a sub query can read after splitting and sharding.
+func (o *Overrides) MaxQuerierBytesRead(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxQuerierBytesRead.Val()
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
@@ -676,6 +700,10 @@ func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*valida
 
 func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
 	return o.getOverridesForUser(userID).RequiredLabels
+}
+
+func (o *Overrides) RequiredNumberLabels(ctx context.Context, userID string) int {
+	return o.getOverridesForUser(userID).RequiredNumberLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

@@ -335,6 +335,18 @@ job_name: <string>
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
 
+# Defines decompression behavior for the given scrape target.
+decompression:
+  # Whether decompression should be tried or not.
+  [enabled: <boolean> | default = false]
+
+  # Initial delay to wait before starting the decompression.
+  # Especially useful in scenarios where compressed files are found before the compression is finished.
+  [initial_delay: <duration> | default = 0s]
+
+  # Compression format. Supported formats are: 'gz', 'bz2' and 'z.
+  [format: <string> | default = ""]
+
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
 
@@ -352,6 +364,9 @@ job_name: <string>
 
 # Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
 [gcplog: <gcplog_config>]
+
+# Configuration describing how to get Azure Event Hubs messages.
+[azure_event_hub: <azure_event_hub_config>]
 
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
@@ -900,14 +915,14 @@ See [Example Push Config](#example-push-config)
 
 The `windows_events` block configures Promtail to scrape windows event logs and send them to Loki.
 
-To subcribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
+To subscribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
 
 Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
 
 A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
 keep record of the last event processed. This file persists across Promtail restarts.
 
-You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
+You can set `use_incoming_timestamp` if you want to keep incoming event timestamps. By default Promtail will use the timestamp when
 the event was read from the event log.
 
 Promtail will serialize JSON windows events, adding `channel` and `computer` labels from the event received.
@@ -1015,6 +1030,57 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_logname`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+
+### Azure Event Hubs
+
+The `azure_event_hubs` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. For more information, see the [Azure Event Hubs documentation](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
+
+To learn more about streaming Azure logs to an Azure Event Hubs, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
+
+Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
+
+```yaml
+# Event Hubs namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+fully_qualified_namespace: <string> | default = ""
+
+# Event Hubs to consume (Required).
+event_hubs:
+    [ - <string> ... ]
+
+# Event Hubs ConnectionString for authentication on Azure Cloud (Required).
+connection_string: <string> | default = "range"
+
+# The consumer group id.
+[group_id: <string> | default = "promtail"]
+
+# If Promtail should pass on the timestamp from the incoming message or not.
+# When false Promtail will assign the current timestamp to the log when it was processed.
+[use_incoming_timestamp: <bool> | default = false]
+
+# If Promtail should ignore messages that don't match the schema for Azure resource logs.
+# Schema is described here https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema.
+[disallow_custom_messages: <bool> | default = false]
+
+# Labels optionally hold labels to associate with each log line.
+[labels]:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+### Available Labels
+
+When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
+
+**Available Labels:**
+
+- `__azure_event_hubs_category`: The log category of the message when a message is an application log.
+
+The following list of labels is discovered using the Kafka endpoint in Event Hubs.
+
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: The consumer group member id.
+- `__meta_kafka_group_id`: The consumer group id.
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 ### kafka
 
@@ -1992,7 +2058,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config

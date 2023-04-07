@@ -1,0 +1,61 @@
+{
+  "records": [
+    {
+      "time": "2023-03-17T08:44:02.8921579Z",
+      "workflowId": "/WORKFLOWS/AUZRE-PROMTAIL-TESTING-APP",
+      "resourceId": "/WORKFLOWS/AUZRE-PROMTAIL-TESTING-APP/RUNS/11111/TRIGGERS/MANUAL",
+      "category": "WorkflowRuntime",
+      "level": "Information",
+      "operationName": "Microsoft.Logic/workflows/workflowTriggerStarted",
+      "properties": {
+        "$schema": "2016-06-01",
+        "startTime": "2023-03-17T08:44:02.8358364Z",
+        "status": "Succeeded",
+        "fired": true,
+        "resource": {
+          "subscriptionId": "someSubscriptionId",
+          "resourceGroupName": "AzureLogsTesting",
+          "workflowId": "someWorkflowId",
+          "workflowName": "auzre-promtail-testing-app",
+          "runId": "someRunId",
+          "location": "eastus",
+          "triggerName": "manual"
+        },
+        "correlation": {
+          "clientTrackingId": "someClientTrackingId"
+        },
+        "api": {}
+      },
+      "location": "eastus"
+    },
+    {
+      "time": "2023-03-17T08:44:03.2036497Z",
+      "workflowId": "/WORKFLOWS/AUZRE-PROMTAIL-TESTING-APP",
+      "resourceId": "/WORKFLOWS/AUZRE-PROMTAIL-TESTING-APP/RUNS/11111/TRIGGERS/MANUAL",
+      "category": "WorkflowRuntime",
+      "level": "Information",
+      "operationName": "Microsoft.Logic/workflows/workflowTriggerCompleted",
+      "properties": {
+        "$schema": "2016-06-01",
+        "startTime": "2023-03-17T08:44:02.8358364Z",
+        "endTime": "2023-03-17T08:44:02.8983217Z",
+        "status": "Succeeded",
+        "fired": true,
+        "resource": {
+          "subscriptionId": "someSubscriptionId",
+          "resourceGroupName": "AzureLogsTesting",
+          "workflowId": "someWorkflowId",
+          "workflowName": "auzre-promtail-testing-app",
+          "runId": "someRunId",
+          "location": "eastus",
+          "triggerName": "manual"
+        },
+        "correlation": {
+          "clientTrackingId": "someClientTrackingId"
+        },
+        "api": {}
+      },
+      "location": "eastus"
+    }
+  ]
+}

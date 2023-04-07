@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/services"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,10 +45,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
 			for n := 0; n < b.N; n++ {
-				queue := NewRequestQueue(maxOutstandingPerTenant, 0,
-					prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-					prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-				)
+				queue := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics("query_scheduler", nil))
 				queues = append(queues, queue)
 
 				for ix := 0; ix < queriers; ix++ {
@@ -107,10 +103,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, 0,
-			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-		)
+		q := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics("query_scheduler", nil))
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
@@ -140,10 +133,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
 	const forgetDelay = 3 * time.Second
 
-	queue := NewRequestQueue(1, forgetDelay,
-		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-	)
+	queue := NewRequestQueue(1, forgetDelay, NewMetrics("query_scheduler", nil))
 
 	// Start the queue service.
 	ctx := context.Background()
@@ -308,6 +298,36 @@ func TestContextCond(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return len(doneWaiting) == goroutines
 		}, time.Second, 10*time.Millisecond)
+	})
+}
+
+func TestMaxQueueSize(t *testing.T) {
+	t.Run("queue size is tracked per tenant", func(t *testing.T) {
+		maxSize := 3
+		queue := NewRequestQueue(maxSize, 0, NewMetrics("query_scheduler", nil))
+		queue.RegisterQuerierConnection("querier")
+
+		// enqueue maxSize items with different actors
+		// different actors have individual channels with maxSize length
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, 0, nil))
+
+		// max queue length per tenant is tracked globally for all actors within a tenant
+		err := queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil)
+		assert.Equal(t, err, ErrTooManyRequests)
+
+		// dequeue and enqueue some items
+		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
+		assert.NoError(t, err)
+		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
+		assert.NoError(t, err)
+
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, 0, nil))
+
+		err = queue.Enqueue("tenant", []string{"user-c"}, 6, 0, nil)
+		assert.Equal(t, err, ErrTooManyRequests)
 	})
 }
 

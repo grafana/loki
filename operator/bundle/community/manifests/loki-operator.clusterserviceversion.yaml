@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-39f2856
-    createdAt: "2023-03-17T05:07:17Z"
+    containerImage: docker.io/grafana/loki-operator:main-99acb9b
+    createdAt: "2023-04-06T11:19:01Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -160,7 +160,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.1.0
+  name: loki-operator.v0.2.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -492,6 +492,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:gcs
         - urn:alm:descriptor:com.tectonic.ui:select:s3
         - urn:alm:descriptor:com.tectonic.ui:select:swift
+        - urn:alm:descriptor:com.tectonic.ui:select:alibabacloud
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
@@ -1186,6 +1187,15 @@ spec:
 
     * Kubernetes Custom Resources: Use Kubernetes custom resources to deploy and manage Loki, Alerting rules, Recording rules, and related components.
     * Simplified Deployment Configuration: Configure the fundamentals of Loki like tenants, limits, replication factor and storage from a native Kubernetes resource.
+    ### Feature Gates
+
+    The Loki Operator Bundle provides a set of feature gates that enable/disable specific feature depending on the target Kubernetes distribution. The following feature gates are enabled by default:
+    * `lokiStackGateway`: Enables reconciling the reverse-proxy lokistack-gateway component for multi-tenant authentication/authorization traffic control to Loki.
+    * `runtimeSeccompProfile`: Enables the restricted seccomp profile on all Lokistack components.
+    * `lokiStackWebhook`: Enables the LokiStack CR validation and conversion webhooks.
+    * `alertingRuleWebhook`: Enables the AlertingRule CR validation webhook.
+    * `recordingRuleWebhook`: Enables the RecordingRule CR validation webhook.
+    * `rulerConfigWebhook`: Enables the RulerConfig CR validation webhook.
 
     ### Before you start
 
@@ -1441,11 +1451,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.1.0
+          app.kubernetes.io/instance: loki-operator-v0.2.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.1.0
+          app.kubernetes.io/version: 0.2.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1474,10 +1484,12 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.7.4
+                  value: docker.io/grafana/loki:2.8.0
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
-                image: docker.io/grafana/loki-operator:main-39f2856
+                - name: RELATED_IMAGE_OPA
+                  value: quay.io/observatorium/opa-openshift:latest
+                image: docker.io/grafana/loki-operator:main-99acb9b
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1588,11 +1600,14 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.7.4
+  - image: docker.io/grafana/loki:2.8.0
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
-  version: 0.1.0
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
+  replaces: loki-operator.v0.1.0
+  version: 0.2.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1
