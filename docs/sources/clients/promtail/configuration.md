@@ -1002,7 +1002,7 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
-# use_full_line force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+# use_full_line to force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
 # By default, if `textPayload` is present in the line, then it's used as log line.
 [use_full_line: <boolean> | default = false]
 
