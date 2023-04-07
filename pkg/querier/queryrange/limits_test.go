@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -16,6 +15,8 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"

@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

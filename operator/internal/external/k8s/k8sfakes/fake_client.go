@@ -5,11 +5,12 @@ import (
 	"context"
 	"sync"
 
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 type FakeClient struct {

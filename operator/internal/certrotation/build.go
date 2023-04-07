@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 )
 
 var defaultUserInfo = &user.DefaultInfo{Name: "system:lokistacks", Groups: []string{"system:logging"}}

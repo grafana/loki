@@ -3,9 +3,10 @@ package rules_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMarshalAlertingRule(t *testing.T) {

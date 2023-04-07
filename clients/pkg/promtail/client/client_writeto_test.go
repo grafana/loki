@@ -2,12 +2,13 @@ package client
 
 import (
 	"fmt"
-	"go.uber.org/atomic"
 	"math/rand"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -13,6 +12,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 type FakeBuilder struct {
