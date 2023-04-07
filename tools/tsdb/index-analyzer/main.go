@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+// go build ./tools/tsdb/index-analyzer && BUCKET=19453 DIR=/tmp/loki-index-analysis ./index-analyzer --config.file=/tmp/loki-config.yaml
 func main() {
 	conf, bucket, err := setup()
 	exitErr("setting up", err)

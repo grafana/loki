@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -14,10 +15,12 @@ import (
 func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []string) error {
 
 	var (
-		series    int
-		chunks    int
-		seriesRes []tsdb.Series
-		chunkRes  []tsdb.ChunkRef
+		series             int
+		chunks             int
+		seriesRes          []tsdb.Series
+		chunkRes           []tsdb.ChunkRef
+		maxChunksPerSeries int
+		seriesOver1kChunks int
 	)
 	for _, tenant := range tenants {
 		fmt.Println(fmt.Sprintf("analyzing tenant %s", tenant))
@@ -64,6 +67,26 @@ func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []stri
 
 				chunks += len(chunkRes)
 
+				err = casted.Index.(*tsdb.TSDBIndex).ForSeries(
+					context.Background(),
+					nil,
+					model.Earliest,
+					model.Latest,
+					func(ls labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) {
+						if len(chks) > maxChunksPerSeries {
+							maxChunksPerSeries = len(chks)
+							if len(chks) > 1000 {
+								seriesOver1kChunks++
+							}
+						}
+					},
+					labels.MustNewMatcher(labels.MatchEqual, "", ""),
+				)
+
+				if err != nil {
+					return err
+				}
+
 				return nil
 			}),
 		)
@@ -73,7 +96,7 @@ func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []stri
 		}
 	}
 
-	fmt.Println(fmt.Sprintf("analyzed %d series and %d chunks for an average of %f chunks per series", series, chunks, float64(chunks)/float64(series)))
+	fmt.Println(fmt.Sprintf("analyzed %d series and %d chunks for an average of %f chunks per series. max chunks/series was %d. number of series with over 1k chunks: %d", series, chunks, float64(chunks)/float64(series), maxChunksPerSeries, seriesOver1kChunks))
 
 	return nil
 }
