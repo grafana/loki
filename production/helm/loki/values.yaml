@@ -786,7 +786,12 @@ write:
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
+  # Write service configuration
   service:
+    # -- Type of the write Service
+    type: ClusterIP
+    # -- ClusterIP of the write Service
+    clusterIP: null
     # -- Annotations for write Service
     annotations: {}
     # -- Additional labels for write Service
@@ -973,8 +978,13 @@ read:
   podLabels: {}
   # -- Additional selector labels for each `read` pod
   selectorLabels: {}
+  # Read service configuration
   service:
-    # -- Annotations for read Service
+    # -- Type of the read Service
+    type: ClusterIP
+    # -- ClusterIP of the read Service
+    clusterIP: null
+    # -- Annotations for the read Service
     annotations: {}
     # -- Additional labels for read Service
     labels: {}
