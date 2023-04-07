@@ -23,7 +23,7 @@ func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []stri
 		seriesOver1kChunks int
 	)
 	for _, tenant := range tenants {
-		fmt.Println(fmt.Sprintf("analyzing tenant %s", tenant))
+		fmt.Printf("analyzing tenant %s\n", tenant)
 		err := shipper.ForEach(
 			context.Background(),
 			tableName,
@@ -96,7 +96,7 @@ func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []stri
 		}
 	}
 
-	fmt.Println(fmt.Sprintf("analyzed %d series and %d chunks for an average of %f chunks per series. max chunks/series was %d. number of series with over 1k chunks: %d", series, chunks, float64(chunks)/float64(series), maxChunksPerSeries, seriesOver1kChunks))
+	fmt.Printf("analyzed %d series and %d chunks for an average of %f chunks per series. max chunks/series was %d. number of series with over 1k chunks: %d\n", series, chunks, float64(chunks)/float64(series), maxChunksPerSeries, seriesOver1kChunks)
 
 	return nil
 }

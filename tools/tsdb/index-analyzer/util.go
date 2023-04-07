@@ -96,7 +96,7 @@ func resolveTenants(objectClient client.ObjectClient, bucket string, tableRanges
 
 	var result []string
 	for tenant := range tenants {
-		result = append(result, string(tenant))
+		result = append(result, tenant)
 	}
 
 	return result, tableName, nil
