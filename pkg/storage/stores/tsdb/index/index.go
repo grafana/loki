@@ -215,8 +215,7 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 	}, nil
 }
 
-// NewWriter returns a new Writer to the given filename. It serializes data in format version 2.
-func NewWriter(ctx context.Context, fn string) (*Writer, error) {
+func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Writer, error) {
 	dir := filepath.Dir(fn)
 
 	df, err := fileutil.OpenDir(dir)
@@ -249,7 +248,7 @@ func NewWriter(ctx context.Context, fn string) (*Writer, error) {
 	}
 
 	iw := &Writer{
-		Version: LiveFormat,
+		Version: version,
 		ctx:     ctx,
 		f:       f,
 		fP:      fP,
@@ -268,6 +267,11 @@ func NewWriter(ctx context.Context, fn string) (*Writer, error) {
 		return nil, err
 	}
 	return iw, nil
+}
+
+// NewWriter returns a new Writer to the given filename. It serializes data according to the `LiveFormat` version
+func NewWriter(ctx context.Context, fn string) (*Writer, error) {
+	return NewWriterWithVersion(ctx, LiveFormat, fn)
 }
 
 func (w *Writer) write(bufs ...[]byte) error {

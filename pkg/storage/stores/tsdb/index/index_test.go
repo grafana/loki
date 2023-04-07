@@ -720,7 +720,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			iw, err := NewWriter(context.Background(), filepath.Join(dir, name))
+			iw, err := NewWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			syms := []string{}
