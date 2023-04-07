@@ -582,20 +582,20 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 	// TODO(owen-d): store this somewhere else that doesn't duplicate on every
 	// series. We don't strictly need this field now, but it may be useful
 	// to sketch approximate chunk counts/ranges in the future.
-	scratch.PutUvarint(chunkPageSize)
+	primary.PutUvarint(chunkPageSize)
 	// pointer to where to write how long the markers are.
-	markersLnOffset := scratch.Len()
-	scratch.PutBE32(0) // placeholder for how long the markers section is
-	markersStart := scratch.Len()
+	markersLnOffset := primary.Len()
+	primary.PutBE32(0) // placeholder for how long the markers section is
+	markersStart := primary.Len()
 
 	nMarkers := len(chunks) / chunkPageSize
 	if len(chunks)%chunkPageSize != 0 {
 		nMarkers++
 	}
-	scratch.PutUvarint(nMarkers)
+	primary.PutUvarint(nMarkers)
 
-	primary.PutUvarint(len(chunks))
-	chunksStart := primary.Len()
+	scratch.PutUvarint(len(chunks))
+	chunksStart := scratch.Len()
 	markerOffset := 0 // start of the current marker page
 
 	if len(chunks) > 0 {
@@ -608,53 +608,44 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 			// test if this is the last chunk in the page
 			if i%chunkPageSize == chunkPageSize-1 {
 				remainingFromPageStart := len(chunks) - i/chunkPageSize*chunkPageSize
-				pageMarker.encode(scratch, markerOffset, remainingFromPageStart)
+				pageMarker.encode(primary, markerOffset, remainingFromPageStart)
 				pageMarker.clear()
-				markerOffset = primary.Len() - chunksStart
+				markerOffset = scratch.Len() - chunksStart
 			}
 
 			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 			// Encode the diff against previous chunk as varint
 			// instead of uvarint because chunks may overlap
-			primary.PutVarint64(c.MinTime - t0)
-			primary.PutUvarint64(uint64(c.MaxTime - c.MinTime))
-			primary.PutUvarint32(c.KB)
-			primary.PutUvarint32(c.Entries)
+			scratch.PutVarint64(c.MinTime - t0)
+			scratch.PutUvarint64(uint64(c.MaxTime - c.MinTime))
+			scratch.PutUvarint32(c.KB)
+			scratch.PutUvarint32(c.Entries)
 			t0 = c.MaxTime
 
-			primary.PutBE32(c.Checksum)
+			scratch.PutBE32(c.Checksum)
 		}
 
 		if rem := len(chunks) % chunkPageSize; rem != 0 {
 			// write partial page at the end
-			pageMarker.encode(scratch, markerOffset, rem)
+			pageMarker.encode(primary, markerOffset, rem)
 		}
 
 		// now that we're done, we have two buffers:
-		// 1. primary: the actual chunk data
-		// 2. scratch: the chunk page markers
+		// 1. scratch: the actual chunk data
+		// 2. primary: the chunk page markers
 		// so it's time to combine them
 
 		// first, write the length of the markers section
-		markersLn := scratch.Len() - markersStart
-		diff := markersLnOffset - scratch.Len()
-		scratch.Skip(diff)
-		scratch.PutBE32(uint32(markersLn))
+		markersLn := primary.Len() - markersStart
+		diff := markersLnOffset - primary.Len()
+		primary.Skip(diff)
+		primary.PutBE32(uint32(markersLn))
 		// -4 for the length of the u32 field we just wrote
-		scratch.Skip(-diff - 4)
+		primary.Skip(-diff - 4)
 
 	}
 
-	a, b := scratch.Get(), primary.Get()
-	// TODO(owen-d): use pool
-	// need a new byte slice here because resetting the buffers
-	// still reuses the original underlying slice
-	combined := make([]byte, 0, len(a)+len(b))
-	combined = append(combined, a...)
-	combined = append(combined, b...)
-	scratch.Reset()
-	primary.Reset()
-	primary.PutBytes(combined)
+	primary.PutBytes(scratch.Get())
 }
 
 func (w *Writer) startSymbols() error {
