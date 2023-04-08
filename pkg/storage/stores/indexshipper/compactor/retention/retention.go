@@ -83,7 +83,7 @@ var errNoChunksFound = errors.New("no chunks found in table, please check if the
 	"see if there is a bug causing us to drop whole index table")
 
 type SizeBasedRetentionCleaner struct {
-	workingDirectory string
+	WorkingDirectory string
 	cleanupMetrics   *cleanupMetrics
 	chunkClient      client.Client
 	cleanupThreshold int
@@ -100,7 +100,7 @@ func NewSizeBasedRetentionCleaner(
 ) (*SizeBasedRetentionCleaner, error) {
 	metrics := newCleanupMetrics(r)
 	return &SizeBasedRetentionCleaner{
-		workingDirectory:      fsconfig.Directory,
+		WorkingDirectory:      fsconfig.Directory,
 		cleanupMetrics:        metrics,
 		chunkClient:           chunkClient,
 		cleanupThreshold:      cleanupThreshold,

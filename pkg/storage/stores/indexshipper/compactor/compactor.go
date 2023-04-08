@@ -420,7 +420,7 @@ func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 		for _, f := range indexFiles {
 			is, err := newCommonIndexSet(ctx, t,
 				shipper_storage.NewIndexSet(c.indexStorageClient, false),
-				filepath.Dir(f.Name),
+				filepath.Join(c.sizeBasedRetention.WorkingDirectory, c.cfg.SharedStoreKeyPrefix, t),
 				util_log.Logger)
 
 			if err != nil {
@@ -450,7 +450,10 @@ func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 				continue
 			}
 
-			stat, _ := os.Lstat(is.workingDir + "/" + f.Name)
+			stat, err := os.Lstat(is.workingDir + "/" + f.Name)
+			if err != nil {
+				return err
+			}
 
 			indexes = append(indexes, &compactionIndexMap{
 				Path:     stat.Name(),
@@ -459,12 +462,6 @@ func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 			})
 		}
 	}
-	// TODO: Find the chunks you want to delete
-	// Use the stuff you wrote before
-	// Make sure you use the absolute path
-	// Turn your paths into chunk refs with index_util.ParseChunkRef(index_util.DecodeKey([]byte("absolute path")))
-	// Pass the list of to delete to RunSizeCompaction
-
 	diskUsage, err := util.DiskUsage(c.fsConfig.Directory)
 
 	if err != nil {
@@ -472,12 +469,12 @@ func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
-	toDelete, _ := c.buildChunksToDelete(ctx, indexes, diskUsage, c.fsConfig.Directory, c.cfg.RetentionDiskSpacePercentage)
+	toDelete, _ := c.buildChunksToDelete(ctx, indexes, diskUsage, c.cfg.RetentionDiskSpacePercentage)
 	_ = c.RunSizeCompaction(ctx, toDelete) // just log this error so the service doesn't exit
 	return nil
 }
 
-func (c *Compactor) buildChunksToDelete(ctx context.Context, indexes []*compactionIndexMap, diskUsage util.DiskStatus, directory string, cleanupThreshold int) ([]retention.ChunkRef, error) {
+func (c *Compactor) buildChunksToDelete(ctx context.Context, indexes []*compactionIndexMap, diskUsage util.DiskStatus, cleanupThreshold int) ([]retention.ChunkRef, error) {
 	var toDelete []retention.ChunkRef
 	bytesToDelete := bytesToDelete(diskUsage, cleanupThreshold)
 	bytesDeleted := 0.0
@@ -488,7 +485,6 @@ func (c *Compactor) buildChunksToDelete(ctx context.Context, indexes []*compacti
 		return nil, nil
 	}
 
-	level.Info(util_log.Logger).Log("msg", "Working Dir:", "retentionWorkDir", c.retentionWorkDir)
 	marker, err := retention.NewMarkerStorageWriter(c.retentionWorkDir)
 	defer marker.Close()
 
@@ -514,14 +510,14 @@ func (c *Compactor) buildChunksToDelete(ctx context.Context, indexes []*compacti
 				return false, err
 			}
 
-			chunkSize, err := chk.Encoded()
-			bytesDeleted = bytesDeleted + float64(len(chunkSize))
+			bytesDeleted = bytesDeleted + float64(chk.Size())
 
 			err = marker.Put(ce.ChunkID)
 			if err != nil {
-				level.Info(util_log.Logger).Log("msg", "could not write chunk id", "ce.ChunkID", string(ce.ChunkID))
+				level.Info(util_log.Logger).Log("msg", "could not write chunk id to marker", "ChunkID", string(ce.ChunkID))
 				return false, err
 			}
+			level.Info(util_log.Logger).Log("msg", "current number of chunks", "count", marker.Count())
 			toDelete = append(toDelete, ce.ChunkRef)
 
 			return true, nil
@@ -792,24 +788,30 @@ func (c *Compactor) RunSizeCompaction(ctx context.Context, toDelete []retention.
 
 	tableMarker, err := retention.NewMarker(c.retentionWorkDir, expirationChecker, c.cfg.RetentionTableTimeout, c.chunkClient, c.registerer)
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "--- ERROR ", "err", fmt.Sprintf("%+v", err))
-		level.Warn(util_log.Logger).Log("msg", "--- MARKER ", "tableMarker", fmt.Sprintf("%+v", tableMarker))
 		status = statusFailure
 		return err
 	}
 
-	var tables []string
+	// Fake a set with a map so we don't get duplicates
+	tables := make(map[string]bool)
 	for _, ref := range toDelete {
-		// TODO: Something with this error
 		chunkSchema, err := c.schemaConfig.SchemaForTime(ref.From)
-		tables = append(tables, chunkSchema.IndexTables.TableFor(ref.From))
-		level.Warn(util_log.Logger).Log("msg", "--- ERROR ", "err", fmt.Sprintf("%+v", err))
+		tables[chunkSchema.IndexTables.TableFor(ref.From)] = true
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "Failed to find index table for chunkRef", "chunkRef", ref)
+			status = statusFailure
+			return err
+		}
 	}
 
-	err = c.compactTables(ctx, expirationChecker, tableMarker, true, tables)
+	// Build a slice of unique table names
+	var tablesToDelete []string
+	for table, _ := range tables {
+		tablesToDelete = append(tablesToDelete, table)
+	}
+
+	err = c.compactTables(ctx, expirationChecker, tableMarker, true, tablesToDelete)
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "--- ERROR ", "err", fmt.Sprintf("%+v", err))
-		level.Warn(util_log.Logger).Log("msg", "--- MARKER ", "tableMarker", fmt.Sprintf("%+v", tableMarker))
 		status = statusFailure
 	}
 	return err

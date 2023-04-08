@@ -372,24 +372,16 @@ func (r *markerProcessor) deleteEmptyMarks(path string) error {
 // availablePath returns markers path in chronological order, skipping file that are not old enough.
 func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 	found := []int64{}
-	level.Warn(util_log.Logger).Log("msg", "Checking folder", "folder", r.folder)
 
 	if err := filepath.WalkDir(r.folder, func(path string, d fs.DirEntry, err error) error {
-		level.Warn(util_log.Logger).Log("msg", "Processing file", "file", fmt.Sprintf("%s/%s", filepath.Dir(path), d.Name()))
 		if d == nil || err != nil {
-			level.Warn(util_log.Logger).Log("msg", "Nil dentry or err", "err", err)
 			return err
 		}
 
 		if d.IsDir() && d.Name() != markersFolder {
-			level.Warn(util_log.Logger).Log("msg", "skipping path", "path",
-				fmt.Sprintf("%s/%s", filepath.Base(path), d.Name()))
-
 			return filepath.SkipDir
 		}
 		if d.IsDir() {
-			level.Warn(util_log.Logger).Log("msg", "Skipping dir", "err", err)
-
 			return nil
 		}
 		base := filepath.Base(path)
@@ -401,8 +393,6 @@ func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 
 		if time.Since(time.Unix(0, i)) > r.minAgeFile {
 			found = append(found, i)
-		} else {
-			level.Warn(util_log.Logger).Log("msg", "file is too new", fmt.Sprintf("%s/%s", filepath.Dir(path), d.Name()))
 		}
 		return nil
 	}); err != nil {
