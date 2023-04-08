@@ -198,7 +198,7 @@ loki:
     {{- end }}
   # Should authentication be enabled
   auth_enabled: true
-  #  Extra memberlist configuraiton
+  #  Extra memberlist configuration
   extraMemberlistConfig: {}
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
   tenants: []
