@@ -1654,6 +1654,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>loki.extraMemberlistConfig</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.image.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
