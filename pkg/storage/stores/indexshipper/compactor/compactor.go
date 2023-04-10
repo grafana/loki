@@ -10,6 +10,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -20,13 +21,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	compactor_util "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/util"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -385,18 +386,82 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 	return nil
 }
 
+type compactionIndexMap struct {
+	Path     string
+	Size     int64
+	IndexSet *indexSet
+}
+
 // TODO: This goes in your service
 func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 	if c.cfg.SharedStoreType != config.StorageTypeFileSystem {
 		return nil
 	}
 
-	// TODO: Find the chunks you want to delete
-	// Use the stuff you wrote before
-	// Make sure you use the absolute path
-	// Turn your paths into chunk refs with index_util.ParseChunkRef(index_util.DecodeKey([]byte("absolute path")))
-	// Pass the list of to delete to RunSizeCompaction
+	// refresh index list cache since previous compaction would have changed the index files in the object store
+	c.indexStorageClient.RefreshIndexListCache(ctx)
 
+	tables, err := c.indexStorageClient.ListTables(ctx)
+	if err != nil {
+		return err
+	}
+	// process most recent tables first
+	sortTablesByRangeOldestFirst(tables)
+
+	var indexes []*compactionIndexMap
+	for _, t := range tables {
+		if t == deletion.DeleteRequestsTableName {
+			continue
+		}
+		indexFiles, _, err := c.indexStorageClient.ListFiles(ctx, t, true)
+		if err != nil {
+			return err
+		}
+		for _, f := range indexFiles {
+			is, err := newCommonIndexSet(ctx, t,
+				shipper_storage.NewIndexSet(c.indexStorageClient, false),
+				filepath.Join(c.sizeBasedRetention.WorkingDirectory, c.cfg.SharedStoreKeyPrefix, t),
+				util_log.Logger)
+
+			if err != nil {
+				return err
+			}
+
+			if is.compactedIndex == nil && len(is.ListSourceFiles()) == 1 {
+				downloadedAt, err := is.GetSourceFile(is.ListSourceFiles()[0])
+				if err != nil {
+					return err
+				}
+
+				schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, t)
+				indexCompactor, ok := c.indexCompactors[schemaCfg.IndexType]
+				if !ok {
+					return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
+				}
+
+				compactedIndexFile, err := indexCompactor.OpenCompactedIndexFile(ctx,
+					downloadedAt, t, is.userID, filepath.Join(is.workingDir, is.userID), schemaCfg, is.logger)
+				if err != nil {
+					return err
+				}
+
+				is.setCompactedIndex(compactedIndexFile, false, false)
+			} else {
+				continue
+			}
+
+			stat, err := os.Lstat(is.workingDir + "/" + f.Name)
+			if err != nil {
+				return err
+			}
+
+			indexes = append(indexes, &compactionIndexMap{
+				Path:     stat.Name(),
+				Size:     stat.Size(),
+				IndexSet: is,
+			})
+		}
+	}
 	diskUsage, err := util.DiskUsage(c.fsConfig.Directory)
 
 	if err != nil {
@@ -404,9 +469,61 @@ func (c *Compactor) sizeBasedCompaction(ctx context.Context) error {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", diskUsage.UsedPercent)
-	toDelete, _ := chunksToDelete(diskUsage, c.fsConfig.Directory, c.cfg.RetentionDiskSpacePercentage)
+	toDelete, _ := c.buildChunksToDelete(ctx, indexes, diskUsage, c.cfg.RetentionDiskSpacePercentage)
 	_ = c.RunSizeCompaction(ctx, toDelete) // just log this error so the service doesn't exit
 	return nil
+}
+
+func (c *Compactor) buildChunksToDelete(ctx context.Context, indexes []*compactionIndexMap, diskUsage util.DiskStatus, cleanupThreshold int) ([]retention.ChunkRef, error) {
+	var toDelete []retention.ChunkRef
+	bytesToDelete := bytesToDelete(diskUsage, cleanupThreshold)
+	bytesDeleted := 0.0
+	level.Info(util_log.Logger).Log("msg", "Calculated bytes to delete:", "bytesToDelete", bytesToDelete)
+
+	if diskUsage.UsedPercent < float64(cleanupThreshold) {
+		level.Info(util_log.Logger).Log("msg", "Not past threshold, do not clean!")
+		return nil, nil
+	}
+
+	marker, err := retention.NewMarkerStorageWriter(c.retentionWorkDir)
+	defer marker.Close()
+
+	if err != nil {
+		return []retention.ChunkRef{}, err
+	}
+
+	for _, entry := range indexes {
+		if bytesToDelete < (bytesDeleted + float64(entry.Size)) {
+			break
+		}
+
+		level.Info(util_log.Logger).Log("msg", "block size retention exceeded, removing file", "filepath", entry.Path)
+		entry.IndexSet.compactedIndex.ForEachChunk(ctx, func(ce retention.ChunkEntry) (bool, error) {
+			if bytesToDelete < bytesDeleted {
+				return true, nil
+			}
+			userID := unsafeGetString(ce.UserID)
+			chunkID := unsafeGetString(ce.ChunkID)
+
+			chk, err := chunk.ParseExternalKey(userID, chunkID)
+			if err != nil {
+				return false, err
+			}
+
+			bytesDeleted = bytesDeleted + float64(chk.Size())
+
+			err = marker.Put(ce.ChunkID)
+			if err != nil {
+				level.Info(util_log.Logger).Log("msg", "could not write chunk id to marker", "ChunkID", string(ce.ChunkID))
+				return false, err
+			}
+			level.Info(util_log.Logger).Log("msg", "current number of chunks", "count", marker.Count())
+			toDelete = append(toDelete, ce.ChunkRef)
+
+			return true, nil
+		})
+	}
+	return toDelete, nil
 }
 
 func (c *Compactor) loop(ctx context.Context) error {
@@ -675,14 +792,25 @@ func (c *Compactor) RunSizeCompaction(ctx context.Context, toDelete []retention.
 		return err
 	}
 
-	var tables []string
+	// Fake a set with a map so we don't get duplicates
+	tables := make(map[string]bool)
 	for _, ref := range toDelete {
-		// TODO: Something with this error
-		chunkSchema, _ := c.schemaConfig.SchemaForTime(ref.From)
-		tables = append(tables, chunkSchema.IndexTables.TableFor(ref.From))
+		chunkSchema, err := c.schemaConfig.SchemaForTime(ref.From)
+		tables[chunkSchema.IndexTables.TableFor(ref.From)] = true
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "Failed to find index table for chunkRef", "chunkRef", ref)
+			status = statusFailure
+			return err
+		}
 	}
 
-	err = c.compactTables(ctx, expirationChecker, tableMarker, true, tables)
+	// Build a slice of unique table names
+	var tablesToDelete []string
+	for table, _ := range tables {
+		tablesToDelete = append(tablesToDelete, table)
+	}
+
+	err = c.compactTables(ctx, expirationChecker, tableMarker, true, tablesToDelete)
 	if err != nil {
 		status = statusFailure
 	}
@@ -864,58 +992,17 @@ func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	return schemaCfg, true
 }
 
-func chunksToDelete(diskUsage util.DiskStatus, directory string, cleanupThreshold int) ([]retention.ChunkRef, error) {
-	var toDelete []retention.ChunkRef
-	files, err := os.ReadDir(directory)
-	bytesToDelete := bytesToDelete(diskUsage, cleanupThreshold)
-	bytesDeleted := 0.0
-	level.Info(util_log.Logger).Log("msg", "bytesToDelete", bytesToDelete)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if diskUsage.UsedPercent < float64(cleanupThreshold) {
-		return nil, nil
-	}
-
-	// Sorting by the last modified time
-	sort.Slice(files, func(i, j int) bool {
-		infoI, _ := files[i].Info()
-		infoJ, _ := files[j].Info()
-		return infoI.ModTime().Before(infoJ.ModTime())
-	})
-
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		info, _ := file.Info()
-		if bytesToDelete < (bytesDeleted + float64(info.Size())) {
-			break
-		}
-
-		bytesDeleted = bytesDeleted + float64(info.Size())
-		level.Info(util_log.Logger).Log("msg", "block size retention exceeded, removing file", "filepath", file.Name())
-
-		fullPath := directory + "/" + file.Name()
-		chunkRef, _, err := compactor_util.ParseChunkRef(compactor_util.DecodeKey([]byte(fullPath)))
-		if err != nil {
-			continue
-		}
-
-		toDelete = append(toDelete, chunkRef)
-	}
-	return toDelete, nil
+// unsafeGetString is like yolostring but with a meaningful name
+func unsafeGetString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }
 
 func bytesToDelete(diskUsage util.DiskStatus, cleanupThreshold int) (bytes float64) {
-	percentajeToBeDeleted := diskUsage.UsedPercent - float64(cleanupThreshold)
+	percentageToBeDeleted := diskUsage.UsedPercent - float64(cleanupThreshold)
 
-	if percentajeToBeDeleted < 0.0 {
-		percentajeToBeDeleted = 0.0
+	if percentageToBeDeleted < 0.0 {
+		percentageToBeDeleted = 0.0
 	}
 
-	return ((percentajeToBeDeleted / 100) * float64(diskUsage.All))
+	return (percentageToBeDeleted / 100) * float64(diskUsage.All)
 }
