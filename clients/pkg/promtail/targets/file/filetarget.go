@@ -28,7 +28,6 @@ const (
 type Config struct {
 	SyncPeriod time.Duration `mapstructure:"sync_period" yaml:"sync_period"`
 	Stdin      bool          `mapstructure:"stdin" yaml:"stdin"`
-	Watch      WatchConfig   `mapstructure:"watch_config" yaml:"watch_config"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -36,8 +35,6 @@ type Config struct {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.SyncPeriod, prefix+"target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
 	f.BoolVar(&cfg.Stdin, prefix+"stdin", false, "Set to true to pipe logs to promtail.")
-
-	cfg.Watch.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlags register flags.
@@ -50,11 +47,18 @@ type WatchConfig struct {
 	MaxPollFrequency time.Duration `mapstructure:"max_poll_frequency" yaml:"max_poll_frequency"`
 }
 
+var DefaultWatchConig = WatchConfig{
+	MinPollFrequency: 250 * time.Millisecond,
+	MaxPollFrequency: 250 * time.Millisecond,
+}
+
 // RegisterFlags with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (cfg *WatchConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.MinPollFrequency, prefix+"target.min_poll_frequency", 250*time.Millisecond, "Minimum period to poll for file changes")
-	f.DurationVar(&cfg.MaxPollFrequency, prefix+"target.max_poll_frequency", 250*time.Millisecond, "Maximum period to poll for file changes")
+	d := DefaultWatchConig
+
+	f.DurationVar(&cfg.MinPollFrequency, prefix+"min_poll_frequency", d.MinPollFrequency, "Minimum period to poll for file changes")
+	f.DurationVar(&cfg.MaxPollFrequency, prefix+"max_poll_frequency", d.MaxPollFrequency, "Maximum period to poll for file changes")
 }
 
 // RegisterFlags register flags.
@@ -96,6 +100,7 @@ type FileTarget struct {
 	readers map[string]Reader
 
 	targetConfig *Config
+	watchConfig  WatchConfig
 
 	decompressCfg *scrapeconfig.DecompressionConfig
 
@@ -113,6 +118,7 @@ func NewFileTarget(
 	labels model.LabelSet,
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
+	watchConfig WatchConfig,
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 	encoding string,
@@ -131,6 +137,7 @@ func NewFileTarget(
 		done:               make(chan struct{}),
 		readers:            map[string]Reader{},
 		targetConfig:       targetConfig,
+		watchConfig:        watchConfig,
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
 		encoding:           encoding,
@@ -353,12 +360,9 @@ func (t *FileTarget) startTailing(ps []string) {
 			}
 			reader = decompressor
 		} else {
-			watchOptions := watch.DefaultPollingFileWatcherOptions
-			if t.targetConfig != nil {
-				watchOptions = watch.PollingFileWatcherOptions{
-					MinPollFrequency: t.targetConfig.Watch.MinPollFrequency,
-					MaxPollFrequency: t.targetConfig.Watch.MaxPollFrequency,
-				}
+			watchOptions := watch.PollingFileWatcherOptions{
+				MinPollFrequency: t.watchConfig.MinPollFrequency,
+				MaxPollFrequency: t.watchConfig.MaxPollFrequency,
 			}
 
 			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
