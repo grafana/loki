@@ -751,9 +751,13 @@ picking it from a field in the extracted data map.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID.
-  # Either source or value config option is required, but not both (they
+  # Either label, source or value config option is required, but not all (they
   # are mutually exclusive).
+
+  # Name from labels to whose value should be set as tenant ID.
+  [ label: <string> ]
+
+  # Name from extracted data to whose value should be set as tenant ID.
   [ source: <string> ]
 
   # Value to use to set the tenant ID when this stage is executed. Useful
