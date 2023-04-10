@@ -291,6 +291,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 	httpClient := &http.Client{
 		Transport: transport,
+		Timeout:   2 * time.Minute,
 	}
 
 	if hedging {
