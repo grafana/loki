@@ -24,6 +24,19 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+const (
+	// The factor used to weight the moving average. Must be in the range [0, 1.0].
+	// A larger factor weights recent samples more heavily while a smaller
+	// factor weights historic samples more heavily.
+	smoothingFactor = .2
+
+	// A threshold for when to reset the average without smoothing. Calculated
+	// by currentValue >= (lastValue * burstThreshold). This allows us to set
+	// the smoothing factor fairly small to preserve historic samples but still
+	// be able to react to sudden bursts in load
+	burstThreshold = 1.5
+)
+
 type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
 }
@@ -142,11 +155,24 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 		}
 
 		for stream, rate := range tenant {
+			rate.rate = weightedMovingAverage(rate.rate, s.rates[tenantID][stream].rate)
 			s.rates[tenantID][stream] = rate
 		}
 	}
 
 	return s.cleanupExpired()
+}
+
+func weightedMovingAverage(n, l int64) int64 {
+	next, last := float64(n), float64(l)
+
+	// If we see a sudden spike use the new value without smoothing
+	if next >= (last * burstThreshold) {
+		return n
+	}
+
+	// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+	return int64((smoothingFactor * next) + ((1 - smoothingFactor) * last))
 }
 
 func (s *rateStore) cleanupExpired() rateStats {
