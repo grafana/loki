@@ -369,9 +369,9 @@ null
 		<tr>
 			<td>enterprise.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-"main-96f32b9f"
+null
 </pre>
 </td>
 		</tr>
@@ -1993,7 +1993,7 @@ false
 		<tr>
 			<td>migrate.fromDistributed.memberlistService</td>
 			<td>string</td>
-			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join it's ring.</td>
+			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join its ring.</td>
 			<td><pre lang="json">
 ""
 </pre>

@@ -480,6 +480,7 @@ spec:
                         - gcs
                         - s3
                         - swift
+                        - alibabacloud
                         type: string
                     required:
                     - name
