@@ -4,11 +4,12 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // GetRulerConfig returns the ruler config spec for a lokistack resource or an error.

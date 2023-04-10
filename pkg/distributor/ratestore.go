@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/weaveworks/common/instrument"
 
