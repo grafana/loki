@@ -483,7 +483,11 @@ func (s *StorageClient) queryExec(ctx context.Context, query index.Query, callba
 	if scanner.Err() != nil {
 		endTime := time.Now()
 		durationMs := endTime.UnixMilli() - startTime.UnixMilli()
-		errDeatil := errors.New("scanner.Scan fail.sql:" + q.String() + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + scanner.Err().Error())
+		sql := "sql empty"
+		if q != nil {
+			sql = q.String()
+		}
+		errDeatil := errors.New("scanner.Scan fail.sql:" + sql + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + scanner.Err().Error())
 		return errors.WithStack(errDeatil)
 	}
 	return nil
