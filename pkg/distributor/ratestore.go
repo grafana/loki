@@ -194,8 +194,8 @@ func (s *rateStore) anyShardingEnabled() bool {
 func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
 	if s.debug {
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("started to aggregate by shard")
-			defer sp.LogKV("finished to aggregate by shard")
+			sp.LogKV("event", "started to aggregate by shard")
+			defer sp.LogKV("event", "finished to aggregate by shard")
 		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
