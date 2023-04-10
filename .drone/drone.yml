@@ -1463,6 +1463,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+    PROMTAIL_JOURNAL_ENABLED: "true"
   image: grafana/loki-build-image:0.28.2
   name: publish
   when:
@@ -1740,6 +1741,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 3ccc42237f6cdd3de6afacf997575dafa52c9d5fee83cd3fee610e5fd365a283
+hmac: e610d63a7c124c2f3061db7fcc3247fb6e37dacf509bf9e5940abef1fc6e944e
 
 ...
