@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -398,9 +399,15 @@ func (s *StorageClient) batchWrite(ctx context.Context, batch index.WriteBatch) 
 
 // QueryPages implement chunk.IndexClient.
 func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+
+	startTime := time.Now()
 	err := util.DoParallelQueries(ctx, s.query, queries, callback)
+
 	if err != nil {
-		return errors.New("StorageClient QueryPages fail,err:" + err.Error())
+		endTime := time.Now()
+		durationMs := endTime.UnixMilli() - startTime.UnixMilli()
+		errDeatil := errors.New("scanner.Scan fail.queries.length:" + strconv.Itoa(len(queries)) + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + err.Error())
+		return errors.New("StorageClient QueryPages fail,err:" + errDeatil.Error())
 	}
 	return nil
 }
@@ -457,20 +464,29 @@ func (s *StorageClient) queryExec(ctx context.Context, query index.Query, callba
 		q = s.readSession.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND value = ? ALLOW FILTERING",
 			query.TableName), query.HashValue, query.ValueEqual)
 	}
-
 	iter := q.WithContext(ctx).Iter()
 	defer iter.Close()
 	scanner := iter.Scanner()
+	startTime := time.Now()
 	for scanner.Next() {
 		b := &readBatch{}
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
-			return errors.WithStack(err)
+			endTime := time.Now()
+			durationMs := endTime.UnixMilli() - startTime.UnixMilli()
+			errDeatil := errors.New("scanner.Scan fail.sql:" + q.String() + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + err.Error())
+			return errors.WithStack(errDeatil)
 		}
 		if !callback(query, b) {
 			return nil
 		}
 	}
-	return errors.WithStack(scanner.Err())
+	if scanner.Err() != nil {
+		endTime := time.Now()
+		durationMs := endTime.UnixMilli() - startTime.UnixMilli()
+		errDeatil := errors.New("scanner.Scan fail.sql:" + q.String() + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + scanner.Err().Error())
+		return errors.WithStack(errDeatil)
+	}
+	return nil
 }
 
 // Allow other packages to interact with Cassandra directly
