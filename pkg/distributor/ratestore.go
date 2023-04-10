@@ -6,22 +6,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/opentracing/opentracing-go"
-
-	"github.com/weaveworks/common/instrument"
-
-	"github.com/grafana/dskit/services"
-
 	"github.com/go-kit/log/level"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
-
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type poolClientFactory interface {
