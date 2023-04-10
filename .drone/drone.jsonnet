@@ -837,6 +837,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             GITHUB_TOKEN: { from_secret: github_secret.name },
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+            PROMTAIL_JOURNAL_ENABLED: 'true',
           }) { when: { event: ['tag'] } },
     ],
   },
