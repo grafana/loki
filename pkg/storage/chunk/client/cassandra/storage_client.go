@@ -406,7 +406,7 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, c
 	if err != nil {
 		endTime := time.Now()
 		durationMs := endTime.UnixMilli() - startTime.UnixMilli()
-		errDeatil := errors.New("scanner.Scan fail.queries.length:" + strconv.Itoa(len(queries)) + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + err.Error())
+		errDeatil := errors.New("StorageClient.QueryPages fail.queries.length:" + strconv.Itoa(len(queries)) + ",durationMs:" + strconv.FormatInt(durationMs, 10) + ",err:" + err.Error())
 		return errors.New("StorageClient QueryPages fail,err:" + errDeatil.Error())
 	}
 	return nil
