@@ -110,6 +110,14 @@ func (a *App) GetOwnerUUID() string {
 	return a.OwnerUUID
 }
 
+// GetPendingDeployment returns the PendingDeployment field.
+func (a *App) GetPendingDeployment() *Deployment {
+	if a == nil {
+		return nil
+	}
+	return a.PendingDeployment
+}
+
 // GetPinnedDeployment returns the PinnedDeployment field.
 func (a *App) GetPinnedDeployment() *Deployment {
 	if a == nil {
@@ -2102,6 +2110,14 @@ func (d *Deployment) GetTierSlug() string {
 	return d.TierSlug
 }
 
+// GetTiming returns the Timing field.
+func (d *Deployment) GetTiming() *DeploymentTiming {
+	if d == nil {
+		return nil
+	}
+	return d.Timing
+}
+
 // GetUpdatedAt returns the UpdatedAt field.
 func (d *Deployment) GetUpdatedAt() time.Time {
 	if d == nil {
@@ -2508,6 +2524,70 @@ func (d *DeploymentStaticSite) GetSourceCommitHash() string {
 		return ""
 	}
 	return d.SourceCommitHash
+}
+
+// GetBuildBillable returns the BuildBillable field.
+func (d *DeploymentTiming) GetBuildBillable() string {
+	if d == nil {
+		return ""
+	}
+	return d.BuildBillable
+}
+
+// GetBuildTotal returns the BuildTotal field.
+func (d *DeploymentTiming) GetBuildTotal() string {
+	if d == nil {
+		return ""
+	}
+	return d.BuildTotal
+}
+
+// GetComponents returns the Components field.
+func (d *DeploymentTiming) GetComponents() []*DeploymentTimingComponent {
+	if d == nil {
+		return nil
+	}
+	return d.Components
+}
+
+// GetDatabaseProvision returns the DatabaseProvision field.
+func (d *DeploymentTiming) GetDatabaseProvision() string {
+	if d == nil {
+		return ""
+	}
+	return d.DatabaseProvision
+}
+
+// GetDeploying returns the Deploying field.
+func (d *DeploymentTiming) GetDeploying() string {
+	if d == nil {
+		return ""
+	}
+	return d.Deploying
+}
+
+// GetPending returns the Pending field.
+func (d *DeploymentTiming) GetPending() string {
+	if d == nil {
+		return ""
+	}
+	return d.Pending
+}
+
+// GetBuildBillable returns the BuildBillable field.
+func (d *DeploymentTimingComponent) GetBuildBillable() string {
+	if d == nil {
+		return ""
+	}
+	return d.BuildBillable
+}
+
+// GetName returns the Name field.
+func (d *DeploymentTimingComponent) GetName() string {
+	if d == nil {
+		return ""
+	}
+	return d.Name
 }
 
 // GetBuildpacks returns the Buildpacks field.

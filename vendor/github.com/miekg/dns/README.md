@@ -77,6 +77,10 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://ping.sx/dig
 * https://fleetdeck.io/
 * https://github.com/markdingo/autoreverse
+* https://github.com/slackhq/nebula
+* https://github.com/dnschecktool/dow-proxy
+* https://dnscheck.tools/
+* https://github.com/egbakou/domainverifier
 
 
 Send pull request if you want to be listed here.
@@ -140,6 +144,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 * 340{1,2,3} - NAPTR record
 * 3445 - Limiting the scope of (DNS)KEY
 * 3597 - Unknown RRs
+* 4025 - A Method for Storing IPsec Keying Material in DNS
 * 403{3,4,5} - DNSSEC + validation functions
 * 4255 - SSHFP record
 * 4343 - Case insensitivity
@@ -175,6 +180,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 * 8080 - EdDSA for DNSSEC
 * 8499 - DNS Terminology
 * 8659 - DNS Certification Authority Authorization (CAA) Resource Record
+* 8777 - DNS Reverse IP Automatic Multicast Tunneling (AMT) Discovery
 * 8914 - Extended DNS Errors
 * 8976 - Message Digest for DNS Zones (ZONEMD RR)
 

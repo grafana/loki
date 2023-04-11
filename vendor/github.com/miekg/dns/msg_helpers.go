@@ -810,3 +810,37 @@ func unpackDataAplPrefix(msg []byte, off int) (APLPrefix, int, error) {
 		Network:  ipnet,
 	}, off, nil
 }
+
+func unpackIPSECGateway(msg []byte, off int, gatewayType uint8) (net.IP, string, int, error) {
+	var retAddr net.IP
+	var retString string
+	var err error
+
+	switch gatewayType {
+	case IPSECGatewayNone: // do nothing
+	case IPSECGatewayIPv4:
+		retAddr, off, err = unpackDataA(msg, off)
+	case IPSECGatewayIPv6:
+		retAddr, off, err = unpackDataAAAA(msg, off)
+	case IPSECGatewayHost:
+		retString, off, err = UnpackDomainName(msg, off)
+	}
+
+	return retAddr, retString, off, err
+}
+
+func packIPSECGateway(gatewayAddr net.IP, gatewayString string, msg []byte, off int, gatewayType uint8, compression compressionMap, compress bool) (int, error) {
+	var err error
+
+	switch gatewayType {
+	case IPSECGatewayNone: // do nothing
+	case IPSECGatewayIPv4:
+		off, err = packDataA(gatewayAddr, msg, off)
+	case IPSECGatewayIPv6:
+		off, err = packDataAAAA(gatewayAddr, msg, off)
+	case IPSECGatewayHost:
+		off, err = packDomainName(gatewayString, msg, off, compression, compress)
+	}
+
+	return off, err
+}

@@ -680,9 +680,9 @@ func unpackRRslice(l int, msg []byte, off int) (dst1 []RR, off1 int, err error) 
 
 // Convert a MsgHdr to a string, with dig-like headers:
 //
-//;; opcode: QUERY, status: NOERROR, id: 48404
+// ;; opcode: QUERY, status: NOERROR, id: 48404
 //
-//;; flags: qr aa rd ra;
+// ;; flags: qr aa rd ra;
 func (h *MsgHdr) String() string {
 	if h == nil {
 		return "<nil> MsgHdr"

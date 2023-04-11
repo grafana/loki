@@ -31,8 +31,7 @@ var (
 	// Singleton instantiation of the resource type implementation.
 	routeConfigType = routeConfigResourceType{
 		resourceTypeState: resourceTypeState{
-			v2TypeURL:                  "type.googleapis.com/envoy.api.v2.RouteConfiguration",
-			v3TypeURL:                  "type.googleapis.com/envoy.config.route.v3.RouteConfiguration",
+			typeURL:                    "type.googleapis.com/envoy.config.route.v3.RouteConfiguration",
 			typeEnum:                   RouteConfigResource,
 			allResourcesRequiredInSotW: false,
 		},

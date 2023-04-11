@@ -458,9 +458,20 @@ func (m *Permission) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Rule.(type) {
-
+	oneofRulePresent := false
+	switch v := m.Rule.(type) {
 	case *Permission_AndRules:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetAndRules()).(type) {
@@ -492,6 +503,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_OrRules:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetOrRules()).(type) {
@@ -523,6 +545,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_Any:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if m.GetAny() != true {
 			err := PermissionValidationError{
@@ -536,6 +569,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_Header:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHeader()).(type) {
@@ -567,6 +611,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_UrlPath:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetUrlPath()).(type) {
@@ -598,6 +653,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_DestinationIp:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetDestinationIp()).(type) {
@@ -629,6 +695,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_DestinationPort:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if m.GetDestinationPort() > 65535 {
 			err := PermissionValidationError{
@@ -642,6 +719,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_DestinationPortRange:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetDestinationPortRange()).(type) {
@@ -673,6 +761,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_Metadata:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetMetadata()).(type) {
@@ -704,6 +803,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_NotRule:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetNotRule()).(type) {
@@ -735,6 +845,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_RequestedServerName:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestedServerName()).(type) {
@@ -766,6 +887,17 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	case *Permission_Matcher:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetMatcher()).(type) {
@@ -797,6 +929,9 @@ func (m *Permission) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofRulePresent {
 		err := PermissionValidationError{
 			field:  "Rule",
 			reason: "value is required",
@@ -805,7 +940,6 @@ func (m *Permission) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -907,9 +1041,20 @@ func (m *Principal) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Identifier.(type) {
-
+	oneofIdentifierPresent := false
+	switch v := m.Identifier.(type) {
 	case *Principal_AndIds:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetAndIds()).(type) {
@@ -941,6 +1086,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_OrIds:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetOrIds()).(type) {
@@ -972,6 +1128,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_Any:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if m.GetAny() != true {
 			err := PrincipalValidationError{
@@ -985,6 +1152,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_Authenticated_:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetAuthenticated()).(type) {
@@ -1016,6 +1194,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_SourceIp:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetSourceIp()).(type) {
@@ -1047,6 +1236,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_DirectRemoteIp:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetDirectRemoteIp()).(type) {
@@ -1078,6 +1278,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_RemoteIp:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRemoteIp()).(type) {
@@ -1109,6 +1320,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_Header:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetHeader()).(type) {
@@ -1140,6 +1362,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_UrlPath:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetUrlPath()).(type) {
@@ -1171,6 +1404,17 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	case *Principal_Metadata:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetMetadata()).(type) {
@@ -1201,7 +1445,60 @@ func (m *Principal) validate(all bool) error {
 			}
 		}
 
+	case *Principal_FilterState:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
+
+		if all {
+			switch v := interface{}(m.GetFilterState()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, PrincipalValidationError{
+						field:  "FilterState",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, PrincipalValidationError{
+						field:  "FilterState",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetFilterState()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return PrincipalValidationError{
+					field:  "FilterState",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	case *Principal_NotId:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetNotId()).(type) {
@@ -1233,6 +1530,9 @@ func (m *Principal) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofIdentifierPresent {
 		err := PrincipalValidationError{
 			field:  "Identifier",
 			reason: "value is required",
@@ -1241,7 +1541,6 @@ func (m *Principal) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

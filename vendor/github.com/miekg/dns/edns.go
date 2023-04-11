@@ -78,7 +78,10 @@ func (rr *OPT) String() string {
 	if rr.Do() {
 		s += "flags: do; "
 	} else {
-		s += "flags: ; "
+		s += "flags:; "
+	}
+	if rr.Hdr.Ttl&0x7FFF != 0 {
+		s += fmt.Sprintf("MBZ: 0x%04x, ", rr.Hdr.Ttl&0x7FFF)
 	}
 	s += "udp: " + strconv.Itoa(int(rr.UDPSize()))
 
@@ -98,6 +101,8 @@ func (rr *OPT) String() string {
 			s += "\n; SUBNET: " + o.String()
 		case *EDNS0_COOKIE:
 			s += "\n; COOKIE: " + o.String()
+		case *EDNS0_EXPIRE:
+			s += "\n; EXPIRE: " + o.String()
 		case *EDNS0_TCP_KEEPALIVE:
 			s += "\n; KEEPALIVE: " + o.String()
 		case *EDNS0_UL:
@@ -258,7 +263,7 @@ func (e *EDNS0_NSID) copy() EDNS0           { return &EDNS0_NSID{e.Code, e.Nsid}
 //	o.Hdr.Name = "."
 //	o.Hdr.Rrtype = dns.TypeOPT
 //	e := new(dns.EDNS0_SUBNET)
-//	e.Code = dns.EDNS0SUBNET
+//	e.Code = dns.EDNS0SUBNET // by default this is filled in through unpacking OPT packets (unpackDataOpt)  
 //	e.Family = 1	// 1 for IPv4 source address, 2 for IPv6
 //	e.SourceNetmask = 32	// 32 for IPV4, 128 for IPv6
 //	e.SourceScope = 0

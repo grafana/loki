@@ -18,7 +18,7 @@ import (
 const maxTCPQueries = 128
 
 // aLongTimeAgo is a non-zero time, far in the past, used for
-// immediate cancelation of network operations.
+// immediate cancellation of network operations.
 var aLongTimeAgo = time.Unix(1, 0)
 
 // Handler is implemented by any value that implements ServeDNS.

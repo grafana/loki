@@ -353,7 +353,7 @@ func (*SVCBAlpn) Key() SVCBKey { return SVCB_ALPN }
 func (s *SVCBAlpn) String() string {
 	// An ALPN value is a comma-separated list of values, each of which can be
 	// an arbitrary binary value. In order to allow parsing, the comma and
-	// backslash characters are themselves excaped.
+	// backslash characters are themselves escaped.
 	//
 	// However, this escaping is done in addition to the normal escaping which
 	// happens in zone files, meaning that these values must be
@@ -563,15 +563,15 @@ func (s *SVCBPort) parse(b string) error {
 // to the hinted IP address may be terminated and a new connection may be opened.
 // Basic use pattern for creating an ipv4hint option:
 //
-//	h := new(dns.HTTPS)
-//	h.Hdr = dns.RR_Header{Name: ".", Rrtype: dns.TypeHTTPS, Class: dns.ClassINET}
-//	e := new(dns.SVCBIPv4Hint)
-//	e.Hint = []net.IP{net.IPv4(1,1,1,1).To4()}
+//		h := new(dns.HTTPS)
+//		h.Hdr = dns.RR_Header{Name: ".", Rrtype: dns.TypeHTTPS, Class: dns.ClassINET}
+//		e := new(dns.SVCBIPv4Hint)
+//		e.Hint = []net.IP{net.IPv4(1,1,1,1).To4()}
 //
-//  Or
+//	 Or
 //
-//	e.Hint = []net.IP{net.ParseIP("1.1.1.1").To4()}
-//	h.Value = append(h.Value, e)
+//		e.Hint = []net.IP{net.ParseIP("1.1.1.1").To4()}
+//		h.Value = append(h.Value, e)
 type SVCBIPv4Hint struct {
 	Hint []net.IP
 }

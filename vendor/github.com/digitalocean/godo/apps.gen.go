@@ -85,6 +85,7 @@ type App struct {
 	UpdatedAt               time.Time       `json:"updated_at,omitempty"`
 	ActiveDeployment        *Deployment     `json:"active_deployment,omitempty"`
 	InProgressDeployment    *Deployment     `json:"in_progress_deployment,omitempty"`
+	PendingDeployment       *Deployment     `json:"pending_deployment,omitempty"`
 	LastDeploymentCreatedAt time.Time       `json:"last_deployment_created_at,omitempty"`
 	LiveURL                 string          `json:"live_url,omitempty"`
 	Region                  *AppRegion      `json:"region,omitempty"`
@@ -94,7 +95,7 @@ type App struct {
 	Domains                 []*AppDomain    `json:"domains,omitempty"`
 	PinnedDeployment        *Deployment     `json:"pinned_deployment,omitempty"`
 	BuildConfig             *AppBuildConfig `json:"build_config,omitempty"`
-	// The id of the project for the app. This will be empty if there is a lookup failure.
+	// The id of the project for the app. This will be empty if there is a fleet (project) lookup failure.
 	ProjectID string `json:"project_id,omitempty"`
 }
 
@@ -594,6 +595,7 @@ type Deployment struct {
 	PreviousDeploymentID string                  `json:"previous_deployment_id,omitempty"`
 	CauseDetails         *DeploymentCauseDetails `json:"cause_details,omitempty"`
 	LoadBalancerID       string                  `json:"load_balancer_id,omitempty"`
+	Timing               *DeploymentTiming       `json:"timing,omitempty"`
 }
 
 // DeploymentCauseDetails struct for DeploymentCauseDetails
@@ -708,6 +710,30 @@ type DeploymentStaticSite struct {
 	SourceCommitHash string `json:"source_commit_hash,omitempty"`
 	// The list of resolved buildpacks used for a given deployment component.
 	Buildpacks []*Buildpack `json:"buildpacks,omitempty"`
+}
+
+// DeploymentTiming struct for DeploymentTiming
+type DeploymentTiming struct {
+	// Pending describes the time spent waiting for the build to begin. This may include delays related to build concurrency limits.
+	Pending string `json:"pending,omitempty"`
+	// BuildTotal describes total time between the start of the build and its completion.
+	BuildTotal string `json:"build_total,omitempty"`
+	// BuildBillable describes the time spent executing the build. As builds may run concurrently  this may be greater than the build total.
+	BuildBillable string `json:"build_billable,omitempty"`
+	// Components breaks down billable build time by component.
+	Components []*DeploymentTimingComponent `json:"components,omitempty"`
+	// DatabaseProvision describes the time spent creating databases.
+	DatabaseProvision string `json:"database_provision,omitempty"`
+	// Deploying is time spent starting containers and waiting for health checks to pass.
+	Deploying string `json:"deploying,omitempty"`
+}
+
+// DeploymentTimingComponent struct for DeploymentTimingComponent
+type DeploymentTimingComponent struct {
+	// Name of the component.
+	Name string `json:"name,omitempty"`
+	// BuildBillable is the billable build time for this component.
+	BuildBillable string `json:"build_billable,omitempty"`
 }
 
 // DeploymentWorker struct for DeploymentWorker
