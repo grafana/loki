@@ -1437,7 +1437,6 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-    PROMTAIL_JOURNAL_ENABLED: "true"
   image: grafana/loki-build-image:0.28.2
   name: test packaging
 - commands:
@@ -1464,13 +1463,11 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-    PROMTAIL_JOURNAL_ENABLED: "true"
   image: grafana/loki-build-image:0.28.2
   name: publish
   when:
     event:
     - tag
-    - push
 trigger:
   event:
   - pull_request
@@ -1741,8 +1738,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: 4ae4390771c303d31bfb655f62af656a7cc762696fbc989a291517e8b4e555fe
-
-...
