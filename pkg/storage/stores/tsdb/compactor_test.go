@@ -202,6 +202,7 @@ func buildChunkMetas(from, to int64) index.ChunkMetas {
 			MaxTime:  i + 1,
 			Checksum: uint32(i),
 			Entries:  1,
+			KB:       1,
 		})
 	}
 
@@ -895,6 +896,10 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 type dummyChunkData struct {
 	chunk.Data
+}
+
+func (d dummyChunkData) UncompressedSize() int {
+	return 1 << 10 // 1KB
 }
 
 func (d dummyChunkData) Entries() int {
