@@ -10,6 +10,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/tail/watch"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/tail/watch"
 )
 
 const (
