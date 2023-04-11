@@ -194,14 +194,19 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 }
 
 // buildChunkMetas builds 1ms wide chunk metas from -> to.
-func buildChunkMetas(from, to int64) index.ChunkMetas {
+func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
+	var s int64 = 1
+	if len(span) > 0 {
+		s = span[0]
+	}
 	var chunkMetas index.ChunkMetas
-	for i := from; i <= to; i++ {
+	for i := from; i <= to; i += s {
 		chunkMetas = append(chunkMetas, index.ChunkMeta{
 			MinTime:  i,
-			MaxTime:  i + 1,
+			MaxTime:  i + s,
 			Checksum: uint32(i),
-			Entries:  1,
+			Entries:  uint32(s),
+			KB:       uint32(s),
 		})
 	}
 
