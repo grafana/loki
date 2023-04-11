@@ -2182,8 +2182,7 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-// Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
 	*lbls = (*lbls)[:0]
 	*chks = (*chks)[:0]
 
@@ -2197,23 +2196,33 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 		lvo := uint32(d.Uvarint())
 
 		if d.Err() != nil {
-			return 0, errors.Wrap(d.Err(), "read series label offsets")
+			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
 
 		ln, err := dec.LookupSymbol(lno)
 		if err != nil {
-			return 0, errors.Wrap(err, "lookup label name")
+			return nil, 0, errors.Wrap(err, "lookup label name")
 		}
 		lv, err := dec.LookupSymbol(lvo)
 		if err != nil {
-			return 0, errors.Wrap(err, "lookup label value")
+			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
+	return &d, fprint, nil
+}
+
+// Series decodes a series entry from the given byte slice into lset and chks.
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+
+	d, fprint, err := dec.prepSeries(version, b, lbls, chks)
+	if err != nil {
+		return 0, err
+	}
 
 	// read chunks based on fmt
-	if err := dec.readChunks(version, &d, seriesRef, from, through, chks); err != nil {
+	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
 		return 0, err
 	}
 	return fprint, nil
