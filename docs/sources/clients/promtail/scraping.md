@@ -368,7 +368,7 @@ Targets can be configured using the `azure_event_hubs` stanza:
 ```
 
 Only `fully_qualified_namespace`, `connection_string` and `event_hubs` are required fields.
-Read the [configuration]({{< relref "../../configuration/#azure-event-hubs" >}}) section for more information.
+Read the [configuration]({{< relref "configuration/#azure-event-hubs" >}}) section for more information.
 
 ## Kafka
 

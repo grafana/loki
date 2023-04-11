@@ -13,9 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [BUGFIX] Fix dns port in network-policy
+
 ## 4.10.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.3
+
+- [BUGFIX] Add projected volume type to psp
 
 
 ## 4.9.0

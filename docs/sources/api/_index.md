@@ -729,6 +729,15 @@ Params:
 
 The `/loki/api/v1/format_query` endpoint allows to format LogQL queries. It returns an error if the passed LogQL is invalid. It is exposed by all Loki components and helps to improve readability and the debugging experience of LogQL queries.
 
+The following example formats the expression LogQL `{foo=   "bar"}` into
+
+```json
+{
+   "status" : "success",
+   "data" : "{foo=\"bar\"}"
+}
+```
+
 ## List series
 
 The Series API is available under the following:

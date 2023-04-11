@@ -41,6 +41,8 @@ var (
 	ErrParseLogQLExpression = errors.New("Failed to parse LogQL expression")
 	// ErrParseLogQLNotSample when the Loki rule expression does not evaluate to a sample expression.
 	ErrParseLogQLNotSample = errors.New("LogQL expression is not a sample query")
+	// ErrParseLogQLSelector when the Loki rule expression does not have a valid selector.
+	ErrParseLogQLSelector = errors.New("Failed to get selector from LogQL expression")
 	// ErrEffectiveDatesNotUnique when effective dates are not unique.
 	ErrEffectiveDatesNotUnique = errors.New("Effective dates are not unique")
 	// ErrParseEffectiveDates when effective dates cannot be parsed.
