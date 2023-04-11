@@ -106,6 +106,7 @@
 
 * [8315](https://github.com/grafana/loki/pull/8315) **thepalbi** Relicense and export `pkg/ingester` WAL code to be used in Promtail's WAL.
 * [8761](https://github.com/grafana/loki/pull/8761) **slim-bean** Remove "subqueries" from the metrics.go log line and instead provide `splits` and `shards`
+* [8887](https://github.com/grafana/loki/issues/8887) **3deep5me** Helm: Removed support for PodDisruptionBudget in policy/v1alpha1 and upgraded it to policy/v1.
 
 ##### Build
 

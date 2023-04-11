@@ -456,15 +456,6 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 {{- end -}}
 
-{{/* Return the appropriate apiVersion for PodDisruptionBudget. */}}
-{{- define "loki.podDisruptionBudget.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">= 1.21-0" .Capabilities.KubeVersion.Version) -}}
-    {{- print "policy/v1" -}}
-  {{- else -}}
-    {{- print "policy/v1beta1" -}}
-  {{- end -}}
-{{- end -}}
-
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
 {{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
