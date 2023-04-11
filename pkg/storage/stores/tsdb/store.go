@@ -101,12 +101,12 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 	}
 
 	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
-		tsdbMetrics := NewMetrics(reg)
 		nodeName, err := indexShipperCfg.GetUniqueUploaderName()
 		if err != nil {
 			return err
 		}
 
+		tsdbMetrics := NewMetrics(reg)
 		tsdbManager := NewTSDBManager(
 			name,
 			nodeName,

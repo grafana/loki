@@ -57,5 +57,5 @@ func WithAdditionalTSDBPeriod(c *Cluster) {
 }
 
 func WithBoltDBAndTSDBPeriods(c *Cluster) {
-	c.periodCfgs = append(c.periodCfgs, additionalTSDBShipperSchemaConfigTemplate, tsdbShipperSchemaConfigTemplate)
+	c.periodCfgs = append(c.periodCfgs, additionalBoltDBShipperSchemaConfigTemplate, tsdbShipperSchemaConfigTemplate)
 }

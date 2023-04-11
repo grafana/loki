@@ -289,7 +289,7 @@ func (m *HeadManager) Start() error {
 func (m *HeadManager) buildTSDBFromWALs(legacy bool) error {
 	walDir := managerWalDir(m.name, m.dir)
 	if legacy {
-		walDir = legacyManagerWalDir(m.dir)
+		walDir = managerLegacyWalDir(m.dir)
 	}
 
 	walsByPeriod, err := walsByPeriod(walDir, m.period)
@@ -346,7 +346,7 @@ func managerWalDir(name, parent string) string {
 	return filepath.Join(parent, "wal", name)
 }
 
-func legacyManagerWalDir(parent string) string {
+func managerLegacyWalDir(parent string) string {
 	return filepath.Join(parent, "wal")
 }
 
@@ -526,7 +526,7 @@ func walPath(name, parent string, t time.Time) string {
 
 func legacyWalPath(parent string, t time.Time) string {
 	return filepath.Join(
-		legacyManagerWalDir(parent),
+		managerLegacyWalDir(parent),
 		fmt.Sprintf("%d", t.Unix()),
 	)
 }

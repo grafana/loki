@@ -270,7 +270,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 		tableRanges = config.GetIndexStoreTableRanges(config.TSDBType, m.schemaCfg.Configs)
 
 		// do not ship legacy WAL files.
-		// TSDBs built from these WAL files would get migrated on starting tsdbManager
+		// TSDBs built from these WAL files would get loaded on starting tsdbManager
 		shipper = indexshipper.Noop{}
 	}
 
@@ -283,42 +283,6 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 
 		err := m.buildFromHead(tmp, shipper, tableRanges)
 		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func migrateMultitenantDir(dir string, tableRange config.TableRange, logger log.Logger) error {
-	parentDir := filepath.Dir(filepath.Clean(dir))
-	mulitenantDir := managerMultitenantDir(parentDir)
-	if _, err := os.Stat(mulitenantDir); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-
-		// nothing to migrate as multitenant dir does not exist
-		return nil
-	}
-
-	targetMultitenantDir := managerMultitenantDir(dir)
-	files, err := os.ReadDir(mulitenantDir)
-	if err != nil {
-		return err
-	}
-
-	for _, f := range files {
-		if !f.IsDir() {
-			continue
-		}
-
-		if ok, err := tableRange.TableInRange(f.Name()); !ok {
-			level.Warn(logger).Log("msg", fmt.Sprintf("skip multi tenant dir migration. table not in range: %s", f.Name()), "err", err)
-			continue
-		}
-
-		if err := os.Rename(filepath.Join(mulitenantDir, f.Name()), filepath.Join(targetMultitenantDir, f.Name())); err != nil {
 			return err
 		}
 	}
