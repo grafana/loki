@@ -35,72 +35,33 @@ type store struct {
 	stopOnce          sync.Once
 }
 
-var storeInstance *store
-
-// This must only be called in test cases where a new store instances
-// cannot be explicitly created.
-func ResetStoreInstance() {
-	if storeInstance == nil {
-		return
-	}
-	storeInstance.Stop()
-	storeInstance = nil
-}
-
-type newStoreFactoryFunc func(
-	indexShipperCfg indexshipper.Config,
+// NewStore creates a new TSDB store.
+// This is meant to be a singleton and should be instantiated only once per storage.Store and reused for all schema configs.
+// We do not need to build store for each schema config since we do not do any schema specific handling yet.
+// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
+// running multiple head managers would be complicated and wasteful.
+// Note: The cmd/migrate tool needs this not to be a true global singleton
+// as it will create multiple storage.Store instances in the same process.
+func NewStore(indexShipperCfg indexshipper.Config,
 	p config.PeriodConfig,
 	f *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRanges config.TableRanges,
 	backupIndexWriter index.Writer,
-	reg prometheus.Registerer,
-) (
-	indexReaderWriter index.ReaderWriter,
-	stopFunc func(),
-	err error,
-)
-
-// NewStore creates a new store if not initialized already.
-// Each call to NewStore will always build a new stores.ChunkWriter even if the store was already initialized since
-// fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
-// for storing chunks.
-// It also helps us make tsdb store a singleton because
-// we do not need to build store for each schema config since we do not do any schema specific handling yet.
-// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
-// running multiple head managers would be complicated and wasteful.
-var NewStore = func() newStoreFactoryFunc {
-	return func(
-		indexShipperCfg indexshipper.Config,
-		p config.PeriodConfig,
-		f *fetcher.Fetcher,
-		objectClient client.ObjectClient,
-		limits downloads.Limits,
-		tableRanges config.TableRanges,
-		backupIndexWriter index.Writer,
-		reg prometheus.Registerer,
-	) (
-		index.ReaderWriter,
-		func(),
-		error,
-	) {
-		if storeInstance == nil {
-			if backupIndexWriter == nil {
-				backupIndexWriter = noopBackupIndexWriter{}
-			}
-			storeInstance = &store{
-				backupIndexWriter: backupIndexWriter,
-			}
-			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-
-		return storeInstance, storeInstance.Stop, nil
+	reg prometheus.Registerer) (index.ReaderWriter, func(), error) {
+	if backupIndexWriter == nil {
+		backupIndexWriter = noopBackupIndexWriter{}
 	}
-}()
+	storeInstance := &store{
+		backupIndexWriter: backupIndexWriter,
+	}
+	err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return storeInstance, storeInstance.Stop, nil
+}
 
 func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {

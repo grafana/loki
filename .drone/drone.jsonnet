@@ -453,7 +453,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.28.1',
+    local build_image_tag = '0.28.2',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -558,6 +558,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki', container=false) { depends_on: ['check-generated-files'] },
       make('check-doc', container=false) { depends_on: ['loki'] },
+      make('check-format', container=false, args=[
+        'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
+      ]) { depends_on: ['loki'], when: onPRs },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
@@ -641,7 +644,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
-    trigger+: onTagOrMain,
+    trigger: onTagOrMain {
+      ref: ['refs/heads/main', 'refs/tags/v*'],
+    },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
