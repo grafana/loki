@@ -217,7 +217,7 @@ func (m *chunkPageMarker) decode(d *encoding.Decbuf) {
 // Chunks per page. This is encoded into the binary
 // format and can thus be changed without needing a
 // new schema version
-const ChunkPageSize = 512
+const ChunkPageSize = 128
 
 type chunkPageMarkers []chunkPageMarker
 
