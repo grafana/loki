@@ -360,11 +360,12 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		b.Del(labels.MetricName)
 		ls := b.Labels(nil)
 
+		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
 			Checksum: chk.Checksum,
 			MinTime:  int64(chk.From),
 			MaxTime:  int64(chk.Through),
-			KB:       uint32(chk.Size()) / (1 << 10),
+			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
 		})
 		if err != nil {
