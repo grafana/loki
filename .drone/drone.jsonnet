@@ -806,6 +806,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           env={
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
+            PROMTAIL_JOURNAL_ENABLED: 'true',
           }),
       {
         name: 'test deb package',
@@ -838,7 +839,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
             NFPM_PASSPHRASE: { from_secret: gpg_passphrase.name },
             NFPM_SIGNING_KEY_FILE: '/drone/src/private-key.key',
             PROMTAIL_JOURNAL_ENABLED: 'true',
-          }) { when: { event: ['tag'] } },
+          }) { when: { event: ['tag', 'push'] } },
     ],
   },
   pipeline('docker-driver') {

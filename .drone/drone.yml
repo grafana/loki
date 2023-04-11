@@ -1437,6 +1437,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
+    PROMTAIL_JOURNAL_ENABLED: "true"
   image: grafana/loki-build-image:0.28.2
   name: test packaging
 - commands:
@@ -1469,6 +1470,7 @@ steps:
   when:
     event:
     - tag
+    - push
 trigger:
   event:
   - pull_request
@@ -1741,6 +1743,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: e610d63a7c124c2f3061db7fcc3247fb6e37dacf509bf9e5940abef1fc6e944e
+hmac: 4ae4390771c303d31bfb655f62af656a7cc762696fbc989a291517e8b4e555fe
 
 ...
