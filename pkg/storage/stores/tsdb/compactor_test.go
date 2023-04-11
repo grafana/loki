@@ -902,6 +902,10 @@ type dummyChunkData struct {
 	chunk.Data
 }
 
+func (d dummyChunkData) UncompressedSize() int {
+	return 1 << 10 // 1KB
+}
+
 func (d dummyChunkData) Entries() int {
 	return 1
 }
