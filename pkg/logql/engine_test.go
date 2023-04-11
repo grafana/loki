@@ -1,10 +1,12 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -641,7 +643,10 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			time.Unix(60, 0), logproto.FORWARD, 100,
 			nil,
 			nil,
-			promql.Scalar{T: 60 * 1000, V: 2},
+			promql.Vector{promql.Sample{
+				Point:  promql.Point{T: 60 * 1000, V: 2},
+				Metric: labels.Labels{},
+			}},
 		},
 		{
 			// single comparison
@@ -2300,6 +2305,37 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	require.EqualError(t, err, expectEvalSampleErr.Error())
 }
 
+func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	now := time.Now()
+	queueTime := 2 * time.Nanosecond
+	logqlVector := `vector(5)`
+	q := eng.Query(LiteralParams{
+		qs:        logqlVector,
+		start:     now,
+		end:       now,
+		step:      0,
+		interval:  time.Second * 30,
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+	_, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+
+	require.NoError(t, err)
+
+	qry, ok := q.(*query)
+	require.Equal(t, ok, true)
+	vectorExpr := syntax.NewVectorExpr("5")
+
+	data, err := qry.evalSample(ctx, vectorExpr)
+	require.NoError(t, err)
+	result, ok := data.(promql.Vector)
+	require.Equal(t, ok, true)
+	require.Equal(t, result[0].V, float64(5))
+	require.Equal(t, result[0].T, now.UnixNano()/int64(time.Millisecond))
+}
+
 type errorIteratorQuerier struct {
 	samples []iter.SampleIterator
 	entries []iter.EntryIterator
@@ -2356,15 +2392,15 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			tc := tc
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
 				end:   time.Unix(180, 0),
 				step:  1 * time.Second,
+				limit: 1,
 			})
 			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)
@@ -2403,6 +2439,38 @@ func TestEngine_MaxSeries(t *testing.T) {
 				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
 			} else {
 				require.Nil(t, err)
+			}
+		})
+	}
+}
+
+func TestEngine_MaxRangeInterval(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{rangeLimit: 24 * time.Hour, maxSeries: 100000}, log.NewNopLogger())
+
+	for _, test := range []struct {
+		qs             string
+		direction      logproto.Direction
+		expectLimitErr bool
+	}{
+		{`topk(1,rate(({app=~"foo|bar"})[2d]))`, logproto.FORWARD, true},
+		{`topk(1,rate(({app=~"foo|bar"})[1d]))`, logproto.FORWARD, false},
+		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
+	} {
+		t.Run(test.qs, func(t *testing.T) {
+			q := eng.Query(LiteralParams{
+				qs:        test.qs,
+				start:     time.Unix(0, 0),
+				end:       time.Unix(100000, 0),
+				step:      60 * time.Second,
+				direction: test.direction,
+				limit:     1000,
+			})
+			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			if test.expectLimitErr {
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrIntervalLimit)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -2477,6 +2545,73 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 				b.Fatal("unexpected nil result")
 			}
 		}
+	}
+}
+
+// TestHashingStability tests logging stability between engine and RecordRangeAndInstantQueryMetrics methods.
+func TestHashingStability(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	params := LiteralParams{
+		start:     time.Unix(0, 0),
+		end:       time.Unix(5, 0),
+		step:      60 * time.Second,
+		direction: logproto.FORWARD,
+		limit:     1000,
+	}
+
+	queryWithEngine := func() string {
+		buf := bytes.NewBufferString("")
+		logger := log.NewLogfmtLogger(buf)
+		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
+		query := eng.Query(params)
+		_, err := query.Exec(ctx)
+		require.NoError(t, err)
+		return buf.String()
+	}
+
+	queryDirectly := func() string {
+		statsResult := stats.Result{
+			Summary: stats.Summary{
+				BytesProcessedPerSecond: 100000,
+				QueueTime:               0.000000002,
+				ExecTime:                25.25,
+				TotalBytesProcessed:     100000,
+				TotalEntriesReturned:    10,
+			},
+		}
+		buf := bytes.NewBufferString("")
+		logger := log.NewLogfmtLogger(buf)
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		return buf.String()
+	}
+
+	for _, test := range []struct {
+		qs string
+	}{
+		{`sum by(query_hash) (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s]))`},
+		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
+	} {
+		params.qs = test.qs
+		expectedQueryHash := HashedQuery(test.qs)
+
+		// check that both places will end up having the same query hash, even though they're emitting different log lines.
+		require.Regexp(t,
+			regexp.MustCompile(
+				fmt.Sprintf(
+					`level=info org_id=fake msg="executing query" type=range query=.* length=5s step=1m0s query_hash=%d.*`, expectedQueryHash,
+				),
+			),
+			queryWithEngine(),
+		)
+
+		require.Regexp(t,
+			regexp.MustCompile(
+				fmt.Sprintf(
+					`level=info org_id=fake latency=slow query=".*" query_hash=%d query_type=metric range_type=range.*\n`, expectedQueryHash,
+				),
+			),
+			queryDirectly(),
+		)
 	}
 }
 

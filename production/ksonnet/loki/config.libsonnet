@@ -3,6 +3,7 @@
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
     http_listen_port: 3100,
+    node_selector: null,
 
     create_service_monitor: false,
 
@@ -81,6 +82,10 @@
       use_topology_spread: true,
       topology_spread_max_skew: 1,
     },
+
+    ingester_allow_multiple_replicas_on_same_node: false,
+    ingester_data_disk_size: '10Gi',
+    ingester_data_disk_class: 'fast',
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -297,19 +302,6 @@
 
           memcached_client: {
             host: 'memcached.%s.svc.cluster.local' % $._config.namespace,
-            service: 'memcached-client',
-            consistent_hash: true,
-          },
-        },
-
-        write_dedupe_cache_config: {
-          memcached: {
-            batch_size: 100,
-            parallelism: 100,
-          },
-
-          memcached_client: {
-            host: 'memcached-index-writes.%s.svc.cluster.local' % $._config.namespace,
             service: 'memcached-client',
             consistent_hash: true,
           },

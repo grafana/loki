@@ -7,12 +7,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/grafana/loki/pkg/validation"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -32,7 +28,9 @@ import (
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // Here is how the generic compactor works:
@@ -98,7 +96,7 @@ type Config struct {
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos.")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos, cos.")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
@@ -170,7 +168,13 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) (*Compactor, error) {
+type Limits interface {
+	deletion.Limits
+	retention.Limits
+	DefaultLimits() *validation.Limits
+}
+
+func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -236,7 +240,7 @@ func NewCompactor(cfg Config, objectClient client.ObjectClient, schemaConfig con
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits *validation.Overrides, r prometheus.Registerer) error {
+func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -271,7 +275,7 @@ func (c *Compactor) init(objectClient client.ObjectClient, schemaConfig config.S
 	return nil
 }
 
-func (c *Compactor) initDeletes(r prometheus.Registerer, limits *validation.Overrides) error {
+func (c *Compactor) initDeletes(r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
 	store, err := deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
@@ -654,7 +658,7 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []retention.IntervalFilter) {
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, filter.Func) {
 	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
 		return expired, nonDeletedIntervals
 	}
@@ -731,30 +735,11 @@ func sortTablesByRange(tables []string) {
 }
 
 func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
-	// first round removes configs that does not have the prefix.
-	candidates := []config.PeriodConfig{}
-	for _, schema := range cfg.Configs {
-		if strings.HasPrefix(tableName, schema.IndexTables.Prefix) {
-			candidates = append(candidates, schema)
-		}
-	}
-	// WARN we  assume period is always daily. This is only true for boltdb-shipper.
-	var (
-		matched config.PeriodConfig
-		found   bool
-	)
-	for _, schema := range candidates {
-		periodIndex, err := strconv.ParseInt(strings.TrimPrefix(tableName, schema.IndexTables.Prefix), 10, 64)
-		if err != nil {
-			continue
-		}
-		periodSec := int64(schema.IndexTables.Period / time.Second)
-		tableTs := model.TimeFromUnix(periodIndex * periodSec)
-		if tableTs.After(schema.From.Time) || tableTs == schema.From.Time {
-			matched = schema
-			found = true
-		}
+	tableInterval := retention.ExtractIntervalFromTableName(tableName)
+	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
+	if err != nil || schemaCfg.IndexTables.TableFor(tableInterval.Start) != tableName {
+		return config.PeriodConfig{}, false
 	}
 
-	return matched, found
+	return schemaCfg, true
 }

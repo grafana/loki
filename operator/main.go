@@ -110,7 +110,8 @@ func main() {
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.LokiStackWebhook {
-		if err = (&lokiv1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
+		v := &validation.LokiStackValidator{}
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "lokistack")
 			os.Exit(1)
 		}
@@ -159,6 +160,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "rulerconfig")
 		os.Exit(1)
+	}
+	if ctrlCfg.Gates.RulerConfigWebhook {
+		v := &validation.RulerConfigValidator{}
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "rulerconfig")
+			os.Exit(1)
+		}
 	}
 	if ctrlCfg.Gates.BuiltInCertManagement.Enabled {
 		if err = (&lokictrl.CertRotationReconciler{

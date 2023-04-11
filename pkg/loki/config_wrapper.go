@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,8 +39,9 @@ type ConfigWrapper struct {
 }
 
 func PrintVersion(args []string) bool {
+	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
 	for _, a := range args {
-		if a == "-"+versionFlag {
+		if pattern.MatchString(a) {
 			return true
 		}
 	}
@@ -164,6 +166,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {

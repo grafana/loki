@@ -48,6 +48,11 @@ func (c testConsumerGroupHandler) Close() error {
 	return nil
 }
 
+func (c testConsumerGroupHandler) Pause(partitions map[string][]int32)  {}
+func (c testConsumerGroupHandler) Resume(partitions map[string][]int32) {}
+func (c testConsumerGroupHandler) PauseAll()                            {}
+func (c testConsumerGroupHandler) ResumeAll()                           {}
+
 type testSession struct {
 	markedMessage []*sarama.ConsumerMessage
 }
@@ -151,7 +156,7 @@ func Test_TargetRun(t *testing.T) {
 					closed = true
 				},
 			)
-			tg := NewTarget(session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true)
+			tg := NewTarget(nil, session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true, messageParser{})
 
 			var wg sync.WaitGroup
 			wg.Add(1)

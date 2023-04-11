@@ -1,7 +1,8 @@
 ---
 title: static_labels
+description: static_labels stage
 ---
-# `static_labels` stage
+# static_labels
 
 The static_labels stage is an action stage that adds static-labels to the label set that is sent to Loki with the log entry.
 

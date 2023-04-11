@@ -10,15 +10,19 @@ import (
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
+type ExportedLimits interface {
+	AllByUserID() map[string]*Limits
+	DefaultLimits() *Limits
+}
+
 type OverridesExporter struct {
-	overrides *Overrides
-	// tenantLimits TenantLimits
+	overrides    ExportedLimits
 	tenantDesc   *prometheus.Desc
 	defaultsDesc *prometheus.Desc
 }
 
 // TODO(jordanrushing): break out overrides from defaults?
-func NewOverridesExporter(overrides *Overrides) *OverridesExporter {
+func NewOverridesExporter(overrides ExportedLimits) *OverridesExporter {
 	return &OverridesExporter{
 		overrides: overrides,
 		tenantDesc: prometheus.NewDesc(

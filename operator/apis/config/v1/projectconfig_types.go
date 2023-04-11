@@ -110,6 +110,8 @@ type FeatureGates struct {
 	AlertingRuleWebhook bool `json:"alertingRuleWebhook,omitempty"`
 	// RecordingRuleWebhook enables the RecordingRule CR validation webhook.
 	RecordingRuleWebhook bool `json:"recordingRuleWebhook,omitempty"`
+	// RulerConfigWebhook enables the RulerConfig CR validation webhook.
+	RulerConfigWebhook bool `json:"rulerConfigWebhook,omitempty"`
 
 	// When DefaultNodeAffinity is enabled the operator will set a default node affinity on all pods.
 	// This will limit scheduling of the pods to Nodes with Linux.

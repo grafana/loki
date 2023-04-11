@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
@@ -70,12 +73,16 @@ type Config struct {
 	IngesterDBRetainPeriod time.Duration
 }
 
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
-	f.StringVar(&cfg.SharedStoreType, prefix+"shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, filesystem")
+	f.StringVar(&cfg.SharedStoreType, prefix+"shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, cos, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
@@ -90,6 +97,35 @@ func (cfg *Config) Validate() error {
 		cfg.Mode = ModeReadWrite
 	}
 	return storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+}
+
+// GetUniqueUploaderName builds a unique uploader name using IngesterName + `-` + <nanosecond-timestamp>.
+// The name is persisted in the configured ActiveIndexDirectory and reused when already exists.
+func (cfg *Config) GetUniqueUploaderName() (string, error) {
+	uploader := fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().UnixNano())
+
+	uploaderFilePath := path.Join(cfg.ActiveIndexDirectory, "uploader", "name")
+	if err := util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
+		return "", err
+	}
+
+	_, err := os.Stat(uploaderFilePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
+			return "", err
+		}
+	} else {
+		ub, err := os.ReadFile(uploaderFilePath)
+		if err != nil {
+			return "", err
+		}
+		uploader = string(ub)
+	}
+
+	return uploader, nil
 }
 
 type indexShipper struct {

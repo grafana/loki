@@ -2,14 +2,20 @@ package docker
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"sync"
+	"time"
 
 	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/relabel"
+
+	"github.com/grafana/loki/pkg/util/build"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
@@ -20,14 +26,16 @@ const DockerSource = "Docker"
 
 // targetGroup manages all container targets of one Docker daemon.
 type targetGroup struct {
-	metrics       *Metrics
-	logger        log.Logger
-	positions     positions.Positions
-	entryHandler  api.EntryHandler
-	defaultLabels model.LabelSet
-	relabelConfig []*relabel.Config
-	host          string
-	client        client.APIClient
+	metrics          *Metrics
+	logger           log.Logger
+	positions        positions.Positions
+	entryHandler     api.EntryHandler
+	defaultLabels    model.LabelSet
+	relabelConfig    []*relabel.Config
+	host             string
+	httpClientConfig config.HTTPClientConfig
+	client           client.APIClient
+	refreshInterval  model.Duration
 
 	mtx     sync.Mutex
 	targets map[string]*Target
@@ -60,11 +68,36 @@ func (tg *targetGroup) sync(groups []*targetgroup.Group) {
 // addTarget checks whether the container with given id is already known. If not it's added to the this group
 func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) error {
 	if tg.client == nil {
-		var err error
+		hostURL, err := url.Parse(tg.host)
+		if err != nil {
+			return err
+		}
+
 		opts := []client.Opt{
 			client.WithHost(tg.host),
 			client.WithAPIVersionNegotiation(),
 		}
+
+		// There are other protocols than HTTP supported by the Docker daemon, like
+		// unix, which are not supported by the HTTP client. Passing HTTP client
+		// options to the Docker client makes those non-HTTP requests fail.
+		if hostURL.Scheme == "http" || hostURL.Scheme == "https" {
+			rt, err := config.NewRoundTripperFromConfig(tg.httpClientConfig, "docker_sd")
+			if err != nil {
+				return err
+			}
+			opts = append(opts,
+				client.WithHTTPClient(&http.Client{
+					Transport: rt,
+					Timeout:   time.Duration(tg.refreshInterval),
+				}),
+				client.WithScheme(hostURL.Scheme),
+				client.WithHTTPHeaders(map[string]string{
+					"User-Agent": fmt.Sprintf("loki-promtail/%s", build.Version),
+				}),
+			)
+		}
+
 		tg.client, err = client.NewClientWithOpts(opts...)
 		if err != nil {
 			level.Error(tg.logger).Log("msg", "could not create new Docker client", "err", err)

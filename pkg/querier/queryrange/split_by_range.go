@@ -34,7 +34,7 @@ func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.
 			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
 			next:   next,
 			limits: limits,
-			ng: logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{
+			ng: logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{
 				limits: limits,
 				next:   next,
 			}, limits, logger),

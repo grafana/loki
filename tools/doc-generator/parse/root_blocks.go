@@ -21,14 +21,16 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
@@ -191,9 +193,19 @@ var (
 
 		// Storage config
 		{
+			Name:       "aws_storage_config",
+			StructType: reflect.TypeOf(aws.StorageConfig{}),
+			Desc:       "The aws_storage_config block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.",
+		},
+		{
 			Name:       "azure_storage_config",
 			StructType: reflect.TypeOf(azure.BlobStorageConfig{}),
 			Desc:       "The azure_storage_config block configures the connection to Azure object storage backend.",
+		},
+		{
+			Name:       "alibabacloud_storage_config",
+			StructType: reflect.TypeOf(alibaba.OssConfig{}),
+			Desc:       "The alibabacloud_storage_config block configures the connection to Alibaba Cloud Storage object storage backend.",
 		},
 		{
 			Name:       "gcs_storage_config",
@@ -216,9 +228,27 @@ var (
 			Desc:       "The swift_storage_config block configures the connection to OpenStack Object Storage (Swift) object storage backend.",
 		},
 		{
+			Name:       "cos_storage_config",
+			StructType: reflect.TypeOf(ibmcloud.COSConfig{}),
+			Desc:       "The cos_storage_config block configures the connection to IBM Cloud Object Storage (COS) backend.",
+		},
+		{
 			Name:       "local_storage_config",
-			StructType: reflect.TypeOf(local.Config{}),
+			StructType: reflect.TypeOf(local.FSConfig{}),
 			Desc:       "The local_storage_config block configures the usage of local file system as object storage backend.",
 		},
+		{
+			Name:       "named_stores_config",
+			StructType: reflect.TypeOf(storage.NamedStores{}),
+			Desc: `Configures additional object stores for a given storage provider.
+Supported stores: aws, azure, bos, filesystem, gcs, swift.
+Example:
+storage_config:
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
+Named store from this example can be used by setting object_store to store-1 in period_config.`},
 	}
 )

@@ -26,7 +26,7 @@ var StandardWrite = NodePod{
 
 var StandardRead = NodePod{
 	cpuRequest:      3,
-	cpuLimit:        0, // Undefined
+	cpuLimit:        3, // Undefined TODO: Is this a bug
 	memoryRequest:   6,
 	memoryLimit:     8,
 	rateBytesSecond: 768 * 1024 * 1024,
@@ -75,6 +75,29 @@ var NodeTypesByProvider = map[string]map[string]NodeType{
 			name:     "e2-standard-16",
 			cores:    16,
 			memoryGB: 64,
+			readPod:  StandardRead,
+			writePod: StandardWrite,
+		},
+	},
+	"OVHcloud": {
+		"b2-30": {
+			name:     "b2-30",
+			cores:    8,
+			memoryGB: 30,
+			readPod:  StandardRead,
+			writePod: StandardWrite,
+		},
+		"b2-60": {
+			name:     "b2-60",
+			cores:    16,
+			memoryGB: 60,
+			readPod:  StandardRead,
+			writePod: StandardWrite,
+		},
+		"b2-120": {
+			name:     "b2-120",
+			cores:    32,
+			memoryGB: 120,
 			readPod:  StandardRead,
 			writePod: StandardWrite,
 		},

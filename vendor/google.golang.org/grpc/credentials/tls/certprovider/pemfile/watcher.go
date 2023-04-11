@@ -19,7 +19,7 @@
 // Package pemfile provides a file watching certificate provider plugin
 // implementation which works for files with PEM contents.
 //
-// Experimental
+// # Experimental
 //
 // Notice: All APIs in this package are experimental and may be removed in a
 // later release.

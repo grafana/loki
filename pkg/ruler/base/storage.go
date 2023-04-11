@@ -19,11 +19,13 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/bucket"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 )
 
@@ -33,12 +35,14 @@ type RuleStoreConfig struct {
 	Type string `yaml:"type"`
 
 	// Object Storage Configs
-	Azure azure.BlobStorageConfig   `yaml:"azure" doc:"description=Configures backend rule storage for Azure."`
-	GCS   gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures backend rule storage for GCS."`
-	S3    aws.S3Config              `yaml:"s3" doc:"description=Configures backend rule storage for S3."`
-	BOS   baidubce.BOSStorageConfig `yaml:"bos" doc:"description=Configures backend rule storage for Baidu Object Storage (BOS)."`
-	Swift openstack.SwiftConfig     `yaml:"swift" doc:"description=Configures backend rule storage for Swift."`
-	Local local.Config              `yaml:"local" doc:"description=Configures backend rule storage for a local file system directory."`
+	Azure        azure.BlobStorageConfig   `yaml:"azure" doc:"description=Configures backend rule storage for Azure."`
+	AlibabaCloud alibaba.OssConfig         `yaml:"alibabacloud" doc:"description=Configures backend rule storage for AlibabaCloud Object Storage (OSS)."`
+	GCS          gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures backend rule storage for GCS."`
+	S3           aws.S3Config              `yaml:"s3" doc:"description=Configures backend rule storage for S3."`
+	BOS          baidubce.BOSStorageConfig `yaml:"bos" doc:"description=Configures backend rule storage for Baidu Object Storage (BOS)."`
+	Swift        openstack.SwiftConfig     `yaml:"swift" doc:"description=Configures backend rule storage for Swift."`
+	COS          ibmcloud.COSConfig        `yaml:"cos" doc:"description=Configures backend rule storage for IBM Cloud Object Storage (COS)."`
+	Local        local.Config              `yaml:"local" doc:"description=Configures backend rule storage for a local file system directory."`
 
 	mock rulestore.RuleStore `yaml:"-"`
 }
@@ -46,12 +50,14 @@ type RuleStoreConfig struct {
 // RegisterFlags registers flags.
 func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Azure.RegisterFlagsWithPrefix("ruler.storage.", f)
+	cfg.AlibabaCloud.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Swift.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Local.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.BOS.RegisterFlagsWithPrefix("ruler.storage.", f)
-	f.StringVar(&cfg.Type, "ruler.storage.type", "", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local, bos)")
+	cfg.COS.RegisterFlagsWithPrefix("ruler.storage.", f)
+	f.StringVar(&cfg.Type, "ruler.storage.type", "", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local, bos, cos)")
 }
 
 // Validate config and returns error on failure
@@ -99,6 +105,8 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 		client, err = baidubce.NewBOSObjectStorage(&cfg.BOS)
 	case "swift":
 		client, err = openstack.NewSwiftObjectClient(cfg.Swift, hedgeCfg)
+	case "cos":
+		client, err = ibmcloud.NewCOSObjectClient(cfg.COS, hedgeCfg)
 	case "local":
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:

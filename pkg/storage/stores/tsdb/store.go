@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -34,72 +35,33 @@ type store struct {
 	stopOnce          sync.Once
 }
 
-var storeInstance *store
-
-// This must only be called in test cases where a new store instances
-// cannot be explicitly created.
-func ResetStoreInstance() {
-	if storeInstance == nil {
-		return
-	}
-	storeInstance.Stop()
-	storeInstance = nil
-}
-
-type newStoreFactoryFunc func(
-	indexShipperCfg indexshipper.Config,
+// NewStore creates a new TSDB store.
+// This is meant to be a singleton and should be instantiated only once per storage.Store and reused for all schema configs.
+// We do not need to build store for each schema config since we do not do any schema specific handling yet.
+// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
+// running multiple head managers would be complicated and wasteful.
+// Note: The cmd/migrate tool needs this not to be a true global singleton
+// as it will create multiple storage.Store instances in the same process.
+func NewStore(indexShipperCfg indexshipper.Config,
 	p config.PeriodConfig,
 	f *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRanges config.TableRanges,
 	backupIndexWriter index.Writer,
-	reg prometheus.Registerer,
-) (
-	indexReaderWriter index.ReaderWriter,
-	stopFunc func(),
-	err error,
-)
-
-// NewStore creates a new store if not initialized already.
-// Each call to NewStore will always build a new stores.ChunkWriter even if the store was already initialized since
-// fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
-// for storing chunks.
-// It also helps us make tsdb store a singleton because
-// we do not need to build store for each schema config since we do not do any schema specific handling yet.
-// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
-// running multiple head managers would be complicated and wasteful.
-var NewStore = func() newStoreFactoryFunc {
-	return func(
-		indexShipperCfg indexshipper.Config,
-		p config.PeriodConfig,
-		f *fetcher.Fetcher,
-		objectClient client.ObjectClient,
-		limits downloads.Limits,
-		tableRanges config.TableRanges,
-		backupIndexWriter index.Writer,
-		reg prometheus.Registerer,
-	) (
-		index.ReaderWriter,
-		func(),
-		error,
-	) {
-		if storeInstance == nil {
-			if backupIndexWriter == nil {
-				backupIndexWriter = noopBackupIndexWriter{}
-			}
-			storeInstance = &store{
-				backupIndexWriter: backupIndexWriter,
-			}
-			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-
-		return storeInstance, storeInstance.Stop, nil
+	reg prometheus.Registerer) (index.ReaderWriter, func(), error) {
+	if backupIndexWriter == nil {
+		backupIndexWriter = noopBackupIndexWriter{}
 	}
-}()
+	storeInstance := &store{
+		backupIndexWriter: backupIndexWriter,
+	}
+	err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return storeInstance, storeInstance.Stop, nil
+}
 
 func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
@@ -132,11 +94,11 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 	}
 
 	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
-
-		var (
-			nodeName = indexShipperCfg.IngesterName
-			dir      = indexShipperCfg.ActiveIndexDirectory
-		)
+		dir := indexShipperCfg.ActiveIndexDirectory
+		nodeName, err := indexShipperCfg.GetUniqueUploaderName()
+		if err != nil {
+			return err
+		}
 
 		tsdbMetrics := NewMetrics(reg)
 		tsdbManager := NewTSDBManager(
@@ -183,7 +145,7 @@ func (s *store) Stop() {
 	})
 }
 
-func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdb_index.ChunkMetas{
@@ -199,7 +161,7 @@ func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
 		return errors.Wrap(err, "writing index entry")
 	}
 
-	return s.backupIndexWriter.IndexChunk(ctx, chk)
+	return s.backupIndexWriter.IndexChunk(ctx, from, through, chk)
 }
 
 type failingIndexWriter struct{}
@@ -210,6 +172,6 @@ func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_i
 
 type noopBackupIndexWriter struct{}
 
-func (n noopBackupIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (n noopBackupIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }

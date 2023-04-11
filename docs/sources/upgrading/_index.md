@@ -1,20 +1,21 @@
 ---
 title: Upgrading
+description: Upgrading Grafana Loki
 weight: 250
 ---
 
-# Upgrading Grafana Loki
+# Upgrading
 
 Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 
-If we have any expectation of difficulty upgrading we will document it here.
+If we have any expectation of difficulty upgrading, we will document it here.
 
 As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once.
 If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
-# Checking for config changes
+## Checking for config changes
 
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
@@ -25,12 +26,58 @@ export CONFIG_FILE=loki-local-config.yaml
 diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```
 
-the `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
+The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
 
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
 
 ## Main / Unreleased
+
+## 2.8.0
+
+### Loki
+
+#### Change in LogQL behavior
+
+When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
+was kept.
+
+#### Default retention_period has changed
+
+This change will affect you if you have:
+```yaml
+compactor:
+  retention_enabled: true
+```
+
+And did *not* define a `retention_period` in `limits_config`, thus relying on the previous default of `744h`
+
+In this release the default has been changed to `0s`.
+
+A value of `0s` is the same as "retain forever" or "disable retention".
+
+If, **and only if**, you wish to retain the previous default of 744h, apply this config.
+```yaml
+limits_config:
+  retention_period: 744h
+```
+
+**Please note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
+only in 2.8 and forward releases does the zero value disable retention.
+
+#### metrics.go log line `subqueries` replaced with `splits` and `shards`
+
+The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
+
+In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+
+There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
+
+In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in the statistics API data returned but just for backwards compatibility, the value will always be zero now.
+
+Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
+
+Note: currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
 
 ### Promtail
 
@@ -40,7 +87,7 @@ The go build tag `promtail_journal_enabled` should be passed to include Journal 
 If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
 
 ```shell
-go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
@@ -61,7 +108,7 @@ ruler:
 
 #### query-frontend k8s headless service changed to load balanced service
 
-*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](https://grafana.com/docs/loki/latest/installation/tanka/)
+*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/)
 
 The `query-frontend` k8s service was previously headless and was used for two purposes:
 * Distributing the Loki query requests amongst all the available Query Frontend pods.
@@ -100,14 +147,14 @@ These statistics are also displayed when using `--stats` with LogCLI.
 
 ### Loki Canary Permission
 
-The new `push` mode to [Loki canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) can push logs that are generated by a Loki canary directly to a given Loki URL. Previously, it only wrote to a local file and you needed some agent, such as promtail, to scrape and push it to Loki.
+The new `push` mode to [Loki canary](/docs/loki/latest/operations/loki-canary/) can push logs that are generated by a Loki canary directly to a given Loki URL. Previously, it only wrote to a local file and you needed some agent, such as promtail, to scrape and push it to Loki.
 So if you run Loki behind some proxy with different authorization policies to read and write to Loki, then auth credentials we pass to Loki canary now needs to have both `READ` and `WRITE` permissions.
 
-### Engine query timeout is deprecated
+### `engine.timeout` and `querier.query_timeout` are deprecated
 
 Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
 As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
-we're deprecating it in favor of relying on `engine.query-timeout` only.
+we're deprecating it and moving it to [Limits Config](/docs/loki/latest/configuration/#limits_config) `limits_config.query_timeout` with same default values.
 
 #### `fifocache` has been renamed
 
@@ -173,10 +220,6 @@ The configuration for anonymous usage statistics reporting to Grafana has change
 #### TLS `cipher_suites` and `tls_min_version` have moved
 
 These were previously configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example: `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
-
-#### Querier `query_timeout` default changed
-
-The previous default value for `querier.query_timeout` of `1m` has changed to `0s`.
 
 #### `ruler.storage.configdb` has been removed
 
@@ -293,7 +336,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/clients/promtail/stages/metrics/#counter)
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -312,7 +355,7 @@ Following 2 compactor configs that were defined as command line arguments in jso
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
-# Supported types: gcs, s3, azure, swift, filesystem.
+# Supported types: gcs, s3, azure, swift, cos, filesystem.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 ```
@@ -347,7 +390,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs](../operations/storage/retention) for more info.
+See the [retention docs]({{<relref "../operations/storage/retention">}}) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -448,7 +491,7 @@ We decided the default would be better to disable this sleep behavior but anyone
 * [4624](https://github.com/grafana/loki/pull/4624) **chaudum**: Disable chunk transfers in jsonnet lib
 
 This changes a few default values, resulting in the ingester WAL now being on by default,
-and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for its WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
 
 Previous defaults:
 ```yaml
@@ -544,10 +587,10 @@ cortex_chunks_store* -> loki_chunks_store*
 
 Previously, samples generated by recording rules would only be buffered in memory before being remote-written to Prometheus; from this
 version, the `ruler` now writes these samples to a per-tenant Write-Ahead Log for durability. More details about the
-per-tenant WAL can be found [here](https://grafana.com/docs/loki/latest/operations/recording-rules/).
+per-tenant WAL can be found [here](/docs/loki/latest/operations/recording-rules/).
 
 The `ruler` now requires persistent storage - please see the
-[Operations](https://grafana.com/docs/loki/latest/operations/recording-rules/#deployment) page for more details about deployment.
+[Operations](/docs/loki/latest/operations/recording-rules/#deployment) page for more details about deployment.
 
 ### Promtail
 
@@ -1133,13 +1176,9 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-One such config change which will affect Loki users:
+In the [cache_config]({{< relref "../configuration#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
 
-In the [cache_config](../../configuration#cache_config):
-
-`defaul_validity` has changed to `default_validity`
-
-Also in the unlikely case you were configuring your schema via arguments and not a config file, this is no longer supported.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
+If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
 The other config changes should not be relevant to Loki.
 

@@ -305,6 +305,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						rl.Alert.Value,
 						expr,
 						time.Duration(rl.For),
+						time.Duration(rl.KeepFiringFor),
 						labels.FromMap(rl.Labels),
 						labels.FromMap(rl.Annotations),
 						nil,

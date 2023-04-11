@@ -9,6 +9,7 @@ import (
 type Config struct {
 	AuthVersion       int           `yaml:"auth_version"`
 	AuthURL           string        `yaml:"auth_url"`
+	Internal          bool          `yaml:"internal"`
 	Username          string        `yaml:"username"`
 	UserDomainName    string        `yaml:"user_domain_name"`
 	UserDomainID      string        `yaml:"user_domain_id"`
@@ -36,6 +37,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.AuthVersion, prefix+"swift.auth-version", 0, "OpenStack Swift authentication API version. 0 to autodetect.")
 	f.StringVar(&cfg.AuthURL, prefix+"swift.auth-url", "", "OpenStack Swift authentication URL")
+	f.BoolVar(&cfg.Internal, prefix+"swift.internal", false, "Set this to true to use the internal OpenStack Swift endpoint URL")
 	f.StringVar(&cfg.Username, prefix+"swift.username", "", "OpenStack Swift username.")
 	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "OpenStack Swift user's domain name.")
 	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "OpenStack Swift user's domain ID.")

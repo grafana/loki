@@ -1,51 +1,88 @@
 ---
 title: Examples
+description: Loki Configuration Examples
 ---
- # Loki Configuration Examples
+ # Examples
 
-## almost-zero-dependency.yaml
+## alibaba-cloud-storage-config.yaml
 
 ```yaml
-# This is a configuration to deploy Loki depending only on a storage solution 
-# for example, an S3-compatible API like MinIO. 
-# The ring configuration is based on the gossip memberlist and the index is shipped to storage 
-# via Single Store (boltdb-shipper)
+
+# This partial configuration uses Alibaba for chunk storage
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    object_store: alibabacloud
+    schema: v11
+    index:
+      prefix: loki_index_
+      period: 168h
+
+storage_config:
+  alibabacloud:
+    bucket: <bucket>
+    endpoint: <endpoint>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
+
+```
+
+
+## 1-Local-Configuration-Example.yaml
+
+```yaml
 
 auth_enabled: false
 
 server:
   http_listen_port: 3100
 
-distributor:
+common:
   ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /tmp/loki
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: filesystem
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+```
+
+
+## 2-S3-Cluster-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by a s3-Comaptible API
+# like MinIO for storage. Loki components will use memberlist ring to shard and
+# the index will be shipped to storage via boltdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
     kvstore:
       store: memberlist
-
-ingester:
-  lifecycler:
-    ring:
-      kvstore:
-        store: memberlist
-      replication_factor: 1
-    final_sleep: 0s
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
+  replication_factor: 1
+  path_prefix: /loki # Update this accordingly, data will be stored here.
 
 memberlist:
-  abort_if_cluster_join_fails: false
-
-  # Expose this port on all distributor, ingester
-  # and querier replicas.
-  bind_port: 7946
-
-  # You can use a headless k8s service for all distributor,
-  # ingester and querier components.
   join_members:
-  - loki-gossip-ring.loki.svc.cluster.local:7946
-
-  max_join_backoff: 1m
-  max_join_retries: 10
-  min_join_backoff: 1s
+  # You can use a headless k8s service for all distributor, ingester and querier components.
+  - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
 
 schema_config:
   configs:
@@ -62,26 +99,21 @@ storage_config:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
    shared_store: s3
-
  aws:
    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
    s3forcepathstyle: true
 
-limits_config:
-  enforce_metric_name: false
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
-
 compactor:
-  working_directory: /data/compactor
+  working_directory: /loki/compactor
   shared_store: s3
   compaction_interval: 5m
 ```
 
 
-## aws-basic-config-no-creds.yaml
+## 3-S3-Without-Credentials-Snippet.yaml
 
 ```yaml
+
 # If you don't wish to hard-code S3 credentials you can also configure an EC2
 # instance role by changing the `storage_config` section
 
@@ -102,31 +134,10 @@ storage_config:
 ```
 
 
-## aws-basic-config.yaml
+## 4-BOS-Example.yaml
 
 ```yaml
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
 
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
-```
-
-
-## bos-config.yaml
-
-```yaml
 schema_config:
   configs:
     - from: 2020-05-15
@@ -155,9 +166,33 @@ compactor:
 ```
 
 
-## cassandra-index.yaml
+## 5-S3-And-DynamoDB-Snippet.yaml
 
 ```yaml
+
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: aws
+    object_store: s3
+    schema: v11
+    index:
+      prefix: loki_
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
+```
+
+
+## 6-Cassandra-Snippet.yaml
+
+```yaml
+
 # This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
 
 schema_config:
@@ -184,53 +219,9 @@ storage_config:
 ```
 
 
-## complete-local-config.yaml
+## 7-Schema-Migration-Snippet.yaml
 
 ```yaml
-auth_enabled: false
-
-server:
-  http_listen_port: 3100
-
-ingester:
-  lifecycler:
-    address: 127.0.0.1
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-    final_sleep: 0s
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: boltdb
-    object_store: filesystem
-    schema: v11
-    index:
-      prefix: index_
-      period: 168h
-
-storage_config:
-  boltdb:
-    directory: /tmp/loki/index
-
-  filesystem:
-    directory: /tmp/loki/chunks
-
-limits_config:
-  enforce_metric_name: false
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
-```
-
-
-## example-schema-config.yaml
-
-```yaml
-# Additional example schema configuration for Cassandra
 
 schema_config:
   configs:
@@ -257,9 +248,10 @@ schema_config:
 ```
 
 
-## google-cloud-storage-config.yaml
+## 8-GCS-Snippet.yaml
 
 ```yaml
+
 # This partial configuration uses GCS for chunk storage and uses BigTable for index storage
 
 schema_config:
@@ -282,33 +274,10 @@ storage_config:
 ```
 
 
-## s3-compatible-apis.yaml
+## 9-Expanded-S3-Snippet.yaml
 
 ```yaml
-# S3-compatible APIs such as Ceph Object Storage with an S3-compatible API, can be used.
-# If the API supports path-style URLs rather than virtual hosted bucket addressing,
-# configure the URL in `storage_config` with the custom endpoint
 
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
-```
-
-
-## s3-expanded-config.yaml
-
-```yaml
 # S3 configuration supports an expanded configuration. 
 # Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
@@ -335,5 +304,121 @@ storage_config:
       insecure_skip_verify: false
     s3forcepathstyle: true
     
+```
+
+
+## 10-S3-And-DynamoDB-With-KMS-Snippet.yaml
+
+```yaml
+
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage and a KMS CMK for encryption
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: aws
+    object_store: s3
+    schema: v11
+    index:
+      prefix: loki_
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    sse_encryption: true
+    sse:
+      type: SSE-KMS
+      kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
+      kms_key_id: 0987dcba-09fe-87dc-65ba-ab0987654321
+```
+
+
+## 11-COS-HMAC-Example.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. HMAC will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
+
+```
+
+
+## 12-COS-APIKey-Example.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. APIKey will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    api_key: <api_key_to_authenticate_with_cos>
+    service_instance_id: <cos_service_instance_id>
+    auth_endpoint: <iam_endpoint_for_authentication>
+
+```
+
+
+## 13-COS-Trusted-Profile-Example.yaml
+
+```yaml
+
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. 
+# A trusted profile will be used for authenticating with COS. We can either pass
+# the trusted profile name or trusted profile ID along with the compute resource token file.
+# If we pass both trusted profile name and trusted profile ID it should be of 
+# the same trusted profile.
+# In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
+# For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    auth_endpoint: <iam_endpoint_for_authentication>
+    cr_token_file_path: <path_to_compute_resource_token>
+    trusted_profile_name: <name_of_the_trusted_profile> # You can also use trusted_profile_id instead of trusted_profile_name
+
 ```
 

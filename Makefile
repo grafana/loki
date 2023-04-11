@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources format
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
+.PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
@@ -10,6 +11,8 @@
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
+.PHONY: k3d-loki k3d-enterprise-logs k3d-down
+.PHONY: helm-test helm-lint
 
 SHELL = /usr/bin/env bash -o pipefail
 
@@ -28,7 +31,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.26.0
+BUILD_IMAGE_VERSION := 0.28.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -158,7 +161,7 @@ cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 ###############
-# Helm-Test #
+# Helm #
 ###############
 .PHONY: production/helm/loki/src/helm-test/helm-test
 helm-test: production/helm/loki/src/helm-test/helm-test
@@ -166,6 +169,9 @@ helm-test: production/helm/loki/src/helm-test/helm-test
 # Package Helm tests but do not run them.
 production/helm/loki/src/helm-test/helm-test:
 	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
+
+helm-lint:
+	$(MAKE) -BC production/helm/loki lint
 
 #################
 # Loki-QueryTee #
@@ -261,7 +267,9 @@ dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
+	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -289,7 +297,7 @@ lint:
 ########
 
 test: all
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -421,6 +429,13 @@ clients/cmd/docker-driver/docker-driver:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
+ifndef DOCKER_PASSWORD
+	$(error env var DOCKER_PASSWORD is undefined)
+endif
+ifndef DOCKER_USERNAME
+	$(error env var DOCKER_USERNAME is undefined)
+endif
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	docker plugin push $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 
@@ -652,7 +667,8 @@ else
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
 endif
-	@git diff --exit-code -- go.sum go.mod vendor/
+	@git diff --exit-code -- go.sum go.mod vendor/ || \
+	    (echo "Run 'go mod download && go mod verify && go mod tidy && go mod vendor' and check in changes to vendor/ to fix failed check-mod."; exit 1)
 
 
 lint-jsonnet:
@@ -727,6 +743,12 @@ format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
+
+GIT_TARGET_BRANCH ?= main
+check-format: format
+	git diff --name-only HEAD origin/$(GIT_TARGET_BRANCH) -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
+	|| (echo "Please format code by running 'make format' and committing the changes" && false)
+
 # Documentation related commands
 
 doc: ## Generates the config file documentation
@@ -748,11 +770,18 @@ validate-example-configs: loki
 # Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
+	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configuration)
+	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
+	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\n---\n # Loki Configuration Examples" > ./docs/sources/configuration/examples.md
+	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
 	# Append each configuration and its file name to examples.md
-	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
+	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
+		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+		cat $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
+		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+	done
+
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
@@ -763,3 +792,12 @@ check-example-config-doc: generate-example-config-doc
 		echo -e "(Don't forget to check in the generated files when finished)\n"; \
 		exit 1; \
 	fi
+
+dev-k3d-loki:
+	$(MAKE) -C $(CURDIR)/tools/dev/k3d loki
+
+dev-k3d-enterprise-logs:
+	$(MAKE) -C $(CURDIR)/tools/dev/k3d enterprise-logs
+
+dev-k3d-down:
+	$(MAKE) -C $(CURDIR)/tools/dev/k3d down

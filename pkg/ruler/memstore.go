@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/model/rulefmt"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -57,7 +59,7 @@ func newMemstoreMetrics(r prometheus.Registerer) *memstoreMetrics {
 }
 
 type RuleIter interface {
-	AlertingRules() []*rules.AlertingRule
+	AlertingRules() []rulefmt.Rule
 }
 
 type MemStore struct {
@@ -136,7 +138,7 @@ func (m *MemStore) run() {
 			m.mtx.Lock()
 			holdDurs := make(map[string]time.Duration)
 			for _, rule := range m.mgr.AlertingRules() {
-				holdDurs[rule.Name()] = rule.HoldDuration()
+				holdDurs[rule.Alert] = time.Duration(rule.For)
 			}
 
 			for ruleKey, cache := range m.rules {
@@ -200,18 +202,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		return storage.NoopSeriesSet()
 	}
 
-	var rule *rules.AlertingRule
-
-	// go fetch the rule via the alertname
-	for _, x := range m.mgr.AlertingRules() {
-		if x.Name() == ruleKey {
-			rule = x
-			break
-		}
-	}
-
-	// should not happen
-	if rule == nil {
+	rule, ok := m.findRule(ruleKey)
+	if !ok {
 		level.Error(m.logger).Log("msg", "failure trying to restore for state for untracked alerting rule", "name", ruleKey)
 		return storage.NoopSeriesSet()
 	}
@@ -249,8 +241,9 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 	// see if alert condition had any inhabitants at ts-forDuration. We can assume it's still firing because
 	// that's the only condition under which this is queried (via RestoreForState).
-	checkTime := m.ts.Add(-rule.HoldDuration())
-	vec, err := m.queryFunc(m.ctx, rule.Query().String(), checkTime)
+	holDuration := time.Duration(rule.For)
+	checkTime := m.ts.Add(-holDuration)
+	vec, err := m.queryFunc(m.ctx, rule.Expr, checkTime)
 	if err != nil {
 		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
 		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
@@ -267,7 +260,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		ts := util.TimeToMillis(m.ts)
 
 		forStateVec = append(forStateVec, promql.Sample{
-			Metric: ForStateMetric(smpl.Metric, rule.Name()),
+			Metric: ForStateMetric(smpl.Metric, rule.Alert),
 			Point: promql.Point{
 				T: ts,
 				V: float64(checkTime.Unix()),
@@ -293,6 +286,16 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 			}),
 		},
 	)
+}
+
+func (m *memStoreQuerier) findRule(name string) (rulefmt.Rule, bool) {
+	// go fetch the rule via the alertname
+	for _, rule := range m.mgr.AlertingRules() {
+		if rule.Alert == name {
+			return rule, true
+		}
+	}
+	return rulefmt.Rule{}, false
 }
 
 // LabelValues returns all potential values for a label name.

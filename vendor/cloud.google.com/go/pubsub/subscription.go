@@ -26,10 +26,10 @@ import (
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/internal/optional"
 	ipubsub "cloud.google.com/go/internal/pubsub"
+	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	"cloud.google.com/go/pubsub/internal/scheduler"
 	gax "github.com/googleapis/gax-go/v2"
 	"golang.org/x/sync/errgroup"
-	pb "google.golang.org/genproto/googleapis/pubsub/v1"
 	fmpb "google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -580,7 +580,7 @@ type RetryPolicy struct {
 	// given message. Value should be between 0 and 600 seconds. Defaults to 10 seconds.
 	MinimumBackoff optional.Duration
 	// MaximumBackoff is the maximum delay between consecutive deliveries of a
-	// given message. Value should be between 0 and 600 seconds. Defaults to 10 seconds.
+	// given message. Value should be between 0 and 600 seconds. Defaults to 600 seconds.
 	MaximumBackoff optional.Duration
 }
 
@@ -828,7 +828,7 @@ type SubscriptionConfigToUpdate struct {
 func (s *Subscription) Update(ctx context.Context, cfg SubscriptionConfigToUpdate) (SubscriptionConfig, error) {
 	req := s.updateRequest(&cfg)
 	if err := cfg.validate(); err != nil {
-		return SubscriptionConfig{}, fmt.Errorf("pubsub: UpdateSubscription %v", err)
+		return SubscriptionConfig{}, fmt.Errorf("pubsub: UpdateSubscription %w", err)
 	}
 	if len(req.UpdateMask.Paths) == 0 {
 		return SubscriptionConfig{}, errors.New("pubsub: UpdateSubscription call with nothing to update")

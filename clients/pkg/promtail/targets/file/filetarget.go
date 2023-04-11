@@ -7,16 +7,15 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar"
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
@@ -77,6 +76,8 @@ type FileTarget struct {
 
 	targetConfig *Config
 
+	decompressCfg *scrapeconfig.DecompressionConfig
+
 	encoding string
 }
 
@@ -94,6 +95,7 @@ func NewFileTarget(
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 	encoding string,
+	decompressCfg *scrapeconfig.DecompressionConfig,
 ) (*FileTarget, error) {
 	t := &FileTarget{
 		logger:             logger,
@@ -111,6 +113,7 @@ func NewFileTarget(
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
 		encoding:           encoding,
+		decompressCfg:      decompressCfg,
 	}
 
 	go t.run()
@@ -320,9 +323,9 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 
 		var reader Reader
-		if isCompressed(p) {
+		if t.decompressCfg != nil && t.decompressCfg.Enabled {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
-			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			decompressor, err := newDecompressor(t.metrics, t.logger, t.handler, t.positions, p, t.encoding, t.decompressCfg)
 			if err != nil {
 				level.Error(t.logger).Log("msg", "failed to start decompressor", "error", err, "filename", p)
 				continue
@@ -341,18 +344,6 @@ func (t *FileTarget) startTailing(ps []string) {
 	}
 }
 
-func isCompressed(p string) bool {
-	ext := filepath.Ext(p)
-
-	for format := range supportedCompressedFormats() {
-		if ext == format {
-			return true
-		}
-	}
-
-	return false
-}
-
 // stopTailingAndRemovePosition will stop the tailer and remove the positions entry.
 // Call this when a file no longer exists and you want to remove all traces of it.
 func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
@@ -361,9 +352,6 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			reader.Stop()
 			t.positions.Remove(reader.Path())
 			delete(t.readers, p)
-		}
-		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
-			h.UnregisterLatencyMetric(prometheus.Labels{client.LatencyLabel: p})
 		}
 	}
 }

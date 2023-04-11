@@ -2,11 +2,13 @@ package indexgateway
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -55,6 +57,9 @@ type Gateway struct {
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
 func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClient IndexClient) (*Gateway, error) {
+	if indexClient == nil {
+		indexClient = failingIndexClient{}
+	}
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
@@ -218,10 +223,16 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	// An empty matchers string cannot be parsed,
 	// therefore we check the string representation of the the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
-		matchers, err = syntax.ParseMatchers(req.Matchers)
+		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
 		if err != nil {
 			return nil, err
 		}
+
+		matcherExpr, ok := expr.(*syntax.MatchersExpr)
+		if !ok {
+			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
+		}
+		matchers = matcherExpr.Mts
 	}
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
@@ -244,3 +255,11 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
+
+type failingIndexClient struct{}
+
+func (f failingIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
+}
+
+func (f failingIndexClient) Stop() {}

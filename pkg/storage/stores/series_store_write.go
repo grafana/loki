@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -59,7 +60,9 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 // PutOne implements Store
 func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.PutOne")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	var (
@@ -97,7 +100,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 		}
 	}
 
-	if err := c.indexWriter.IndexChunk(ctx, chk); err != nil {
+	if err := c.indexWriter.IndexChunk(ctx, from, through, chk); err != nil {
 		return err
 	}
 

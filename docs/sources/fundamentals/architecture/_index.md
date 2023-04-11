@@ -1,10 +1,11 @@
 ---
 title: Architecture
+description: Grafana Loki's Architecture
 weight: 200
 aliases:
     - /docs/loki/latest/architecture/
 ---
-# Grafana Loki's Architecture
+# Architecture
 
 ## Multi-tenancy
 
@@ -74,7 +75,7 @@ bytes of the log entry.
 
 ### Single Store
 
-Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`](../../operations/storage/boltdb-shipper) to store the `index` in object storage (the same way we store `chunks`).
+Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{<relref "../../operations/storage/boltdb-shipper">}}) to store the `index` in object storage (the same way we store `chunks`).
 
 ###  Deprecated: Multi-store
 
@@ -95,7 +96,7 @@ maintenance tasks. It consists of:
 
 > Unlike the other core components of Loki, the chunk store is not a separate
 > service, job, or process, but rather a library embedded in the two services
-> that need to access Loki data: the [ingester](#ingester) and [querier](#querier).
+> that need to access Loki data: the [ingester]({{<relref "components#ingester">}}) and [querier]({{<relref "components#querier">}}).
 
 The chunk store relies on a unified interface to the
 "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and
@@ -135,7 +136,7 @@ To summarize, the read path works as follows:
 
 ## Write Path
 
-![chunk_diagram](chunks_diagram.png)
+![chunk_diagram](./chunks_diagram.png)
 
 To summarize, the write path works as follows:
 
