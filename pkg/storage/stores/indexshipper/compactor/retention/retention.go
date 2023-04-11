@@ -79,6 +79,12 @@ type IndexProcessor interface {
 	SeriesCleaner
 }
 
+type CompactionIndexMap struct {
+	Path           string
+	Size           int64
+	CompactedIndex IndexProcessor
+}
+
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
 
@@ -106,6 +112,110 @@ func NewSizeBasedRetentionCleaner(
 		cleanupThreshold:      cleanupThreshold,
 		RetentionLoopInterval: sizeBasedRetentionEnforcementInterval,
 	}, nil
+}
+
+func (s *SizeBasedRetentionCleaner) ThresholdExceeded() (bool, error) {
+	diskUsage, err := s.getDiskUsage()
+	if err != nil {
+		return false, err
+	}
+	if diskUsage.UsedPercent < float64(s.cleanupThreshold) {
+		level.Info(util_log.Logger).Log("msg", "Not past disk usage threshold, not running size-based compaction.")
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *SizeBasedRetentionCleaner) getDiskUsage() (util.DiskStatus, error) {
+	usage, err := util.DiskUsage(s.WorkingDirectory)
+	if err != nil {
+		return util.DiskStatus{}, err
+	}
+	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", usage.UsedPercent)
+
+	return usage, nil
+}
+
+func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, indexes []CompactionIndexMap, retentionWorkDir string) ([]ChunkRef, error) {
+	bytesToDelete, err := s.getBytesToDelete()
+	if err != nil {
+		return []ChunkRef{}, err
+	}
+
+	level.Info(util_log.Logger).Log("msg", "Calculated megabytes to delete to reach configured storage free space:",
+		"megabytesToDelete", bytesToDelete/1024/1024)
+
+	marker, err := NewMarkerStorageWriter(retentionWorkDir)
+	defer marker.Close()
+
+	if err != nil {
+		return []ChunkRef{}, err
+	}
+
+	var chunksToDelete []ChunkRef
+	bytesDeleted := 0.0
+	for _, entry := range indexes {
+		if bytesToDelete < (bytesDeleted) {
+			break
+		}
+
+		level.Info(util_log.Logger).Log("msg",
+			"------ block size retention exceeded, removing chunks from file", "filepath", entry.Path)
+
+		seriesMap := newUserSeriesMap()
+		entry.CompactedIndex.ForEachChunk(ctx, func(ce ChunkEntry) (bool, error) {
+			if bytesToDelete < bytesDeleted {
+				return true, nil
+			}
+
+			seriesMap.Add(ce.SeriesID, ce.UserID, ce.Labels)
+			userID := unsafeGetString(ce.UserID)
+			chunkID := unsafeGetString(ce.ChunkID)
+
+			chk, err := chunk.ParseExternalKey(userID, chunkID)
+			if err != nil {
+				return false, err
+			}
+
+			bytesDeleted = bytesDeleted + float64(chk.Size())
+
+			err = marker.Put(ce.ChunkID)
+			if err != nil {
+				level.Debug(util_log.Logger).Log("msg", "could not write chunk id to marker", "ChunkID", string(ce.ChunkID))
+				return false, err
+			}
+			level.Debug(util_log.Logger).Log("msg", "current number of chunks", "count", marker.Count())
+			chunksToDelete = append(chunksToDelete, ce.ChunkRef)
+
+			return true, nil
+		})
+
+		var emptySets []IndexProcessor
+		seriesMap.ForEach(func(info userSeriesInfo) error {
+			if !info.isDeleted {
+				return nil
+			}
+
+			emptySets = append(emptySets)
+
+			return entry.CompactedIndex.CleanupSeries(info.UserID(), info.lbls)
+		})
+	}
+	return chunksToDelete, nil
+}
+
+func (s *SizeBasedRetentionCleaner) getBytesToDelete() (float64, error) {
+	diskUsage, err := s.getDiskUsage()
+	if err != nil {
+		return 0.0, err
+	}
+	percentageToBeDeleted := diskUsage.UsedPercent - float64(s.cleanupThreshold)
+
+	if percentageToBeDeleted < 0.0 {
+		percentageToBeDeleted = 0.0
+	}
+
+	return (percentageToBeDeleted / 100) * float64(diskUsage.All), nil
 }
 
 type TableMarker interface {
