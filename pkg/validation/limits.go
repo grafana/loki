@@ -85,6 +85,7 @@ type Limits struct {
 	MaxQuerySeries             int            `yaml:"max_query_series" json:"max_query_series"`
 	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange              model.Duration `yaml:"max_query_range" json:"max_query_range"`
 	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
@@ -169,7 +170,8 @@ type Limits struct {
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
-	RequiredLabels []string `yaml:"required_label_matchers,omitempty" json:"required_label_matchers,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 }
 
 type StreamRetention struct {
@@ -220,6 +222,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series that is returned by a metric query. When the limit is reached an error is returned.")
+	_ = l.MaxQueryRange.Set("0s")
+	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
 	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
 
@@ -439,6 +443,11 @@ func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int { return 0 }
 // MaxQueryLength returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
+}
+
+// MaxQueryRange returns the limit for the max [range] value that can be in a range query
+func (o *Overrides) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryRange)
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
@@ -691,6 +700,10 @@ func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*valida
 
 func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
 	return o.getOverridesForUser(userID).RequiredLabels
+}
+
+func (o *Overrides) RequiredNumberLabels(ctx context.Context, userID string) int {
+	return o.getOverridesForUser(userID).RequiredNumberLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {

@@ -76,6 +76,10 @@ type store struct {
 	logger log.Logger
 
 	chunkFilterer chunk.RequestChunkFilterer
+
+	// Keep a reference to the tsdb index store as we use one store for multiple schema period configs.
+	tsdbStore         index.ReaderWriter
+	tsdbStoreStopFunc func()
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -261,20 +265,25 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			}
 		}
 
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(fmt.Sprintf("%s_%s", p.ObjectType, p.From.String()), s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits,
-			tableRange, backupIndexWriter, indexClientReg, indexClientLogger)
-		if err != nil {
-			return nil, nil, nil, err
+		// We should only create one tsdb.Store per storage.Store and reuse it over all TSDB schema periods.
+		if s.tsdbStore == nil {
+			indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(fmt.Sprintf("%s_%s", p.ObjectType, p.From.String()), s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits,
+				tableRange, backupIndexWriter, indexClientReg, indexClientLogger)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			s.tsdbStore = indexReaderWriter
+			s.tsdbStoreStopFunc = stopTSDBStoreFunc
 		}
 
-		indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
-		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
+		indexReaderWriter := index.NewMonitoredReaderWriter(s.tsdbStore, indexClientReg)
+		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, s.tsdbStore, s.storeCfg.DisableIndexDeduplication)
 
 		return chunkWriter, indexReaderWriter,
 			func() {
 				f.Stop()
 				chunkClient.Stop()
-				stopTSDBStoreFunc()
+				s.tsdbStoreStopFunc()
 				objectClient.Stop()
 				backupStoreStop()
 			}, nil

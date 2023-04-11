@@ -17,7 +17,7 @@ The Write Ahead Log in Loki takes a few particular tradeoffs compared to other W
 
 1) Corruption/Deletion of the WAL prior to replaying it
 
-In the event the WAL is corrupted/partially deleted, Loki will not be able to recover all of it's data. In this case, Loki will attempt to recover any data it can, but will not prevent Loki from starting.
+In the event the WAL is corrupted/partially deleted, Loki will not be able to recover all of its data. In this case, Loki will attempt to recover any data it can, but will not prevent Loki from starting.
 
 Note: the Prometheus metric `loki_ingester_wal_corruptions_total` can be used to track and alert when this happens.
 

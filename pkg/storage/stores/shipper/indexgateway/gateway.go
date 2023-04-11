@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -299,3 +300,11 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
+
+type failingIndexClient struct{}
+
+func (f failingIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
+}
+
+func (f failingIndexClient) Stop() {}

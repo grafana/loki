@@ -166,6 +166,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
