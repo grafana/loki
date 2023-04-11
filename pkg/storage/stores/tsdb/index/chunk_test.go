@@ -459,3 +459,73 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 
 	}
 }
+
+func TestSearchWithPageMarkers(t *testing.T) {
+	for _, tc := range []struct {
+		desc       string
+		chks, exp  []ChunkMeta
+		mint, maxt int64
+	}{
+		{
+			desc: "half time range",
+			chks: []ChunkMeta{
+				{MinTime: 0, MaxTime: 1},
+				{MinTime: 1, MaxTime: 2},
+				{MinTime: 2, MaxTime: 3},
+				{MinTime: 3, MaxTime: 4},
+				{MinTime: 4, MaxTime: 5},
+			},
+			mint: 2,
+			maxt: 4,
+			exp: []ChunkMeta{
+				{MinTime: 2, MaxTime: 3},
+				{MinTime: 3, MaxTime: 4},
+			},
+		},
+		{
+			desc: "no chunks in time range",
+			chks: []ChunkMeta{
+				{MinTime: 0, MaxTime: 1},
+				{MinTime: 1, MaxTime: 2},
+				{MinTime: 2, MaxTime: 3},
+				{MinTime: 3, MaxTime: 4},
+				{MinTime: 4, MaxTime: 5},
+			},
+			mint: 5,
+			maxt: 6,
+			exp:  []ChunkMeta{},
+		},
+		{
+			desc: "all chunks within time range",
+			chks: []ChunkMeta{
+				{MinTime: 1, MaxTime: 2},
+				{MinTime: 2, MaxTime: 3},
+				{MinTime: 3, MaxTime: 4},
+			},
+			mint: 1,
+			maxt: 4,
+			exp: []ChunkMeta{
+				{MinTime: 1, MaxTime: 2},
+				{MinTime: 2, MaxTime: 3},
+				{MinTime: 3, MaxTime: 4},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			pageSize := 2
+			var w Writer
+			w.Version = FormatV3
+			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			w.addChunks(tc.chks, &primary, &scratch, pageSize)
+
+			decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+			dec := &Decoder{
+				chunksSample: map[storage.SeriesRef]*chunkSamples{},
+			}
+			dst := []ChunkMeta{}
+			require.Nil(t, dec.readChunksV3(&decbuf, tc.mint, tc.maxt, &dst))
+			require.Equal(t, tc.exp, dst)
+		})
+	}
+}
