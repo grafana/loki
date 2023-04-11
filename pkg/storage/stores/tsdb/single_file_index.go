@@ -5,13 +5,13 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
