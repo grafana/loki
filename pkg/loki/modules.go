@@ -404,6 +404,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/series":      querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
 		"/loki/api/v1/index/stats": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
 
+		"loki/api/v1/limits/validate": querier.WrapQuerySpanAndTimeout("query.LimitsValidation", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LimitsValidationHandler)),
+
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
 			querier.WrapQuerySpanAndTimeout("query.LogQuery", t.querierAPI),

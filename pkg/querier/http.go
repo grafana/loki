@@ -438,6 +438,26 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// LimitsValidationHandler returns an error (string) if the query limits within the request are invalid
+// when compared to the tenants limits.
+func (q *QuerierAPI) LimitsValidationHandler(w http.ResponseWriter, r *http.Request) {
+	// do we maybe need to extract the header here and inject into the ctx?
+
+	// we shouldn't support multiple tenant ids for this endpoint
+	tenantIDs, err := tenant.TenantIDs(r.Context())
+	if len(tenantIDs) != 1 {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "invalid # of tenant IDs passed to LimitsValidation endpoint"), w)
+		return
+	}
+	err = q.limits.ValidateQueryLimits(r.Context(), tenantIDs[0])
+
+	if err == nil {
+		return
+	}
+
+	w.Write([]byte(err.Error()))
+}
+
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
 // This is used only to keep regexp query string support until it gets fully deprecated.
 func parseRegexQuery(httpRequest *http.Request) (string, error) {

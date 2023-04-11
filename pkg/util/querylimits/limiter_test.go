@@ -2,6 +2,7 @@ package querylimits
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -208,4 +209,49 @@ func TestLimiter_MergeLimits(t *testing.T) {
 	ctx := InjectQueryLimitsContext(context.Background(), limits)
 
 	require.ElementsMatch(t, []string{"one", "two", "three"}, l.RequiredLabels(ctx, "fake"))
+}
+
+func TestLimiter_ValidateLimits(t *testing.T) {
+	// some fake tenant
+	tLimits := make(map[string]*validation.Limits)
+	tLimits["fake"] = &validation.Limits{
+		MaxQueryLookback:        model.Duration(30 * time.Second),
+		MaxQueryLength:          model.Duration(30 * time.Second),
+		MaxQueryRange:           model.Duration(2 * 24 * time.Hour),
+		MaxEntriesLimitPerQuery: 10,
+		QueryTimeout:            model.Duration(30 * time.Second),
+		RequiredNumberLabels:    10,
+		MaxQueryBytesRead:       10,
+		MaxQuerierBytesRead:     10,
+	}
+
+	// everything is valid
+	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	l := NewLimiter(log.NewNopLogger(), overrides)
+	limits := QueryLimits{
+		MaxQueryLookback: model.Duration(29 * time.Second),
+	}
+	ctx := InjectQueryLimitsContext(context.Background(), limits)
+
+	require.NoError(t, l.ValidateQueryLimits(ctx, "fake"))
+
+	// one limit is invalid
+	limits.MaxQueryLength = model.Duration(60 * time.Second)
+
+	ctx = InjectQueryLimitsContext(context.Background(), limits)
+
+	err := l.ValidateQueryLimits(ctx, "fake")
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "violate your tenants limits; MaxQueryLength"))
+
+	// multiple limits are invalid
+	limits.MaxQueryBytesRead = 100
+
+	ctx = InjectQueryLimitsContext(context.Background(), limits)
+
+	err = l.ValidateQueryLimits(ctx, "fake")
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "violate your tenants limits; MaxQueryLength"))
+	require.True(t, strings.Contains(err.Error(), "MaxQueryBytesRead"))
+
 }

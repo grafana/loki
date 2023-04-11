@@ -356,6 +356,10 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 	}, nil
 }
 
+func (o *Overrides) ValidateQueryLimits(ctx context.Context, userID string) error {
+	return nil
+}
+
 func (o *Overrides) AllByUserID() map[string]*Limits {
 	if o.tenantLimits != nil {
 		return o.tenantLimits.AllByUserID()
