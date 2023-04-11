@@ -235,18 +235,7 @@ func New(
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
-	if err := services.StartManagerAndAwaitHealthy(ctx, d.subservices); err != nil {
-		return errors.Wrap(err, "unable to start distributor services")
-	}
-
-	if d.distributorsLifecycler != nil {
-		level.Info(util_log.Logger).Log("msg", "waiting until distributor is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, d.distributorsRing, d.distributorsLifecycler.GetInstanceAddr(), ring.ACTIVE); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
 }
 
 func (d *Distributor) running(ctx context.Context) error {
