@@ -180,6 +180,10 @@ type chunkPageMarker struct {
 	MinTime, MaxTime int64
 }
 
+func (m *chunkPageMarker) subsetOf(from, through int64) bool {
+	return from <= m.MinTime && through >= m.MaxTime
+}
+
 func (m *chunkPageMarker) combine(c ChunkMeta) {
 	m.KB += c.KB
 	m.Entries += c.Entries
@@ -246,4 +250,45 @@ func (xs chunkPageMarkers) Find(from, through int64) (i int, prevMaxT int64, fou
 	}
 
 	return i, prevMaxT, true
+}
+
+type signalledChunkPageMarker struct {
+	fullyOverlapping bool
+	chunkPageMarker
+}
+
+type signalledChunkPageMarkers []signalledChunkPageMarker
+
+// todo(owen-d): determine if pooling here is necessary
+func (xs chunkPageMarkers) MarkedOverlapping(from, through int64) (relevantPages signalledChunkPageMarkers) {
+	i, _, found := xs.Find(from, through)
+	if !found {
+		return nil
+	}
+
+	for i := i; i < len(xs); i++ {
+		if xs[i].MinTime >= through {
+			break
+		}
+
+		page := signalledChunkPageMarker{
+			chunkPageMarker: xs[i],
+		}
+
+		if xs[i].subsetOf(from, through) {
+			page.fullyOverlapping = true
+		}
+		relevantPages = append(relevantPages, page)
+	}
+	return relevantPages
+}
+
+type ChunkStats struct {
+	Chunks, KB, Entries uint64
+}
+
+func (cs *ChunkStats) add(chunks int, kb, entries uint32) {
+	cs.Chunks += uint64(chunks)
+	cs.KB += uint64(kb)
+	cs.Entries += uint64(entries)
 }

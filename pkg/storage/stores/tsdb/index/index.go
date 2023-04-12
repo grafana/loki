@@ -2183,14 +2183,20 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 }
 
 func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
-	*lbls = (*lbls)[:0]
-	*chks = (*chks)[:0]
+	if lbls != nil {
+		*lbls = (*lbls)[:0]
+	}
+	if chks != nil {
+		*chks = (*chks)[:0]
+	}
 
 	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
 	fprint := d.Be64()
 	k := d.Uvarint()
 
+	// TODO(owen-d): We should consider adding an offset field prior to labels
+	// so they can be skipped while decoding series if they're not needed
 	for i := 0; i < k; i++ {
 		lno := uint32(d.Uvarint())
 		lvo := uint32(d.Uvarint())
@@ -2208,9 +2214,127 @@ func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks 
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		// TODO(owen-d): I wonder if these nil-checks are non-negligible in perf cost
+		if lbls != nil {
+			*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		}
 	}
 	return &d, fprint, nil
+}
+
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
+	d, _, err := dec.prepSeries(version, b, nil, nil)
+	if err != nil {
+		return ChunkStats{}, err
+	}
+
+	return dec.readChunkStats(version, d, seriesRef, from, through)
+}
+
+func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
+	if version > FormatV2 {
+		return dec.readChunkStatsV3(d, from, through)
+	}
+	return dec.readChunkStatsPriorV3(d, seriesRef, from, through)
+}
+
+func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (res ChunkStats, err error) {
+	// TODO(owen-d): remove these if unused
+	_ = d.Uvarint()   // pageSize
+	_ = int(d.Be32()) // markersLn
+	nMarkers := d.Uvarint()
+
+	// TODO(owen-d): use pool
+	markers := make(chunkPageMarkers, nMarkers)
+	for i := range markers {
+		markers[i].decode(d)
+	}
+
+	if d.Err() != nil {
+		return res, errors.Wrap(d.Err(), "read chunk markers")
+	}
+
+	relevantPages := markers.MarkedOverlapping(from, through)
+	// guaranteed to have no matching chunks
+	if len(relevantPages) == 0 {
+		return ChunkStats{}, nil
+	}
+
+	_ = d.Uvarint() // nChunks
+	// length of buffer at beginning of chunks,
+	// later used to incrementally skip pages
+	initialLn := d.Len()
+
+	for markerIdx := 0; markerIdx < len(relevantPages); markerIdx++ {
+		curMarker := relevantPages[markerIdx]
+		d.Skip(curMarker.Offset - (d.Len() - initialLn))
+
+		remainingInPage := curMarker.ChunksRemaining
+		if markerIdx < len(relevantPages)-1 {
+			remainingInPage -= relevantPages[markerIdx+1].ChunksRemaining
+		}
+
+		if curMarker.fullyOverlapping {
+			// use aggregated stats for this page
+			res.add(remainingInPage, curMarker.KB, curMarker.Entries)
+			continue
+		}
+
+		// page partially overlaps -- need to check chunks individually
+		var prevMaxT int64
+		for i := 0; i < remainingInPage; i++ {
+			chunkMeta := &ChunkMeta{}
+
+			var err error
+			if i == 0 {
+				// need to force the min-time because chunks are indexed
+				// with delta-encoded min-times relative to the prior chunk,
+				// but this doesn't reset at page boundaries
+				// (maybe it should for more ergonomic programming).
+				// instead, we can just force the min-time to the page's min-time
+				err = readChunkMetaWithForcedMintime(d, curMarker.MinTime, chunkMeta, true)
+			} else {
+				err = readChunkMeta(d, prevMaxT, chunkMeta)
+			}
+			if err != nil {
+				return res, errors.Wrap(d.Err(), "read meta for chunk")
+			}
+
+			prevMaxT = chunkMeta.MaxTime
+
+			if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
+				// add to stats
+				res.add(1, chunkMeta.KB, chunkMeta.Entries)
+			} else if chunkMeta.MinTime >= through {
+				break
+			}
+		}
+	}
+
+	return res, d.Err()
+
+}
+
+func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
+	// prior to v3, chunks needed manual iteration for stats aggregation
+	chks := ChunkMetasPool.Get()
+	defer ChunkMetasPool.Put(chks)
+	_, err = dec.Series(FormatV2, d.B, seriesRef, from, through, nil, &chks)
+	if err != nil {
+		return ChunkStats{}, err
+	}
+
+	for _, chk := range chks {
+		if overlap(from, through, chk.MinTime, chk.MaxTime) {
+			res.add(1, chk.KB, chk.Entries)
+		} else if chk.MinTime >= through {
+			break
+		}
+
+	}
+
+	return res, nil
+
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
@@ -2269,8 +2393,11 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-marker.ChunksRemaining+i)
 		}
 		prevMaxT = chunkMeta.MaxTime
+
 		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
 			*chks = append(*chks, *chunkMeta)
+		} else if chunkMeta.MinTime >= through {
+			break
 		}
 	}
 
@@ -2312,13 +2439,11 @@ func (dec *Decoder) readChunksPriorV3(d *encoding.Decbuf, seriesRef storage.Seri
 		}
 		t0 = chunkMeta.MaxTime
 
-		if !overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
-			continue
-		}
-		if chunkMeta.MinTime >= through {
+		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
+			*chks = append(*chks, *chunkMeta)
+		} else if chunkMeta.MinTime >= through {
 			break
 		}
-		*chks = append(*chks, *chunkMeta)
 	}
 	return d.Err()
 }
@@ -2326,7 +2451,17 @@ func (dec *Decoder) readChunksPriorV3(d *encoding.Decbuf, seriesRef storage.Seri
 func readChunkMeta(d *encoding.Decbuf, prevChunkMaxt int64, chunkMeta *ChunkMeta) error {
 	// Decode the diff against previous chunk as varint
 	// instead of uvarint because chunks may overlap
-	chunkMeta.MinTime = d.Varint64() + prevChunkMaxt
+	mint := d.Varint64() + prevChunkMaxt
+	return readChunkMetaWithForcedMintime(d, mint, chunkMeta, false)
+}
+
+func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *ChunkMeta, decodeMinT bool) error {
+	if decodeMinT {
+		// skip the mint delta since we're forcing, but still need to
+		// remove the bytes from our buffer
+		d.Varint64()
+	}
+	chunkMeta.MinTime = mint
 	chunkMeta.MaxTime = int64(d.Uvarint64()) + chunkMeta.MinTime
 	chunkMeta.KB = uint32(d.Uvarint())
 	chunkMeta.Entries = uint32(d.Uvarint64())
