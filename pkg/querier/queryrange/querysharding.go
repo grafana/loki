@@ -39,7 +39,7 @@ func NewQueryShardMiddleware(
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
-	statsHandler ...queryrangebase.Handler,
+	statsHandler queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -53,7 +53,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics, limits, maxShards, statsHandler...)
+		return newASTMapperware(confs, next, statsHandler, logger, shardingMetrics, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -72,11 +72,11 @@ func NewQueryShardMiddleware(
 func newASTMapperware(
 	confs ShardingConfigs,
 	next queryrangebase.Handler,
+	statsHandler queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
-	statsHandler ...queryrangebase.Handler,
 ) *astMapperware {
 	ast := &astMapperware{
 		confs:        confs,
@@ -89,8 +89,8 @@ func newASTMapperware(
 		maxShards:    maxShards,
 	}
 
-	if len(statsHandler) > 0 {
-		ast.statsHandler = statsHandler[0]
+	if statsHandler != nil {
+		ast.statsHandler = statsHandler
 	}
 
 	return ast
