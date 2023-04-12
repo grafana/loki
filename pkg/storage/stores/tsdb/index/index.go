@@ -583,13 +583,11 @@ func (w *Writer) addChunksPriorV3(chunks []ChunkMeta, primary, _ *encoding.Encbu
 func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, chunkPageSize int) {
 	scratch.Reset()
 
-	// TODO(owen-d): store this somewhere else that doesn't duplicate on every
-	// series. We don't strictly need this field now, but it may be useful
-	// to sketch approximate chunk counts/ranges in the future.
-	primary.PutUvarint(chunkPageSize)
-	// pointer to where to write how long the markers are.
+	primary.PutUvarint(len(chunks))
+	// placeholder for how long the markers section is so it can be skipped when there are few chunks present
 	markersLnOffset := primary.Len()
-	primary.PutBE32(0) // placeholder for how long the markers section is
+	primary.PutBE32(0)
+
 	markersStart := primary.Len()
 
 	nMarkers := len(chunks) / chunkPageSize
@@ -598,7 +596,6 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 	}
 	primary.PutUvarint(nMarkers)
 
-	scratch.PutUvarint(len(chunks))
 	chunksStart := scratch.Len()
 	markerOffset := 0 // start of the current marker page
 
@@ -2240,8 +2237,7 @@ func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef st
 }
 
 func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (res ChunkStats, err error) {
-	// TODO(owen-d): remove these if unused
-	_ = d.Uvarint()   // pageSize
+	_ = d.Uvarint()   // nChunks
 	_ = int(d.Be32()) // markersLn
 	nMarkers := d.Uvarint()
 
@@ -2261,7 +2257,6 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 		return ChunkStats{}, nil
 	}
 
-	_ = d.Uvarint() // nChunks
 	// length of buffer at beginning of chunks,
 	// later used to incrementally skip pages
 	initialLn := d.Len()
@@ -2365,7 +2360,7 @@ func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storag
 }
 
 func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, chks *[]ChunkMeta) error {
-	_ = d.Uvarint()   // pageSize
+	nChunks := d.Uvarint()
 	_ = int(d.Be32()) // markersLn
 	nMarkers := d.Uvarint()
 
@@ -2386,7 +2381,6 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 		return nil
 	}
 
-	nChunks := d.Uvarint()
 	marker := markers[start]
 	d.Skip(marker.Offset)
 
