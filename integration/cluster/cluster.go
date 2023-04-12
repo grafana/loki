@@ -73,8 +73,8 @@ storage_config:
     active_index_directory: {{.dataPath}}/index
     cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
-    active_index_directory: {{.dataPath}}/index
-    cache_location: {{.dataPath}}/boltdb-cache
+    active_index_directory: {{.dataPath}}/tsdb-index
+    cache_location: {{.dataPath}}/tsdb-cache
 
 compactor:
   working_directory: {{.dataPath}}/retention

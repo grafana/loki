@@ -60,7 +60,7 @@ func TestLoadTables(t *testing.T) {
 	// add a legacy db which is outside of table specific folder
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table1"), 0, 10, nil)
 
-	// table1 with 2 dbs
+	// table2 with 2 dbs
 	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
@@ -76,7 +76,7 @@ func TestLoadTables(t *testing.T) {
 		},
 	}, nil)
 
-	// table2 with 2 dbs
+	// table3 with 2 dbs
 	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table3"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
@@ -92,7 +92,7 @@ func TestLoadTables(t *testing.T) {
 		},
 	}, nil)
 
-	// table3 with 2 dbs
+	// table4 with 2 dbs
 	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table4"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
