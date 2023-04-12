@@ -415,10 +415,10 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, c
 func (s *StorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	err := s.queryExec(ctx, query, callback)
 	//
-	if strings.Contains(errors.Cause(err).Error(), gocql.ErrNotFound.Error()) {
+	if err != nil && strings.Contains(errors.Cause(err).Error(), gocql.ErrNotFound.Error()) {
 		return nil
 	}
-	if strings.Contains(errors.Cause(err).Error(), gocql.ErrNoConnections.Error()) {
+	if err != nil && strings.Contains(errors.Cause(err).Error(), gocql.ErrNoConnections.Error()) {
 		connectErr := s.reconnectReadSession()
 		if connectErr != nil {
 			return errors.Wrap(err, "StorageClient query reconnect fail")
