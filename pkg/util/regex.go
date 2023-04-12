@@ -12,7 +12,7 @@ func IsCaseInsensitive(reg *syntax.Regexp) bool {
 // Prepending the expression with `(?U)` or passing `NonGreedy` to the expression compiler is not enough since it will
 // just negate `.*` and `.*?`.
 func AllNonGreedy(regs ...*syntax.Regexp) {
-	ClearCapture(regs...)
+	// ClearCapture(regs...)
 	for _, re := range regs {
 		switch re.Op {
 		case syntax.OpCapture, syntax.OpConcat, syntax.OpAlternate:
