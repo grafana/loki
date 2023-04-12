@@ -33,6 +33,9 @@ type WriterEventSubscriber interface {
 	// WriteCleanup is implemented by WriteTo, who can subscribe to these type of events for cleaning up the series cache
 	// entries that originated from deleted segments.
 	WriteCleanup
+
+	// NotifyWrite allows others to be notifier when Writer writes to the underlying WAL.
+	NotifyWrite()
 }
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
@@ -47,7 +50,7 @@ type Writer struct {
 	wal         WAL
 	entryWriter *entryWriter
 
-	subscribersLock sync.Mutex
+	subscribersLock sync.RWMutex
 	subscribers     []WriterEventSubscriber
 
 	reclaimedOldSegmentsSpaceCounter *prometheus.CounterVec
@@ -97,6 +100,13 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
 			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
+
+			// todo: move this somewhere else
+			wrt.subscribersLock.RLock()
+			for _, s := range wrt.subscribers {
+				s.NotifyWrite()
+			}
+			wrt.subscribersLock.RUnlock()
 		}
 	}()
 	// WAL cleanup routine that cleans old segments
@@ -181,8 +191,8 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	}
 	// if we reclaimed at least one segment, notify all subscribers
 	if maxReclaimed != -1 {
-		wrt.subscribersLock.Lock()
-		defer wrt.subscribersLock.Unlock()
+		wrt.subscribersLock.RLock()
+		defer wrt.subscribersLock.RUnlock()
 		for _, subscriber := range wrt.subscribers {
 			subscriber.SeriesReset(maxReclaimed)
 		}

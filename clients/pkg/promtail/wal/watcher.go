@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	readPeriod         = 10 * time.Millisecond
+	readTimeout        = 250 * time.Millisecond
 	segmentCheckPeriod = 100 * time.Millisecond
 
 	// debug flag used for developing and testing the watcher code. Using this instead of level.Debug to avoid checking
@@ -65,6 +65,7 @@ type Watcher struct {
 	id string
 
 	writeTo    WriteTo
+	readNotify chan struct{}
 	done       chan struct{}
 	quit       chan struct{}
 	walDir     string
@@ -74,12 +75,25 @@ type Watcher struct {
 	metrics *WatcherMetrics
 }
 
+func (w *Watcher) SeriesReset(_ int) {
+}
+
+func (w *Watcher) NotifyWrite() {
+	select {
+	case w.readNotify <- struct{}{}:
+	default:
+		// default, do nothing, unbuffered channel
+		// if the channel is blocked, it means there's already a notification in place so it makes sense to drop the next one
+	}
+}
+
 // NewWatcher creates a new Watcher.
 func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger) *Watcher {
 	return &Watcher{
 		walDir:     walDir,
 		id:         id,
 		writeTo:    writeTo,
+		readNotify: make(chan struct{}),
 		quit:       make(chan struct{}),
 		done:       make(chan struct{}),
 		MaxSegment: -1,
@@ -154,7 +168,7 @@ func (w *Watcher) watch(segmentNum int) error {
 
 	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
-	readTicker := time.NewTicker(readPeriod)
+	readTicker := time.NewTicker(readTimeout)
 	defer readTicker.Stop()
 
 	segmentTicker := time.NewTicker(segmentCheckPeriod)
@@ -191,16 +205,20 @@ func (w *Watcher) watch(segmentNum int) error {
 			// return after reading the whole segment for creating a new LiveReader from the newly created segment
 			return nil
 
+		case <-w.readNotify:
+			// https://github.com/golang/go/issues/23196#issuecomment-353169837
+			// the cases below will unlock the select block, and execute the block below
 		case <-readTicker.C:
-			err = w.readSegment(reader, segmentNum)
-			if debug {
-				level.Warn(w.logger).Log("msg", "Error reading segment inside readTicker", "segment", segmentNum, "read", reader.Offset(), "err", err)
-			}
+		}
 
-			// io.EOF error are non-fatal since we are tailing the wal
-			if errors.Cause(err) != io.EOF {
-				return err
-			}
+		err = w.readSegment(reader, segmentNum)
+		if debug {
+			level.Warn(w.logger).Log("msg", "Error reading segment inside readTicker", "segment", segmentNum, "read", reader.Offset(), "err", err)
+		}
+
+		// io.EOF error are non-fatal since we are tailing the wal
+		if errors.Cause(err) != io.EOF {
+			return err
 		}
 	}
 }
