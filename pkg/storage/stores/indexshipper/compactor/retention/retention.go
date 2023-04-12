@@ -131,7 +131,7 @@ func (s *SizeBasedRetentionCleaner) getDiskUsage() (util.DiskStatus, error) {
 	if err != nil {
 		return util.DiskStatus{}, err
 	}
-	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", usage.UsedPercent)
+	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", fmt.Sprintf("%.2f%%", usage.UsedPercent))
 
 	return usage, nil
 }
@@ -143,7 +143,7 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Calculated megabytes to delete to reach configured storage free space:",
-		"megabytesToDelete", bytesToDelete/1024/1024)
+		"megabytesToDelete", fmt.Sprintf("%.2f", bytesToDelete/1024/1024))
 
 	var chunksToDelete []ChunkRef
 	bytesDeleted := 0.0
@@ -153,7 +153,7 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 		}
 
 		level.Info(util_log.Logger).Log("msg",
-			"block size retention exceeded, removing chunks from file", "filepath", entry.Path)
+			"Block size retention exceeded, removing chunks from file", "filepath", entry.Path)
 
 		seriesMap := newUserSeriesMap()
 		entry.CompactedIndex.ForEachChunk(ctx, func(ce ChunkEntry) (bool, error) {
@@ -167,13 +167,14 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 
 			chk, err := chunk.ParseExternalKey(userID, chunkID)
 			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "could not get chunk", "err", fmt.Sprintf("%+v", err))
 				return false, err
 			}
 
 			bytesDeleted = bytesDeleted + float64(chk.Size())
 
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "could not write chunk id to marker", "ChunkID", string(ce.ChunkID))
+				level.Error(util_log.Logger).Log("msg", "could not write chunk id to markerw", "ChunkID", string(ce.ChunkID))
 				return false, err
 			}
 			chunksToDelete = append(chunksToDelete, ce.ChunkRef)
