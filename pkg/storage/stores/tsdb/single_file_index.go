@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/bsipos/thist"
@@ -402,9 +401,9 @@ func (i *TSDBIndex) MoreStats(ctx context.Context, matchers ...*labels.Matcher) 
 	})
 
 	for _, ls := range labelSizes {
-		if !strings.HasPrefix(ls.labelValue, "route_paths_1") {
-			continue
-		}
+		//if !strings.HasPrefix(ls.labelValue, "route_paths_1") {
+		//	continue
+		//}
 		fmt.Printf("%s,%d,%d,%d\n", ls.labelValue, ls.totalBytes, ls.totalChunks, ls.totalLines)
 	}
 

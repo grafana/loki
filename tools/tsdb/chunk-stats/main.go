@@ -10,12 +10,12 @@ import (
 
 func main() {
 
-	t, _, err := tsdb.NewTSDBIndexFromFile("19388.tsdb")
+	t, _, err := tsdb.NewTSDBIndexFromFile("loki-ops_19453.tsdb")
 	if err != nil {
 		panic(err)
 	}
 
-	err = t.MoreStats(context.Background(), labels.MustNewMatcher(labels.MatchRegexp, "route_paths_1", ".+"))
+	err = t.MoreStats(context.Background(), labels.MustNewMatcher(labels.MatchEqual, "job", "default/systemd-journal"))
 	if err != nil {
 		panic(err)
 	}
