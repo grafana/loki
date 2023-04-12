@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	readTimeout        = 250 * time.Millisecond
+	maxReadPeriod      = 1 * time.Second
+	readPeriod         = 250 * time.Millisecond
 	segmentCheckPeriod = 100 * time.Millisecond
 
 	// debug flag used for developing and testing the watcher code. Using this instead of level.Debug to avoid checking
@@ -72,7 +73,8 @@ type Watcher struct {
 	logger     log.Logger
 	MaxSegment int
 
-	metrics *WatcherMetrics
+	metrics         *WatcherMetrics
+	currReadBackoff time.Duration
 }
 
 func (w *Watcher) SeriesReset(_ int) {
@@ -168,7 +170,7 @@ func (w *Watcher) watch(segmentNum int) error {
 
 	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
-	readTicker := time.NewTicker(readTimeout)
+	readTicker := time.NewTicker(readPeriod)
 	defer readTicker.Stop()
 
 	segmentTicker := time.NewTicker(segmentCheckPeriod)
@@ -192,7 +194,7 @@ func (w *Watcher) watch(segmentNum int) error {
 
 			// Since we know last > segmentNum, there must be a new segment. Read the remaining from the segmentNum segment
 			// and return from `watch` to read the next one
-			err = w.readSegment(reader, segmentNum)
+			_, err = w.readSegment(reader, segmentNum)
 			if debug {
 				level.Warn(w.logger).Log("msg", "Error reading segment inside segmentTicker", "segment", segmentNum, "read", reader.Offset(), "err", err)
 			}
@@ -211,7 +213,8 @@ func (w *Watcher) watch(segmentNum int) error {
 		case <-readTicker.C:
 		}
 
-		err = w.readSegment(reader, segmentNum)
+		// read from open segment routine
+		ok, err := w.readSegment(reader, segmentNum)
 		if debug {
 			level.Warn(w.logger).Log("msg", "Error reading segment inside readTicker", "segment", segmentNum, "read", reader.Offset(), "err", err)
 		}
@@ -220,34 +223,58 @@ func (w *Watcher) watch(segmentNum int) error {
 		if errors.Cause(err) != io.EOF {
 			return err
 		}
+
+		if ok {
+			// read ok, reset ticker to normal rate
+			w.currReadBackoff = readPeriod
+			readTicker.Reset(readPeriod)
+			continue
+		}
+
+		// failed to read, exponential backoff in the read ticker
+		w.doubleBackoff()
+		readTicker.Reset(w.currReadBackoff)
+	}
+}
+
+// doubleBackoff implements an exponential backoff increment of the currReadPeriod
+func (w *Watcher) doubleBackoff() {
+	w.currReadBackoff = w.currReadBackoff * 2
+	if w.currReadBackoff > maxReadPeriod {
+		w.currReadBackoff = maxReadPeriod
 	}
 }
 
 // Read entries from a segment, decode them and dispatch them.
-func (w *Watcher) readSegment(r *wlog.LiveReader, segmentNum int) error {
+func (w *Watcher) readSegment(r *wlog.LiveReader, segmentNum int) (bool, error) {
+	var readData bool
+
 	for r.Next() && !isClosed(w.quit) {
 		rec := r.Record()
 		w.metrics.recordsRead.WithLabelValues(w.id).Inc()
-
-		if err := w.decodeAndDispatch(rec, segmentNum); err != nil {
-			return errors.Wrapf(err, "error decoding record")
+		readData, err := w.decodeAndDispatch(rec, segmentNum)
+		if err != nil {
+			return readData, errors.Wrapf(err, "error decoding record")
 		}
 	}
-	return errors.Wrapf(r.Err(), "segment %d: %v", segmentNum, r.Err())
+	return readData, errors.Wrapf(r.Err(), "segment %d: %v", segmentNum, r.Err())
 }
 
 // decodeAndDispatch first decodes a WAL record. Upon reading either Series or Entries from the WAL record, call the
 // appropriate callbacks in the writeTo.
-func (w *Watcher) decodeAndDispatch(b []byte, segmentNum int) error {
+func (w *Watcher) decodeAndDispatch(b []byte, segmentNum int) (bool, error) {
+	var readData bool
+
 	rec := recordPool.GetRecord()
 	if err := wal.DecodeRecord(b, rec); err != nil {
 		w.metrics.recordDecodeFails.WithLabelValues(w.id).Inc()
-		return err
+		return readData, err
 	}
 
 	// First process all series to ensure we don't write entries to non-existent series.
 	var firstErr error
 	w.writeTo.StoreSeries(rec.Series, segmentNum)
+	readData = true
 
 	for _, entries := range rec.RefEntries {
 		if err := w.writeTo.AppendEntries(entries); err != nil && firstErr == nil {
@@ -255,7 +282,7 @@ func (w *Watcher) decodeAndDispatch(b []byte, segmentNum int) error {
 		}
 	}
 
-	return firstErr
+	return readData, firstErr
 }
 
 func (w *Watcher) Stop() {
