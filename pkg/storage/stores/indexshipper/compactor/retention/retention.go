@@ -87,6 +87,7 @@ type CompactionIndexMap struct {
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
+var ErrLocalIndexBucketNotFound = errors.New("failed setting up index processors since compactedFile is nil")
 
 type SizeBasedRetentionCleaner struct {
 	WorkingDirectory string
@@ -189,14 +190,10 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 
 			return true, nil
 		})
-
-		var emptySets []IndexProcessor
 		seriesMap.ForEach(func(info userSeriesInfo) error {
 			if !info.isDeleted {
 				return nil
 			}
-
-			emptySets = append(emptySets)
 
 			return entry.CompactedIndex.CleanupSeries(info.UserID(), info.lbls)
 		})
@@ -382,6 +379,9 @@ func markForDelete(
 			// Deletes timed out. Don't return an error so compaction can continue and deletes can be retried
 			level.Warn(logger).Log("msg", "Timed out while running delete")
 			expiration.MarkPhaseTimedOut()
+		} else if errors.Is(err, ErrLocalIndexBucketNotFound) {
+			// The local index bucket may not be found if it's empty and cannot be iterated
+			return true, false, nil
 		} else {
 			return false, false, err
 		}

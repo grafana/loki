@@ -407,13 +407,11 @@ func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
 	sortTablesByRangeOldestFirst(tables)
 
 	indexes, err := c.buildCompactedIndexDetails(ctx, tables)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "Failed to build compacted index details", "err", err)
+	if len(indexes) == 0 {
 		return nil
 	}
-
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
+		level.Error(util_log.Logger).Log("msg", "Failed to build compacted index details", "err", err)
 		return nil
 	}
 
@@ -425,7 +423,7 @@ func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
 	}
 	err = c.RunSizeCompaction(ctx, chunksToDelete)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "Failed to run size-based compaction", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error enforcing block size filesystem retention", "err", err)
 	}
 	return nil
 }
@@ -450,7 +448,7 @@ func (c *Compactor) buildCompactedIndexDetails(ctx context.Context, tables []str
 				return nil, err
 			}
 
-			if is.compactedIndex != nil || len(is.ListSourceFiles()) != 1 {
+			if len(is.ListSourceFiles()) != 1 {
 				continue
 			}
 
