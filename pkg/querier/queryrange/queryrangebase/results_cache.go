@@ -100,8 +100,9 @@ func (cfg *ResultsCacheConfig) Validate() error {
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
 type Extractor interface {
-	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
-	Extract(start, end int64, from Response) Response
+	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds
+	// in the `res` response which spans from `resStart` to `resEnd`.
+	Extract(start, end int64, res Response, resStart, resEnd int64) Response
 	ResponseWithoutHeaders(resp Response) Response
 }
 
@@ -109,8 +110,8 @@ type Extractor interface {
 type PrometheusResponseExtractor struct{}
 
 // Extract extracts response for specific a range from a response.
-func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Response {
-	promRes := from.(*PrometheusResponse)
+func (PrometheusResponseExtractor) Extract(start, end int64, res Response, resStart, resEnd int64) Response {
+	promRes := res.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
@@ -565,7 +566,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
+		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res, extent.GetStart(), extent.GetEnd()))
 		start = extent.End
 	}
 
@@ -595,7 +596,7 @@ func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Du
 			if err != nil {
 				return nil, err
 			}
-			extracted := s.extractor.Extract(extents[i].Start, maxCacheTime, res)
+			extracted := s.extractor.Extract(extents[i].GetStart(), maxCacheTime, res, extents[i].GetStart(), extents[i].GetEnd())
 			any, err := types.MarshalAny(extracted)
 			if err != nil {
 				return nil, err
