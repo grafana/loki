@@ -609,14 +609,6 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 		for i, c := range chunks {
 			pageMarker.combine(c)
 
-			// test if this is the last chunk in the page
-			if i%chunkPageSize == chunkPageSize-1 {
-				remainingFromPageStart := len(chunks) - i/chunkPageSize*chunkPageSize
-				pageMarker.encode(primary, markerOffset, remainingFromPageStart)
-				pageMarker.clear()
-				markerOffset = scratch.Len() - chunksStart
-			}
-
 			w.toc.Metadata.EnsureBounds(c.MinTime, c.MaxTime)
 			// Encode the diff against previous chunk as varint
 			// instead of uvarint because chunks may overlap
@@ -627,6 +619,15 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 			t0 = c.MaxTime
 
 			scratch.PutBE32(c.Checksum)
+
+			// test if this is the last chunk in the page
+			if i%chunkPageSize == chunkPageSize-1 {
+				remainingFromPageStart := len(chunks) - i/chunkPageSize*chunkPageSize
+				pageMarker.encode(primary, markerOffset, remainingFromPageStart)
+				pageMarker.clear()
+				markerOffset = scratch.Len() - chunksStart
+			}
+
 		}
 
 		if rem := len(chunks) % chunkPageSize; rem != 0 {
@@ -2267,7 +2268,9 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 	for markerIdx := 0; markerIdx < len(relevantPages); markerIdx++ {
 		curMarker := relevantPages[markerIdx]
-		d.Skip(curMarker.Offset - (d.Len() - initialLn))
+		// skip to the offset of the page, adjusting for where we currently
+		// are, since offsets are relative to the start
+		d.Skip(curMarker.Offset - (initialLn - d.Len()))
 
 		remainingInPage := curMarker.ChunksRemaining
 		if markerIdx < len(relevantPages)-1 {
@@ -2316,10 +2319,10 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 }
 
 func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
-	// prior to v3, chunks needed manual iteration for stats aggregation
+	// prior to v3, chunks needed iteration for stats aggregation
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
-	_, err = dec.Series(FormatV2, d.B, seriesRef, from, through, nil, &chks)
+	err = dec.readChunks(FormatV2, d, seriesRef, from, through, &chks)
 	if err != nil {
 		return ChunkStats{}, err
 	}
@@ -2478,6 +2481,8 @@ func yoloString(b []byte) string {
 	return *((*string)(unsafe.Pointer(&b)))
 }
 
-func overlap(aFrom, aThrough, bFrom, bThrough int64) bool {
-	return aFrom < bThrough && aThrough > bFrom
+func overlap(from, through, chkFrom, chkThrough int64) bool {
+	// note: chkThrough is inclusive as it represents the last
+	// sample timestamp in the chunk, whereas through is exclusive
+	return from <= chkThrough && through > chkFrom
 }

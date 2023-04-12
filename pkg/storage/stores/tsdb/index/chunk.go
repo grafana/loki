@@ -178,6 +178,11 @@ type chunkPageMarker struct {
 
 	// bounds associated with this page
 	MinTime, MaxTime int64
+
+	// internal field to test if MinTime has been set since the zero
+	// value is valid and I don't want to use a pointer. This is only
+	// used during encoding.
+	minTimeSet bool
 }
 
 func (m *chunkPageMarker) subsetOf(from, through int64) bool {
@@ -187,8 +192,9 @@ func (m *chunkPageMarker) subsetOf(from, through int64) bool {
 func (m *chunkPageMarker) combine(c ChunkMeta) {
 	m.KB += c.KB
 	m.Entries += c.Entries
-	if c.MinTime < m.MinTime {
+	if !m.minTimeSet || c.MinTime < m.MinTime {
 		m.MinTime = c.MinTime
+		m.minTimeSet = true
 	}
 	if c.MaxTime > m.MaxTime {
 		m.MaxTime = c.MaxTime
