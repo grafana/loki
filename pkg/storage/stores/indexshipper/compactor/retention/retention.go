@@ -87,7 +87,6 @@ type CompactionIndexMap struct {
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
-var ErrLocalIndexBucketNotFound = errors.New("failed setting up index processors since compactedFile is nil")
 
 type SizeBasedRetentionCleaner struct {
 	WorkingDirectory string
@@ -146,13 +145,6 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 	level.Info(util_log.Logger).Log("msg", "Calculated megabytes to delete to reach configured storage free space:",
 		"megabytesToDelete", bytesToDelete/1024/1024)
 
-	marker, err := NewMarkerStorageWriter(retentionWorkDir)
-	defer marker.Close()
-
-	if err != nil {
-		return []ChunkRef{}, err
-	}
-
 	var chunksToDelete []ChunkRef
 	bytesDeleted := 0.0
 	for _, entry := range indexes {
@@ -161,7 +153,7 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 		}
 
 		level.Info(util_log.Logger).Log("msg",
-			"------ block size retention exceeded, removing chunks from file", "filepath", entry.Path)
+			"block size retention exceeded, removing chunks from file", "filepath", entry.Path)
 
 		seriesMap := newUserSeriesMap()
 		entry.CompactedIndex.ForEachChunk(ctx, func(ce ChunkEntry) (bool, error) {
@@ -180,13 +172,12 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 
 			bytesDeleted = bytesDeleted + float64(chk.Size())
 
-			err = marker.Put(ce.ChunkID)
 			if err != nil {
-				level.Debug(util_log.Logger).Log("msg", "could not write chunk id to marker", "ChunkID", string(ce.ChunkID))
+				level.Error(util_log.Logger).Log("msg", "could not write chunk id to marker", "ChunkID", string(ce.ChunkID))
 				return false, err
 			}
-			level.Debug(util_log.Logger).Log("msg", "current number of chunks", "count", marker.Count())
 			chunksToDelete = append(chunksToDelete, ce.ChunkRef)
+			level.Debug(util_log.Logger).Log("msg", "current number of chunks to delete", "count", len(chunksToDelete))
 
 			return true, nil
 		})
@@ -379,9 +370,6 @@ func markForDelete(
 			// Deletes timed out. Don't return an error so compaction can continue and deletes can be retried
 			level.Warn(logger).Log("msg", "Timed out while running delete")
 			expiration.MarkPhaseTimedOut()
-		} else if errors.Is(err, ErrLocalIndexBucketNotFound) {
-			// The local index bucket may not be found if it's empty and cannot be iterated
-			return true, false, nil
 		} else {
 			return false, false, err
 		}
