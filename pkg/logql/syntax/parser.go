@@ -3,11 +3,12 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"github.com/prometheus/prometheus/model/labels"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/prometheus/prometheus/model/labels"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
