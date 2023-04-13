@@ -8,7 +8,8 @@ const (
 	defaultMaxSegmentAge = time.Hour
 )
 
-var defaultWatchConfig = WatchConfig{
+// DefaultWatchConfig is the opinionated defaults for operating the Watcher.
+var DefaultWatchConfig = WatchConfig{
 	MinReadFrequency: time.Millisecond * 250,
 	MaxReadFrequency: time.Second,
 }
@@ -52,7 +53,7 @@ type WatchConfig struct {
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Apply defaults
 	c.MaxSegmentAge = defaultMaxSegmentAge
-	c.WatchConfig = defaultWatchConfig
+	c.WatchConfig = DefaultWatchConfig
 	type plain Config
 	return unmarshal((*plain)(c))
 }

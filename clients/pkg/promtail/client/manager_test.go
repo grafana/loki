@@ -24,15 +24,19 @@ import (
 
 type notifier func(subscriber wal.CleanupEventSubscriber)
 
-func (n notifier) Subscribe(subscriber wal.CleanupEventSubscriber) {
+func (n notifier) SubscribeCleanup(subscriber wal.CleanupEventSubscriber) {
 	n(subscriber)
+}
+
+func (n notifier) SubscribeWrite(subscriber wal.WriteEventSubscriber) {
 }
 
 func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 	walDir := t.TempDir()
 	_, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, false, prometheus.NewRegistry(), wal.Config{
-		Dir:     walDir,
-		Enabled: true,
+		Dir:         walDir,
+		Enabled:     true,
+		WatchConfig: wal.DefaultWatchConfig,
 	}, notifier(func(subscriber wal.CleanupEventSubscriber) {}))
 	require.Error(t, err)
 }
@@ -76,6 +80,7 @@ func TestManager_WriteAndReadEntriesFromWAL(t *testing.T) {
 		Dir:           walDir,
 		Enabled:       true,
 		MaxSegmentAge: time.Second * 10,
+		WatchConfig:   wal.DefaultWatchConfig,
 	}
 	// start all necessary resources
 	reg := prometheus.NewRegistry()
