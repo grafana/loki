@@ -106,9 +106,12 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 	go func() {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
-			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
+			if err := wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log); err != nil {
+				level.Error(wrt.log).Log("msg", "Failed to write entry to wal", "err", err)
+				// if an error occurred while writing the wal, go to next entry and don't notify write subscribers
+				continue
+			}
 
-			// todo: move this somewhere else
 			wrt.writeSubscribersLock.RLock()
 			for _, s := range wrt.writeSubscribers {
 				s.NotifyWrite()
@@ -239,16 +242,12 @@ func newEntryWriter() *entryWriter {
 
 // WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same Record object for every
 // write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
-func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
+func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) error {
 	// Reset wal record slices
 	ew.reusableWALRecord.RefEntries = ew.reusableWALRecord.RefEntries[:0]
 	ew.reusableWALRecord.Series = ew.reusableWALRecord.Series[:0]
 
 	defer func() {
-		err := wl.Log(ew.reusableWALRecord)
-		if err != nil {
-			level.Error(logger).Log("msg", "Failed to write entry to wal", "err", err)
-		}
 	}()
 
 	var fp uint64
@@ -267,6 +266,8 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
 		Ref:    chunks.HeadSeriesRef(fp),
 		Labels: lbs,
 	})
+
+	return wl.Log(ew.reusableWALRecord)
 }
 
 type segmentRef struct {
