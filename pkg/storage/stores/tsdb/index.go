@@ -31,15 +31,13 @@ func (r ChunkRef) Less(x ChunkRef) bool {
 	return r.End <= x.End
 }
 
-type shouldIncludeChunk func(index.ChunkMeta) bool
-
 type Index interface {
 	Bounded
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Close() error
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
-	// allowing us to avoid unnecessary allocations at the caller's discretion.
+	// allowing us to avoid unnecessark allocations at the caller's discretion.
 	// If nil, the underlying index implementation is required
 	// to build the resulting slice nonetheless (it should not panic),
 	// ideally by requesting a slice from the pool.
@@ -52,7 +50,7 @@ type Index interface {
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
+	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error
 }
 
 type NoopIndex struct{}
@@ -74,7 +72,7 @@ func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through m
 	return nil, nil
 }
 
-func (NoopIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (NoopIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	return nil
 }
 

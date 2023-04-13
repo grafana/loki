@@ -212,13 +212,10 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	if err := i.forSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		var addedStream bool
 		for _, chk := range chks {
-			if shouldIncludeChunk != nil && !shouldIncludeChunk(chk) {
-				continue
-			}
 
 			if !addedStream {
 				acc.AddStream(fp)

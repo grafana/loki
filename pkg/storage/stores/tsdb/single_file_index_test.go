@@ -359,7 +359,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			acc := &stats.Stats{}
-			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.Equal(t, tc.expectedErr, err)
 			require.Equal(t, tc.expected, *acc)
 		})

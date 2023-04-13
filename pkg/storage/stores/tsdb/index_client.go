@@ -208,7 +208,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 
 	for _, interval := range intervals {
-		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, matchers...); err != nil {
 			return nil, err
 		}
 	}

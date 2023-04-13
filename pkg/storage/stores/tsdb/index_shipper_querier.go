@@ -116,13 +116,13 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+	return idx.Stats(ctx, userID, from, through, acc, shard, matchers...)
 }
 
 type resultAccumulator struct {
