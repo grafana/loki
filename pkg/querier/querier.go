@@ -95,7 +95,7 @@ type Limits interface {
 	MaxStreamsMatchersPerQuery(context.Context, string) int
 	MaxConcurrentTailRequests(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
-	ValidateQueryLimits(ctx context.Context, userID string) error
+	ValidateQueryLimits(*http.Request, string) error
 }
 
 // SingleTenantQuerier handles single tenant queries.

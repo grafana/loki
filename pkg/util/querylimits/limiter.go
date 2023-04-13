@@ -3,6 +3,7 @@ package querylimits
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -29,37 +30,44 @@ func NewLimiter(log log.Logger, original limiter.CombinedLimits) *Limiter {
 // would exceed the tenants limits for userID.
 // This function needs to be updated for any fileds that are added to the QueryLimits struct in
 // this package.
-func (l *Limiter) ValidateQueryLimits(ctx context.Context, userID string) error {
+func (l *Limiter) ValidateQueryLimits(r *http.Request, userID string) error {
 	var isErr bool
 	var err []byte
 	err = append(err, []byte("the following limits from the query limits struct violate your tenants limits; ")...)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits, err2 := ExtractQueryLimitsHTTP(r)
+	if err2 != nil {
+		return err2
+	}
+	if requestLimits == nil {
+		fmt.Println("request limits were nil")
+		return nil
+	}
 
-	origQueryLength := l.CombinedLimits.MaxQueryLength(ctx, userID)
+	origQueryLength := l.CombinedLimits.MaxQueryLength(nil, userID)
 	if time.Duration(requestLimits.MaxQueryLength) > origQueryLength {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryLength of %d is greater than %d, ", requestLimits.MaxQueryLength, origQueryLength))...)
 	}
 
-	origQueryRange := l.CombinedLimits.MaxQueryRange(ctx, userID)
+	origQueryRange := l.CombinedLimits.MaxQueryRange(nil, userID)
 	if time.Duration(requestLimits.MaxQueryRange) > origQueryRange {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryRange of %d is greater than %d, ", requestLimits.MaxQueryRange, origQueryRange))...)
 	}
 
-	origQueryLookback := l.CombinedLimits.MaxQueryLookback(ctx, userID)
+	origQueryLookback := l.CombinedLimits.MaxQueryLookback(nil, userID)
 	if time.Duration(requestLimits.MaxQueryLookback) > origQueryLookback {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryLookback of %d is greater than %d, ", requestLimits.MaxQueryLookback, origQueryLookback))...)
 	}
 
-	origEntriesLimit := l.CombinedLimits.MaxEntriesLimitPerQuery(ctx, userID)
+	origEntriesLimit := l.CombinedLimits.MaxEntriesLimitPerQuery(nil, userID)
 	if requestLimits.MaxEntriesLimitPerQuery > origEntriesLimit {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxEntriesLimitPerQuery of %d is greater than %d, ", requestLimits.MaxEntriesLimitPerQuery, origEntriesLimit))...)
 	}
 
-	origQueryTimeout := l.CombinedLimits.QueryTimeout(ctx, userID)
+	origQueryTimeout := l.CombinedLimits.QueryTimeout(nil, userID)
 	if time.Duration(requestLimits.QueryTimeout) > origQueryTimeout {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("QueryTimeout of %d is greater than %d, ", requestLimits.QueryTimeout, origQueryTimeout))...)
@@ -67,13 +75,13 @@ func (l *Limiter) ValidateQueryLimits(ctx context.Context, userID string) error 
 
 	// don't need to check required labels, we union the two sets rather than choosing one or the other
 
-	origRequiredNumberLabels := l.CombinedLimits.RequiredNumberLabels(ctx, userID)
+	origRequiredNumberLabels := l.CombinedLimits.RequiredNumberLabels(nil, userID)
 	if requestLimits.RequiredNumberLabels > origRequiredNumberLabels {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("RequiredNumberLabels of %d is greater than %d, ", requestLimits.RequiredNumberLabels, origRequiredNumberLabels))...)
 	}
 
-	origMaxQueryBytesRead := l.CombinedLimits.MaxQueryBytesRead(ctx, userID)
+	origMaxQueryBytesRead := l.CombinedLimits.MaxQueryBytesRead(nil, userID)
 	if requestLimits.MaxQueryBytesRead.Val() > origMaxQueryBytesRead {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryBytesRead of %d is greater than %d, ", requestLimits.MaxQueryBytesRead, origMaxQueryBytesRead))...)

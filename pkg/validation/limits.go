@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -356,7 +357,7 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 	}, nil
 }
 
-func (o *Overrides) ValidateQueryLimits(ctx context.Context, userID string) error {
+func (o *Overrides) ValidateQueryLimits(r *http.Request, userID string) error {
 	return nil
 }
 

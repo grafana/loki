@@ -404,7 +404,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/series":      querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
 		"/loki/api/v1/index/stats": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
 
-		"loki/api/v1/limits/validate": querier.WrapQuerySpanAndTimeout("query.LimitsValidation", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LimitsValidationHandler)),
+		"/loki/api/v1/limits/validate": querier.WrapQuerySpanAndTimeout("query.LimitsValidation", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LimitsValidationHandler)),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
@@ -855,6 +855,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/limits/validate").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)

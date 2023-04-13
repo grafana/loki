@@ -441,7 +441,6 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 // LimitsValidationHandler returns an error (string) if the query limits within the request are invalid
 // when compared to the tenants limits.
 func (q *QuerierAPI) LimitsValidationHandler(w http.ResponseWriter, r *http.Request) {
-	// do we maybe need to extract the header here and inject into the ctx?
 
 	// we shouldn't support multiple tenant ids for this endpoint
 	tenantIDs, err := tenant.TenantIDs(r.Context())
@@ -449,7 +448,7 @@ func (q *QuerierAPI) LimitsValidationHandler(w http.ResponseWriter, r *http.Requ
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "invalid # of tenant IDs passed to LimitsValidation endpoint"), w)
 		return
 	}
-	err = q.limits.ValidateQueryLimits(r.Context(), tenantIDs[0])
+	err = q.limits.ValidateQueryLimits(r, tenantIDs[0])
 
 	if err == nil {
 		return
