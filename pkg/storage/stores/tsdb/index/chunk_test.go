@@ -640,5 +640,59 @@ func TestDecoderChunkStats(t *testing.T) {
 			})
 		}
 	}
+}
+
+func BenchmarkChunkStats(b *testing.B) {
+	for _, nChks := range []int{2, 4, 10, 100, 1000, 10000, 100000} {
+		chks := mkChks(nChks)
+		// Only request the middle 20% of chunks.
+		from, through := int64(nChks*40/100), int64(nChks*60/100)
+		for _, version := range []int{FormatV2, FormatV3} {
+			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
+				var w Writer
+				w.Version = version
+				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+				w.addChunks(chks, &primary, &scratch, ChunkPageSize)
+
+				dec := &Decoder{
+					chunksSample: map[storage.SeriesRef]*chunkSamples{},
+				}
+				for i := 0; i < b.N; i++ {
+					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+
+					_, _ = dec.readChunkStats(version, &decbuf, 1, from, through)
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkReadChunks(b *testing.B) {
+	for _, nChks := range []int{2, 4, 10, 50, 100, 150, 1000, 10000, 100000} {
+		chks := mkChks(nChks)
+		res := ChunkMetasPool.Get()
+		// Only request the middle 20% of chunks.
+		from, through := int64(nChks*40/100), int64(nChks*60/100)
+		for _, version := range []int{FormatV2, FormatV3} {
+			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
+				var w Writer
+				w.Version = version
+				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+				w.addChunks(chks, &primary, &scratch, ChunkPageSize)
+
+				dec := &Decoder{
+					chunksSample: map[storage.SeriesRef]*chunkSamples{},
+				}
+				for i := 0; i < b.N; i++ {
+					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+
+					_ = dec.readChunks(version, &decbuf, 1, from, through, &res)
+					// _, _ = dec.readChunkStats(version, &decbuf, 1, from, through)
+				}
+			})
+		}
+	}
 
 }

@@ -224,10 +224,15 @@ func (m *chunkPageMarker) decode(d *encoding.Decbuf) {
 	m.MaxTime = m.MinTime + d.Varint64()
 }
 
-// Chunks per page. This is encoded into the binary
-// format and can thus be changed without needing a
-// new schema version
-const ChunkPageSize = 128
+// Chunks per page. This can be inferred in the data format
+// via the ChunksRemaining field
+// and can thus be changed without needing a
+// new tsdb version
+const ChunkPageSize = 16
+
+// Minimum number of chunks present to use page based lookup
+// instead of linear scan which performs better at lower n-values.
+const MaxChunksToBypassMarkerLookup = 64
 
 type chunkPageMarkers []chunkPageMarker
 

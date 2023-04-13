@@ -2361,11 +2361,30 @@ func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storag
 
 func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, chks *[]ChunkMeta) error {
 	nChunks := d.Uvarint()
-	_ = int(d.Be32()) // markersLn
-	nMarkers := d.Uvarint()
+	chunksRemaining := nChunks
+
+	markersLn := int(d.Be32()) // markersLn
+
+	// variables must be declared before goto, allowing us to skip
+	// using chunk pages when the chunk count is small
+	var (
+		nMarkers int
+		marker   chunkPageMarker
+		markers  chunkPageMarkers
+		start    int
+		prevMaxT int64
+		ok       bool
+	)
+
+	if nChunks < MaxChunksToBypassMarkerLookup {
+		d.Skip(markersLn)
+		goto iterate
+	}
+
+	nMarkers = d.Uvarint()
 
 	// TODO(owen-d): use pool
-	markers := make(chunkPageMarkers, nMarkers)
+	markers = make(chunkPageMarkers, nMarkers)
 	for i := range markers {
 		markers[i].decode(d)
 	}
@@ -2375,19 +2394,21 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	}
 
 	// find the range of chunks we'll need to query
-	start, prevMaxT, ok := markers.Find(from, through)
+	start, prevMaxT, ok = markers.Find(from, through)
 	// guaranteed to have no matching chunks
 	if !ok {
 		return nil
 	}
 
-	marker := markers[start]
+	marker = markers[start]
 	d.Skip(marker.Offset)
+	chunksRemaining = marker.ChunksRemaining
 
-	for i := 0; i < marker.ChunksRemaining; i++ {
+iterate:
+	for i := 0; i < chunksRemaining; i++ {
 		chunkMeta := &ChunkMeta{}
 		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
-			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-marker.ChunksRemaining+i)
+			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
 		}
 		prevMaxT = chunkMeta.MaxTime
 
