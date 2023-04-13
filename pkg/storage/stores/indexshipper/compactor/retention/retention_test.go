@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -917,24 +918,41 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 func TestMigrateMarkers(t *testing.T) {
 	t.Run("nothing to migrate", func(t *testing.T) {
 		workDir := t.TempDir()
-		require.NoError(t, MigrateMarkers(workDir, "foo"))
-		require.NoDirExists(t, path.Join(workDir, "foo", markersFolder))
+		require.NoError(t, MigrateMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
 	})
 
 	t.Run("migrate markers dir", func(t *testing.T) {
 		workDir := t.TempDir()
-		require.NoError(t, os.Mkdir(path.Join(workDir, markersFolder), 0755))
-		require.NoError(t, MigrateMarkers(workDir, "foo"))
-		require.DirExists(t, path.Join(workDir, "foo", markersFolder))
+		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
+
+		markers := []string{"foo", "bar", "buzz"}
+		for _, marker := range markers {
+			f, err := os.Create(path.Join(workDir, MarkersFolder, marker))
+			require.NoError(t, err)
+			_, err = io.WriteString(f, marker)
+			require.NoError(t, err)
+			f.Close()
+		}
+
+		require.NoError(t, MigrateMarkers(workDir, "store-1"))
+		targetDir := path.Join(workDir, "store-1", MarkersFolder)
+		require.DirExists(t, targetDir)
+		for _, marker := range markers {
+			require.FileExists(t, path.Join(targetDir, marker))
+			b, err := os.ReadFile(path.Join(targetDir, marker))
+			require.NoError(t, err)
+			require.Equal(t, marker, string(b))
+		}
 	})
 
 	t.Run("file named markers should not be migrated", func(t *testing.T) {
 		workDir := t.TempDir()
-		f, err := os.Create(path.Join(workDir, markersFolder))
+		f, err := os.Create(path.Join(workDir, MarkersFolder))
 		require.NoError(t, err)
 		defer f.Close()
 
-		require.NoError(t, MigrateMarkers(workDir, "foo"))
-		require.NoDirExists(t, path.Join(workDir, "foo", markersFolder))
+		require.NoError(t, MigrateMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
 	})
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -27,7 +28,7 @@ import (
 var chunkBucket = []byte("chunks")
 
 const (
-	markersFolder = "markers"
+	MarkersFolder = "markers"
 )
 
 type ChunkRef struct {
@@ -431,7 +432,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 // since compactor supports multiple stores, markers need to be written to store specific dir.
 // MigrateMarkers checks for markers in retention dir and migrates them.
 func MigrateMarkers(workingDir string, store string) error {
-	markersDir := filepath.Join(workingDir, markersFolder)
+	markersDir := filepath.Join(workingDir, MarkersFolder)
 	info, err := os.Stat(markersDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -446,11 +447,31 @@ func MigrateMarkers(workingDir string, store string) error {
 		return nil
 	}
 
-	targetDir := filepath.Join(workingDir, store, markersFolder)
-	if err := chunk_util.EnsureDirectory(filepath.Join(workingDir, store)); err != nil {
-		return err
+	markers, err := os.ReadDir(markersDir)
+	if err != nil {
+		return fmt.Errorf("read markers dir: %w", err)
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to %s", targetDir))
-	return os.Rename(markersDir, targetDir)
+	targetDir := filepath.Join(workingDir, store, MarkersFolder)
+	if err := chunk_util.EnsureDirectory(targetDir); err != nil {
+		return fmt.Errorf("ensure target markers dir: %w", err)
+	}
+
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to store specific dir: %s", targetDir))
+	for _, marker := range markers {
+		if marker.IsDir() {
+			continue
+		}
+
+		data, err := ioutil.ReadFile(filepath.Join(markersDir, marker.Name()))
+		if err != nil {
+			return fmt.Errorf("read marker file: %w", err)
+		}
+
+		if err := ioutil.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0o666); err != nil {
+			return fmt.Errorf("write marker file: %w", err)
+		}
+	}
+
+	return nil
 }

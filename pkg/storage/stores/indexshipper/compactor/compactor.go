@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
@@ -255,47 +257,16 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 		return err
 	}
 
-	if c.cfg.RetentionEnabled {
-		deleteRequestsStore := func() string {
-			switch {
-			case c.cfg.DeleteRequestStore != "":
-				return c.cfg.DeleteRequestStore
-			case c.cfg.SharedStoreType != "":
-				// If -boltdb.shipper.compactor.delete-request-store is not set, delete requests should be stored in either shared_store or it's legacy defaults.
-				// This ensures that any pending delete requests are processed.
-				return c.cfg.SharedStoreType
-			default:
-				return c.cfg.LegacySharedStoreDefault
-			}
-		}()
-
-		objectClient, ok := objectStoreClients[deleteRequestsStore]
-		if !ok {
-			return fmt.Errorf("failed to init delete store. Object client not found for %s", deleteRequestsStore)
-		}
-
-		if err := c.initDeletes(objectClient, r, limits); err != nil {
-			return fmt.Errorf("failed to init delete store: %w", err)
-		}
-
-		// Legacy markers point to the chunks in -boltdb.shipper.compactor.shared-store if it's explicitly configured.
-		// Otherwise the chunks would belong to the store defined by legacy shared store defaults.
-		legacyMarkersStore := c.cfg.LegacySharedStoreDefault
-		if c.cfg.SharedStoreType != "" {
-			legacyMarkersStore = c.cfg.SharedStoreType
-		}
-
-		if err := retention.MigrateMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), legacyMarkersStore); err != nil {
-			return fmt.Errorf("failed to move markers to store specific dir: %w", err)
-		}
-	}
-
 	c.storeContainers = make(map[string]storeContainer, len(objectStoreClients))
 	for objectStoreType, objectClient := range objectStoreClients {
 		var sc storeContainer
 		sc.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 
 		if c.cfg.RetentionEnabled {
+			if err := retention.MigrateMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), objectStoreType); err != nil {
+				return fmt.Errorf("failed to move markers to store specific dir: %w", err)
+			}
+
 			var (
 				encoder          client.KeyEncoder
 				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", objectStoreType)
@@ -321,13 +292,42 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 		c.storeContainers[objectStoreType] = sc
 	}
 
+	if c.cfg.RetentionEnabled {
+		// remove legacy markers
+		if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", retention.MarkersFolder)); err != nil {
+			return fmt.Errorf("remove old markers: %w", err)
+		}
+
+		deleteRequestsStore := func() string {
+			switch {
+			case c.cfg.DeleteRequestStore != "":
+				return c.cfg.DeleteRequestStore
+			case c.cfg.SharedStoreType != "":
+				// If -boltdb.shipper.compactor.delete-request-store is not set, delete requests should be stored in either shared_store or it's legacy defaults.
+				// This ensures that any pending delete requests are processed.
+				return c.cfg.SharedStoreType
+			default:
+				return c.cfg.LegacySharedStoreDefault
+			}
+		}()
+
+		sc, ok := c.storeContainers[deleteRequestsStore]
+		if !ok {
+			return fmt.Errorf("failed to init delete store. Index storage client not found for %s", deleteRequestsStore)
+		}
+
+		if err := c.initDeletes(sc.indexStorageClient, r, limits); err != nil {
+			return fmt.Errorf("failed to init delete store: %w", err)
+		}
+	}
+
 	c.metrics = newMetrics(r)
 	return nil
 }
 
-func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits Limits) error {
+func (c *Compactor) initDeletes(indexStorageClient storage.Client, r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
-	store, err := deletion.NewDeleteStore(deletionWorkDir, shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix))
+	store, err := deletion.NewDeleteStore(deletionWorkDir, indexStorageClient)
 	if err != nil {
 		return err
 	}
