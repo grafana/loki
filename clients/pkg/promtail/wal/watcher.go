@@ -18,9 +18,6 @@ import (
 )
 
 const (
-	readPeriod    = 250 * time.Millisecond
-	maxReadPeriod = 1 * time.Second
-
 	segmentCheckPeriod = 100 * time.Millisecond
 
 	// debug flag used for developing and testing the watcher code. Using this instead of level.Debug to avoid checking
@@ -74,8 +71,9 @@ type Watcher struct {
 	logger     log.Logger
 	MaxSegment int
 
-	metrics         *WatcherMetrics
-	currReadBackoff time.Duration
+	metrics     *WatcherMetrics
+	minReadFreq time.Duration
+	maxReadFreq time.Duration
 }
 
 func (w *Watcher) SeriesReset(_ int) {
@@ -91,17 +89,19 @@ func (w *Watcher) NotifyWrite() {
 }
 
 // NewWatcher creates a new Watcher.
-func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger) *Watcher {
+func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger, config WatchConfig) *Watcher {
 	return &Watcher{
-		walDir:     walDir,
-		id:         id,
-		writeTo:    writeTo,
-		readNotify: make(chan struct{}),
-		quit:       make(chan struct{}),
-		done:       make(chan struct{}),
-		MaxSegment: -1,
-		logger:     logger,
-		metrics:    metrics,
+		walDir:      walDir,
+		id:          id,
+		writeTo:     writeTo,
+		readNotify:  make(chan struct{}),
+		quit:        make(chan struct{}),
+		done:        make(chan struct{}),
+		MaxSegment:  -1,
+		logger:      logger,
+		metrics:     metrics,
+		minReadFreq: config.MinReadFrequency,
+		maxReadFreq: config.MaxReadFrequency,
 	}
 }
 
@@ -171,10 +171,7 @@ func (w *Watcher) watch(segmentNum int) error {
 
 	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
-	//readTicker := time.NewTicker(readPeriod)
-	//defer readTicker.Stop()
-
-	readTimer := newBackoffTimer(readPeriod, maxReadPeriod)
+	readTimer := newBackoffTimer(w.minReadFreq, w.maxReadFreq)
 
 	segmentTicker := time.NewTicker(segmentCheckPeriod)
 	defer segmentTicker.Stop()
