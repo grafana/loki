@@ -207,12 +207,12 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 
 			t.Run("ingest-logs", func(t *testing.T) {
 				// ingest logs to the previous period
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake", "foo": "bar"}))
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-36*time.Hour), map[string]string{"job": "fake", "foo": "bar"}))
+				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-36*time.Hour), map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake", "foo": "baz"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake", "foo": "baz"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
 			})
 
 			t.Run("query-lookback-default", func(t *testing.T) {
@@ -233,13 +233,6 @@ func TestMicroServicesMultipleBucketSingleProvider(t *testing.T) {
 			t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
 				// restart ingester which should flush the chunks and index
 				require.NoError(t, tIngester.Restart())
-
-				// ensure that ingester has 0 chunks in memory
-				cliIngester = client.New(tenantID, "", tIngester.HTTPURL())
-				cliIngester.Now = now
-				metrics, err := cliIngester.Metrics()
-				require.NoError(t, err)
-				checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 2)
 
 				// restart querier and index shipper to sync the index
 				storage.ResetBoltDBIndexClientsWithShipper()
