@@ -55,7 +55,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewTripperware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -242,7 +242,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -597,8 +597,8 @@ func Test_MaxQuerySize(t *testing.T) {
 			require.NoError(t, err)
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, util_log.Logger, tc.limits, LokiCodec, queryStatsHandler),
-				NewQuerierSizeLimiterMiddleware(schemas, util_log.Logger, tc.limits, LokiCodec, querierStatsHandler),
+				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 
 			_, err = queryrangebase.NewRoundTripper(fakeRT, LokiCodec, nil, middlewares...).RoundTrip(req)
