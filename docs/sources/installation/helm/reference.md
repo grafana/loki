@@ -3064,6 +3064,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.extraContainers</td>
+			<td>list</td>
+			<td>Extra containers to add to the single binary loki pod</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the single binary pods</td>
