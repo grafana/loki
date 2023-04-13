@@ -2237,8 +2237,14 @@ func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef st
 }
 
 func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (res ChunkStats, err error) {
-	_ = d.Uvarint()   // nChunks
-	_ = int(d.Be32()) // markersLn
+	nChunks := d.Uvarint()
+	markersLn := int(d.Be32()) // markersLn
+
+	if nChunks < MaxChunksToBypassMarkerLookup {
+		d.Skip(markersLn)
+		return dec.accumulateChunkStats(d, nChunks, from, through)
+	}
+
 	nMarkers := d.Uvarint()
 
 	// TODO(owen-d): use pool
@@ -2311,6 +2317,25 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 	return res, d.Err()
 
+}
+
+func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
+	var prevMaxT int64
+	for i := 0; i < nChunks; i++ {
+		chunkMeta := &ChunkMeta{}
+		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
+			return res, errors.Wrap(d.Err(), "read meta for chunk")
+		}
+		prevMaxT = chunkMeta.MaxTime
+
+		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
+			// add to stats
+			res.add(1, chunkMeta.KB, chunkMeta.Entries)
+		} else if chunkMeta.MinTime >= through {
+			break
+		}
+	}
+	return res, d.Err()
 }
 
 func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {

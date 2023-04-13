@@ -461,170 +461,61 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 }
 
 func TestSearchWithPageMarkers(t *testing.T) {
-	for _, tc := range []struct {
-		desc       string
-		chks, exp  []ChunkMeta
-		mint, maxt int64
-	}{
-		{
-			desc: "half time range",
-			chks: []ChunkMeta{
-				{MinTime: 0, MaxTime: 1},
-				{MinTime: 1, MaxTime: 2},
-				{MinTime: 2, MaxTime: 3},
-				{MinTime: 3, MaxTime: 4},
-				{MinTime: 4, MaxTime: 5},
-			},
-			mint: 2,
-			maxt: 4,
-			exp: []ChunkMeta{
-				{MinTime: 1, MaxTime: 2},
-				{MinTime: 2, MaxTime: 3},
-				{MinTime: 3, MaxTime: 4},
-			},
-		},
-		{
-			desc: "no chunks in time range",
-			chks: []ChunkMeta{
-				{MinTime: 0, MaxTime: 1},
-				{MinTime: 1, MaxTime: 2},
-				{MinTime: 2, MaxTime: 3},
-				{MinTime: 3, MaxTime: 4},
-				{MinTime: 4, MaxTime: 5},
-			},
-			mint: 6,
-			maxt: 7,
-			exp:  []ChunkMeta{},
-		},
-		{
-			desc: "all chunks within time range",
-			chks: []ChunkMeta{
-				{MinTime: 1, MaxTime: 2},
-				{MinTime: 2, MaxTime: 3},
-				{MinTime: 3, MaxTime: 4},
-			},
-			mint: 1,
-			maxt: 4,
-			exp: []ChunkMeta{
-				{MinTime: 1, MaxTime: 2},
-				{MinTime: 2, MaxTime: 3},
-				{MinTime: 3, MaxTime: 4},
-			},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			pageSize := 2
-			var w Writer
-			w.Version = FormatV3
-			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
-			scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
-			w.addChunks(tc.chks, &primary, &scratch, pageSize)
-
-			decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
-			dec := &Decoder{
-				chunksSample: map[storage.SeriesRef]*chunkSamples{},
-			}
-			dst := []ChunkMeta{}
-			require.Nil(t, dec.readChunksV3(&decbuf, tc.mint, tc.maxt, &dst))
-			require.Equal(t, tc.exp, dst)
-		})
-	}
-}
-
-func TestDecoderChunkStats(t *testing.T) {
-	for _, version := range []int{
-		FormatV2,
-		FormatV3,
-	} {
+	for _, pageSize := range []int{2, 10} {
 		for _, tc := range []struct {
-			desc          string
-			chks          []ChunkMeta
-			from, through int64
-			exp           ChunkStats
+			desc       string
+			chks, exp  []ChunkMeta
+			mint, maxt int64
 		}{
 			{
-				desc: "full range",
+				desc: "half time range",
 				chks: []ChunkMeta{
-					{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-					{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
-					{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
-					{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1},
-					{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1},
+					{MinTime: 0, MaxTime: 1},
+					{MinTime: 1, MaxTime: 2},
+					{MinTime: 2, MaxTime: 3},
+					{MinTime: 3, MaxTime: 4},
+					{MinTime: 4, MaxTime: 5},
 				},
-				from:    0,
-				through: 5,
-				exp: ChunkStats{
-					Chunks:  5,
-					KB:      5,
-					Entries: 5,
+				mint: 2,
+				maxt: 4,
+				exp: []ChunkMeta{
+					{MinTime: 1, MaxTime: 2},
+					{MinTime: 2, MaxTime: 3},
+					{MinTime: 3, MaxTime: 4},
 				},
 			},
 			{
-				desc: "overlapping",
+				desc: "no chunks in time range",
 				chks: []ChunkMeta{
-					{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-					{MinTime: 1, MaxTime: 4, KB: 1, Entries: 1},
-					{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
-					{MinTime: 3, MaxTime: 5, KB: 1, Entries: 1},
-					{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1},
+					{MinTime: 0, MaxTime: 1},
+					{MinTime: 1, MaxTime: 2},
+					{MinTime: 2, MaxTime: 3},
+					{MinTime: 3, MaxTime: 4},
+					{MinTime: 4, MaxTime: 5},
 				},
-				from:    0,
-				through: 5,
-				exp: ChunkStats{
-					Chunks:  5,
-					KB:      5,
-					Entries: 5,
-				},
+				mint: 6,
+				maxt: 7,
+				exp:  []ChunkMeta{},
 			},
 			{
-				desc: "middle",
+				desc: "all chunks within time range",
 				chks: []ChunkMeta{
-					{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-					{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
-					{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
-					{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1},
-					{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1},
+					{MinTime: 1, MaxTime: 2},
+					{MinTime: 2, MaxTime: 3},
+					{MinTime: 3, MaxTime: 4},
 				},
-				from:    2,
-				through: 3,
-				exp: ChunkStats{
-					Chunks:  2,
-					KB:      2,
-					Entries: 2,
-				},
-			},
-			{
-				desc: "middle with complete overlaps",
-				chks: []ChunkMeta{
-					// each section denotes a page with pageSize=2
-					{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-					{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
-
-					{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
-					{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1}, // partial overlap
-
-					{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1}, // full overlap
-					{MinTime: 5, MaxTime: 6, KB: 1, Entries: 1},
-
-					{MinTime: 6, MaxTime: 7, KB: 1, Entries: 1}, // full overlap
-					{MinTime: 7, MaxTime: 8, KB: 1, Entries: 1},
-
-					{MinTime: 8, MaxTime: 9, KB: 1, Entries: 1}, // partial overlap
-					{MinTime: 9, MaxTime: 10, KB: 1, Entries: 1},
-				},
-				from:    4,
-				through: 9,
-				exp: ChunkStats{
-					Chunks:  6,
-					KB:      6,
-					Entries: 6,
+				mint: 1,
+				maxt: 4,
+				exp: []ChunkMeta{
+					{MinTime: 1, MaxTime: 2},
+					{MinTime: 2, MaxTime: 3},
+					{MinTime: 3, MaxTime: 4},
 				},
 			},
 		} {
-			t.Run(fmt.Sprint("version", version, tc.desc), func(t *testing.T) {
-				pageSize := 2
+			t.Run(fmt.Sprintf("%s-pagesize-%d", tc.desc, pageSize), func(t *testing.T) {
 				var w Writer
-				w.Version = version
+				w.Version = FormatV3
 				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				w.addChunks(tc.chks, &primary, &scratch, pageSize)
@@ -633,13 +524,126 @@ func TestDecoderChunkStats(t *testing.T) {
 				dec := &Decoder{
 					chunksSample: map[storage.SeriesRef]*chunkSamples{},
 				}
-
-				stats, err := dec.readChunkStats(version, &decbuf, 1, tc.from, tc.through)
-				require.Nil(t, err)
-				require.Equal(t, tc.exp, stats)
+				dst := []ChunkMeta{}
+				require.Nil(t, dec.readChunksV3(&decbuf, tc.mint, tc.maxt, &dst))
+				require.Equal(t, tc.exp, dst)
 			})
 		}
 	}
+
+}
+
+func TestDecoderChunkStats(t *testing.T) {
+	for _, pageSize := range []int{2, 10} {
+		for _, version := range []int{
+			FormatV2,
+			FormatV3,
+		} {
+			for _, tc := range []struct {
+				desc          string
+				chks          []ChunkMeta
+				from, through int64
+				exp           ChunkStats
+			}{
+				{
+					desc: "full range",
+					chks: []ChunkMeta{
+						{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
+						{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
+						{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
+						{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1},
+						{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1},
+					},
+					from:    0,
+					through: 5,
+					exp: ChunkStats{
+						Chunks:  5,
+						KB:      5,
+						Entries: 5,
+					},
+				},
+				{
+					desc: "overlapping",
+					chks: []ChunkMeta{
+						{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
+						{MinTime: 1, MaxTime: 4, KB: 1, Entries: 1},
+						{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
+						{MinTime: 3, MaxTime: 5, KB: 1, Entries: 1},
+						{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1},
+					},
+					from:    0,
+					through: 5,
+					exp: ChunkStats{
+						Chunks:  5,
+						KB:      5,
+						Entries: 5,
+					},
+				},
+				{
+					desc: "middle",
+					chks: []ChunkMeta{
+						{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
+						{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
+						{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
+						{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1},
+						{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1},
+					},
+					from:    2,
+					through: 3,
+					exp: ChunkStats{
+						Chunks:  2,
+						KB:      2,
+						Entries: 2,
+					},
+				},
+				{
+					desc: "middle with complete overlaps",
+					chks: []ChunkMeta{
+						// for example with pageSize=2
+						{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
+						{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
+
+						{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
+						{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1}, // partial overlap
+
+						{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1}, // full overlap
+						{MinTime: 5, MaxTime: 6, KB: 1, Entries: 1},
+
+						{MinTime: 6, MaxTime: 7, KB: 1, Entries: 1}, // full overlap
+						{MinTime: 7, MaxTime: 8, KB: 1, Entries: 1},
+
+						{MinTime: 8, MaxTime: 9, KB: 1, Entries: 1}, // partial overlap
+						{MinTime: 9, MaxTime: 10, KB: 1, Entries: 1},
+					},
+					from:    4,
+					through: 9,
+					exp: ChunkStats{
+						Chunks:  6,
+						KB:      6,
+						Entries: 6,
+					},
+				},
+			} {
+				t.Run(fmt.Sprintf("%s_version=%d_pageSize=%d", tc.desc, version, pageSize), func(t *testing.T) {
+					var w Writer
+					w.Version = version
+					primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+					scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+					w.addChunks(tc.chks, &primary, &scratch, pageSize)
+
+					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+					dec := &Decoder{
+						chunksSample: map[storage.SeriesRef]*chunkSamples{},
+					}
+
+					stats, err := dec.readChunkStats(version, &decbuf, 1, tc.from, tc.through)
+					require.Nil(t, err)
+					require.Equal(t, tc.exp, stats)
+				})
+			}
+		}
+	}
+
 }
 
 func BenchmarkChunkStats(b *testing.B) {
@@ -689,7 +693,6 @@ func BenchmarkReadChunks(b *testing.B) {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 
 					_ = dec.readChunks(version, &decbuf, 1, from, through, &res)
-					// _, _ = dec.readChunkStats(version, &decbuf, 1, from, through)
 				}
 			})
 		}
