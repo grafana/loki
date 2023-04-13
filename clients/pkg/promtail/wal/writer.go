@@ -27,13 +27,17 @@ const (
 	minimumCleanSegmentsEvery = time.Second
 )
 
-// WriterEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
-// they can subscribe to events by adding themselves as subscribers on the Writer with writer.Subscribe.
-type WriterEventSubscriber interface {
+// CleanupEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
+// they can subscribe to events by adding themselves as subscribers on the Writer with writer.SubscribeCleanup.
+type CleanupEventSubscriber interface {
 	// WriteCleanup is implemented by WriteTo, who can subscribe to these type of events for cleaning up the series cache
 	// entries that originated from deleted segments.
 	WriteCleanup
+}
 
+// WriteEventSubscriber is an interface that objects that want to receive an event when Writer writes to the WAL can
+// implement, and later subscribe to the Writer via writer.SubscribeWrite.
+type WriteEventSubscriber interface {
 	// NotifyWrite allows others to be notifier when Writer writes to the underlying WAL.
 	NotifyWrite()
 }
@@ -50,8 +54,11 @@ type Writer struct {
 	wal         WAL
 	entryWriter *entryWriter
 
-	subscribersLock sync.RWMutex
-	subscribers     []WriterEventSubscriber
+	cleanupSubscribersLock sync.RWMutex
+	cleanupSubscribers     []CleanupEventSubscriber
+
+	writeSubscribersLock sync.RWMutex
+	writeSubscribers     []WriteEventSubscriber
 
 	reclaimedOldSegmentsSpaceCounter *prometheus.CounterVec
 
@@ -102,11 +109,11 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
 
 			// todo: move this somewhere else
-			wrt.subscribersLock.RLock()
-			for _, s := range wrt.subscribers {
+			wrt.writeSubscribersLock.RLock()
+			for _, s := range wrt.writeSubscribers {
 				s.NotifyWrite()
 			}
-			wrt.subscribersLock.RUnlock()
+			wrt.writeSubscribersLock.RUnlock()
 		}
 	}()
 	// WAL cleanup routine that cleans old segments
@@ -191,20 +198,27 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	}
 	// if we reclaimed at least one segment, notify all subscribers
 	if maxReclaimed != -1 {
-		wrt.subscribersLock.RLock()
-		defer wrt.subscribersLock.RUnlock()
-		for _, subscriber := range wrt.subscribers {
+		wrt.cleanupSubscribersLock.RLock()
+		defer wrt.cleanupSubscribersLock.RUnlock()
+		for _, subscriber := range wrt.cleanupSubscribers {
 			subscriber.SeriesReset(maxReclaimed)
 		}
 	}
 	return nil
 }
 
-// Subscribe adds a new WriterEventSubscriber that will receive Writer events.
-func (wrt *Writer) Subscribe(subscriber WriterEventSubscriber) {
-	wrt.subscribersLock.Lock()
-	defer wrt.subscribersLock.Unlock()
-	wrt.subscribers = append(wrt.subscribers, subscriber)
+// SubscribeCleanup adds a new CleanupEventSubscriber that will receive cleanup events.
+func (wrt *Writer) SubscribeCleanup(subscriber CleanupEventSubscriber) {
+	wrt.cleanupSubscribersLock.Lock()
+	defer wrt.cleanupSubscribersLock.Unlock()
+	wrt.cleanupSubscribers = append(wrt.cleanupSubscribers, subscriber)
+}
+
+// SubscribeWrite adds a new WriteEventSubscriber that will receive write events.
+func (wrt *Writer) SubscribeWrite(subscriber WriteEventSubscriber) {
+	wrt.writeSubscribersLock.Lock()
+	defer wrt.writeSubscribersLock.Unlock()
+	wrt.writeSubscribers = append(wrt.writeSubscribers, subscriber)
 }
 
 // entryWriter writes api.Entry to a WAL, keeping in memory a single Record object that's reused

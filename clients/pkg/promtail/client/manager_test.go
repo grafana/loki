@@ -22,9 +22,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-type notifier func(subscriber wal.WriterEventSubscriber)
+type notifier func(subscriber wal.CleanupEventSubscriber)
 
-func (n notifier) Subscribe(subscriber wal.WriterEventSubscriber) {
+func (n notifier) Subscribe(subscriber wal.CleanupEventSubscriber) {
 	n(subscriber)
 }
 
@@ -33,7 +33,7 @@ func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 	_, err := NewManager(nil, log.NewLogfmtLogger(os.Stdout), 0, 0, false, prometheus.NewRegistry(), wal.Config{
 		Dir:     walDir,
 		Enabled: true,
-	}, notifier(func(subscriber wal.WriterEventSubscriber) {}))
+	}, notifier(func(subscriber wal.CleanupEventSubscriber) {}))
 	require.Error(t, err)
 }
 
