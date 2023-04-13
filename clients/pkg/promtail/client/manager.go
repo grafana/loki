@@ -85,7 +85,7 @@ func NewManager(
 		// series cache whenever a segment is deleted.
 		notifier.Subscribe(writeTo)
 
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog)
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
 		// TODO: Should this be a separate subscribe call?
 		// subscribe watcher to wal write events
 		notifier.Subscribe(watcher)
