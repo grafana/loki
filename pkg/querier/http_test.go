@@ -23,6 +23,7 @@ func TestTailHandler(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
+	//ql := querylimits.NewLimiter(nil, limits)
 
 	api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 

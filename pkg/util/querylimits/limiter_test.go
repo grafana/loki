@@ -233,6 +233,7 @@ func TestLimiter_ValidateLimits(t *testing.T) {
 		MaxQueryLookback: model.Duration(29 * time.Second),
 	}
 	req, err := http.NewRequest("GET", "http://example.com", nil)
+	require.NoError(t, err)
 	ml, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
 	require.NoError(t, l.ValidateQueryLimits(req, "fake"))
@@ -244,6 +245,7 @@ func TestLimiter_ValidateLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	req, err = http.NewRequest("GET", "http://example.com", nil)
+	require.NoError(t, err)
 	req.Header.Add(HTTPHeaderQueryLimitsKey, string(ml))
 	err = l.ValidateQueryLimits(req, "fake")
 	require.Error(t, err)
@@ -253,7 +255,9 @@ func TestLimiter_ValidateLimits(t *testing.T) {
 	limits.MaxQueryBytesRead = 100
 
 	ml, err = MarshalQueryLimits(&limits)
+	require.NoError(t, err)
 	req, err = http.NewRequest("GET", "http://example.com", nil)
+	require.NoError(t, err)
 	req.Header.Add(HTTPHeaderQueryLimitsKey, string(ml))
 	err = l.ValidateQueryLimits(req, "fake")
 	require.Error(t, err)

@@ -43,31 +43,31 @@ func (l *Limiter) ValidateQueryLimits(r *http.Request, userID string) error {
 		return nil
 	}
 
-	origQueryLength := l.CombinedLimits.MaxQueryLength(nil, userID)
+	origQueryLength := l.CombinedLimits.MaxQueryLength(context.TODO(), userID)
 	if time.Duration(requestLimits.MaxQueryLength) > origQueryLength {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryLength of %d is greater than %d, ", requestLimits.MaxQueryLength, origQueryLength))...)
 	}
 
-	origQueryRange := l.CombinedLimits.MaxQueryRange(nil, userID)
+	origQueryRange := l.CombinedLimits.MaxQueryRange(context.TODO(), userID)
 	if time.Duration(requestLimits.MaxQueryRange) > origQueryRange {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryRange of %d is greater than %d, ", requestLimits.MaxQueryRange, origQueryRange))...)
 	}
 
-	origQueryLookback := l.CombinedLimits.MaxQueryLookback(nil, userID)
+	origQueryLookback := l.CombinedLimits.MaxQueryLookback(context.TODO(), userID)
 	if time.Duration(requestLimits.MaxQueryLookback) > origQueryLookback {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryLookback of %d is greater than %d, ", requestLimits.MaxQueryLookback, origQueryLookback))...)
 	}
 
-	origEntriesLimit := l.CombinedLimits.MaxEntriesLimitPerQuery(nil, userID)
+	origEntriesLimit := l.CombinedLimits.MaxEntriesLimitPerQuery(context.TODO(), userID)
 	if requestLimits.MaxEntriesLimitPerQuery > origEntriesLimit {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxEntriesLimitPerQuery of %d is greater than %d, ", requestLimits.MaxEntriesLimitPerQuery, origEntriesLimit))...)
 	}
 
-	origQueryTimeout := l.CombinedLimits.QueryTimeout(nil, userID)
+	origQueryTimeout := l.CombinedLimits.QueryTimeout(context.TODO(), userID)
 	if time.Duration(requestLimits.QueryTimeout) > origQueryTimeout {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("QueryTimeout of %d is greater than %d, ", requestLimits.QueryTimeout, origQueryTimeout))...)
@@ -75,13 +75,13 @@ func (l *Limiter) ValidateQueryLimits(r *http.Request, userID string) error {
 
 	// don't need to check required labels, we union the two sets rather than choosing one or the other
 
-	origRequiredNumberLabels := l.CombinedLimits.RequiredNumberLabels(nil, userID)
+	origRequiredNumberLabels := l.CombinedLimits.RequiredNumberLabels(context.TODO(), userID)
 	if requestLimits.RequiredNumberLabels > origRequiredNumberLabels {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("RequiredNumberLabels of %d is greater than %d, ", requestLimits.RequiredNumberLabels, origRequiredNumberLabels))...)
 	}
 
-	origMaxQueryBytesRead := l.CombinedLimits.MaxQueryBytesRead(nil, userID)
+	origMaxQueryBytesRead := l.CombinedLimits.MaxQueryBytesRead(context.TODO(), userID)
 	if requestLimits.MaxQueryBytesRead.Val() > origMaxQueryBytesRead {
 		isErr = true
 		err = append(err, []byte(fmt.Sprintf("MaxQueryBytesRead of %d is greater than %d, ", requestLimits.MaxQueryBytesRead, origMaxQueryBytesRead))...)
