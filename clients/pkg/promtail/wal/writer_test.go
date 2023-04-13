@@ -91,10 +91,10 @@ func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 	}()
 
 	// add writer events subscriber. Add multiple to test fanout
-	writer.Subscribe(notifySegmentsCleanedFunc(func(num int) {
+	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
 		subscriber1 = append(subscriber1, num)
 	}))
-	writer.Subscribe(notifySegmentsCleanedFunc(func(num int) {
+	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
 		subscriber2 = append(subscriber2, num)
 	}))
 
@@ -178,7 +178,7 @@ func TestWriter_NoSegmentIsCleanedUpIfTheresOnlyOne(t *testing.T) {
 	}()
 
 	// add writer events subscriber
-	writer.Subscribe(notifySegmentsCleanedFunc(func(num int) {
+	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
 		segmentsReclaimedNotificationsReceived = append(segmentsReclaimedNotificationsReceived, num)
 	}))
 

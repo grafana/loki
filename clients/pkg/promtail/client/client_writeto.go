@@ -86,6 +86,3 @@ func (c *clientWriteTo) AppendEntries(entries wal.RefEntries) error {
 	}
 	return nil
 }
-
-func (c *clientWriteTo) NotifyWrite() {
-}
