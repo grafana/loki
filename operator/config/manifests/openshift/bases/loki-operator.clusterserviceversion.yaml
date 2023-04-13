@@ -417,6 +417,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:gcs
         - urn:alm:descriptor:com.tectonic.ui:select:s3
         - urn:alm:descriptor:com.tectonic.ui:select:swift
+        - urn:alm:descriptor:com.tectonic.ui:select:alibabacloud
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls

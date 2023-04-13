@@ -9,7 +9,6 @@ type Metrics struct {
 	queueLength       *prometheus.GaugeVec   // Per tenant
 	discardedRequests *prometheus.CounterVec // Per tenant
 	enqueueCount      *prometheus.CounterVec // Per tenant and level
-	dequeueCount      *prometheus.CounterVec // Per tenant and querier
 }
 
 func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
@@ -32,12 +31,6 @@ func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 			Name:      "enqueue_count",
 			Help:      "Total number of enqueued (sub-)queries.",
 		}, []string{"user", "level"}),
-		dequeueCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: subsystem,
-			Name:      "dequeue_count",
-			Help:      "Total number of dequeued (sub-)queries.",
-		}, []string{"user", "querier"}),
 	}
 }
 
@@ -45,5 +38,4 @@ func (m *Metrics) Cleanup(user string) {
 	m.queueLength.DeleteLabelValues(user)
 	m.discardedRequests.DeleteLabelValues(user)
 	m.enqueueCount.DeletePartialMatch(prometheus.Labels{"user": user})
-	m.dequeueCount.DeletePartialMatch(prometheus.Labels{"user": user})
 }

@@ -321,6 +321,7 @@ func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.Remot
 }
 
 var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXDemo:       10,
 	lokiv1.SizeOneXExtraSmall: 10,
 	lokiv1.SizeOneXSmall:      150,
 	lokiv1.SizeOneXMedium:     150,

@@ -82,6 +82,9 @@ be replaced with a double backslash `\\`
 ### Supported contents and default values of `config.yaml`:
 
 ```yaml
+# Configures global settings which impact all targets.
+[global: <global_config>]
+
 # Configures the server for Promtail.
 [server: <server_config>]
 
@@ -112,6 +115,33 @@ scrape_configs:
 
 # Configures tracing support
 [tracing: <tracing_config>]
+```
+
+## global
+
+The `global` block configures global settings which impact all scrape targets:
+
+```yaml
+# Configure how frequently log files from disk get polled for changes.
+[file_watch_config: <file_watch_config>]
+```
+
+## file_watch_config
+
+The `file_watch_config` block configures how often to poll log files from disk
+for changes:
+
+```yaml
+# Minimum frequency to poll for files. Any time file changes are detected, the
+# poll frequency gets reset to this duration.
+[min_poll_frequency: <duration> | default = "250ms"]
+
+# Maximum frequency to poll for files. Any time no file changes are detected,
+# the poll frequency doubles in value up to the maximum duration specified by
+# this value.
+#
+# The default is set to the same as min_poll_frequency.
+[max_poll_frequency: <duration> | default = "250ms"]
 ```
 
 ## server
@@ -334,6 +364,18 @@ job_name: <string>
 
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
+
+# Defines decompression behavior for the given scrape target.
+decompression:
+  # Whether decompression should be tried or not.
+  [enabled: <boolean> | default = false]
+
+  # Initial delay to wait before starting the decompression.
+  # Especially useful in scenarios where compressed files are found before the compression is finished.
+  [initial_delay: <duration> | default = 0s]
+
+  # Compression format. Supported formats are: 'gz', 'bz2' and 'z.
+  [format: <string> | default = ""]
 
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
@@ -903,14 +945,14 @@ See [Example Push Config](#example-push-config)
 
 The `windows_events` block configures Promtail to scrape windows event logs and send them to Loki.
 
-To subcribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
+To subscribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
 
 Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
 
 A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
 keep record of the last event processed. This file persists across Promtail restarts.
 
-You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
+You can set `use_incoming_timestamp` if you want to keep incoming event timestamps. By default Promtail will use the timestamp when
 the event was read from the event log.
 
 Promtail will serialize JSON windows events, adding `channel` and `computer` labels from the event received.
@@ -2046,7 +2088,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config

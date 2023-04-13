@@ -2,8 +2,9 @@
 package log_test
 
 import (
-	"github.com/grafana/loki/pkg/logql/log"
 	"testing"
+
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"

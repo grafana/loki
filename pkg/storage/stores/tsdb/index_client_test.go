@@ -113,11 +113,11 @@ func TestIndexClient_Stats(t *testing.T) {
 			BuildIndex(t, tempDir, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
-					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
 				{
 					Labels: mustParseLabels(`{fizz="buzz"}`),
-					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
 			}),
 		},
@@ -126,15 +126,15 @@ func TestIndexClient_Stats(t *testing.T) {
 			BuildIndex(t, tempDir, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
-					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
 				{
 					Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
-					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
 				{
 					Labels: mustParseLabels(`{ping="pong"}`),
-					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
 			}),
 		},
@@ -156,6 +156,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		expectedNumChunks  uint64
 		expectedNumEntries uint64
 		expectedNumStreams uint64
+		expectedNumBytes   uint64
 	}{
 		{
 			name: "request spanning 2 tables",
@@ -163,9 +164,10 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartYesterday,
 				End:   indexStartToday + 1000,
 			},
-			expectedNumChunks:  300,
+			expectedNumChunks:  30,
 			expectedNumEntries: 300,
 			expectedNumStreams: 2,
+			expectedNumBytes:   300 * 1024,
 		},
 		{
 			name: "request spanning just today",
@@ -173,9 +175,10 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartToday,
 				End:   indexStartToday + 1000,
 			},
-			expectedNumChunks:  100,
+			expectedNumChunks:  10,
 			expectedNumEntries: 100,
 			expectedNumStreams: 1,
+			expectedNumBytes:   100 * 1024,
 		},
 		{
 			name: "request selecting just few of the chunks from today",
@@ -183,9 +186,21 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartToday + 50,
 				End:   indexStartToday + 60,
 			},
-			expectedNumChunks:  10, // end time not inclusive
+			expectedNumChunks:  1, // end time not inclusive
 			expectedNumEntries: 10,
 			expectedNumStreams: 1,
+			expectedNumBytes:   10 * 1024,
+		},
+		{
+			name: "request selecting two chunks partially from today",
+			queryInterval: model.Interval{
+				Start: indexStartToday + 58,
+				End:   indexStartToday + 62,
+			},
+			expectedNumChunks:  2,
+			expectedNumEntries: 20 * 0.2,
+			expectedNumStreams: 1,
+			expectedNumBytes:   20 * 0.2 * 1024,
 		},
 		{
 			name: "request not touching any chunks",
@@ -198,9 +213,10 @@ func TestIndexClient_Stats(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stats, err := indexClient.Stats(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedNumEntries, stats.Chunks)
+			require.Equal(t, tc.expectedNumChunks, stats.Chunks)
 			require.Equal(t, tc.expectedNumEntries, stats.Entries)
 			require.Equal(t, tc.expectedNumStreams, stats.Streams)
+			require.Equal(t, tc.expectedNumBytes, stats.Bytes)
 		})
 	}
 }
