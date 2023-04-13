@@ -76,18 +76,6 @@ type Watcher struct {
 	maxReadFreq time.Duration
 }
 
-func (w *Watcher) SeriesReset(_ int) {
-}
-
-func (w *Watcher) NotifyWrite() {
-	select {
-	case w.readNotify <- struct{}{}:
-	default:
-		// default, do nothing, unbuffered channel
-		// if the channel is blocked, it means there's already a notification in place so it makes sense to drop the next one
-	}
-}
-
 // NewWatcher creates a new Watcher.
 func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger, config WatchConfig) *Watcher {
 	return &Watcher{
@@ -310,6 +298,18 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 		}
 	}
 	return first, last, nil
+}
+
+// NotifyWrite allows the Watcher to subscribe to write events published by the Writer. When a write event is received
+// we emit the signal to trigger a segment read on the watcher main routine. If the readNotify channel already is not being
+// listened on, that means the main routine is processing a segment,  or waiting because a non-handled error occurred.
+// In that case we drop the signal and make the Watcher wait for the next one.
+func (w *Watcher) NotifyWrite() {
+	select {
+	case w.readNotify <- struct{}{}:
+	default:
+		// drop wal written signal if the channel is not being listened
+	}
 }
 
 // isClosed checks in a non-blocking manner if a channel is closed or not.
