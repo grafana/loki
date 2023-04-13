@@ -2,6 +2,7 @@ package querylimits
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -231,27 +232,31 @@ func TestLimiter_ValidateLimits(t *testing.T) {
 	limits := QueryLimits{
 		MaxQueryLookback: model.Duration(29 * time.Second),
 	}
-	ctx := InjectQueryLimitsContext(context.Background(), limits)
-
-	require.NoError(t, l.ValidateQueryLimits(ctx, "fake"))
+	req, err := http.NewRequest("GET", "http://example.com", nil)
+	ml, err := MarshalQueryLimits(&limits)
+	require.NoError(t, err)
+	require.NoError(t, l.ValidateQueryLimits(req, "fake"))
 
 	// one limit is invalid
 	limits.MaxQueryLength = model.Duration(60 * time.Second)
 
-	ctx = InjectQueryLimitsContext(context.Background(), limits)
+	ml, err = MarshalQueryLimits(&limits)
+	require.NoError(t, err)
 
-	err := l.ValidateQueryLimits(ctx, "fake")
+	req, err = http.NewRequest("GET", "http://example.com", nil)
+	req.Header.Add(HTTPHeaderQueryLimitsKey, string(ml))
+	err = l.ValidateQueryLimits(req, "fake")
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "violate your tenants limits; MaxQueryLength"))
 
 	// multiple limits are invalid
 	limits.MaxQueryBytesRead = 100
 
-	ctx = InjectQueryLimitsContext(context.Background(), limits)
-
-	err = l.ValidateQueryLimits(ctx, "fake")
+	ml, err = MarshalQueryLimits(&limits)
+	req, err = http.NewRequest("GET", "http://example.com", nil)
+	req.Header.Add(HTTPHeaderQueryLimitsKey, string(ml))
+	err = l.ValidateQueryLimits(req, "fake")
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "violate your tenants limits; MaxQueryLength"))
 	require.True(t, strings.Contains(err.Error(), "MaxQueryBytesRead"))
-
 }
