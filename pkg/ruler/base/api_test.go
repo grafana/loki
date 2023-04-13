@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -161,6 +162,53 @@ func TestRuler_alerts(t *testing.T) {
 	})
 
 	require.Equal(t, string(expectedResponse), string(body))
+}
+
+func TestRuler_GetRulesLabelFilter(t *testing.T) {
+	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+
+	r := newTestRuler(t, cfg)
+	defer r.StopAsync()
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	tc := []struct {
+		name     string
+		URLQuery string
+		output   string
+		err      error
+	}{
+		{
+			name:   "query with no filters",
+			output: "test:\n    - name: group1\n      interval: 1m\n      rules:\n        - record: UP_RULE\n          expr: up\n        - alert: UP_ALERT\n          expr: up < 1\n          labels:\n            foo: bar\n        - alert: DOWN_ALERT\n          expr: down < 1\n          labels:\n            namespace: delta\n",
+		},
+		{
+			name:     "query with a valid filter found",
+			URLQuery: "labels=namespace:delta,foo:bar",
+			output:   "test:\n    - name: group1\n      interval: 1m\n      rules:\n        - alert: UP_ALERT\n          expr: up < 1\n          labels:\n            foo: bar\n        - alert: DOWN_ALERT\n          expr: down < 1\n          labels:\n            namespace: delta\n",
+		},
+		{
+			name:     "query with an invalid query param",
+			URLQuery: "test=namespace:delta,foo|bar",
+			output:   "test:\n    - name: group1\n      interval: 1m\n      rules:\n        - record: UP_RULE\n          expr: up\n        - alert: UP_ALERT\n          expr: up < 1\n          labels:\n            foo: bar\n        - alert: DOWN_ALERT\n          expr: down < 1\n          labels:\n            namespace: delta\n",
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "https://localhost:8080/api/v1/rules"
+			if tt.URLQuery != "" {
+				url = fmt.Sprintf("%s?%s", url, tt.URLQuery)
+			}
+			req := requestFor(t, http.MethodGet, url, nil, "user3")
+
+			w := httptest.NewRecorder()
+			a.ListRules(w, req)
+
+			require.Equal(t, 200, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+		})
+	}
 }
 
 func TestRuler_Create(t *testing.T) {
