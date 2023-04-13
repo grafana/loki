@@ -2,6 +2,7 @@ package targets
 
 import (
 	"fmt"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -75,6 +76,7 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
+	watchConfig file.WatchConfig,
 ) (*TargetManagers, error) {
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
@@ -172,6 +174,7 @@ func NewTargetManagers(
 				client,
 				scrapeConfigs,
 				targetConfig,
+				watchConfig,
 			)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make file target manager")
