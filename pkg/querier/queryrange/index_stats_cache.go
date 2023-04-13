@@ -6,11 +6,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type IndexStatsSplitter struct {
@@ -32,11 +31,7 @@ func (i IndexStatsSplitter) GenerateCacheKey(_ context.Context, userID string, r
 type IndexStatsExtractor struct{}
 
 func (p IndexStatsExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
-	// TODO: Reuse functionality from https://github.com/grafana/loki/pull/9096 once merged.
-	totalTime := resEnd - resStart
-	leadingTime := math.Max64(0, start-resStart)
-	trailingTime := math.Max64(0, resEnd-end)
-	factor := float64(totalTime-(leadingTime+trailingTime)) / float64(totalTime)
+	factor, _, _ := util.GetFactorOfTime(start, end, resStart, resEnd)
 
 	statsRes := res.(*IndexStatsResponse)
 	return &IndexStatsResponse{
