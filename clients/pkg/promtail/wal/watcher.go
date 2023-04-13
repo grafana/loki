@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	maxReadPeriod      = 1 * time.Second
-	readPeriod         = 250 * time.Millisecond
+	readPeriod    = 250 * time.Millisecond
+	maxReadPeriod = 1 * time.Second
+
 	segmentCheckPeriod = 100 * time.Millisecond
 
 	// debug flag used for developing and testing the watcher code. Using this instead of level.Debug to avoid checking
@@ -170,8 +171,10 @@ func (w *Watcher) watch(segmentNum int) error {
 
 	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
-	readTicker := time.NewTicker(readPeriod)
-	defer readTicker.Stop()
+	//readTicker := time.NewTicker(readPeriod)
+	//defer readTicker.Stop()
+
+	readTimer := newBackoffTimer(readPeriod, maxReadPeriod)
 
 	segmentTicker := time.NewTicker(segmentCheckPeriod)
 	defer segmentTicker.Stop()
@@ -208,9 +211,9 @@ func (w *Watcher) watch(segmentNum int) error {
 			return nil
 
 		case <-w.readNotify:
-			// https://github.com/golang/go/issues/23196#issuecomment-353169837
-			// the cases below will unlock the select block, and execute the block below
-		case <-readTicker.C:
+		// https://github.com/golang/go/issues/23196#issuecomment-353169837
+		// the cases below will unlock the select block, and execute the block below
+		case <-readTimer.C():
 		}
 
 		// read from open segment routine
@@ -225,23 +228,15 @@ func (w *Watcher) watch(segmentNum int) error {
 		}
 
 		if ok {
-			// read ok, reset ticker to normal rate
-			w.currReadBackoff = readPeriod
-			readTicker.Reset(readPeriod)
+			// TODO: we'll be resetting the readTimer for each notification we get. Should we do this just if the readSegment
+			// was trigger by the timer?
+
+			// read ok, reset readTimer to minimum interval
+			readTimer.reset()
 			continue
 		}
 
-		// failed to read, exponential backoff in the read ticker
-		w.doubleBackoff()
-		readTicker.Reset(w.currReadBackoff)
-	}
-}
-
-// doubleBackoff implements an exponential backoff increment of the currReadPeriod
-func (w *Watcher) doubleBackoff() {
-	w.currReadBackoff = w.currReadBackoff * 2
-	if w.currReadBackoff > maxReadPeriod {
-		w.currReadBackoff = maxReadPeriod
+		readTimer.backoff()
 	}
 }
 

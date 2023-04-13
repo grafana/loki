@@ -86,8 +86,13 @@ func NewManager(
 		notifier.Subscribe(writeTo)
 
 		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog)
+		// TODO: Should this be a separate subscribe call?
+		// subscribe watcher to wal write events
+		notifier.Subscribe(watcher)
+
 		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
 		watcher.Start()
+
 		watchers = append(watchers, watcher)
 	}
 
