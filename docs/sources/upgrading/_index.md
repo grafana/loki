@@ -143,13 +143,13 @@ These statistics are also displayed when using `--stats` with LogCLI.
 
 #### Compactor multi-store support
 
-In releases prior to 2.7.5, setting `-boltdb.shipper.compactor.shared-store` configured the following:
+In releases prior to 2.8.1, setting `-boltdb.shipper.compactor.shared-store` configured the following:
 - store used for managing delete requests.
 - store on which index compaction should be performed.
 
 If `-boltdb.shipper.compactor.shared-store` was not set, it used to default to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
 
-In releases 2.7.5 and later, the Compactor supports index compaction on multiple buckets/object stores.
+In releases 2.8.1 and later, the Compactor supports index compaction on multiple buckets/object stores.
 And going forward loki will not set any defaults on `-boltdb.shipper.compactor.shared-store`, this has a couple of side effects detailed as follows:
 
 ##### store on which index compaction should be performed:
@@ -160,8 +160,6 @@ If not set, compaction would be performed on all the object stores that contain 
 A new config option `-boltdb.shipper.compactor.delete-request-store` decides where delete requests should be stored. This new option takes precedence over `-boltdb.shipper.compactor.shared-store`.
 
 In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
-
-We strongly recommend running compactor with v2.7.5 atleast once before changing the values of `-boltdb.shipper.compactor.shared-store` or `-boltdb.shipper.compactor.delete-request-store` to ensure any existing marker files are [migrated](https://github.com/grafana/loki/blob/b563f6ca3c2525759c7361f43052beb864a37ca8/pkg/storage/stores/indexshipper/compactor/compactor.go#L277). Markers are used to track the chunks that need to be deleted.
 
 #### Index shipper multi-store support
 In releases prior to 2.8.1, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
