@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Configuring Promtaim
+description: Configuring Promtail
 ---
 # Configuration
 
