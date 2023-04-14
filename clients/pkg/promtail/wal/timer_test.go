@@ -7,8 +7,7 @@ import (
 )
 
 const (
-	// allow 10% delta of the minimum testing interval
-	delta = time.Millisecond * 25
+	delta = time.Millisecond * 10
 )
 
 func TestBackoffTimer(t *testing.T) {
@@ -17,18 +16,18 @@ func TestBackoffTimer(t *testing.T) {
 	timer := newBackoffTimer(min, max)
 
 	now := time.Now()
-	<-timer.C()
+	<-timer.C
 	require.WithinDuration(t, now.Add(min), time.Now(), delta, "expected backing off timer to fire in the minimum")
 
 	// backoff, and expect it will take twice the time
 	now = time.Now()
 	timer.backoff()
-	<-timer.C()
+	<-timer.C
 	require.WithinDuration(t, now.Add(min*2), time.Now(), delta, "expected backing off timer to fire in the twice the minimum")
 
 	// backoff capped, backoff will actually be 1200ms, but capped at 1000
 	now = time.Now()
 	timer.backoff()
-	<-timer.C()
+	<-timer.C
 	require.WithinDuration(t, now.Add(max), time.Now(), delta, "expected backing off timer to fire in the max")
 }

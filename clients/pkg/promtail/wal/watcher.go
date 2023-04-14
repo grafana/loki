@@ -22,7 +22,7 @@ const (
 
 	// debug flag used for developing and testing the watcher code. Using this instead of level.Debug to avoid checking
 	// the log level inwards into the logger code, and just making the compiler omit this code.
-	debug = false
+	debug = true
 )
 
 // Based in the implementation of prometheus WAL watcher
@@ -160,16 +160,23 @@ func (w *Watcher) watch(segmentNum int) error {
 	reader := wlog.NewLiveReader(w.logger, nil, segment)
 
 	readTimer := newBackoffTimer(w.minReadFreq, w.maxReadFreq)
+	if debug {
+		level.Info(w.logger).Log("msg", "creating new read timer", "time", readTimer.curr)
+	}
 
 	segmentTicker := time.NewTicker(segmentCheckPeriod)
 	defer segmentTicker.Stop()
 
 	for {
+		level.Info(w.logger).Log("msg", "entering select")
 		select {
 		case <-w.quit:
 			return nil
 
 		case <-segmentTicker.C:
+			if debug {
+				level.Info(w.logger).Log("msg", "segment ticker")
+			}
 			_, last, err := w.firstAndLast()
 			if err != nil {
 				return fmt.Errorf("segments: %w", err)
@@ -195,10 +202,16 @@ func (w *Watcher) watch(segmentNum int) error {
 			// return after reading the whole segment for creating a new LiveReader from the newly created segment
 			return nil
 
-		case <-w.readNotify:
-		// https://github.com/golang/go/issues/23196#issuecomment-353169837
 		// the cases below will unlock the select block, and execute the block below
-		case <-readTimer.C():
+		// https://github.com/golang/go/issues/23196#issuecomment-353169837
+		case <-w.readNotify:
+			if debug {
+				level.Info(w.logger).Log("msg", "read triggered by notification")
+			}
+		case <-readTimer.C:
+			if debug {
+				level.Info(w.logger).Log("msg", "read triggered by timer")
+			}
 		}
 
 		// read from open segment routine
@@ -217,6 +230,7 @@ func (w *Watcher) watch(segmentNum int) error {
 			// was trigger by the timer?
 
 			// read ok, reset readTimer to minimum interval
+			level.Warn(w.logger).Log("msg", "restting timer")
 			readTimer.reset()
 			continue
 		}
@@ -232,7 +246,9 @@ func (w *Watcher) readSegment(r *wlog.LiveReader, segmentNum int) (bool, error) 
 	for r.Next() && !isClosed(w.quit) {
 		rec := r.Record()
 		w.metrics.recordsRead.WithLabelValues(w.id).Inc()
-		readData, err := w.decodeAndDispatch(rec, segmentNum)
+		read, err := w.decodeAndDispatch(rec, segmentNum)
+		// keep true if data was read at least once
+		readData = readData || read
 		if err != nil {
 			return readData, errors.Wrapf(err, "error decoding record")
 		}
