@@ -18,12 +18,12 @@ per-stream rate limit.
      shard_streams:
          enabled: true
    ```
-2. Optionally change the `desired_rate` in bytes if ???:
+2. Optionally lower the `desired_rate` in bytes if you find that the system if still hitting the `per_stream_rate_limit`:
    ```yaml
    limits_config:
      shard_streams:
        enabled: true
-       desired_rate: 5242880 # 5 MiB
+       desired_rate: 2097152 #2MiB
    ```
 3. Optionally enable `logging_enabled` for debugging stream sharding. **Note**: this may affect the ingestion performance of Loki.
    ```yaml
