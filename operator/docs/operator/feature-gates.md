@@ -276,6 +276,17 @@ bool
 </tr>
 <tr>
 <td>
+<code>rulerConfigWebhook</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>RulerConfigWebhook enables the RulerConfig CR validation webhook.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>defaultNodeAffinity</code><br/>
 <em>
 bool

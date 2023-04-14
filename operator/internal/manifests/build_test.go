@@ -19,6 +19,7 @@ import (
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -59,6 +60,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 
 func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,

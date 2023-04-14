@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"sync"
 	"time"
 
@@ -13,12 +14,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -28,9 +29,18 @@ type TopicManager interface {
 	Topics() ([]string, error)
 }
 
+// TargetSyncerConfig contains specific TargetSyncer configuration.
+// It allows to make the TargetSyncer creation independent from the scrape config structure.
+type TargetSyncerConfig struct {
+	RelabelConfigs       []*relabel.Config
+	UseIncomingTimestamp bool
+	Labels               model.LabelSet
+	GroupID              string
+}
+
 type TargetSyncer struct {
 	logger   log.Logger
-	cfg      scrapeconfig.Config
+	cfg      *TargetSyncerConfig
 	pipeline *stages.Pipeline
 	reg      prometheus.Registerer
 	client   api.EntryHandler
@@ -43,9 +53,11 @@ type TargetSyncer struct {
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
 	previousTopics []string
+	messageParser  MessageParser
 }
 
-func NewSyncer(
+// NewSyncerFromScrapeConfig creates TargetSyncer from scrape config
+func NewSyncerFromScrapeConfig(
 	reg prometheus.Registerer,
 	logger log.Logger,
 	cfg scrapeconfig.Config,
@@ -84,15 +96,44 @@ func NewSyncer(
 	if err != nil {
 		return nil, fmt.Errorf("error creating consumer group client: %w", err)
 	}
-	topicManager, err := newTopicManager(client, cfg.KafkaConfig.Topics)
-	if err != nil {
-		return nil, fmt.Errorf("error creating topic manager: %w", err)
-	}
 	pipeline, err := stages.NewPipeline(log.With(logger, "component", "kafka_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 	if err != nil {
 		return nil, fmt.Errorf("error creating pipeline: %w", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+
+	targetSyncConfig := &TargetSyncerConfig{
+		RelabelConfigs:       cfg.RelabelConfigs,
+		UseIncomingTimestamp: cfg.KafkaConfig.UseIncomingTimestamp,
+		Labels:               cfg.KafkaConfig.Labels,
+		GroupID:              cfg.KafkaConfig.GroupID,
+	}
+
+	t, err := NewSyncer(context.Background(), reg, logger, pushClient, pipeline, group, client, messageParser{}, cfg.KafkaConfig.Topics, targetSyncConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error starting kafka target: %w", err)
+	}
+	return t, nil
+}
+
+// NewSyncer creates TargetSyncer
+func NewSyncer(ctx context.Context,
+	reg prometheus.Registerer,
+	logger log.Logger,
+	pushClient api.EntryHandler,
+	pipeline *stages.Pipeline,
+	group sarama.ConsumerGroup,
+	client sarama.Client,
+	messageParser MessageParser,
+	topics []string,
+	cfg *TargetSyncerConfig,
+) (*TargetSyncer, error) {
+	topicManager, err := newTopicManager(client, topics)
+	if err != nil {
+		return nil, fmt.Errorf("error creating topic manager: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
 	t := &TargetSyncer{
 		logger:       logger,
 		ctx:          ctx,
@@ -114,9 +155,12 @@ func NewSyncer(
 			ConsumerGroup: group,
 			logger:        logger,
 		},
+		messageParser: messageParser,
 	}
+
 	t.discoverer = t
 	t.loop()
+
 	return t, nil
 }
 
@@ -262,17 +306,27 @@ func (ts *TargetSyncer) Stop() error {
 	return ts.close()
 }
 
+// ActiveTargets returns active targets from its consumer
+func (ts *TargetSyncer) ActiveTargets() []target.Target {
+	return ts.getActiveTargets()
+}
+
+// DroppedTargets returns dropped targets from its consumer
+func (ts *TargetSyncer) DroppedTargets() []target.Target {
+	return ts.getDroppedTargets()
+}
+
 // NewTarget creates a new targets based on the current kafka claim and group session.
 func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 	discoveredLabels := model.LabelSet{
 		"__meta_kafka_topic":     model.LabelValue(claim.Topic()),
 		"__meta_kafka_partition": model.LabelValue(fmt.Sprintf("%d", claim.Partition())),
 		"__meta_kafka_member_id": model.LabelValue(session.MemberID()),
-		"__meta_kafka_group_id":  model.LabelValue(ts.cfg.KafkaConfig.GroupID),
+		"__meta_kafka_group_id":  model.LabelValue(ts.cfg.GroupID),
 	}
 	details := newDetails(session, claim)
 	labelMap := make(map[string]string)
-	for k, v := range discoveredLabels.Clone().Merge(ts.cfg.KafkaConfig.Labels) {
+	for k, v := range discoveredLabels.Clone().Merge(ts.cfg.Labels) {
 		labelMap[string(k)] = string(v)
 	}
 	labelOut := format(labels.FromMap(labelMap), ts.cfg.RelabelConfigs)
@@ -287,13 +341,15 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		}, nil
 	}
 	t := NewTarget(
+		ts.logger,
 		session,
 		claim,
 		discoveredLabels,
 		labelOut,
 		ts.cfg.RelabelConfigs,
 		ts.pipeline.Wrap(ts.client),
-		ts.cfg.KafkaConfig.UseIncomingTimestamp,
+		ts.cfg.UseIncomingTimestamp,
+		ts.messageParser,
 	)
 
 	return t, nil

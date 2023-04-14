@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
+
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
@@ -27,6 +28,7 @@ type Options struct {
 
 // Config for promtail, describing what files to watch.
 type Config struct {
+	Global       GlobalConfig  `yaml:"global,omitempty"`
 	ServerConfig server.Config `yaml:"server,omitempty"`
 	// deprecated use ClientConfigs instead
 	ClientConfig    client.Config         `yaml:"client,omitempty"`
@@ -43,6 +45,7 @@ type Config struct {
 // RegisterFlags with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	c.Global.RegisterFlagsWithPrefix(prefix, f)
 	c.ServerConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.ClientConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
@@ -91,4 +94,21 @@ func (c *Config) Setup(l log.Logger) {
 			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
 	}
+}
+
+// GlobalConfig holds configuration settings which apply to all targets.
+// Individual scrape jobs can override the defaults.
+type GlobalConfig struct {
+	FileWatch file.WatchConfig `mapstructure:"file_watch_config" yaml:"file_watch_config"`
+}
+
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (cfg *GlobalConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.FileWatch.RegisterFlagsWithPrefix(prefix+"file-watch.", f)
+}
+
+// RegisterFlags register flags.
+func (cfg *GlobalConfig) RegisterFlags(flags *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", flags)
 }

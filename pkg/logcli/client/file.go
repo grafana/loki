@@ -190,12 +190,20 @@ func (l *limiter) MaxQuerySeries(ctx context.Context, userID string) int {
 	return l.n
 }
 
+func (l *limiter) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+	return 0 * time.Second
+}
+
 func (l *limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
 	return time.Minute * 5
 }
 
 func (l *limiter) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return []*validation.BlockedQuery{}
+}
+
+func (l *limiter) RequiredLabels(ctx context.Context, userID string) []string {
+	return nil
 }
 
 type querier struct {

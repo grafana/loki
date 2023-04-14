@@ -53,6 +53,10 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+	// The 0 value should disable retention
+	if period <= 0 {
+		return false, nil
+	}
 	return now.Sub(ref.Through) > period, nil
 }
 

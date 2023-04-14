@@ -166,6 +166,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -521,10 +522,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
 	if cfg.CompactorConfig.LegacySharedStoreDefault == defaults.CompactorConfig.LegacySharedStoreDefault {
 		cfg.CompactorConfig.LegacySharedStoreDefault = period.ObjectType
 	}
@@ -543,10 +540,6 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
 	if cfg.CompactorConfig.LegacySharedStoreDefault == defaults.CompactorConfig.LegacySharedStoreDefault {
 		cfg.CompactorConfig.LegacySharedStoreDefault = period.ObjectType
 	}

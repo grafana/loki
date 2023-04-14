@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -33,6 +34,7 @@ var errInvalidShardingRange = errors.New("Query does not fit in a single shardin
 func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
+	codec queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
@@ -95,6 +97,34 @@ type astMapperware struct {
 	maxShards int
 }
 
+func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	maxQuerierBytesReadCapture := func(id string) int { return ast.limits.MaxQuerierBytesRead(ctx, id) }
+	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxQuerierBytesReadCapture); maxBytesRead > 0 {
+		statsBytesStr := humanize.IBytes(bytesPerShard)
+		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
+
+		if bytesPerShard > uint64(maxBytesRead) {
+			level.Warn(ast.logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+
+			errorTmpl := limErrQuerierTooManyBytesShardableTmpl
+			if notShardable {
+				errorTmpl = limErrQuerierTooManyBytesUnshardableTmpl
+			}
+
+			return httpgrpc.Errorf(http.StatusBadRequest, errorTmpl, statsBytesStr, maxBytesReadStr)
+		}
+
+		level.Debug(ast.logger).Log("msg", "Query is within limits", "status", "accepted", "limit_name", "MaxQuerierBytesRead", "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+	}
+
+	return nil
+}
+
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := spanlogger.FromContextWithFallback(
 		ctx,
@@ -128,6 +158,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.maxShards,
 		r,
 		ast.next,
+		ast.limits,
 	)
 	if !ok {
 		return ast.next.Do(ctx, r)
@@ -135,16 +166,21 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
 
-	noop, parsed, err := mapper.Parse(r.GetQuery())
+	noop, bytesPerShard, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
+	// Note, even if noop, bytesPerShard contains the bytes that'd be read for the whole expr without sharding
+	if err = ast.checkQuerySizeLimit(ctx, bytesPerShard, noop); err != nil {
+		return nil, err
+	}
+
+	// If the ast can't be mapped to a sharded equivalent,
+	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
-		// the ast can't be mapped to a sharded equivalent
-		// so we can bypass the sharding engine.
 		return ast.next.Do(ctx, r)
 	}
 
