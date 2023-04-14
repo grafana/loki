@@ -141,6 +141,10 @@ level=info ts=2022-12-20T15:27:54.858554127Z caller=metrics.go:147 component=fro
 
 These statistics are also displayed when using `--stats` with LogCLI.
 
+#### Index shipper multi-store support
+In releases prior to 2.8.1, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
+In releases 2.8.1 and later, these defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
+
 ## 2.7.0
 
 ### Loki
