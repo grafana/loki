@@ -72,7 +72,7 @@ func getStatsForMatchers(
 	start, end model.Time,
 	matcherGroups []syntax.MatcherRange,
 	parallelism int,
-	defaultLookback ...time.Duration,
+	defaultLookback time.Duration,
 ) ([]*stats.Stats, error) {
 	startTime := time.Now()
 
@@ -81,12 +81,12 @@ func getStatsForMatchers(
 		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
 		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
 		adjustedFrom := start.Add(-diff)
-		if matcherGroups[i].Interval == 0 && len(defaultLookback) > 0 {
+		if matcherGroups[i].Interval == 0 {
 			// For limited instant queries, when start == end, the queries would return
 			// zero results. Prometheus has a concept of "look back amount of time for instant queries"
 			// since metric data is sampled at some configurable scrape_interval (commonly 15s, 30s, or 1m).
 			// We copy that idea and say "find me logs from the past when start=end".
-			adjustedFrom = adjustedFrom.Add(-defaultLookback[0])
+			adjustedFrom = adjustedFrom.Add(-defaultLookback)
 		}
 
 		adjustedThrough := end.Add(-matcherGroups[i].Offset)
