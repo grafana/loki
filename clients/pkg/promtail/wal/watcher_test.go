@@ -100,6 +100,39 @@ var cases = map[string]watcherTest{
 		}
 	},
 
+	"read entries from WAL, just using backup timer to trigger reads": func(t *testing.T, res *watcherTestResources) {
+		res.startWatcher()
+
+		lines := []string{
+			"holis",
+			"holus",
+			"chau",
+		}
+		testLabels := model.LabelSet{
+			"test": "watcher_read",
+		}
+
+		for _, line := range lines {
+			res.writeEntry(api.Entry{
+				Labels: testLabels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      line,
+				},
+			})
+		}
+		require.NoError(t, res.syncWAL())
+
+		// do not notify, let the backup timer trigger the watcher reads
+
+		require.Eventually(t, func() bool {
+			return len(res.writeTo.ReadEntries) == 3
+		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		for _, readEntry := range res.writeTo.ReadEntries {
+			require.Contains(t, lines, readEntry.Line, "not expected log line")
+		}
+	},
+
 	"continue reading entries in next segment after initial segment is closed": func(t *testing.T, res *watcherTestResources) {
 		res.startWatcher()
 		lines := []string{
