@@ -234,14 +234,12 @@ func TestLimiter_ValidateLimits(t *testing.T) {
 	}
 	req, err := http.NewRequest("GET", "http://example.com", nil)
 	require.NoError(t, err)
-	ml, err := MarshalQueryLimits(&limits)
-	require.NoError(t, err)
 	require.NoError(t, l.ValidateQueryLimits(req, "fake"))
 
 	// one limit is invalid
 	limits.MaxQueryLength = model.Duration(60 * time.Second)
 
-	ml, err = MarshalQueryLimits(&limits)
+	ml, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
 
 	req, err = http.NewRequest("GET", "http://example.com", nil)
