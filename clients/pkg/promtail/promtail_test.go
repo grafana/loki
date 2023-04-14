@@ -674,7 +674,7 @@ func Test_DryRun(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
-	p, err := New(config.Config{
+	_, err = New(config.Config{
 		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
@@ -683,7 +683,6 @@ func Test_DryRun(t *testing.T) {
 		},
 	}, nil, clientMetrics, false, nil)
 	require.NoError(t, err)
-	require.IsType(t, &client.MultiClient{}, p.client)
 }
 
 func Test_Reload(t *testing.T) {
