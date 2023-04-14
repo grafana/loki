@@ -264,7 +264,7 @@ func (a *mockAppender) UpdateMetadata(ref storage.SeriesRef, l labels.Labels, m 
 	return 0, nil
 }
 
-func (a *mockAppender) AppendHistogram(ref storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram) (storage.SeriesRef, error) {
+func (a *mockAppender) AppendHistogram(ref storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, nil
 }
 

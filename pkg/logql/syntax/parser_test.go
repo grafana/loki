@@ -2954,8 +2954,8 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("bob", `top.sub["index"]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("bob", `top.sub["index"]`),
 					}),
 				},
 			},
@@ -2965,8 +2965,8 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("bob", `top.params[0]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("bob", `top.params[0]`),
 					}),
 				},
 			},
@@ -2976,9 +2976,9 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("response_code", `response.code`),
-						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("response_code", `response.code`),
+						log.NewLabelExtractionExpr("api_key", `request.headers["X-API-KEY"]`),
 					}),
 				},
 			},
@@ -2988,10 +2988,10 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("response_code", `response_code`),
-						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
-						log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("response_code", `response_code`),
+						log.NewLabelExtractionExpr("api_key", `request.headers["X-API-KEY"]`),
+						log.NewLabelExtractionExpr("layer7_something_specific", `layer7_something_specific`),
 					}),
 				},
 			},
@@ -3002,8 +3002,8 @@ func TestParse(t *testing.T) {
 				Left: &LogRange{
 					Left: &PipelineExpr{
 						MultiStages: MultiStageExpr{
-							newJSONExpressionParser([]log.JSONExpression{
-								log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+							newJSONExpressionParser([]log.LabelExtractionExpr{
+								log.NewLabelExtractionExpr("layer7_something_specific", `layer7_something_specific`),
 							}),
 						},
 						Left: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
@@ -3039,6 +3039,64 @@ func TestParse(t *testing.T) {
 				),
 				NewVectorExpr("1"),
 			),
+		},
+		{
+			in: `{app="foo"} | logfmt message="msg"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("message", `msg`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err `,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+						log.NewLabelExtractionExpr("err", `err`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err="error"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+						log.NewLabelExtractionExpr("err", `error`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg="message", apiKey="api_key"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `message`),
+						log.NewLabelExtractionExpr("apiKey", `api_key`),
+					}),
+				},
+			},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -3350,4 +3408,15 @@ func TestParseLabels(t *testing.T) {
 			require.Equal(t, tc.output, got)
 		})
 	}
+}
+
+func TestNoOpLabelToString(t *testing.T) {
+	logExpr := `{container_name="app"} | foo=~".*"`
+	l, err := ParseLogSelector(logExpr, false)
+	require.NoError(t, err)
+	require.Equal(t, `{container_name="app"} | foo=~"(?-s:.)*?"`, l.String())
+
+	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	require.NoError(t, err)
+	require.Len(t, stages, 0)
 }

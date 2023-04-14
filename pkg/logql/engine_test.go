@@ -2392,15 +2392,15 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			tc := tc
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
 				end:   time.Unix(180, 0),
 				step:  1 * time.Second,
+				limit: 1,
 			})
 			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)
@@ -2439,6 +2439,38 @@ func TestEngine_MaxSeries(t *testing.T) {
 				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
 			} else {
 				require.Nil(t, err)
+			}
+		})
+	}
+}
+
+func TestEngine_MaxRangeInterval(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{rangeLimit: 24 * time.Hour, maxSeries: 100000}, log.NewNopLogger())
+
+	for _, test := range []struct {
+		qs             string
+		direction      logproto.Direction
+		expectLimitErr bool
+	}{
+		{`topk(1,rate(({app=~"foo|bar"})[2d]))`, logproto.FORWARD, true},
+		{`topk(1,rate(({app=~"foo|bar"})[1d]))`, logproto.FORWARD, false},
+		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
+	} {
+		t.Run(test.qs, func(t *testing.T) {
+			q := eng.Query(LiteralParams{
+				qs:        test.qs,
+				start:     time.Unix(0, 0),
+				end:       time.Unix(100000, 0),
+				step:      60 * time.Second,
+				direction: test.direction,
+				limit:     1000,
+			})
+			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			if test.expectLimitErr {
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlmodel.ErrIntervalLimit)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}

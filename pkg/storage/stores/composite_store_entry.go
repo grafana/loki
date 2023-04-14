@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -22,8 +23,8 @@ import (
 var _ Store = &compositeStore{}
 
 type StoreLimits interface {
-	MaxChunksPerQueryFromStore(userID string) int
-	MaxQueryLength(userID string) time.Duration
+	MaxChunksPerQueryFromStore(string) int
+	MaxQueryLength(context.Context, string) time.Duration
 }
 
 type ChunkWriter interface {
@@ -48,7 +49,9 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	log, ctx := spanlogger.New(ctx, "GetChunkRefs")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunkRefs")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
@@ -86,7 +89,9 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
@@ -101,7 +106,9 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
@@ -115,8 +122,8 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 }
 
 func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.Stats")
-	defer log.Span.Finish()
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Stats")
+	defer sp.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -135,9 +142,9 @@ func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, 
 		return false, errors.QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
 	}
 
-	maxQueryLength := c.limits.MaxQueryLength(userID)
+	maxQueryLength := c.limits.MaxQueryLength(ctx, userID)
 	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
-		return false, errors.QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength))
+		return false, errors.QueryError(fmt.Sprintf(validation.ErrQueryTooLong, model.Duration((*through).Sub(*from)), model.Duration(maxQueryLength)))
 	}
 
 	now := model.Now()

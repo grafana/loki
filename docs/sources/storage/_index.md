@@ -42,6 +42,9 @@ S3 is AWS's hosted object store. It is a good candidate for a managed object sto
 Blob Storage is Microsoft Azure's hosted object store. It is a good candidate for a managed object store, especially when you're already running on Azure, and is production safe.
 You can authenticate Blob Storage access by using a storage account name and key or by using a Service Principal.
 
+### IBM Cloud Object Storage (COS)
+[COS](https://www.ibm.com/cloud/object-storage) is IBM Cloud hosted object store. It is a good candidate for a managed object store, especially when you're already running on IBM Cloud, and is production safe.
+
 ### Notable Mentions
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
@@ -68,7 +71,7 @@ Cassandra can also be utilized for the index store and aside from the [boltdb-sh
 
 ### BigTable
 
-Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to it's heavy fixed costs) or wish to run in GCP.
+Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
 
 ### DynamoDB
 
@@ -109,7 +112,7 @@ schema_config:
         period: 168h
 ```
 
-For all data ingested before 2020-07-01, Loki used the v10 schema and then switched after that point to the more effective v11. This dramatically simplifies upgrading, ensuring it's simple to take advantages of new storage optimizations. These configs should be immutable for as long as you care about retention.
+For all data ingested before 2020-07-01, Loki used the v10 schema and then switched after that point to the more effective v11. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
 
 ## Table Manager
 
@@ -186,7 +189,7 @@ For more information, see the [retention configuration]({{<relref "../operations
 
 ### Single machine/local development (boltdb+filesystem)
 
-[The repo contains a working example](https://github.com/grafana/loki/blob/master/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
+[The repo contains a working example](https://github.com/grafana/loki/blob/main/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
 
 ### GCP deployment (GCS Single Store)
 
@@ -304,6 +307,29 @@ This guide assumes a provisioned EKS cluster.
    Note, the bucket name defaults to `loki-data` but can be changed via the
    `bucket_name` variable.
 
+
+### IBM Cloud Object Storage
+
+```yaml
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    api_key: <api_key_to_authenticate_with_cos>
+    region: <region>
+    service_instance_id: <cos_service_instance_id>
+    auth_endpoint: <iam_endpoint_for_authentication>
+```
 
 ### On prem deployment (Cassandra+Cassandra)
 

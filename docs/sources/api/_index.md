@@ -269,8 +269,8 @@ accepts the following query parameters in the URL:
 
 - `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
-- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago.
-- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
+- `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago. Loki returns results with timestamp greater or equal to this value.
+- `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now. Loki returns results with timestamp lower than this value.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies to query types which produce a matrix response.
 - `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
@@ -483,6 +483,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
+- `query`: A set of log stream selector that selects the streams to match and return label values for `<name>`. Example: `{"app": "myapp", "environment": "dev"}`
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -621,6 +622,17 @@ backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
+### Tell ingester to release all resources on next SIGTERM
+
+```
+POST /ingester/prepare_shutdown
+```
+
+`/ingester/prepare_shutdown` will prepare the ingester to release resources on the next SIGTERM signal,
+where releasing resources means flushing data and unregistering from the ingester ring.
+This endpoint supersedes any YAML configurations and isn't necessary if the ingester is already
+configured to unregister from the ring or to flush on shutdown.
+
 ## Flush in-memory chunks and shut down
 
 ```
@@ -716,6 +728,15 @@ Params:
 - `query`: A LogQL query string. Can be passed as URL param (`?query=<query>`) in case of both `GET` and `POST`. Or as form value in case of `POST`.
 
 The `/loki/api/v1/format_query` endpoint allows to format LogQL queries. It returns an error if the passed LogQL is invalid. It is exposed by all Loki components and helps to improve readability and the debugging experience of LogQL queries.
+
+The following example formats the expression LogQL `{foo=   "bar"}` into
+
+```json
+{
+   "status" : "success",
+   "data" : "{foo=\"bar\"}"
+}
+```
 
 ## List series
 
@@ -1361,8 +1382,8 @@ $ curl -G -s  "http://localhost:3100/api/prom/label" | jq
 `/api/prom/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
 
-- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
-- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
+- [Protobuf definition](https://github.com/grafana/loki/blob/main/pkg/logproto/logproto.proto)
+- [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a
 JSON post body can be sent in the following format:

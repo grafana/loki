@@ -127,8 +127,8 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Apply relabeling
-		processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
-		if len(processed) == 0 {
+		processed, keep := relabel.Process(lb.Labels(nil), t.relabelConfig...)
+		if !keep || len(processed) == 0 {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
