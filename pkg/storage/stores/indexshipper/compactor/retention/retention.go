@@ -179,7 +179,7 @@ func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, ind
 				return false, err
 			}
 			chunksToDelete = append(chunksToDelete, ce.ChunkRef)
-			level.Debug(util_log.Logger).Log("msg", "current number of chunks to delete", "count", len(chunksToDelete))
+			level.Info(util_log.Logger).Log("msg", "current number of chunks to delete", "count", len(chunksToDelete))
 
 			return true, nil
 		})
