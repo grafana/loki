@@ -80,7 +80,7 @@ func newASTMapperware(
 	limits Limits,
 	maxShards int,
 ) *astMapperware {
-	ast :=  &astMapperware{
+	ast := &astMapperware{
 		confs:        confs,
 		logger:       log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:       limits,
