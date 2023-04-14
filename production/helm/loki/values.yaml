@@ -505,10 +505,10 @@ test:
 ## -- Application controller Pod Disruption Budget Configuration
 ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
 podDisruptionBudget:
-  # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+  # -- Number of pods that are available after eviction as number or percentage (for example: 50%)
   # @default -- `""` (defaults to 0 if not specified)
   # minAvailable: ""
-  # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+  # -- Number of pods that are unavailable after eviction as number or percentage (for example: 50%).
   ## Has higher precedence over `controller.pdb.minAvailable`
   maxUnavailable: "1"
 
@@ -730,10 +730,10 @@ write:
   ## -- Application controller Pod Disruption Budget Configuration
   ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
   podDisruptionBudget:
-    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # -- Number of pods that are available after eviction as number or percentage (for example: 50%)
     # @default -- `""` (defaults to 0 if not specified)
     minAvailable: ""
-    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    # -- Number of pods that are unavailable after eviction as number or percentage (for example: 50%).
     ## Has higher precedence over `controller.pdb.minAvailable`
     maxUnavailable: "1"
 
@@ -878,10 +878,10 @@ read:
   ## -- Application controller Pod Disruption Budget Configuration
   ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
   podDisruptionBudget:
-    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # -- Number of pods that are available after eviction as number or percentage (for example: 50%)
     # @default -- `""` (defaults to 0 if not specified)
     minAvailable: ""
-    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    # -- Number of pods that are unavailable after eviction as number or percentage (for example: 50%).
     ## Has higher precedence over `controller.pdb.minAvailable`
     maxUnavailable: "1"
 
@@ -955,10 +955,10 @@ backend:
   ## -- Application controller Pod Disruption Budget Configuration
   ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
   podDisruptionBudget:
-    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # -- Number of pods that are available after eviction as number or percentage (for example: 50%)
     # @default -- `""` (defaults to 0 if not specified)
     minAvailable: ""
-    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    # -- Number of pods that are unavailable after eviction as number or percentage (for example: 50%).
     ## Has higher precedence over `controller.pdb.minAvailable`
     maxUnavailable: "1"
 
@@ -1255,10 +1255,10 @@ gateway:
   ## -- Application controller Pod Disruption Budget Configuration
   ## Ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
   podDisruptionBudget:
-    # -- Number of pods that are available after eviction as number or percentage (eg.: 50%)
+    # -- Number of pods that are available after eviction as number or percentage (for example: 50%)
     # @default -- `""` (defaults to 0 if not specified)
     minAvailable: ""
-    # -- Number of pods that are unavailble after eviction as number or percentage (eg.: 50%).
+    # -- Number of pods that are unavailable after eviction as number or percentage (for example: 50%).
     ## Has higher precedence over `controller.pdb.minAvailable`
     maxUnavailable: "1"
 
