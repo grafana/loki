@@ -7,15 +7,19 @@ import "time"
 type backoffTimer struct {
 	timer          *time.Timer
 	curr, min, max time.Duration
+	C              <-chan time.Time
 }
 
 func newBackoffTimer(min, max time.Duration) *backoffTimer {
 	// note that the first timer created will be stopped without ever consuming it, since it's once we can omit it
+	// since the timer is recycled, we can keep the channel
+	t := time.NewTimer(min)
 	return &backoffTimer{
-		timer: time.NewTimer(min),
+		timer: t,
 		min:   min,
 		max:   max,
 		curr:  min,
+		C:     t.C,
 	}
 }
 
@@ -24,15 +28,16 @@ func (bt *backoffTimer) backoff() {
 	if bt.curr > bt.max {
 		bt.curr = bt.max
 	}
+	bt.recycle()
 }
 
 func (bt *backoffTimer) reset() {
 	bt.curr = bt.min
+	bt.recycle()
 }
 
-// C follows the same pattern time.Timer and time.Ticker uses, but it's a function to reset the timer in each call, so that
-// it uses the appropriate interval.
-func (bt *backoffTimer) C() <-chan time.Time {
+// recycle stops and attempts to drain the time.Timer underlying channel, in order to fully recycle the instance.
+func (bt *backoffTimer) recycle() {
 	if !bt.timer.Stop() {
 		// attempt to drain timer's channel if it has expired
 		select {
@@ -42,5 +47,4 @@ func (bt *backoffTimer) C() <-chan time.Time {
 	}
 	// safe to call reset after checking stopping and draining the timer
 	bt.timer.Reset(bt.curr)
-	return bt.timer.C
 }

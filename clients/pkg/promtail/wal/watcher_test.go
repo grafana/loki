@@ -54,6 +54,7 @@ func (t *testWriteTo) AppendEntries(entries wal.RefEntries) error {
 // watcherTestResources contains all resources necessary to test an individual Watcher functionality
 type watcherTestResources struct {
 	writeEntry             func(entry api.Entry)
+	notifyWrite            func()
 	startWatcher           func()
 	syncWAL                func() error
 	nextWALSegment         func() error
@@ -87,6 +88,9 @@ var cases = map[string]watcherTest{
 			})
 		}
 		require.NoError(t, res.syncWAL())
+
+		// notify watcher that entries have been written
+		res.notifyWrite()
 
 		require.Eventually(t, func() bool {
 			return len(res.writeTo.ReadEntries) == 3
@@ -123,6 +127,8 @@ var cases = map[string]watcherTest{
 		}
 		require.NoError(t, res.syncWAL())
 
+		res.notifyWrite()
+
 		require.Eventually(t, func() bool {
 			return len(res.writeTo.ReadEntries) == 3
 		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
@@ -143,6 +149,7 @@ var cases = map[string]watcherTest{
 			})
 		}
 		require.NoError(t, res.syncWAL())
+		res.notifyWrite()
 
 		require.Eventually(t, func() bool {
 			return len(res.writeTo.ReadEntries) == 6
@@ -190,6 +197,8 @@ var cases = map[string]watcherTest{
 		}
 		require.NoError(t, res.syncWAL())
 
+		res.notifyWrite()
+
 		require.Eventually(t, func() bool {
 			return len(res.writeTo.ReadEntries) == 3
 		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
@@ -214,6 +223,7 @@ var cases = map[string]watcherTest{
 				},
 			})
 			require.NoError(t, res.syncWAL())
+			res.notifyWrite()
 			require.Eventually(t, func() bool {
 				return len(res.writeTo.ReadEntries) == expectedReadEntries
 			}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
@@ -281,6 +291,9 @@ func TestWatcher(t *testing.T) {
 				&watcherTestResources{
 					writeEntry: func(entry api.Entry) {
 						ew.WriteEntry(entry, wl, logger)
+					},
+					notifyWrite: func() {
+						watcher.NotifyWrite()
 					},
 					startWatcher: func() {
 						watcher.Start()
