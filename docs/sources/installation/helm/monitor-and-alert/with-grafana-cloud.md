@@ -95,6 +95,6 @@ Walking through this installation will create two Grafana Agent configurations, 
                  key: password
    ```
 
-1. Install the self-hosted Grafana Loki integration by going to your hosted Grafana instance, clicking the lightning bolt icon labeled **Integrations and Connections**, then search for and install the **Self-hosted Grafana Loki** integration.
+1. Install the self-hosted Grafana Loki integration by going to your hosted Grafana instance, selecting **Connections** from the Home menu, then search for and install the **Self-hosted Grafana Loki** integration.
 
 1. Once the self-hosted Grafana Loki integration is installed, click the **View Dashboards** button to see the installed dashboards.
