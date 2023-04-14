@@ -615,3 +615,58 @@ func Test_MaxQuerySize(t *testing.T) {
 	}
 
 }
+
+func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
+	engineOpts := testEngineOpts
+	engineOpts.MaxLookBackPeriod = 1 * time.Hour
+
+	lim := fakeLimits{
+		maxQueryBytesRead:   1 << 10,
+		maxQuerierBytesRead: 1 << 10,
+	}
+
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		// This is the actual check that we're testing.
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{
+				Bytes: 1 << 10,
+			},
+		}, nil
+	})
+
+	for _, tc := range []struct {
+		desc       string
+		middleware queryrangebase.Middleware
+	}{
+		{
+			desc:       "QuerySizeLimiter",
+			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+		},
+		{
+			desc:       "QuerierSizeLimiter",
+			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			lokiReq := &LokiInstantRequest{
+				Query:     `{cluster="dev-us-central-0"}`,
+				Limit:     1000,
+				TimeTs:    testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query",
+			}
+
+			handler := tc.middleware.Wrap(
+				queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+					return &LokiResponse{}, nil
+				}),
+			)
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			_, err := handler.Do(ctx, lokiReq)
+			require.NoError(t, err)
+		})
+	}
+}
