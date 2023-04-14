@@ -34,9 +34,9 @@ type actionable func(entry api.Entry)
 // work, tracked in https://github.com/grafana/loki/issues/8197, this Manager will be responsible for instantiating all client
 // types: Logger, Multi and WAL.
 type Manager struct {
-	clients     []Client
-	walWatchers []Stoppable
-	printer     *entryPrinter
+	clients    []Client
+	stoppables []Stoppable
+	printer    *entryPrinter
 
 	handle  actionable
 	entries chan api.Entry
@@ -58,7 +58,6 @@ func NewManager(
 	dryRun bool,
 	clientCfgs ...Config,
 ) (*Manager, error) {
-	// TODO: refactor this to instantiate all clients types
 	var fake struct{}
 
 	watcherMetrics := wal.NewWatcherMetrics(reg)
@@ -66,9 +65,16 @@ func NewManager(
 	if len(clientCfgs) == 0 {
 		return nil, fmt.Errorf("at least one client config should be provided")
 	}
+
+	manager := &Manager{
+		clients:    make([]Client, 0, len(clientCfgs)),
+		stoppables: make([]Stoppable, 0, len(clientCfgs)),
+		printer:    newEntryPrinter(),
+		entries:    make(chan api.Entry),
+	}
+
+	// First, verify and instantiate all clients
 	clientsCheck := make(map[string]struct{})
-	clients := make([]Client, 0, len(clientCfgs))
-	watchers := make([]Stoppable, 0, len(clientCfgs))
 	for _, cfg := range clientCfgs {
 		client, err := New(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
 		if err != nil {
@@ -81,69 +87,72 @@ func NewManager(
 		}
 
 		clientsCheck[client.Name()] = fake
-		clients = append(clients, client)
-
-		if dryRun {
-			yaml, err := yaml.Marshal(cfg)
-			if err != nil {
-				return nil, err
-			}
-			fmt.Println("----------------------")
-			fmt.Println(string(yaml))
-		} else if walCfg.Enabled {
-			// Create and launch wal watcher for this client
-
-			// add some context information for the logger the watcher uses
-			wlog := log.With(logger, "client", client.Name())
-
-			writeTo := newClientWriteTo(client.Chan(), wlog)
-			// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
-			// series cache whenever a segment is deleted.
-			notifier.SubscribeCleanup(writeTo)
-
-			watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
-			// subscribe watcher to wal write events
-			notifier.SubscribeWrite(watcher)
-
-			level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
-			watcher.Start()
-
-			watchers = append(watchers, watcher)
-		}
+		manager.clients = append(manager.clients, client)
 	}
 
-	manager := &Manager{
-		clients:     clients,
-		walWatchers: watchers,
-		printer:     newEntryPrinter(),
-		entries:     make(chan api.Entry),
-	}
-
-	var handleEntry actionable
+	// configure appropriate mode
 	if dryRun {
-		handleEntry = manager.HandlePrint
+		if err := manager.configureDryRun(clientCfgs...); err != nil {
+			return nil, err
+		}
 	} else if walCfg.Enabled {
-		handleEntry = manager.NoHandle
+		manager.configureWAL(logger, notifier, watcherMetrics, walCfg)
 	} else {
-		handleEntry = manager.HandleForward
+		manager.configureNormal()
 	}
-	manager.handle = handleEntry
 
-	manager.name = manager.buildName(dryRun, walCfg.Enabled)
 	manager.start()
 	return manager, nil
 }
 
-func (m *Manager) HandlePrint(e api.Entry) {
-	m.printer.Print(e)
+func (m *Manager) configureDryRun(clientConfigs ...Config) error {
+	for _, cfg := range clientConfigs {
+		yaml, err := yaml.Marshal(cfg)
+		if err != nil {
+			return err
+		}
+		fmt.Println("----------------------")
+		fmt.Println(string(yaml))
+	}
+	m.handle = func(e api.Entry) {
+		m.printer.Print(e)
+	}
+	return nil
 }
 
-func (m *Manager) NoHandle(e api.Entry) {
+func (m *Manager) configureWAL(logger log.Logger, notifier WriterEventsNotifier, metrics *wal.WatcherMetrics, walCfg wal.Config) {
+	for _, client := range m.clients {
+		// Create and launch wal watcher for this client
+
+		// add some context information for the logger the watcher uses
+		wlog := log.With(logger, "client", client.Name())
+
+		writeTo := newClientWriteTo(client.Chan(), wlog)
+		// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
+		// series cache whenever a segment is deleted.
+		notifier.SubscribeCleanup(writeTo)
+
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), metrics, writeTo, wlog, walCfg.WatchConfig)
+		// subscribe watcher to wal write events
+		notifier.SubscribeWrite(watcher)
+
+		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
+		watcher.Start()
+
+		m.stoppables = append(m.stoppables, watcher)
+	}
+	m.name = nameWithPrefix(m.clients, "wal:")
+	m.handle = func(_ api.Entry) {
+		// do nothing
+	}
 }
 
-func (m *Manager) HandleForward(e api.Entry) {
-	for _, c := range m.clients {
-		c.Chan() <- e
+func (m *Manager) configureNormal() {
+	m.name = nameWithPrefix(m.clients, "multi:")
+	m.handle = func(e api.Entry) {
+		for _, c := range m.clients {
+			c.Chan() <- e
+		}
 	}
 }
 
@@ -167,26 +176,6 @@ func (m *Manager) Name() string {
 	return m.name
 }
 
-func (m *Manager) buildName(dryRun bool, walEnabled bool) string {
-	if dryRun {
-		return ""
-	}
-	var prefix = "multi:"
-	if walEnabled {
-		prefix = "wal:"
-	}
-	var sb strings.Builder
-	// name contains wal since manager is used as client only when WAL enabled for now
-	sb.WriteString(prefix)
-	for i, c := range m.clients {
-		sb.WriteString(c.Name())
-		if i != len(m.clients)-1 {
-			sb.WriteString(",")
-		}
-	}
-	return sb.String()
-}
-
 func (m *Manager) Chan() chan<- api.Entry {
 	return m.entries
 }
@@ -196,11 +185,24 @@ func (m *Manager) Stop() {
 	m.once.Do(func() { close(m.entries) })
 	m.wg.Wait()
 	// close wal watchers
-	for _, walWatcher := range m.walWatchers {
+	for _, walWatcher := range m.stoppables {
 		walWatcher.Stop()
 	}
 	// close clients
 	for _, c := range m.clients {
 		c.Stop()
 	}
+}
+
+func nameWithPrefix(clients []Client, prefix string) string {
+	var sb strings.Builder
+	// name contains wal since manager is used as client only when WAL enabled for now
+	sb.WriteString(prefix)
+	for i, c := range clients {
+		sb.WriteString(c.Name())
+		if i != len(clients)-1 {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
 }
