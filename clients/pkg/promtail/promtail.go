@@ -143,47 +143,32 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
-	// entryHandlers contains all sinks were scraped log entries should get to
-	var entryHandlers = []api.EntryHandler{}
 
-	// TODO: Refactor all client instantiation inside client.Manager
-	if p.dryRun || cfg.WAL.Enabled {
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return fmt.Errorf("failed to create wal writer: %w", err)
-		}
-
-		p.client, err = client.NewManager(
-			p.metrics,
-			p.logger,
-			cfg.LimitsConfig.MaxStreams,
-			cfg.LimitsConfig.MaxLineSize.Val(),
-			cfg.LimitsConfig.MaxLineSizeTruncate,
-			p.reg,
-			cfg.WAL,
-			p.walWriter,
-			p.dryRun,
-			cfg.ClientConfigs...,
-		)
-		if err != nil {
-			return err
-		}
-
-		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
-		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
-		entryHandlers = append(entryHandlers, p.walWriter)
-
-		// dry run specific behaviour
-		cfg.PositionsConfig.ReadOnly = cfg.PositionsConfig.ReadOnly || p.dryRun
-	} else {
-		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
-		if err != nil {
-			return err
-		}
+	p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+	if err != nil {
+		return fmt.Errorf("failed to create wal writer: %w", err)
 	}
 
-	entryHandlers = append(entryHandlers, p.client)
-	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
+	p.client, err = client.NewManager(
+		p.metrics,
+		p.logger,
+		cfg.LimitsConfig.MaxStreams,
+		cfg.LimitsConfig.MaxLineSize.Val(),
+		cfg.LimitsConfig.MaxLineSizeTruncate,
+		p.reg,
+		cfg.WAL,
+		p.walWriter,
+		p.dryRun,
+		cfg.ClientConfigs...,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create client manager: %w", err)
+	}
+
+	// dry run specific behaviour
+	cfg.PositionsConfig.ReadOnly = cfg.PositionsConfig.ReadOnly || p.dryRun
+
+	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, p.walWriter, p.client)
 
 	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {

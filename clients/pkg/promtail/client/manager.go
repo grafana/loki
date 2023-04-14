@@ -122,12 +122,14 @@ func NewManager(
 	var handleEntry actionable
 	if dryRun {
 		handleEntry = manager.HandlePrint
-	} else {
+	} else if walCfg.Enabled {
 		handleEntry = manager.NoHandle
+	} else {
+		handleEntry = manager.HandleForward
 	}
 	manager.handle = handleEntry
 
-	manager.name = manager.buildName(dryRun)
+	manager.name = manager.buildName(dryRun, walCfg.Enabled)
 	manager.start()
 	return manager, nil
 }
@@ -139,12 +141,18 @@ func (m *Manager) HandlePrint(e api.Entry) {
 func (m *Manager) NoHandle(e api.Entry) {
 }
 
+func (m *Manager) HandleForward(e api.Entry) {
+	for _, c := range m.clients {
+		c.Chan() <- e
+	}
+}
+
 func (m *Manager) start() {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		// discard read entries
-		for range m.entries {
+		for e := range m.entries {
+			m.handle(e)
 		}
 	}()
 }
@@ -159,13 +167,17 @@ func (m *Manager) Name() string {
 	return m.name
 }
 
-func (m *Manager) buildName(dryRun bool) string {
+func (m *Manager) buildName(dryRun bool, walEnabled bool) string {
 	if dryRun {
 		return ""
 	}
+	var prefix = "multi:"
+	if walEnabled {
+		prefix = "wal:"
+	}
 	var sb strings.Builder
 	// name contains wal since manager is used as client only when WAL enabled for now
-	sb.WriteString("wal:")
+	sb.WriteString(prefix)
 	for i, c := range m.clients {
 		sb.WriteString(c.Name())
 		if i != len(m.clients)-1 {
