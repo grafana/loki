@@ -82,6 +82,9 @@ be replaced with a double backslash `\\`
 ### Supported contents and default values of `config.yaml`:
 
 ```yaml
+# Configures global settings which impact all targets.
+[global: <global_config>]
+
 # Configures the server for Promtail.
 [server: <server_config>]
 
@@ -112,6 +115,33 @@ scrape_configs:
 
 # Configures tracing support
 [tracing: <tracing_config>]
+```
+
+## global
+
+The `global` block configures global settings which impact all scrape targets:
+
+```yaml
+# Configure how frequently log files from disk get polled for changes.
+[file_watch_config: <file_watch_config>]
+```
+
+## file_watch_config
+
+The `file_watch_config` block configures how often to poll log files from disk
+for changes:
+
+```yaml
+# Minimum frequency to poll for files. Any time file changes are detected, the
+# poll frequency gets reset to this duration.
+[min_poll_frequency: <duration> | default = "250ms"]
+
+# Maximum frequency to poll for files. Any time no file changes are detected,
+# the poll frequency doubles in value up to the maximum duration specified by
+# this value.
+#
+# The default is set to the same as min_poll_frequency.
+[max_poll_frequency: <duration> | default = "250ms"]
 ```
 
 ## server
@@ -2058,7 +2088,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config

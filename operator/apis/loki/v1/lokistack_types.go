@@ -29,15 +29,20 @@ const (
 type LokiStackSizeType string
 
 const (
-	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with minimal resource requirements and without HA support.
-	//
-	// This is ONLY for development, testing, or demos on limited single-node clusters.
-	// There are NO performance guarantees.
-	// LokiStack will use whatever resources are available,
-	// and WILL NOT FUNCTION CORRECTLY if there is not enough memory or CPU.
-	//
+	// SizeOneXDemo defines the size of a single Loki deployment
+	// with tiny resource requirements and without HA support.
+	// This size is intended to run in single-node clusters on laptops,
+	// it is only useful for very light testing, demonstrations, or prototypes.
+	// There are no ingestion/query performance guarantees.
 	// DO NOT USE THIS IN PRODUCTION!
+	SizeOneXDemo LokiStackSizeType = "1x.demo"
+
+	// SizeOneXExtraSmall defines the size of a single Loki deployment
+	// with extra small resources/limits requirements and without HA support.
+	// This size is ultimately dedicated for development and demo purposes.
+	// DO NOT USE THIS IN PRODUCTION!
+	//
+	// FIXME: Add clear description of ingestion/query performance expectations.
 	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
 
 	// SizeOneXSmall defines the size of a single Loki deployment

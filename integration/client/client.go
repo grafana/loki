@@ -456,7 +456,7 @@ func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
 func (c *Client) rangeQueryURL(query string) string {
 	v := url.Values{}
 	v.Set("query", query)
-	v.Set("start", formatTS(c.Now.Add(-2*time.Hour)))
+	v.Set("start", formatTS(c.Now.Add(-7*24*time.Hour)))
 	v.Set("end", formatTS(c.Now.Add(time.Second)))
 
 	u, err := url.Parse(c.baseURL)

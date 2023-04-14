@@ -1,6 +1,6 @@
 module github.com/grafana/loki
 
-go 1.19
+go 1.20
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
@@ -26,7 +26,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cristalhq/hedgedhttp v0.7.2
 	github.com/davecgh/go-spew v1.1.1
-	github.com/docker/docker v20.10.23+incompatible
+	github.com/docker/docker v23.0.3+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.0
@@ -53,7 +53,7 @@ require (
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230105173749-11f792309e1f
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
-	github.com/grafana/tail v0.0.0-20221214082743-3a1c242a4d7b
+	github.com/grafana/tail v0.0.0-20230321215411-205c7713cbcd
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.18.0
@@ -268,6 +268,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.8.2 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	github.com/rootless-containers/rootlesskit v1.1.0 // indirect
 	github.com/rs/xid v1.4.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect
