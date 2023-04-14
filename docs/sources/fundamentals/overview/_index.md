@@ -56,9 +56,6 @@ and allows for efficient query execution.
 
 -  **Scalability**
 
-    Loki can be run as a single binary;
-    all the components run in one process.
-
     Loki is designed for scalability,
     as each of Loki's components can be run as microservices.
     Configuration permits scaling the microservices individually,
