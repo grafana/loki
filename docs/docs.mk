@@ -96,4 +96,5 @@ doc-validator/%:
 	DOCS_IMAGE=$(DOC_VALIDATOR_IMAGE) DOC_VALIDATOR_INCLUDE=$(subst doc-validator/,,$@) $(PWD)/make-docs $(PROJECTS)
 
 docs.mk: ## Fetch the latest version of this Makefile from Writers' Toolkit.
-	curl -s -LO https://raw.githubusercontent.com/grafana/writers-toolkit/main/docs/docs.mk
+	curl -s -LO https://raw.githubusercontent.com/grafana/writers-toolkit/fd179ba615cbaf8cf738e12fe34a951b505ce5a1/docs/docs.mk
+
