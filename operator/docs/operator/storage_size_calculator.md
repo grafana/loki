@@ -29,7 +29,7 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
   make deploy-size-calculator REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG
   ```
 
-  where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you can push container images.
+  where `$YOUR_QUAY_ORG` is your personal [quay.io](https://quay.io) account where you can push container images.
 
   You should see `log-file-metric-exporter-xxx` and `storage-size-calculator-xxx` pods running.
 
@@ -63,13 +63,13 @@ This will cleanup the resources related to storage size calculator. However, the
 
 If you want to contribute to the storage size calculator, you can follow this local development and testing process.
 
-* Fork and clone the [Loki Operator](https://github.com/grafana/loki/blob/main/operator) repo.
+* Fork and clone the [Loki Operator](https://github.com/grafana/loki/tree/main/operator) repo.
 
-* All the files related to storage size calculator exists at [`config/overlays/openshift/size-calculator`](https://github.com/grafana/loki/tree/main/operator/config/overlays/openshift/size-calculator) and the main file is at [`cmd/size-calculator`](https://github.com/grafana/loki/tree/main/operator/cmd/size-calculator).
+* All the files related to storage size calculator exists at [`operator/config/overlays/openshift/size-calculator`](https://github.com/grafana/loki/tree/main/operator/config/overlays/openshift/size-calculator) and the main file is at [`operator/cmd/size-calculator`](https://github.com/grafana/loki/tree/main/operator/cmd/size-calculator).
 
 * Update the code to fix a bug or add a new feature.
 
-* To test the changes made, build the image and push it to quay. Replace [here](https://github.com/grafana/loki/blob/v2.8.0/operator/config/overlays/openshift/size-calculator/storage_size_calculator.yaml#L18) with your quay image to test the changes.
+* To test the changes made, build the image and push it to quay. Replace the `image` value in [storage_size_calculator.yaml](https://github.com/grafana/loki/blob/main/operator/config/overlays/openshift/size-calculator/storage_size_calculator.yaml) with your quay image to test the changes.
 
   Build the image using:
 
@@ -91,7 +91,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
   make deploy-size-calculator REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG
   ```
 
-  where `$YOUR_QUAY_ORG` is your personal [quay.io](http://quay.io/) account where you pushed your container image.
+  where `$YOUR_QUAY_ORG` is your personal [quay.io](https://quay.io) account where you pushed your container image.
 
 * If everything works fine then create a pull request.
 
