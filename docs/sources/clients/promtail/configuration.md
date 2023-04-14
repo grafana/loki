@@ -1036,6 +1036,10 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# use_full_line to force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+# By default, if `textPayload` is present in the line, then it's used as log line.
+[use_full_line: <boolean> | default = false]
+
 # If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
 # than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
 # and respond with a 503 HTTP status code.
@@ -1053,8 +1057,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
 **Internal labels available for pull**
 
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 **Internal labels available for push**
 
@@ -1062,8 +1068,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_subscription_name`
 - `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 ### Azure Event Hubs
 
