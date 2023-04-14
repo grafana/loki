@@ -28,23 +28,35 @@ endif
 PRIMARY_PROJECT := $(firstword $(subst /,-,$(PROJECTS)))
 
 # Name for the container.
+ifeq ($(origin DOCS_CONTAINER), undefined)
 export DOCS_CONTAINER := $(PRIMARY_PROJECT)-docs
+endif
 
 # Host port to publish container port to.
+ifeq ($(origin DOCS_HOST_PORT), undefined)
 export DOCS_HOST_PORT := 3002
+endif
 
 # Container image used to perform Hugo build.
+ifeq ($(origin DOCS_IMAGE), undefined)
 export DOCS_IMAGE := grafana/docs-base:latest
+endif
 
 # Container image used for doc-validator linting.
+ifeq ($(origin DOC_VALIDATOR_IMAGE), undefined)
 export DOC_VALIDATOR_IMAGE := grafana/doc-validator:latest
+endif
 
 # PATH-like list of directories within which to find projects.
 # If all projects are checked out into the same directory, ~/repos/ for example, then the default should work.
+ifeq ($(origin REPOS_PATH), undefined)
 export REPOS_PATH := $(realpath $(GIT_ROOT)/..)
+endif
 
 # How to treat Hugo relref errors.
+ifeq ($(origin HUGO_REFLINKSERRORLEVEL), undefined)
 export HUGO_REFLINKSERRORLEVEL := WARNING
+endif
 
 .PHONY: docs-rm
 docs-rm: ## Remove the docs container.
