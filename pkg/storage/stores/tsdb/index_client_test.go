@@ -186,7 +186,9 @@ func TestIndexClient_Stats(t *testing.T) {
 				Start: indexStartToday + 50,
 				End:   indexStartToday + 60,
 			},
-			expectedNumChunks:  1, // end time not inclusive
+			// end time is inclusive because chunks are indexed by their start and end, although the chunk's stats contributions get reduced to zero
+			// in integer division due to 1 nanosecond overlap
+			expectedNumChunks:  2,
 			expectedNumEntries: 10,
 			expectedNumStreams: 1,
 			expectedNumBytes:   10 * 1024,

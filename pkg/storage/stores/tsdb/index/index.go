@@ -1841,6 +1841,21 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 	return fprint, nil
 }
 
+func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, ChunkStats, error) {
+	offset := id
+	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
+	// and the ID is the multiple of 16 of the actual position.
+	if r.version >= FormatV2 {
+		offset = id * 16
+	}
+	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
+	if d.Err() != nil {
+		return 0, ChunkStats{}, d.Err()
+	}
+
+	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls)
+}
+
 func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string) (Postings, error) {
 	if r.version == FormatV1 {
 		e, ok := r.postingsV1[name]
@@ -2180,10 +2195,8 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
-	if lbls != nil {
-		*lbls = (*lbls)[:0]
-	}
+func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
+	*lbls = (*lbls)[:0]
 	if chks != nil {
 		*chks = (*chks)[:0]
 	}
@@ -2212,21 +2225,19 @@ func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks 
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		// TODO(owen-d): I wonder if these nil-checks are non-negligible in perf cost
-		if lbls != nil {
-			*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
-		}
+		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
-	d, _, err := dec.prepSeries(version, b, nil, nil)
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, ChunkStats, error) {
+	d, fp, err := dec.prepSeries(b, lbls, nil)
 	if err != nil {
-		return ChunkStats{}, err
+		return 0, ChunkStats{}, err
 	}
 
-	return dec.readChunkStats(version, d, seriesRef, from, through)
+	stats, err := dec.readChunkStats(version, d, seriesRef, from, through)
+	return fp, stats, err
 }
 
 func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
@@ -2280,7 +2291,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 		if curMarker.fullyOverlapping {
 			// use aggregated stats for this page
-			res.add(remainingInPage, curMarker.KB, curMarker.Entries)
+			res.addRaw(remainingInPage, curMarker.KB, curMarker.Entries)
 			continue
 		}
 
@@ -2308,7 +2319,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 			if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
 				// add to stats
-				res.add(1, chunkMeta.KB, chunkMeta.Entries)
+				res.AddChunk(chunkMeta, from, through)
 			} else if chunkMeta.MinTime >= through {
 				break
 			}
@@ -2330,7 +2341,7 @@ func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, 
 
 		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
 			// add to stats
-			res.add(1, chunkMeta.KB, chunkMeta.Entries)
+			res.AddChunk(chunkMeta, from, through)
 		} else if chunkMeta.MinTime >= through {
 			break
 		}
@@ -2349,7 +2360,7 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 	for _, chk := range chks {
 		if overlap(from, through, chk.MinTime, chk.MaxTime) {
-			res.add(1, chk.KB, chk.Entries)
+			res.AddChunk(&chk, from, through)
 		} else if chk.MinTime >= through {
 			break
 		}
@@ -2363,7 +2374,7 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 // Series decodes a series entry from the given byte slice into lset and chks.
 func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
 
-	d, fprint, err := dec.prepSeries(version, b, lbls, chks)
+	d, fprint, err := dec.prepSeries(b, lbls, chks)
 	if err != nil {
 		return 0, err
 	}
