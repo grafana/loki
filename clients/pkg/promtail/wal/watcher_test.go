@@ -323,7 +323,7 @@ func TestWatcher(t *testing.T) {
 				t,
 				&watcherTestResources{
 					writeEntry: func(entry api.Entry) {
-						ew.WriteEntry(entry, wl, logger)
+						_ = ew.WriteEntry(entry, wl, logger)
 					},
 					notifyWrite: func() {
 						watcher.NotifyWrite()
