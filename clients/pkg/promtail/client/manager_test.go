@@ -37,7 +37,7 @@ func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 		Dir:         walDir,
 		Enabled:     true,
 		WatchConfig: wal.DefaultWatchConfig,
-	}, notifier(func(subscriber wal.CleanupEventSubscriber) {}))
+	}, notifier(func(subscriber wal.CleanupEventSubscriber) {}), false)
 	require.Error(t, err)
 }
 
@@ -91,7 +91,7 @@ func TestManager_WriteAndReadEntriesFromWAL(t *testing.T) {
 	// start writer and manager
 	writer, err := wal.NewWriter(walConfig, logger, reg)
 	require.NoError(t, err)
-	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, writer, testClientConfig)
+	manager, err := NewManager(clientMetrics, logger, 0, 0, false, reg, walConfig, writer, false, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 

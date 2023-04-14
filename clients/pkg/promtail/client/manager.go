@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"strings"
 	"sync"
 
@@ -24,6 +25,8 @@ type Stoppable interface {
 	Stop()
 }
 
+type actionable func(entry api.Entry)
+
 // Manager manages remote write client instantiation, and connects the related components to orchestrate the flow of api.Entry
 // from the scrape targets, to the remote write clients themselves.
 //
@@ -33,11 +36,14 @@ type Stoppable interface {
 type Manager struct {
 	clients     []Client
 	walWatchers []Stoppable
+	printer     *entryPrinter
 
+	handle  actionable
 	entries chan api.Entry
 	once    sync.Once
 
-	wg sync.WaitGroup
+	wg   sync.WaitGroup
+	name string
 }
 
 // NewManager creates a new Manager
@@ -49,6 +55,7 @@ func NewManager(
 	reg prometheus.Registerer,
 	walCfg wal.Config,
 	notifier WriterEventsNotifier,
+	dryRun bool,
 	clientCfgs ...Config,
 ) (*Manager, error) {
 	// TODO: refactor this to instantiate all clients types
@@ -76,33 +83,60 @@ func NewManager(
 		clientsCheck[client.Name()] = fake
 		clients = append(clients, client)
 
-		// Create and launch wal watcher for this client
+		if dryRun {
+			yaml, err := yaml.Marshal(cfg)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Println("----------------------")
+			fmt.Println(string(yaml))
+		} else if walCfg.Enabled {
+			// Create and launch wal watcher for this client
 
-		// add some context information for the logger the watcher uses
-		wlog := log.With(logger, "client", client.Name())
+			// add some context information for the logger the watcher uses
+			wlog := log.With(logger, "client", client.Name())
 
-		writeTo := newClientWriteTo(client.Chan(), wlog)
-		// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
-		// series cache whenever a segment is deleted.
-		notifier.SubscribeCleanup(writeTo)
+			writeTo := newClientWriteTo(client.Chan(), wlog)
+			// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
+			// series cache whenever a segment is deleted.
+			notifier.SubscribeCleanup(writeTo)
 
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
-		// subscribe watcher to wal write events
-		notifier.SubscribeWrite(watcher)
+			watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
+			// subscribe watcher to wal write events
+			notifier.SubscribeWrite(watcher)
 
-		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
-		watcher.Start()
+			level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
+			watcher.Start()
 
-		watchers = append(watchers, watcher)
+			watchers = append(watchers, watcher)
+		}
 	}
 
 	manager := &Manager{
 		clients:     clients,
 		walWatchers: watchers,
+		printer:     newEntryPrinter(),
 		entries:     make(chan api.Entry),
 	}
+
+	var handleEntry actionable
+	if dryRun {
+		handleEntry = manager.HandlePrint
+	} else {
+		handleEntry = manager.NoHandle
+	}
+	manager.handle = handleEntry
+
+	manager.name = manager.buildName(dryRun)
 	manager.start()
 	return manager, nil
+}
+
+func (m *Manager) HandlePrint(e api.Entry) {
+	m.printer.Print(e)
+}
+
+func (m *Manager) NoHandle(e api.Entry) {
 }
 
 func (m *Manager) start() {
@@ -122,6 +156,13 @@ func (m *Manager) StopNow() {
 }
 
 func (m *Manager) Name() string {
+	return m.name
+}
+
+func (m *Manager) buildName(dryRun bool) string {
+	if dryRun {
+		return ""
+	}
 	var sb strings.Builder
 	// name contains wal since manager is used as client only when WAL enabled for now
 	sb.WriteString("wal:")
