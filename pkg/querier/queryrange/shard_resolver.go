@@ -11,6 +11,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -18,8 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/common/model"
 )
 
 func shardResolverForConf(
