@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -929,11 +928,8 @@ func TestMigrateMarkers(t *testing.T) {
 
 		markers := []string{"foo", "bar", "buzz"}
 		for _, marker := range markers {
-			f, err := os.Create(path.Join(workDir, MarkersFolder, marker))
+			err := os.WriteFile(path.Join(workDir, MarkersFolder, marker), []byte(marker), 0o666)
 			require.NoError(t, err)
-			_, err = io.WriteString(f, marker)
-			require.NoError(t, err)
-			f.Close()
 		}
 
 		require.NoError(t, MigrateMarkers(workDir, "store-1"))

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -463,12 +462,12 @@ func MigrateMarkers(workingDir string, store string) error {
 			continue
 		}
 
-		data, err := ioutil.ReadFile(filepath.Join(markersDir, marker.Name()))
+		data, err := os.ReadFile(filepath.Join(markersDir, marker.Name()))
 		if err != nil {
 			return fmt.Errorf("read marker file: %w", err)
 		}
 
-		if err := ioutil.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0o666); err != nil {
+		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0o666); err != nil {
 			return fmt.Errorf("write marker file: %w", err)
 		}
 	}
