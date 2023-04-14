@@ -131,6 +131,7 @@ check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/u
 ##########
 .PHONY: cmd/logcli/logcli
 logcli: cmd/logcli/logcli
+logcli-debug: cmd/logcli/logcli-debug
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
@@ -138,6 +139,8 @@ logcli-image:
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
 
+cmd/logcli/logcli-debug:
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o ./cmd/logcli/logcli-debug ./cmd/logcli
 ########
 # Loki #
 ########
