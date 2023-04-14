@@ -193,7 +193,7 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	}
 }
 
-// buildChunkMetas builds 1ms wide chunk metas from -> to.
+// buildChunkMetas builds `span[0]` ms wide chunk metas from -> to.
 func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
 	var s int64 = 1
 	if len(span) > 0 {

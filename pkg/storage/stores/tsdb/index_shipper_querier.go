@@ -24,11 +24,11 @@ type indexShipperIterator interface {
 type indexShipperQuerier struct {
 	shipper     indexShipperIterator
 	chunkFilter chunk.RequestChunkFilterer
-	tableRanges config.TableRanges
+	tableRange  config.TableRange
 }
 
-func newIndexShipperQuerier(shipper indexShipperIterator, tableRanges config.TableRanges) Index {
-	return &indexShipperQuerier{shipper: shipper, tableRanges: tableRanges}
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
+	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange}
 }
 
 type indexIterFunc func(func(context.Context, Index) error) error
@@ -40,7 +40,7 @@ func (i indexIterFunc) For(ctx context.Context, f func(context.Context, Index) e
 func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
 	itr := indexIterFunc(func(f func(context.Context, Index) error) error {
 		// Ensure we query both per tenant and multitenant TSDBs
-		idxBuckets := indexBuckets(from, through, i.tableRanges)
+		idxBuckets := indexBuckets(from, through, []config.TableRange{i.tableRange})
 		for _, bkt := range idxBuckets {
 			if err := i.shipper.ForEachConcurrent(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
 				impl, ok := idx.(Index)

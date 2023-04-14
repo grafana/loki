@@ -25,6 +25,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -50,6 +51,11 @@ var (
 			},
 		},
 	}, nil}
+	testEngineOpts = logql.EngineOpts{
+		Timeout:           30 * time.Second,
+		MaxLookBackPeriod: 30 * time.Second,
+		LogExecutingQuery: false,
+	}
 	matrix = promql.Matrix{
 		{
 			Points: []promql.Point{
@@ -138,7 +144,7 @@ func TestMetricsTripperware(t *testing.T) {
 	l = WithSplitByLimits(l, 4*time.Hour)
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
-	tpw, stopper, err := NewTripperware(noCacheTestCfg, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -199,7 +205,7 @@ func TestMetricsTripperware(t *testing.T) {
 	defer rt.Close()
 
 	// Configure with cache
-	tpw, stopper, err = NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err = NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -240,7 +246,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	}
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
-	tpw, stopper, err := NewTripperware(noCacheTestCfg, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -317,7 +323,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewTripperware(testShardingConfigNoCache, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testShardingConfigNoCache, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -373,7 +379,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -414,7 +420,7 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -460,7 +466,7 @@ func TestLabelsTripperware(t *testing.T) {
 }
 
 func TestIndexStatsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -517,7 +523,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 }
 
 func TestLogNoFilter(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -552,7 +558,7 @@ func TestLogNoFilter(t *testing.T) {
 
 func TestRegexpParamsSupport(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -644,7 +650,7 @@ func TestPostQueries(t *testing.T) {
 }
 
 func TestTripperware_EntriesLimit(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -692,7 +698,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}
-			tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -803,7 +809,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				maxQueryParallelism:  1,
 				requiredNumberLabels: tc.requiredNumberLabels,
 			}
-			tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 			if stopper != nil {
 				defer stopper.Stop()
 			}

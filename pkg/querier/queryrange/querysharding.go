@@ -34,6 +34,7 @@ var errInvalidShardingRange = errors.New("Query does not fit in a single shardin
 func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
+	engineOpts logql.EngineOpts,
 	codec queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
@@ -53,7 +54,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, next, statsHandler, logger, shardingMetrics, limits, maxShards)
+		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -71,6 +72,7 @@ func NewQueryShardMiddleware(
 
 func newASTMapperware(
 	confs ShardingConfigs,
+	engineOpts logql.EngineOpts,
 	next queryrangebase.Handler,
 	statsHandler queryrangebase.Handler,
 	logger log.Logger,
@@ -78,13 +80,13 @@ func newASTMapperware(
 	limits Limits,
 	maxShards int,
 ) *astMapperware {
-	ast := &astMapperware{
+	ast :=  &astMapperware{
 		confs:        confs,
 		logger:       log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:       limits,
 		next:         next,
 		statsHandler: next,
-		ng:           logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		ng:           logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics:      metrics,
 		maxShards:    maxShards,
 	}

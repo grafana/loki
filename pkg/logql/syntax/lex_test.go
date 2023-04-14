@@ -91,7 +91,7 @@ func TestLex(t *testing.T) {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
 			l := lexer{
-				Scanner: scanner.Scanner{
+				Scanner: Scanner{
 					Mode: scanner.SkipComments | scanner.ScanStrings,
 				},
 			}
@@ -142,7 +142,7 @@ func Test_isFunction(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.next, func(t *testing.T) {
-			sc := scanner.Scanner{}
+			sc := Scanner{}
 			sc.Init(strings.NewReader(tt.next))
 			if got := isFunction(sc); got != tt.want {
 				t.Errorf("isFunction() = %v, want %v", got, tt.want)
