@@ -628,6 +628,7 @@ local build_image_tag = '0.33.2';
         commands: [
           'git fetch origin --tags',
           'make docker-driver-push',
+          'make docker-driver-push PLUGIN_ARCH=-arm64',
         ],
         volumes: [
           {

@@ -31,6 +31,9 @@ Run the following command to install the plugin, updating the release version if
 ```bash
 docker plugin install grafana/loki-docker-driver:2.9.2 --alias loki --grant-all-permissions
 ```
+{{% admonition type="note" %}}
+Add `-arm64` to the image tag for AMR64 hosts.
+{{% /admonition %}}
 
 To check installed plugins, use the `docker plugin ls` command. 
 Plugins that have started successfully are listed as enabled:
