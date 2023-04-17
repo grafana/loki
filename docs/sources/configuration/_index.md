@@ -1476,6 +1476,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# If this file exists the /ingester/prepare-shutdown endpoint will be called on
+# startup
+# CLI flag: -prep-downscale.path
+[prep_downscale_path: <string> | default = "/etc/annotations/prep-downscale"]
 ```
 
 ### index_gateway
