@@ -16,18 +16,17 @@
           {
             buildGoModule = args:
               prev.buildGoModule (args // rec {
-                version = "1.45.2";
+                version = "1.51.2";
 
                 src = prev.fetchFromGitHub rec {
                   owner = "golangci";
                   repo = "golangci-lint";
                   rev = "v${version}";
-                  sha256 =
-                    "sha256-Mr45nJbpyzxo0ZPwx22JW2WrjyjI9FPpl+gZ7NIc6WQ=";
+                  sha256 = "F2rkVZ5ia9/wyTw1WIeizFnuaHoS2A8VzVOGDcshy64=";
                 };
 
                 vendorHash =
-                  "sha256-pcbKg1ePN8pObS9EzP3QYjtaty27L9sroKUs/qEPtJo=";
+                  "sha256-JO/mRJB3gRTtBj6pW1267/xXUtalTJo0p3q5e34vqTs=";
 
                 ldflags = [
                   "-s"
