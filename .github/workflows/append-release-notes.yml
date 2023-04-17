@@ -1,7 +1,10 @@
-name: Github repo and issue stats collection
+---
+name: Append to Release Notes
 on:
-  schedule:
-    - cron: "*/30 * * * *"
+  pull_request_target:
+    types:
+      - closed
+      - labeled
 
 jobs:
   main:
@@ -15,8 +18,10 @@ jobs:
           ref: main
       - name: Install Actions
         run: npm install --production --prefix ./actions
-      - name: Run metrics collector
-        uses: ./actions/metrics-collector
+      - name: Run release notes appender
+        uses: ./actions/release-notes-appender
         with:
           metricsWriteAPIKey: ${{secrets.GRAFANA_MISC_STATS_API_KEY}}
           token: ${{secrets.GH_BOT_ACCESS_TOKEN}}
+          labelsToAdd: "release-notes"
+          releaseNotesFile: docs/sources/release-notes/next.md

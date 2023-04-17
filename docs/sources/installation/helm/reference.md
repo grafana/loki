@@ -378,7 +378,7 @@ null
 		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
-			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
+			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`</td>
 			<td><pre lang="json">
 {
   "contents": "NOTAVALIDLICENSE"

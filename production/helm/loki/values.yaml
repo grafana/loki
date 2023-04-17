@@ -294,7 +294,7 @@ enterprise:
   # the contents of your Grafana Enterprise Logs license, either by providing the
   # contents of the license.jwt, or the name Kubernetes Secret that contains your
   # license.jwt.
-  # To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`
+  # To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`
   license:
     contents: "NOTAVALIDLICENSE"
   # -- Set to true when providing an external license

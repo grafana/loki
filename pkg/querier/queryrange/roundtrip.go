@@ -43,6 +43,7 @@ type Stopper interface {
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(
 	cfg Config,
+	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -67,20 +68,20 @@ func NewTripperware(
 		}
 	}
 
-	metricsTripperware, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, registerer)
+	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, log, limits, schema, LokiCodec, c, metrics)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, LokiCodec, c, metrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -95,7 +96,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, log, limits, schema, LokiCodec, metrics)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -297,6 +298,7 @@ func getOperation(path string) string {
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
 func NewLogFilterTripperware(
 	cfg Config,
+	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -315,7 +317,7 @@ func NewLogFilterTripperware(
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 		}
@@ -343,6 +345,7 @@ func NewLogFilterTripperware(
 				NewQueryShardMiddleware(
 					log,
 					schema.Configs,
+					engineOpts,
 					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
@@ -354,7 +357,7 @@ func NewLogFilterTripperware(
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -375,6 +378,7 @@ func NewLogFilterTripperware(
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
 func NewLimitedTripperware(
 	cfg Config,
+	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -393,7 +397,7 @@ func NewLimitedTripperware(
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			// Limited queries only need to fetch up to the requested line limit worth of logs,
 			// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
@@ -401,7 +405,7 @@ func NewLimitedTripperware(
 			// Therefore we force max parallelism to one so that these queries are executed sequentially.
 			// Below we also fix the number of shards to a static number.
 			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), codec, splitByTime, metrics.SplitByMetrics),
-			NewQuerierSizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 
 		if len(queryRangeMiddleware) > 0 {
@@ -495,6 +499,7 @@ func NewLabelsTripperware(
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
 func NewMetricTripperware(
 	cfg Config,
+	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -504,7 +509,6 @@ func NewMetricTripperware(
 	retentionEnabled bool,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
-	registerer prometheus.Registerer,
 ) (queryrangebase.Tripperware, error) {
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, metrics)
 	if err != nil {
@@ -562,7 +566,7 @@ func NewMetricTripperware(
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
 		)
@@ -580,6 +584,7 @@ func NewMetricTripperware(
 				NewQueryShardMiddleware(
 					log,
 					schema.Configs,
+					engineOpts,
 					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
@@ -591,7 +596,7 @@ func NewMetricTripperware(
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -620,6 +625,7 @@ func NewMetricTripperware(
 // NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
 func NewInstantMetricTripperware(
 	cfg Config,
+	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -637,15 +643,16 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, log, limits, codec, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 
 		if cfg.ShardedQueries {
 			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewSplitByRangeMiddleware(log, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
+				NewSplitByRangeMiddleware(log, engineOpts, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
 				NewQueryShardMiddleware(
 					log,
 					schema.Configs,
+					engineOpts,
 					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
