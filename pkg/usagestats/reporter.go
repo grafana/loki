@@ -40,13 +40,15 @@ var (
 )
 
 type Config struct {
-	Enabled bool `yaml:"reporting_enabled"`
-	Leader  bool `yaml:"-"`
+	Enabled       bool   `yaml:"reporting_enabled"`
+	Leader        bool   `yaml:"-"`
+	UsageStatsURL string `yaml:"usage_stats_url"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "reporting.enabled", true, "Enable anonymous usage reporting.")
+	f.StringVar(&cfg.UsageStatsURL, "reporting.usage-stats-url", usageStatsURL, "URL to which reports are sent")
 }
 
 type Reporter struct {
@@ -221,9 +223,6 @@ func (rep *Reporter) readSeedFile(ctx context.Context) (*ClusterSeed, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err != nil {
-		return nil, err
-	}
 	defer func() {
 		if err := reader.Close(); err != nil {
 			level.Error(rep.logger).Log("msg", "failed to close reader", "err", err)
@@ -302,7 +301,7 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 	})
 	var errs multierror.MultiError
 	for backoff.Ongoing() {
-		if err := sendReport(ctx, rep.cluster, interval); err != nil {
+		if err := sendReport(ctx, rep.cluster, interval, rep.conf.UsageStatsURL); err != nil {
 			level.Info(rep.logger).Log("msg", "failed to send usage report", "retries", backoff.NumRetries(), "err", err)
 			errs.Add(err)
 			backoff.Wait()

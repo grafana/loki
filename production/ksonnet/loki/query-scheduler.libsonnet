@@ -20,7 +20,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         max_outstanding_per_tenant: max_outstanding,
       },
       frontend_worker+: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local.:9095' % $._config.namespace,
+        frontend_address: 'query-frontend-headless.%s.svc.cluster.local.:9095' % $._config.namespace,
       },
     },
   },
@@ -61,10 +61,29 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local service = k.core.v1.service,
 
-  // Headless to make sure resolution gets IP address of target pods, and not service IP.
-  query_scheduler_discovery_service: if !$._config.query_scheduler_enabled then {} else
-    $.util.grpclbServiceFor($.query_scheduler_deployment) +
-    service.mixin.spec.withPublishNotReadyAddresses(true) +
-    service.mixin.spec.withClusterIp('None') +
-    service.mixin.metadata.withName('query-scheduler-discovery'),
+  // When this module was created the headless service was named
+  // 'query-scheduler-discovery' which diverges from the naming convention in
+  // query-frontend, this hidden attribute provides backward compatibility while
+  // allowing users to solve themselves this inconsistency
+  query_scheduler_headless_service_name:: 'query-scheduler-discovery',
+
+  // A headless service for discovering IPs of each query-scheduler pod.
+  // It leaves it up to the client to do any load-balancing of requests,
+  // so if the intention is to use the k8s service for load balancing,
+  // it is advised to use the below `query-scheduler` service instead.
+  query_scheduler_headless_service: if !$._config.query_scheduler_enabled then {} else
+    // headlessService will make ensure two things:
+    //   1. Set clusterIP to "None": this makes it so that query scheduler worker,
+    //      running in the querier, resolve each query-scheduler pod IP instead
+    //      of the service IP. clusterIP set to "None" allow this by making it
+    //      so that when the service DNS is resolved it returns the set of
+    //      query-scheduler IPs.
+    //   2. Set withPublishNotReadyAddresses to true: query scheduler will not
+    //      become ready until at least one querier connects which creates a
+    //      chicken and egg scenario if we don't publish the query-scheduler
+    //      address before it's ready.
+    $.util.headlessService($.query_scheduler_deployment, $.query_scheduler_headless_service_name),
+
+  query_scheduler_service: if !$._config.query_scheduler_enabled then {} else
+    $.util.grpclbServiceFor($.query_scheduler_deployment),
 }

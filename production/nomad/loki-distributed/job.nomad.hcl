@@ -1,7 +1,7 @@
 variable "version" {
   type        = string
   description = "Loki version"
-  default     = "2.6.1"
+  default     = "2.7.5"
 }
 
 job "loki" {
@@ -128,6 +128,7 @@ job "loki" {
         interval = "20s"
         timeout  = "1s"
       }
+    }
 
     task "ruler" {
       driver       = "docker"
@@ -503,6 +504,7 @@ job "loki" {
         interval = "20s"
         timeout  = "1s"
       }
+    }
 
     task "query-frontend" {
       driver       = "docker"

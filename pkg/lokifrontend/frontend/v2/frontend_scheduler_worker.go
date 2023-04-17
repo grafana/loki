@@ -69,7 +69,13 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.R
 }
 
 func (f *frontendSchedulerWorkers) starting(ctx context.Context) error {
-	return services.StartAndAwaitRunning(ctx, f.watcher)
+	// Instead of re-using `ctx` from the frontendSchedulerWorkers service,
+	// `watcher` needs to use their own service context, because we want to
+	// control the stopping process in the `stopping` function of the
+	// frontendSchedulerWorkers. If we would use the same context, the child
+	// service would be stopped automatically as soon as the context of the
+	// parent service is cancelled.
+	return services.StartAndAwaitRunning(context.Background(), f.watcher)
 }
 
 func (f *frontendSchedulerWorkers) stopping(_ error) error {
@@ -280,7 +286,8 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			err := loop.Send(&schedulerpb.FrontendToScheduler{
 				Type:            schedulerpb.ENQUEUE,
 				QueryID:         req.queryID,
-				UserID:          req.userID,
+				UserID:          req.tenantID,
+				QueuePath:       req.actor,
 				HttpRequest:     req.request,
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,

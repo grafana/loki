@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,11 @@
 // Lets you store and retrieve potentially-large, immutable data objects.
 //
 //	NOTE: This package is in alpha. It is not stable, and is likely to change.
+//
+// # General documentation
+//
+// For information about setting deadlines, reusing contexts, and more
+// please visit https://pkg.go.dev/cloud.google.com/go.
 //
 // # Example usage
 //
@@ -73,9 +78,6 @@
 // Individual methods on the client use the ctx given to them.
 //
 // To close the open connection, use the Close() method.
-//
-// For information about setting deadlines, reusing contexts, and more
-// please visit https://pkg.go.dev/cloud.google.com/go.
 package storage // import "cloud.google.com/go/storage/internal/apiv2"
 
 import (

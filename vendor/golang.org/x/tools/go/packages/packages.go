@@ -15,6 +15,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"go/types"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -302,6 +303,9 @@ type Package struct {
 	// Errors contains any errors encountered querying the metadata
 	// of the package, or while parsing or type-checking its files.
 	Errors []Error
+
+	// TypeErrors contains the subset of errors produced during type checking.
+	TypeErrors []types.Error
 
 	// GoFiles lists the absolute file paths of the package's Go source files.
 	GoFiles []string
@@ -911,6 +915,7 @@ func (ld *loader) loadPackage(lpkg *loaderPackage) {
 
 		case types.Error:
 			// from type checker
+			lpkg.TypeErrors = append(lpkg.TypeErrors, err)
 			errs = append(errs, Error{
 				Pos:  err.Fset.Position(err.Pos).String(),
 				Msg:  err.Msg,
@@ -946,6 +951,8 @@ func (ld *loader) loadPackage(lpkg *loaderPackage) {
 	// - golang.org/issue/52078 (flag to set release tags)
 	// - golang.org/issue/50825 (gopls legacy version support)
 	// - golang.org/issue/55883 (go/packages confusing error)
+	//
+	// Should we assert a hard minimum of (currently) go1.16 here?
 	var runtimeVersion int
 	if _, err := fmt.Sscanf(runtime.Version(), "go1.%d", &runtimeVersion); err == nil && runtimeVersion < lpkg.goVersion {
 		defer func() {
@@ -1017,7 +1024,7 @@ func (ld *loader) loadPackage(lpkg *loaderPackage) {
 	tc := &types.Config{
 		Importer: importer,
 
-		// Type-check bodies of functions only in non-initial packages.
+		// Type-check bodies of functions only in initial packages.
 		// Example: for import graph A->B->C and initial packages {A,C},
 		// we can ignore function bodies in B.
 		IgnoreFuncBodies: ld.Mode&NeedDeps == 0 && !lpkg.initial,
@@ -1307,3 +1314,5 @@ func impliedLoadMode(loadMode LoadMode) LoadMode {
 func usesExportData(cfg *Config) bool {
 	return cfg.Mode&NeedExportFile != 0 || cfg.Mode&NeedTypes != 0 && cfg.Mode&NeedDeps == 0
 }
+
+var _ interface{} = io.Discard // assert build toolchain is go1.16 or later

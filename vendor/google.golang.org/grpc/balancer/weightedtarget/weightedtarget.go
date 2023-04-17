@@ -88,16 +88,14 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 	}
 	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
 
-	var rebuildStateAndPicker bool
+	b.stateAggregator.PauseStateUpdates()
+	defer b.stateAggregator.ResumeStateUpdates()
 
 	// Remove sub-pickers and sub-balancers that are not in the new config.
 	for name := range b.targets {
 		if _, ok := newConfig.Targets[name]; !ok {
 			b.stateAggregator.Remove(name)
 			b.bg.Remove(name)
-			// Trigger a state/picker update, because we don't want `ClientConn`
-			// to pick this sub-balancer anymore.
-			rebuildStateAndPicker = true
 		}
 	}
 
@@ -116,21 +114,15 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 			// Not trigger a state/picker update. Wait for the new sub-balancer
 			// to send its updates.
 		} else if newT.ChildPolicy.Name != oldT.ChildPolicy.Name {
-			// If the child policy name is differet, remove from balancer group
+			// If the child policy name is different, remove from balancer group
 			// and re-add.
 			b.stateAggregator.Remove(name)
 			b.bg.Remove(name)
 			b.stateAggregator.Add(name, newT.Weight)
 			b.bg.Add(name, balancer.Get(newT.ChildPolicy.Name))
-			// Trigger a state/picker update, because we don't want `ClientConn`
-			// to pick this sub-balancer anymore.
-			rebuildStateAndPicker = true
 		} else if newT.Weight != oldT.Weight {
 			// If this is an existing sub-balancer, update weight if necessary.
 			b.stateAggregator.UpdateWeight(name, newT.Weight)
-			// Trigger a state/picker update, because we don't want `ClientConn`
-			// should do picks with the new weights now.
-			rebuildStateAndPicker = true
 		}
 
 		// Forwards all the update:
@@ -151,9 +143,6 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 
 	b.targets = newConfig.Targets
 
-	if rebuildStateAndPicker {
-		b.stateAggregator.BuildAndUpdate()
-	}
 	return nil
 }
 

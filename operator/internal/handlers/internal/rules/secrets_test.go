@@ -3,7 +3,7 @@ package rules_test
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
@@ -13,7 +13,7 @@ import (
 func TestExtractRulerSecret(t *testing.T) {
 	type test struct {
 		name       string
-		authType   lokiv1beta1.RemoteWriteAuthType
+		authType   lokiv1.RemoteWriteAuthType
 		secret     *corev1.Secret
 		wantSecret *manifests.RulerSecret
 		wantErr    bool
@@ -21,13 +21,13 @@ func TestExtractRulerSecret(t *testing.T) {
 	table := []test{
 		{
 			name:     "missing username",
-			authType: lokiv1beta1.BasicAuthorization,
+			authType: lokiv1.BasicAuthorization,
 			secret:   &corev1.Secret{},
 			wantErr:  true,
 		},
 		{
 			name:     "missing password",
-			authType: lokiv1beta1.BasicAuthorization,
+			authType: lokiv1.BasicAuthorization,
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"username": []byte("dasd"),
@@ -37,13 +37,13 @@ func TestExtractRulerSecret(t *testing.T) {
 		},
 		{
 			name:     "missing bearer token",
-			authType: lokiv1beta1.BearerAuthorization,
+			authType: lokiv1.BearerAuthorization,
 			secret:   &corev1.Secret{},
 			wantErr:  true,
 		},
 		{
 			name:     "valid basic auth",
-			authType: lokiv1beta1.BasicAuthorization,
+			authType: lokiv1.BasicAuthorization,
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"username": []byte("hello"),
@@ -57,7 +57,7 @@ func TestExtractRulerSecret(t *testing.T) {
 		},
 		{
 			name:     "valid header auth",
-			authType: lokiv1beta1.BearerAuthorization,
+			authType: lokiv1.BearerAuthorization,
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"bearer_token": []byte("hello world"),

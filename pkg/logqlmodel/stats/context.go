@@ -176,6 +176,11 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
 }
 
+func (s *Summary) Merge(m Summary) {
+	s.Splits += m.Splits
+	s.Shards += m.Shards
+}
+
 func (q *Querier) Merge(m Querier) {
 	q.Store.Merge(m.Store)
 }
@@ -201,15 +206,24 @@ func (c *Cache) Merge(m Cache) {
 	c.Requests += m.Requests
 	c.BytesSent += m.BytesSent
 	c.BytesReceived += m.BytesReceived
+	c.DownloadTime += m.DownloadTime
+}
+
+func (c *Cache) CacheDownloadTime() time.Duration {
+	return time.Duration(c.DownloadTime)
+}
+
+func (r *Result) MergeSplit(m Result) {
+	m.Summary.Splits = 1
+	r.Merge(m)
 }
 
 // Merge merges two results of statistics.
-// This will increase the total number of Subqueries.
 func (r *Result) Merge(m Result) {
-	r.Summary.Subqueries++
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
 	r.Caches.Merge(m.Caches)
+	r.Summary.Merge(m.Summary)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
@@ -347,6 +361,16 @@ func (c *Context) AddCacheBytesSent(t CacheType, i int) {
 	atomic.AddInt64(&stats.BytesSent, int64(i))
 }
 
+// AddCacheDownloadTime measures the time to download the data from cache
+func (c *Context) AddCacheDownloadTime(t CacheType, i time.Duration) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.DownloadTime, int64(i))
+}
+
 // AddCacheRequest counts the number of fetch/store requests to the cache
 func (c *Context) AddCacheRequest(t CacheType, i int) {
 	stats := c.getCacheStatsByType(t)
@@ -422,17 +446,20 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Chunk.EntriesStored", c.Chunk.EntriesStored,
 		"Cache.Chunk.BytesSent", humanize.Bytes(uint64(c.Chunk.BytesSent)),
 		"Cache.Chunk.BytesReceived", humanize.Bytes(uint64(c.Chunk.BytesReceived)),
+		"Cache.Chunk.DownloadTime", c.Chunk.CacheDownloadTime(),
 		"Cache.Index.Requests", c.Index.Requests,
 		"Cache.Index.EntriesRequested", c.Index.EntriesRequested,
 		"Cache.Index.EntriesFound", c.Index.EntriesFound,
 		"Cache.Index.EntriesStored", c.Index.EntriesStored,
 		"Cache.Index.BytesSent", humanize.Bytes(uint64(c.Index.BytesSent)),
 		"Cache.Index.BytesReceived", humanize.Bytes(uint64(c.Index.BytesReceived)),
+		"Cache.Index.DownloadTime", c.Index.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
 		"Cache.Result.EntriesFound", c.Result.EntriesFound,
 		"Cache.Result.EntriesStored", c.Result.EntriesStored,
 		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
 		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
+		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 	)
 }

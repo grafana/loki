@@ -1,7 +1,8 @@
 ---
 title: EKS
+description: Sending logs from EKS with Promtail
 ---
-# Sending logs from EKS with Promtail
+# EKS
 
 In this tutorial we'll see how to set up Promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
 
@@ -9,7 +10,7 @@ After this tutorial you will able to query all your logs in one place using Graf
 
 <!-- TOC -->
 
-- [Sending logs from EKS with Promtail](#sending-logs-from-eks-with-promtail)
+- [Sending logs from EKS with Promtail](#eks)
     - [Requirements](#requirements)
     - [Setting up the cluster](#setting-up-the-cluster)
     - [Adding Promtail DaemonSet](#adding-promtail-daemonset)
@@ -51,7 +52,7 @@ Server Version: version.Info{Major:"1", Minor:"16+", GitVersion:"v1.16.8-eks-fd1
 
 ## Adding Promtail DaemonSet
 
-To ship all your pods logs we're going to set up [Promtail](../../promtail/) as a DaemonSet in our cluster. This means it will run on each nodes of the cluster, we will then configure it to find the logs of your containers on the host.
+To ship all your pods logs we're going to set up [Promtail]({{< relref "../../promtail/" >}}) as a DaemonSet in our cluster. This means it will run on each nodes of the cluster, we will then configure it to find the logs of your containers on the host.
 
 What's nice about Promtail is that it uses the same [service discovery as Prometheus][prometheus conf], you should make sure the `scrape_configs` of Promtail matches the Prometheus one. Not only this is simpler to configure, but this also means Metrics and Logs will have the same metadata (labels) attached by the Prometheus service discovery. When querying Grafana you will be able to correlate metrics and logs very quickly, you can read more about this on our [blogpost][correlate].
 
@@ -215,7 +216,7 @@ helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
 And deploy the `eventrouter` using:
 
 ```bash
- kubectl create -f https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/eks/eventrouter.yaml
+kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/eks/eventrouter.yaml
 
 serviceaccount/eventrouter created
 clusterrole.rbac.authorization.k8s.io/eventrouter created

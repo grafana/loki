@@ -21,7 +21,9 @@ type Config struct {
 	// we cannot define this in the WAL config since it creates an import cycle
 
 	WALCleaner  cleaner.Config    `yaml:"wal_cleaner,omitempty"`
-	RemoteWrite RemoteWriteConfig `yaml:"remote_write,omitempty"`
+	RemoteWrite RemoteWriteConfig `yaml:"remote_write,omitempty" doc:"description=Remote-write configuration to send rule samples to a Prometheus remote-write endpoint."`
+
+	Evaluation EvaluationConfig `yaml:"evaluation,omitempty" doc:"description=Configuration for rule evaluation."`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -29,12 +31,13 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RemoteWrite.RegisterFlags(f)
 	c.WAL.RegisterFlags(f)
 	c.WALCleaner.RegisterFlags(f)
+	c.Evaluation.RegisterFlags(f)
 
 	// TODO(owen-d, 3.0.0): remove deprecated experimental prefix in Cortex if they'll accept it.
-	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", true, "Enable the ruler api")
+	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
 }
 
-// Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead copy the relevant bits over.
+// Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead, copy the relevant bits over.
 func (c *Config) Validate() error {
 	if err := c.StoreConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid ruler store config: %w", err)
@@ -44,12 +47,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid ruler remote-write config: %w", err)
 	}
 
+	if err := c.WALCleaner.Validate(); err != nil {
+		return fmt.Errorf("invalid ruler wal cleaner config: %w", err)
+	}
+
 	return nil
 }
 
 type RemoteWriteConfig struct {
-	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty"`
-	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty"`
+	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
+	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key."`
 	Enabled             bool                                `yaml:"enabled"`
 	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
 }
@@ -104,7 +111,7 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Remote-write recording rule samples to Prometheus-compatible remote-write receiver.")
+	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Enable remote-write functionality.")
 	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
 
 	if c.Clients == nil {

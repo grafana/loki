@@ -121,11 +121,7 @@ func shardDeleteRequestsByInterval(startTime, endTime model.Time, query, userID 
 func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
 	qr := params.Get("max_interval")
 	if qr == "" {
-		if dm.maxInterval == 0 {
-			return endTime.Sub(startTime), nil
-		}
-
-		return min(endTime.Sub(startTime), dm.maxInterval), nil
+		return dm.intervalFromStartAndEnd(startTime, endTime)
 	}
 
 	interval, err := time.ParseDuration(qr)
@@ -142,6 +138,18 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 	}
 
 	return interval, nil
+}
+
+func (dm *DeleteRequestHandler) intervalFromStartAndEnd(startTime, endTime model.Time) (time.Duration, error) {
+	interval := endTime.Sub(startTime)
+	if interval < time.Second {
+		return 0, errors.New("difference between start time and end time must be at least one second")
+	}
+
+	if dm.maxInterval == 0 {
+		return interval, nil
+	}
+	return min(interval, dm.maxInterval), nil
 }
 
 func min(a, b time.Duration) time.Duration {

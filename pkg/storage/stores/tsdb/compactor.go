@@ -48,7 +48,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}()
 
 	builder := NewBuilder()
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -197,7 +197,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
-		err := idx.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err := idx.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -229,7 +229,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 			}
 		}()
 
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
@@ -355,11 +355,17 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 	c.deleteChunks = nil
 
 	for _, chk := range c.indexChunks {
-		err := c.builder.InsertChunk(chk.Metric.String(), index.ChunkMeta{
+		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
+		b := labels.NewBuilder(chk.Metric)
+		b.Del(labels.MetricName)
+		ls := b.Labels(nil)
+
+		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
 			Checksum: chk.Checksum,
 			MinTime:  int64(chk.From),
 			MaxTime:  int64(chk.Through),
-			KB:       uint32(chk.Size()) / (1 << 10),
+			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
 		})
 		if err != nil {

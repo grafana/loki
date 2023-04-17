@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Actions
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3
         with:
           repository: "grafana/grafana-github-actions"
           path: ./actions
@@ -16,6 +16,6 @@ jobs:
         run: npm install --production --prefix ./actions
       - name: Run Commands
         uses: ./actions/commands
-        with:          
-          token: ${{secrets.GH_BOT_ACCESS_TOKEN}}
+        with:
+          token: ${{secrets.ISSUE_COMMANDS_TOKEN}}
           configPath: issue_commands

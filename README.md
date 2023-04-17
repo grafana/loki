@@ -1,7 +1,6 @@
 <p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
 
 <a href="https://drone.grafana.net/grafana/loki"><img src="https://drone.grafana.net/api/badges/grafana/loki/status.svg" alt="Drone CI" /></a>
-<a href="https://circleci.com/gh/grafana/loki/tree/master"><img src="https://circleci.com/gh/grafana/loki.svg?style=shield&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d" alt="CircleCI" /></a>
 <a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
 <a href="https://slack.grafana.com/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/loki.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:loki)
@@ -95,7 +94,7 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/master/loki-build-image/Dockerfile)
+You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/main/loki-build-image/Dockerfile)
 
 ```bash
 
@@ -121,14 +120,14 @@ With Journal support on Ubuntu, run with the following commands:
 
 ```bash
 $ sudo apt install -y libsystemd-dev
-$ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 
 With Journal support on CentOS, run with the following commands:
 
 ```bash
 $ sudo yum install -y systemd-devel
-$ go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+$ go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 
 Otherwise, to build Promtail without Journal support, run `go build`

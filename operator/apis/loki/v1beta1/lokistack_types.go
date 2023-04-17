@@ -514,7 +514,7 @@ type IngestionLimitSpec struct {
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 }
 
-// LimitsTemplateSpec defines the limits  applied at ingestion or query path.
+// LimitsTemplateSpec defines the limits and overrides applied per-tenant.
 type LimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
 	//
@@ -531,6 +531,7 @@ type LimitsTemplateSpec struct {
 
 // LimitsSpec defines the spec for limits applied at ingestion or query
 // path across the cluster or per tenant.
+// It also defines the per-tenant configuration overrides.
 type LimitsSpec struct {
 	// Global defines the limits applied globally across the cluster.
 	//
@@ -539,7 +540,7 @@ type LimitsSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Global Limits"
 	Global *LimitsTemplateSpec `json:"global,omitempty"`
 
-	// Tenants defines the limits applied per tenant.
+	// Tenants defines the limits and overrides applied per tenant.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -621,7 +622,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rules"
 	Rules *RulesSpec `json:"rules,omitempty"`
 
-	// Limits defines the limits to be applied to log stream processing.
+	// Limits defines the per-tenant limits to be applied to log stream processing and the per-tenant the config overrides.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

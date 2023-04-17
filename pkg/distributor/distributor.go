@@ -113,7 +113,7 @@ func New(
 	clientCfg client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
-	overrides *validation.Overrides,
+	overrides Limits,
 	registerer prometheus.Registerer,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -283,66 +283,75 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var validationErr error
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
-	for _, stream := range req.Streams {
-		// Return early if stream does not contain any entries
-		if len(stream.Entries) == 0 {
-			continue
+	func() {
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogKV("event", "start to validate request")
+			defer func() {
+				sp.LogKV("event", "finished to validate request")
+			}()
 		}
-
-		// Truncate first so subsequent steps have consistent line lengths
-		d.truncateLines(validationContext, &stream)
-
-		stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
-		if err != nil {
-			validationErr = err
-			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
-			bytes := 0
-			for _, e := range stream.Entries {
-				bytes += len(e.Line)
-			}
-			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
-			continue
-		}
-
-		n := 0
-		streamSize := 0
-		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
-				validationErr = err
+		for _, stream := range req.Streams {
+			// Return early if stream does not contain any entries
+			if len(stream.Entries) == 0 {
 				continue
 			}
 
-			stream.Entries[n] = entry
+			// Truncate first so subsequent steps have consistent line lengths
+			d.truncateLines(validationContext, &stream)
 
-			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
-			// since Loki will accept out of order writes it doesn't account for separate
-			// pushes with overlapping time ranges having entries with duplicate timestamps
-			if validationContext.incrementDuplicateTimestamps && n != 0 {
-				// Traditional logic for Loki is that 2 lines with the same timestamp and
-				// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-				// To maintain this behavior, only increment the timestamp if the log content is different
-				if stream.Entries[n-1].Line != entry.Line {
-					stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+			if err != nil {
+				validationErr = err
+				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
+				bytes := 0
+				for _, e := range stream.Entries {
+					bytes += len(e.Line)
 				}
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
+				continue
 			}
 
-			n++
-			validatedLineSize += len(entry.Line)
-			validatedLineCount++
-			streamSize += len(entry.Line)
-		}
-		stream.Entries = stream.Entries[:n]
+			n := 0
+			streamSize := 0
+			for _, entry := range stream.Entries {
+				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+					validationErr = err
+					continue
+				}
 
-		shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-		if shardStreamsCfg.Enabled {
-			derivedKeys, derivedStreams := d.shardStream(stream, streamSize, tenantID)
-			keys = append(keys, derivedKeys...)
-			streams = append(streams, derivedStreams...)
-		} else {
-			keys = append(keys, util.TokenFor(tenantID, stream.Labels))
-			streams = append(streams, streamTracker{stream: stream})
+				stream.Entries[n] = entry
+
+				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
+				// since Loki will accept out of order writes it doesn't account for separate
+				// pushes with overlapping time ranges having entries with duplicate timestamps
+				if validationContext.incrementDuplicateTimestamps && n != 0 {
+					// Traditional logic for Loki is that 2 lines with the same timestamp and
+					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
+					// To maintain this behavior, only increment the timestamp if the log content is different
+					if stream.Entries[n-1].Line != entry.Line {
+						stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+					}
+				}
+
+				n++
+				validatedLineSize += len(entry.Line)
+				validatedLineCount++
+				streamSize += len(entry.Line)
+			}
+			stream.Entries = stream.Entries[:n]
+
+			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+			if shardStreamsCfg.Enabled {
+				derivedKeys, derivedStreams := d.shardStream(stream, streamSize, tenantID)
+				keys = append(keys, derivedKeys...)
+				streams = append(streams, derivedStreams...)
+			} else {
+				keys = append(keys, util.TokenFor(tenantID, stream.Labels))
+				streams = append(streams, streamTracker{stream: stream})
+			}
 		}
-	}
+	}()
 
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
@@ -362,18 +371,32 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
-	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
-		if err != nil {
-			return nil, err
+
+	if err := func() error {
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogKV("event", "started to query ingesters ring")
+			defer func() {
+				sp.LogKV("event", "finished to query ingesters ring")
+			}()
 		}
 
-		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
-		streams[i].maxFailures = replicationSet.MaxErrors
-		for _, ingester := range replicationSet.Instances {
-			streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
-			ingesterDescs[ingester.Addr] = ingester
+		for i, key := range keys {
+			replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
+			if err != nil {
+				return err
+			}
+
+			streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
+			streams[i].maxFailures = replicationSet.MaxErrors
+			for _, ingester := range replicationSet.Instances {
+				streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
+				ingesterDescs[ingester.Addr] = ingester
+			}
 		}
+		return nil
+	}(); err != nil {
+		return nil, err
 	}
 
 	tracker := pushTracker{
@@ -525,7 +548,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 			stream.Entries[i].Line = e.Line[:maxSize]
 
 			truncatedSamples++
-			truncatedBytes = len(e.Line) - maxSize
+			truncatedBytes += len(e.Line) - maxSize
 		}
 	}
 

@@ -158,24 +158,34 @@ func (s *Server) servePeer(c net.Conn) {
 	peer := &Peer{
 		w: bufio.NewWriter(c),
 	}
+
 	defer func() {
 		for _, f := range peer.onDisconnect {
 			f()
 		}
 	}()
 
-	for {
-		args, err := readArray(r)
-		if err != nil {
-			return
+	readCh := make(chan []string)
+
+	go func() {
+		defer close(readCh)
+
+		for {
+			args, err := readArray(r)
+			if err != nil {
+				peer.Close()
+				return
+			}
+
+			readCh <- args
 		}
+	}()
+
+	for args := range readCh {
 		s.Dispatch(peer, args)
 		peer.Flush()
 
-		s.mu.Lock()
-		closed := peer.closed
-		s.mu.Unlock()
-		if closed {
+		if peer.Closed() {
 			c.Close()
 		}
 	}
@@ -257,6 +267,13 @@ func (c *Peer) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
+}
+
+// Return true if the peer connection closed.
+func (c *Peer) Closed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
 }
 
 // Register a function to execute on disconnect. There can be multiple

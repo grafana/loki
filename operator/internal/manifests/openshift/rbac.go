@@ -100,6 +100,14 @@ func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 					"patch",
 				},
 			},
+			{
+				NonResourceURLs: []string{
+					"/api/v2/alerts",
+				},
+				Verbs: []string{
+					"create",
+				},
+			},
 		},
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"path"
 	"path/filepath"
 	"strings"
@@ -192,14 +193,20 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	}
 }
 
-func buildChunkMetas(from, to int64) index.ChunkMetas {
+// buildChunkMetas builds `span[0]` ms wide chunk metas from -> to.
+func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
+	var s int64 = 1
+	if len(span) > 0 {
+		s = span[0]
+	}
 	var chunkMetas index.ChunkMetas
-	for i := from; i <= to; i++ {
+	for i := from; i <= to; i += s {
 		chunkMetas = append(chunkMetas, index.ChunkMeta{
 			MinTime:  i,
-			MaxTime:  i,
+			MaxTime:  i + s,
 			Checksum: uint32(i),
-			Entries:  1,
+			Entries:  uint32(s),
+			KB:       uint32(s),
 		})
 	}
 
@@ -594,7 +601,7 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 							actualChunks[lbls.String()] = chks
 						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
@@ -677,6 +684,24 @@ func TestCompactedIndex(t *testing.T) {
 			addChunks: []chunk.Chunk{
 				{
 					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+				{
+					Metric:   testCtx.lbls1,
+					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(12), testCtx.shiftTableStart(12))[0], testCtx.lbls1),
+					Data:     dummyChunkData{},
+				},
+			},
+			finalExpectedChunks: map[string]index.ChunkMetas{
+				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			},
+		},
+		"__name__ label should get dropped while indexing chunks": {
+			addChunks: []chunk.Chunk{
+				{
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(nil),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
@@ -790,7 +815,7 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)
@@ -875,6 +900,10 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 type dummyChunkData struct {
 	chunk.Data
+}
+
+func (d dummyChunkData) UncompressedSize() int {
+	return 1 << 10 // 1KB
 }
 
 func (d dummyChunkData) Entries() int {

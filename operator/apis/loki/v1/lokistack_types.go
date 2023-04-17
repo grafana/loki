@@ -29,6 +29,14 @@ const (
 type LokiStackSizeType string
 
 const (
+	// SizeOneXDemo defines the size of a single Loki deployment
+	// with tiny resource requirements and without HA support.
+	// This size is intended to run in single-node clusters on laptops,
+	// it is only useful for very light testing, demonstrations, or prototypes.
+	// There are no ingestion/query performance guarantees.
+	// DO NOT USE THIS IN PRODUCTION!
+	SizeOneXDemo LokiStackSizeType = "1x.demo"
+
 	// SizeOneXExtraSmall defines the size of a single Loki deployment
 	// with extra small resources/limits requirements and without HA support.
 	// This size is ultimately dedicated for development and demo purposes.
@@ -345,6 +353,59 @@ type ClusterProxy struct {
 	NoProxy string `json:"noProxy,omitempty"`
 }
 
+// HashRingType defines the type of hash ring which can be used with the Loki cluster.
+//
+// +kubebuilder:validation:Enum=memberlist
+type HashRingType string
+
+const (
+	// HashRingMemberList when using memberlist for the distributed hash ring.
+	HashRingMemberList HashRingType = "memberlist"
+)
+
+// InstanceAddrType defines the type of pod network to use for advertising IPs to the ring.
+//
+// +kubebuilder:validation:Enum=default;podIP
+type InstanceAddrType string
+
+const (
+	// InstanceAddrDefault when using the first from any private network interfaces (RFC 1918 and RFC 6598).
+	InstanceAddrDefault InstanceAddrType = "default"
+	// InstanceAddrPodIP when using the public pod IP from the cluster's pod network.
+	InstanceAddrPodIP InstanceAddrType = "podIP"
+)
+
+// MemberListSpec defines the configuration for the memberlist based hash ring.
+type MemberListSpec struct {
+	// InstanceAddrType defines the type of address to use to advertise to the ring.
+	// Defaults to the first address from any private network interfaces of the current pod.
+	// Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
+	// are not available.
+	//
+	// +optional
+	// +kubebuilder:validation:optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:default","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
+	InstanceAddrType InstanceAddrType `json:"instanceAddrType,omitempty"`
+}
+
+// HashRingSpec defines the hash ring configuration
+type HashRingSpec struct {
+	// Type of hash ring implementation that should be used
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:memberlist"},displayName="Type"
+	// +kubebuilder:default:=memberlist
+	Type HashRingType `json:"type"`
+
+	// MemberList configuration spec
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Memberlist Config"
+	MemberList *MemberListSpec `json:"memberlist,omitempty"`
+}
+
 // ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
 type ObjectStorageTLSSpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
@@ -366,7 +427,7 @@ type ObjectStorageTLSSpec struct {
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
 //
-// +kubebuilder:validation:Enum=azure;gcs;s3;swift
+// +kubebuilder:validation:Enum=azure;gcs;s3;swift;alibabacloud;
 type ObjectStorageSecretType string
 
 const (
@@ -381,6 +442,9 @@ const (
 
 	// ObjectStorageSecretSwift when using Swift for Loki storage
 	ObjectStorageSecretSwift ObjectStorageSecretType = "swift"
+
+	// ObjectStorageSecretAlibabaCloud when using AlibabaCloud OSS for Loki storage
+	ObjectStorageSecretAlibabaCloud ObjectStorageSecretType = "alibabacloud"
 )
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -389,7 +453,7 @@ type ObjectStorageSecretSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift"},displayName="Object Storage Secret Type"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift","urn:alm:descriptor:com.tectonic.ui:select:alibabacloud"},displayName="Object Storage Secret Type"
 	Type ObjectStorageSecretType `json:"type"`
 
 	// Name of a secret in the namespace configured for object storage secrets.
@@ -674,6 +738,13 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small","urn:alm:descriptor:com.tectonic.ui:select:1x.small","urn:alm:descriptor:com.tectonic.ui:select:1x.medium"},displayName="LokiStack Size"
 	Size LokiStackSizeType `json:"size"`
 
+	// HashRing defines the spec for the distributed hash ring configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Hash Ring"
+	HashRing *HashRingSpec `json:"hashRing,omitempty"`
+
 	// Storage defines the spec for the object storage endpoint to store logs.
 	//
 	// +required
@@ -739,7 +810,7 @@ const (
 	// ConditionReady defines the condition that all components in the Loki deployment are ready.
 	ConditionReady LokiStackConditionType = "Ready"
 
-	// ConditionPending defines the conditioin that some or all components are in pending state.
+	// ConditionPending defines the condition that some or all components are in pending state.
 	ConditionPending LokiStackConditionType = "Pending"
 
 	// ConditionFailed defines the condition that components in the Loki deployment failed to roll out.
@@ -895,6 +966,7 @@ type LokiStackStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:resource:categories=logging
+// +kubebuilder:webhook:path=/validate-loki-grafana-com-v1-lokistack,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=lokistacks,verbs=create;update,versions=v1,name=vlokistack.loki.grafana.com,admissionReviewVersions=v1
 
 // LokiStack is the Schema for the lokistacks API
 //
@@ -921,5 +993,5 @@ func init() {
 	SchemeBuilder.Register(&LokiStack{}, &LokiStackList{})
 }
 
-// Hub declares the v1beta1.LokiStack as the hub CRD version.
+// Hub declares the v1.LokiStack as the hub CRD version.
 func (*LokiStack) Hub() {}

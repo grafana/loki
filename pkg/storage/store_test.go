@@ -2,11 +2,14 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"math"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
@@ -96,7 +99,6 @@ func Benchmark_store_SelectLogsBackward(b *testing.B) {
 // go run  -mod=vendor ./pkg/storage/hack/main.go
 // go test -benchmem -run=^$ -mod=vendor  ./pkg/storage -bench=Benchmark_store_SelectSample   -memprofile memprofile.out -cpuprofile cpuprofile.out
 func Benchmark_store_SelectSample(b *testing.B) {
-	var sampleRes []logproto.Sample
 	for _, test := range []string{
 		`count_over_time({foo="bar"}[5m])`,
 		`rate({foo="bar"}[5m])`,
@@ -104,6 +106,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		`bytes_over_time({foo="bar"}[5m])`,
 	} {
 		b.Run(test, func(b *testing.B) {
+			sampleCount := 0
 			for i := 0; i < b.N; i++ {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
 					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
@@ -113,13 +116,14 @@ func Benchmark_store_SelectSample(b *testing.B) {
 				}
 
 				for iter.Next() {
-					sampleRes = append(sampleRes, iter.Sample())
+					_ = iter.Sample()
+					sampleCount++
 				}
 				iter.Close()
 			}
+			b.ReportMetric(float64(sampleCount)/float64(b.N), "samples/op")
 		})
 	}
-	log.Print("sample processed ", len(sampleRes))
 }
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
@@ -199,7 +203,7 @@ func getLocalStore(cm ClientMetrics) Store {
 			{
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
-				ObjectType: "filesystem",
+				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
@@ -950,7 +954,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			"unsharded",
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 			},
 		},
@@ -964,7 +968,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				nil,
 			),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 				labels.MustNewMatcher(
 					labels.MatchEqual,
@@ -990,113 +994,130 @@ type timeRange struct {
 	from, to time.Time
 }
 
-func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
-	tempDir := t.TempDir()
-
+func TestStore_MultiPeriod(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
-	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = "filesystem"
-	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
-
-	// dates for activation of boltdb shippers
 	firstStoreDate := parseDate("2019-01-01")
 	secondStoreDate := parseDate("2019-01-02")
 
-	cfg := Config{
-		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		BoltDBShipperConfig: boltdbShipperConfig,
-	}
+	for name, indexes := range map[string][]string{
+		"botldb_boltdb": {config.BoltDBShipperType, config.BoltDBShipperType},
+		"botldb_tsdb":   {config.BoltDBShipperType, config.TSDBType},
+		"tsdb_tsdb":     {config.TSDBType, config.TSDBType},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tempDir := t.TempDir()
 
-	schemaConfig := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:       config.DayTime{Time: timeToModelTime(firstStoreDate)},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+			shipperConfig := indexshipper.Config{}
+			flagext.DefaultValues(&shipperConfig)
+			shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+			shipperConfig.CacheLocation = path.Join(tempDir, "cache")
+			shipperConfig.Mode = indexshipper.ModeReadWrite
+
+			cfg := Config{
+				FSConfig: local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+				BoltDBShipperConfig: shipper.Config{
+					Config: shipperConfig,
 				},
-			},
-			{
-				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
-				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+				TSDBShipperConfig: shipperConfig,
+				NamedStores: NamedStores{
+					Filesystem: map[string]local.FSConfig{
+						"named-store": {Directory: path.Join(tempDir, "named-store")},
+					},
 				},
-				RowShards: 2,
-			},
-		},
+			}
+			require.NoError(t, cfg.NamedStores.validate())
+
+			schemaConfig := config.SchemaConfig{
+				Configs: []config.PeriodConfig{
+					{
+						From:       config.DayTime{Time: timeToModelTime(firstStoreDate)},
+						IndexType:  indexes[0],
+						ObjectType: config.StorageTypeFileSystem,
+						Schema:     "v9",
+						IndexTables: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						},
+					},
+					{
+						From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
+						IndexType:  indexes[1],
+						ObjectType: "named-store",
+						Schema:     "v11",
+						IndexTables: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						},
+						RowShards: 2,
+					},
+				},
+			}
+
+			ResetBoltDBIndexClientsWithShipper()
+			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+			require.NoError(t, err)
+
+			// time ranges adding a chunk for each store and a chunk which overlaps both the stores
+			chunksToBuildForTimeRanges := []timeRange{
+				{
+					// chunk just for first store
+					secondStoreDate.Add(-3 * time.Hour),
+					secondStoreDate.Add(-2 * time.Hour),
+				},
+				{
+					// chunk overlapping both the stores
+					secondStoreDate.Add(-time.Hour),
+					secondStoreDate.Add(time.Hour),
+				},
+				{
+					// chunk just for second store
+					secondStoreDate.Add(2 * time.Hour),
+					secondStoreDate.Add(3 * time.Hour),
+				},
+			}
+
+			// build and add chunks to the store
+			addedChunkIDs := map[string]struct{}{}
+			for _, tr := range chunksToBuildForTimeRanges {
+				chk := newChunk(buildTestStreams(fooLabelsWithName, tr))
+
+				err := store.PutOne(ctx, chk.From, chk.Through, chk)
+				require.NoError(t, err)
+
+				addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
+			}
+
+			// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+			store.Stop()
+
+			ResetBoltDBIndexClientsWithShipper()
+			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+			require.NoError(t, err)
+
+			defer store.Stop()
+
+			// get all the chunks from both the stores
+			chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+			require.NoError(t, err)
+			var totalChunks int
+			for _, chks := range chunks {
+				totalChunks += len(chks)
+			}
+			// we get common chunk twice because it is indexed in both the stores
+			require.Equal(t, totalChunks, len(addedChunkIDs)+1)
+
+			// check whether we got back all the chunks which were added
+			for i := range chunks {
+				for _, c := range chunks[i] {
+					_, ok := addedChunkIDs[schemaConfig.ExternalKey(c.ChunkRef)]
+					require.True(t, ok)
+				}
+			}
+		})
 	}
 
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
-	require.NoError(t, err)
-
-	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
-	chunksToBuildForTimeRanges := []timeRange{
-		{
-			// chunk just for first store
-			secondStoreDate.Add(-3 * time.Hour),
-			secondStoreDate.Add(-2 * time.Hour),
-		},
-		{
-			// chunk overlapping both the stores
-			secondStoreDate.Add(-time.Hour),
-			secondStoreDate.Add(time.Hour),
-		},
-		{
-			// chunk just for second store
-			secondStoreDate.Add(2 * time.Hour),
-			secondStoreDate.Add(3 * time.Hour),
-		},
-	}
-
-	// build and add chunks to the store
-	addedChunkIDs := map[string]struct{}{}
-	for _, tr := range chunksToBuildForTimeRanges {
-		chk := newChunk(buildTestStreams(fooLabelsWithName, tr))
-
-		err := store.PutOne(ctx, chk.From, chk.Through, chk)
-		require.NoError(t, err)
-
-		addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
-	}
-
-	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
-	store.Stop()
-
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
-	require.NoError(t, err)
-
-	defer store.Stop()
-
-	// get all the chunks from both the stores
-	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
-	require.NoError(t, err)
-	var totalChunks int
-	for _, chks := range chunks {
-		totalChunks += len(chks)
-	}
-	// we get common chunk twice because it is indexed in both the stores
-	require.Equal(t, totalChunks, len(addedChunkIDs)+1)
-
-	// check whether we got back all the chunks which were added
-	for i := range chunks {
-		for _, c := range chunks[i] {
-			_, ok := addedChunkIDs[schemaConfig.ExternalKey(c.ChunkRef)]
-			require.True(t, ok)
-		}
-	}
 }
 
 func mustParseLabels(s string) map[string]string {
@@ -1280,25 +1301,48 @@ func Test_GetSeries(t *testing.T) {
 	}
 }
 
-func TestGetIndexStoreTableRanges(t *testing.T) {
-	now := model.Now()
+func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
+	tempDir := t.TempDir()
+
+	ingesterName := "ingester-1"
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := shipper.Config{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	boltdbShipperConfig.IngesterName = ingesterName
+
+	// config for tsdb Shipper
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = ingesterName
+
+	// dates for activation of boltdb shippers
+	boltdbShipperStartDate := parseDate("2019-01-01")
+	tsdbStartDate := parseDate("2019-01-02")
+
+	cfg := Config{
+		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig:   tsdbShipperConfig,
+	}
+
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:       config.DayTime{Time: now.Add(30 * 24 * time.Hour)},
-				IndexType:  config.BoltDBShipperType,
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
-			},
-			{
-				From:       config.DayTime{Time: now.Add(20 * 24 * time.Hour)},
-				IndexType:  config.BoltDBShipperType,
-				ObjectType: "filesystem",
-				Schema:     "v11",
+				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
+				IndexType:  "boltdb-shipper",
+				ObjectType: config.StorageTypeFileSystem,
+				Schema:     "v12",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 24,
@@ -1306,72 +1350,93 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 				RowShards: 2,
 			},
 			{
-				From:       config.DayTime{Time: now.Add(15 * 24 * time.Hour)},
-				IndexType:  config.TSDBType,
-				ObjectType: "filesystem",
-				Schema:     "v11",
+				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				IndexType:  "tsdb",
+				ObjectType: config.StorageTypeFileSystem,
+				Schema:     "v12",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 24,
 				},
-				RowShards: 2,
-			},
-			{
-				From:       config.DayTime{Time: now.Add(10 * 24 * time.Hour)},
-				IndexType:  config.StorageTypeBigTable,
-				ObjectType: "filesystem",
-				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
-				RowShards: 2,
-			},
-			{
-				From:       config.DayTime{Time: now.Add(5 * 24 * time.Hour)},
-				IndexType:  config.TSDBType,
-				ObjectType: "filesystem",
-				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
-				RowShards: 2,
 			},
 		},
 	}
 
-	require.Equal(t, config.TableRanges{
-		{
-			Start:        schemaConfig.Configs[0].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[1].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[0],
-		},
-		{
-			Start:        schemaConfig.Configs[1].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[1],
-		},
-	}, getIndexStoreTableRanges(config.BoltDBShipperType, schemaConfig.Configs))
+	ResetBoltDBIndexClientsWithShipper()
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	require.NoError(t, err)
 
-	require.Equal(t, config.TableRanges{
+	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
+	chunksToBuildForTimeRanges := []timeRange{
 		{
-			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[3],
+			// chunk just for first store
+			tsdbStartDate.Add(-3 * time.Hour),
+			tsdbStartDate.Add(-2 * time.Hour),
 		},
-	}, getIndexStoreTableRanges(config.StorageTypeBigTable, schemaConfig.Configs))
+		{
+			// chunk overlapping both the stores
+			tsdbStartDate.Add(-time.Hour),
+			tsdbStartDate.Add(time.Hour),
+		},
+		{
+			// chunk just for second store
+			tsdbStartDate.Add(2 * time.Hour),
+			tsdbStartDate.Add(3 * time.Hour),
+		},
+	}
 
-	require.Equal(t, config.TableRanges{
-		{
-			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[2],
-		},
-		{
-			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[4],
-		},
-	}, getIndexStoreTableRanges(config.TSDBType, schemaConfig.Configs))
+	// build and add chunks to the store
+	addedChunkIDs := map[string]struct{}{}
+	for _, tr := range chunksToBuildForTimeRanges {
+		chk := newChunk(buildTestStreams(fooLabelsWithName, tr))
+
+		err := store.PutOne(ctx, chk.From, chk.Through, chk)
+		require.NoError(t, err)
+
+		addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
+	}
+
+	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+	store.Stop()
+
+	// there should be 2 index tables in the object storage
+	indexTables, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index"))
+	require.NoError(t, err)
+	require.Len(t, indexTables, 2)
+	require.Equal(t, "index_17897", indexTables[0].Name())
+	require.Equal(t, "index_17898", indexTables[1].Name())
+
+	// there should be just 1 file in each table in the object storage
+	boltdbFiles, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index", indexTables[0].Name()))
+	require.NoError(t, err)
+	require.Len(t, boltdbFiles, 1)
+	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`%s-\d{19}-\d{10}\.gz`, ingesterName)), boltdbFiles[0].Name())
+
+	tsdbFiles, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index", indexTables[1].Name()))
+	require.NoError(t, err)
+	require.Len(t, tsdbFiles, 1)
+	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
+
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	require.NoError(t, err)
+
+	defer store.Stop()
+
+	// get all the chunks from both the stores
+	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	require.NoError(t, err)
+	var totalChunks int
+	for _, chks := range chunks {
+		totalChunks += len(chks)
+	}
+	// we get common chunk twice because it is indexed in both the stores
+	require.Equal(t, totalChunks, len(addedChunkIDs)+1)
+
+	// check whether we got back all the chunks which were added
+	for i := range chunks {
+		for _, c := range chunks[i] {
+			_, ok := addedChunkIDs[schemaConfig.ExternalKey(c.ChunkRef)]
+			require.True(t, ok)
+		}
+	}
 }

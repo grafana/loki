@@ -1,0 +1,42 @@
+apiVersion: loki.grafana.com/v1
+kind: RulerConfig
+metadata:
+  name: rulerconfig-sample
+spec:
+  evaluationInterval: 1m
+  pollInterval: 1m
+  alertmanager:
+    externalUrl: http://www.mycompany.org/alerts
+    externalLabels:
+      environment: production
+      region: us-east-2
+    enableV2: true
+    endpoints:
+      - http://alertmanager-host1.mycompany.org
+      - http://alertmanager-host2.mycompany.org
+    discovery:
+      enableSRV: true
+      refreshInterval: 1m
+    notificationQueue:
+      capacity: 1000
+      timeout: 30s
+      forOutageTolerance: 1h
+      forGracePeriod: 10m
+      resendDelay: 1m
+  remoteWrite:
+    enabled: true
+    refreshPeriod: 10s
+    client:
+      name: remote-write-log-metrics
+      url: http://remote-write-host.mycompany.org
+      timeout: 30s
+      authorization: basic
+      authorizationSecretName: my-secret-resource
+      proxyUrl: http://proxy-host.mycompany.org
+      relabelConfigs:
+      - sourceLabels: ["labelc","labeld"]
+        regex: ALERTS.*
+        action: replace
+        separator: ""
+        replacement: $1
+        targetLabel: labelnew

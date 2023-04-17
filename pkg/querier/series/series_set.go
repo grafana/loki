@@ -85,7 +85,7 @@ func (c *ConcreteSeries) Labels() labels.Labels {
 }
 
 // Iterator implements storage.Series
-func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
+func (c *ConcreteSeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
@@ -191,7 +191,7 @@ func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(ss.Metric),
+			labels:  MetricToLabels(ss.Metric),
 			samples: ss.Values,
 		})
 	}
@@ -203,14 +203,14 @@ func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(m.Metric),
+			labels:  MetricToLabels(m.Metric),
 			samples: nil,
 		})
 	}
 	return NewConcreteSeriesSet(series)
 }
 
-func metricToLabels(m model.Metric) labels.Labels {
+func MetricToLabels(m model.Metric) labels.Labels {
 	ls := make(labels.Labels, 0, len(m))
 	for k, v := range m {
 		ls = append(ls, labels.Label{
@@ -246,8 +246,8 @@ func (d DeletedSeries) Labels() labels.Labels {
 	return d.series.Labels()
 }
 
-func (d DeletedSeries) Iterator() chunkenc.Iterator {
-	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
+func (d DeletedSeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
+	return NewDeletedSeriesIterator(d.series.Iterator(nil), d.deletedIntervals)
 }
 
 type DeletedSeriesIterator struct {
@@ -349,7 +349,7 @@ func (e emptySeries) Labels() labels.Labels {
 	return e.labels
 }
 
-func (emptySeries) Iterator() chunkenc.Iterator {
+func (emptySeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
 	return NewEmptySeriesIterator()
 }
 

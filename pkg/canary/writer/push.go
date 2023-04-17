@@ -65,7 +65,7 @@ func NewPush(
 	streamName, streamValue string,
 	useTLS bool,
 	tlsCfg *tls.Config,
-	caFile string,
+	caFile, certFile, keyFile string,
 	username, password string,
 	backoffCfg *backoff.Config,
 	logger log.Logger,
@@ -81,7 +81,7 @@ func NewPush(
 
 	// setup tls transport
 	if tlsCfg != nil {
-		rt, err := config.NewTLSRoundTripper(tlsCfg, caFile, func(tls *tls.Config) (http.RoundTripper, error) {
+		rt, err := config.NewTLSRoundTripper(tlsCfg, caFile, certFile, keyFile, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil
 		})
 		if err != nil {

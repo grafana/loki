@@ -35,8 +35,6 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		for _, v := range values {
 			req.Header.Add(key, v)
 		}
-
-		fmt.Println(req.Header.Values(key))
 	}
 
 	return r.next.RoundTrip(req)
@@ -252,15 +250,13 @@ func (c *Client) AddDeleteRequest(params DeleteRequestParams) error {
 
 type DeleteRequests []DeleteRequest
 type DeleteRequest struct {
-	RequestID string  `json:"request_id"`
-	StartTime float64 `json:"start_time"`
-	EndTime   float64 `json:"end_time"`
-	Query     string  `json:"query"`
-	Status    string  `json:"status"`
-	CreatedAt float64 `json:"created_at"`
+	StartTime int64  `json:"start_time"`
+	EndTime   int64  `json:"end_time"`
+	Query     string `json:"query"`
+	Status    string `json:"status"`
 }
 
-// GetDeleteRequest gets a delete request using the request ID
+// GetDeleteRequests returns all delete requests
 func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 	resp, err := c.Get("/loki/api/v1/delete")
 	if err != nil {
@@ -438,29 +434,29 @@ func (c *Client) GetRules(ctx context.Context) (*RulesResponse, error) {
 	resp := RulesResponse{}
 	err = json.Unmarshal(buf, &resp)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response data: %w", err)
+		return nil, fmt.Errorf("error parsing response data %q: %w", buf, err)
 	}
 
 	return &resp, err
 }
 
 func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
 	lokiResp := Response{}
 	err := json.Unmarshal(buf, &lokiResp)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response data: %w", err)
+		return nil, fmt.Errorf("error parsing response data '%s': %w", string(buf), err)
 	}
 
-	if statusCode/100 == 2 {
-		return &lokiResp, nil
-	}
-	return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	return &lokiResp, nil
 }
 
 func (c *Client) rangeQueryURL(query string) string {
 	v := url.Values{}
 	v.Set("query", query)
-	v.Set("start", formatTS(c.Now.Add(-2*time.Hour)))
+	v.Set("start", formatTS(c.Now.Add(-7*24*time.Hour)))
 	v.Set("end", formatTS(c.Now.Add(time.Second)))
 
 	u, err := url.Parse(c.baseURL)
@@ -479,25 +475,19 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 
 	url := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
 
-	req, err := c.request(ctx, "GET", url)
+	buf, statusCode, err := c.run(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("unexpected status code of %d", res.StatusCode)
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
 	}
 
 	var values struct {
 		Data []string `json:"data"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&values); err != nil {
+	if err := json.Unmarshal(buf, &values); err != nil {
 		return nil, err
 	}
 

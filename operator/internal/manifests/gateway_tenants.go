@@ -138,11 +138,18 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	switch opt.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		if opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled {
-			return openshift.ConfigureOptions(cfg)
-		}
-		return nil
+	case lokiv1.OpenshiftNetwork:
+		return openshift.ConfigureOptions(cfg, opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled, false, "", "", "")
+	case lokiv1.OpenshiftLogging:
+		monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserwWrkloadNS)
+		return openshift.ConfigureOptions(
+			cfg,
+			opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled,
+			opt.OpenShiftOptions.BuildOpts.UserWorkloadAlertManagerEnabled,
+			BearerTokenFile,
+			alertmanagerUpstreamCAPath(),
+			monitorServerName,
+		)
 	}
 
 	return nil

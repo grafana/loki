@@ -25,6 +25,9 @@ func getIntField(L *LState, tb *LTable, key string, v int) int {
 		if strings.HasPrefix(slv, "0") && !strings.HasPrefix(slv, "0x") && !strings.HasPrefix(slv, "0X") {
 			//Standard lua interpreter only support decimal and hexadecimal
 			slv = strings.TrimLeft(slv, "0")
+			if slv == "" {
+				return 0
+			}
 		}
 		if num, err := parseNumber(slv); err == nil {
 			return int(num)
@@ -189,20 +192,28 @@ func osTime(L *LState) int {
 	if L.GetTop() == 0 {
 		L.Push(LNumber(time.Now().Unix()))
 	} else {
-		tbl := L.CheckTable(1)
-		sec := getIntField(L, tbl, "sec", 0)
-		min := getIntField(L, tbl, "min", 0)
-		hour := getIntField(L, tbl, "hour", 12)
-		day := getIntField(L, tbl, "day", -1)
-		month := getIntField(L, tbl, "month", -1)
-		year := getIntField(L, tbl, "year", -1)
-		isdst := getBoolField(L, tbl, "isdst", false)
-		t := time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local)
-		// TODO dst
-		if false {
-			print(isdst)
+		lv := L.CheckAny(1)
+		if lv == LNil {
+			L.Push(LNumber(time.Now().Unix()))
+		} else {
+			tbl, ok := lv.(*LTable)
+			if !ok {
+				L.TypeError(1, LTTable)
+			}
+			sec := getIntField(L, tbl, "sec", 0)
+			min := getIntField(L, tbl, "min", 0)
+			hour := getIntField(L, tbl, "hour", 12)
+			day := getIntField(L, tbl, "day", -1)
+			month := getIntField(L, tbl, "month", -1)
+			year := getIntField(L, tbl, "year", -1)
+			isdst := getBoolField(L, tbl, "isdst", false)
+			t := time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local)
+			// TODO dst
+			if false {
+				print(isdst)
+			}
+			L.Push(LNumber(t.Unix()))
 		}
-		L.Push(LNumber(t.Unix()))
 	}
 	return 1
 }

@@ -105,9 +105,9 @@ type GatewayClient struct {
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
 func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki_boltdb_shipper",
-		Name:      "store_gateway_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving requests when using boltdb shipper store gateway",
+		Namespace: "loki",
+		Name:      "index_gateway_request_duration_seconds",
+		Help:      "Time (in seconds) spent serving requests when using the index gateway",
 		Buckets:   instrument.DefBuckets,
 	}, []string{"operation", "status_code"})
 	if r != nil {

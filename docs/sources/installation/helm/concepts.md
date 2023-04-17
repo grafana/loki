@@ -11,7 +11,7 @@ keywords:
   - caching
 ---
 
-# Components
+# Helm Chart Components
 
 This section describes the components installed by the Helm Chart.
 
@@ -25,11 +25,11 @@ This chart includes dashboards for monitoring Loki. These require the scrape con
 
 ## Canary
 
-This chart installs the [canary](../../../operations/loki-canary) and its alerts by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `monitoring.selfMonitoring.lokiCanary.enabled=false`.
+This chart installs the [canary]({{<relref "../../operations/loki-canary">}}) and its alerts by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `monitoring.lokiCanary.enabled=false`.
 
 ## Gateway
 
-By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/loki/tree/master/production/ksonnet/loki), the chart
+By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki), the chart
 installs the gateway component which is an NGINX that exposes Loki's API and automatically proxies requests to the correct
 Loki components (read or write, or single instance in the case of filesystem storage).
 The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.

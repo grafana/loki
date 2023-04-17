@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -88,67 +89,78 @@ var (
 	criTestTime2   = time.Now()
 )
 
+type testEntry struct {
+	labels model.LabelSet
+	line   string
+}
+
 func TestCRI_tags(t *testing.T) {
 	cases := []struct {
 		name            string
 		lines           []string
 		expected        []string
 		maxPartialLines int
+		entries         []testEntry
 		err             error
 	}{
 		{
 			name: "tag F",
-			lines: []string{
-				"2019-05-07T18:57:50.904275087+00:00 stdout F some full line",
-				"2019-05-07T18:57:55.904275087+00:00 stdout F log",
+			entries: []testEntry{
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout F some full line", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F log", labels: model.LabelSet{"foo": "bar"}},
 			},
 			expected: []string{"some full line", "log"},
 		},
 		{
-			name: "tag P",
-			lines: []string{
-				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
-				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
-				"2019-05-07T18:57:55.904275087+00:00 stdout F log finished",
-				"2019-05-07T18:57:55.904275087+00:00 stdout F another full log",
+			name: "tag P multi-stream",
+			entries: []testEntry{
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1 ", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2 ", labels: model.LabelSet{"foo": "bar2"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F log finished", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F another full log", labels: model.LabelSet{"foo": "bar2"}},
 			},
 			expected: []string{
-				"partial line 1\npartial line 2\nlog finished",
-				"another full log",
+				"partial line 1 log finished",     // belongs to stream `{foo="bar"}`
+				"partial line 2 another full log", // belongs to stream `{foo="bar2"}
 			},
 		},
 		{
-			name: "tag P exceeding MaxPartialLinesSize lines",
-			lines: []string{
-				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1",
-				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2",
-				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 3",
-				"2019-05-07T18:57:50.904275087+00:00 stdout P partial line 4", // this exceeds the `MaxPartialLinesSize` of 3
-				"2019-05-07T18:57:55.904275087+00:00 stdout F log finished",
-				"2019-05-07T18:57:55.904275087+00:00 stdout F another full log",
+			name: "tag P multi-stream with maxPartialLines exceeded",
+			entries: []testEntry{
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1 ", labels: model.LabelSet{"label1": "val1", "label2": "val2"}},
+
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2 ", labels: model.LabelSet{"label1": "val1"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 3 ", labels: model.LabelSet{"label1": "val1", "label2": "val2"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 4 ", labels: model.LabelSet{"label1": "val3"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 5 ", labels: model.LabelSet{"label1": "val4"}}, // exceeded maxPartialLines as already 3 streams in flight.
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F log finished", labels: model.LabelSet{"label1": "val1", "label2": "val2"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F another full log", labels: model.LabelSet{"label1": "val3"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F yet an another full log", labels: model.LabelSet{"label1": "val4"}},
+			},
+			maxPartialLines: 2,
+			expected: []string{
+				"partial line 1 partial line 3 ",
+				"partial line 2 ",
+				"partial line 4 ",
+				"log finished",
+				"another full log",
+				"partial line 5 yet an another full log",
+			},
+		},
+		{
+			name: "tag P single stream",
+			entries: []testEntry{
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1 ", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 2 ", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 3 ", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 4 ", labels: model.LabelSet{"foo": "bar"}}, // this exceeds the `MaxPartialLinesSize` of 3
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F log finished", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F another full log", labels: model.LabelSet{"foo": "bar"}},
 			},
 			maxPartialLines: 3,
 			expected: []string{
-				"partial line 1\npartial line 2\npartial line 3",
-				"partial line 4\nlog finished",
+				"partial line 1 partial line 2 partial line 3 partial line 4 log finished",
 				"another full log",
-			},
-		},
-		{
-			name: "panic",
-			lines: []string{
-				"2019-05-07T18:57:50.904275087+00:00 stdout P panic: I'm pannicing",
-				"2019-05-07T18:57:50.904275087+00:00 stdout P ",
-				"2019-05-07T18:57:50.904275087+00:00 stdout P goroutine 1 [running]:",
-				"2019-05-07T18:57:55.904275087+00:00 stdout P main.main()",
-				"2019-05-07T18:57:55.904275087+00:00 stdout F 	/home/kavirajk/src/go-play/main.go:11 +0x27",
-			},
-			expected: []string{
-				`panic: I'm pannicing
-
-goroutine 1 [running]:
-main.main()
-	/home/kavirajk/src/go-play/main.go:11 +0x27`,
 			},
 		},
 	}
@@ -165,16 +177,26 @@ main.main()
 				p.(*cri).maxPartialLines = tt.maxPartialLines
 			}
 
-			for _, line := range tt.lines {
-				out := processEntries(p, newEntry(nil, nil, line, time.Now()))
+			for _, entry := range tt.entries {
+				out := processEntries(p, newEntry(nil, entry.labels, entry.line, time.Now()))
 				if len(out) > 0 {
 					for _, en := range out {
 						got = append(got, en.Line)
-
 					}
 				}
 			}
-			assert.Equal(t, tt.expected, got)
+
+			expectedMap := make(map[string]bool)
+			for _, v := range tt.expected {
+				expectedMap[v] = true
+			}
+
+			gotMap := make(map[string]bool)
+			for _, v := range got {
+				gotMap[v] = true
+			}
+
+			assert.Equal(t, expectedMap, gotMap)
 		})
 	}
 }

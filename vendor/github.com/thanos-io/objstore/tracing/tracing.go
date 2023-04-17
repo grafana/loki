@@ -29,6 +29,11 @@ type Tracer interface {
 	GetTraceIDFromSpanContext(ctx opentracing.SpanContext) (string, bool)
 }
 
+// ContextWithTracer returns a new `context.Context` that holds a reference to given opentracing.Tracer.
+func ContextWithTracer(ctx context.Context, tracer opentracing.Tracer) context.Context {
+	return context.WithValue(ctx, tracerKey, tracer)
+}
+
 // tracerFromContext extracts opentracing.Tracer from the given context.
 func tracerFromContext(ctx context.Context) opentracing.Tracer {
 	val := ctx.Value(tracerKey)

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -59,14 +60,25 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 // PutOne implements Store
 func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.PutOne")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
-	writeChunk := true
+
+	var (
+		writeChunk = true
+		overlap    bool
+	)
+
+	// always write the chunk if it spans multiple periods to ensure that it gets added to all the stores
+	if chk.From < from || chk.Through > through {
+		overlap = true
+	}
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
 	found, _, _, _ := c.fetcher.Cache().Fetch(ctx, []string{c.schemaCfg.ExternalKey(chk.ChunkRef)})
 
-	if len(found) > 0 {
+	if len(found) > 0 && !overlap {
 		writeChunk = false
 		DedupedChunksTotal.Inc()
 	}
@@ -87,12 +99,13 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 			return err
 		}
 	}
-	if err := c.indexWriter.IndexChunk(ctx, chk); err != nil {
+
+	if err := c.indexWriter.IndexChunk(ctx, from, through, chk); err != nil {
 		return err
 	}
 
-	// we already have the chunk in the cache so don't write it back to the cache.
-	if writeChunk {
+	// write chunk to the cache if it's not found.
+	if len(found) == 0 {
 		if cacheErr := c.fetcher.WriteBackCache(ctx, chunks); cacheErr != nil {
 			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 		}

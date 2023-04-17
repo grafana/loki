@@ -33,6 +33,7 @@ import (
 	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -71,12 +72,14 @@ type S3Config struct {
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
+	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
+	StorageClass     string              `yaml:"storage_class"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
-	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
+	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -105,6 +108,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
+	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
 	// TODO Remove in Cortex 1.10.0
@@ -117,6 +121,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", storageawscommon.StorageClassStandard, fmt.Sprintf("The S3 storage class which objects will use. Supported values are: %s.", strings.Join(storageawscommon.SupportedStorageClasses, ", ")))
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
@@ -128,7 +133,8 @@ func (cfg *S3Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
 	}
-	return nil
+
+	return storageawscommon.ValidateStorageClass(cfg.StorageClass)
 }
 
 type S3ObjectClient struct {
@@ -243,7 +249,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
 		s3Config = s3Config.WithCredentials(creds)
 	}
 
@@ -393,9 +399,10 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
-			Body:   object,
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+			Body:         object,
+			Bucket:       aws.String(a.bucketFromKey(objectKey)),
+			Key:          aws.String(objectKey),
+			StorageClass: aws.String(a.cfg.StorageClass),
 		}
 
 		if a.sseConfig != nil {

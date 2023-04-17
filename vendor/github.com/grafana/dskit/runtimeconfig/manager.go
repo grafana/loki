@@ -62,7 +62,7 @@ type Manager struct {
 	fileHashes map[string]string
 }
 
-// New creates an instance of Manager and starts reload config loop based on config
+// New creates an instance of Manager. Manager is a services.Service, and must be explicitly started to perform any work.
 func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
 	if len(cfg.LoadPath) == 0 {
 		return nil, errors.New("LoadPath is empty")
@@ -175,6 +175,7 @@ func (om *Manager) loadConfig() error {
 
 	if sameHashes {
 		// No need to rebuild runtime config.
+		om.configLoadSuccess.Set(1)
 		return nil
 	}
 

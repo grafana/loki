@@ -20,7 +20,7 @@ type Options struct {
 	Name                  string
 	Compactor             Address
 	FrontendWorker        Address
-	GossipRing            Address
+	GossipRing            GossipRing
 	Querier               Address
 	IndexGateway          Address
 	Ruler                 Ruler
@@ -32,6 +32,17 @@ type Options struct {
 	ObjectStorage storage.Options
 
 	Retention RetentionOptions
+
+	Overrides map[string]LokiOverrides
+}
+
+type LokiOverrides struct {
+	Limits lokiv1.LimitsTemplateSpec
+	Ruler  RulerOverrides
+}
+
+type RulerOverrides struct {
+	AlertManager *AlertManagerConfig
 }
 
 // Address FQDN and port for a k8s service.
@@ -42,6 +53,18 @@ type Address struct {
 	FQDN string
 	// Port is required
 	Port int
+}
+
+// GossipRing defines the memberlist configuration
+type GossipRing struct {
+	// InstanceAddr is optional, defaults to private networks
+	InstanceAddr string
+	// InstancePort is required
+	InstancePort int
+	// BindPort is the port for listening to gossip messages
+	BindPort int
+	// MembersDiscoveryAddr is required
+	MembersDiscoveryAddr string
 }
 
 // Ruler configuration
@@ -72,7 +95,36 @@ type AlertManagerConfig struct {
 	ForGracePeriod     string
 	ResendDelay        string
 
+	Notifier *NotifierConfig
+
 	RelabelConfigs []RelabelConfig
+}
+
+type NotifierConfig struct {
+	TLS        TLSConfig
+	BasicAuth  BasicAuth
+	HeaderAuth HeaderAuth
+}
+
+type BasicAuth struct {
+	Username *string
+	Password *string
+}
+
+type HeaderAuth struct {
+	Type            *string
+	Credentials     *string
+	CredentialsFile *string
+}
+
+type TLSConfig struct {
+	CertPath           *string
+	KeyPath            *string
+	CAPath             *string
+	ServerName         *string
+	InsecureSkipVerify *bool
+	CipherSuites       *string
+	MinVersion         *string
 }
 
 // RemoteWriteConfig for ruler remote write config
@@ -198,6 +250,7 @@ type TLSServerNames struct {
 }
 
 type GRPCServerNames struct {
+	Compactor     string
 	IndexGateway  string
 	Ingester      string
 	QueryFrontend string
@@ -205,6 +258,5 @@ type GRPCServerNames struct {
 }
 
 type HTTPServerNames struct {
-	Compactor string
-	Querier   string
+	Querier string
 }

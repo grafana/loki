@@ -20,6 +20,7 @@ package minio
 import (
 	"context"
 	"crypto/md5"
+	fipssha256 "crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -39,6 +40,7 @@ import (
 	"time"
 
 	md5simd "github.com/minio/md5-simd"
+	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/minio/sha256-simd"
 )
@@ -376,6 +378,12 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 		UserTags:     userTags,
 		UserTagCount: tagCount,
 		Restore:      restore,
+
+		// Checksum values
+		ChecksumCRC32:  h.Get("x-amz-checksum-crc32"),
+		ChecksumCRC32C: h.Get("x-amz-checksum-crc32c"),
+		ChecksumSHA1:   h.Get("x-amz-checksum-sha1"),
+		ChecksumSHA256: h.Get("x-amz-checksum-sha256"),
 	}, nil
 }
 
@@ -501,7 +509,7 @@ func isSSEHeader(headerKey string) bool {
 func isAmzHeader(headerKey string) bool {
 	key := strings.ToLower(headerKey)
 
-	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey)
+	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey) || strings.HasPrefix(key, "x-amz-checksum-")
 }
 
 var (
@@ -514,6 +522,9 @@ func newMd5Hasher() md5simd.Hasher {
 }
 
 func newSHA256Hasher() md5simd.Hasher {
+	if encrypt.FIPS {
+		return &hashWrapper{Hash: fipssha256.New(), isSHA256: true}
+	}
 	return &hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
 }
 
@@ -620,4 +631,39 @@ func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
 		return true
 	}
 	return false
+}
+
+// newHashReaderWrapper will hash all reads done through r.
+// When r returns io.EOF the done function will be called with the sum.
+func newHashReaderWrapper(r io.Reader, h hash.Hash, done func(hash []byte)) *hashReaderWrapper {
+	return &hashReaderWrapper{
+		r:    r,
+		h:    h,
+		done: done,
+	}
+}
+
+type hashReaderWrapper struct {
+	r    io.Reader
+	h    hash.Hash
+	done func(hash []byte)
+}
+
+// Read implements the io.Reader interface.
+func (h *hashReaderWrapper) Read(p []byte) (n int, err error) {
+	n, err = h.r.Read(p)
+	if n > 0 {
+		n2, err := h.h.Write(p[:n])
+		if err != nil {
+			return 0, err
+		}
+		if n2 != n {
+			return 0, io.ErrShortWrite
+		}
+	}
+	if err == io.EOF {
+		// Call back
+		h.done(h.h.Sum(nil))
+	}
+	return n, err
 }

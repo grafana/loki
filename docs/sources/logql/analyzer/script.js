@@ -83,7 +83,8 @@ async function handleResponse(response) {
 }
 
 function handleError(error) {
-  document.getElementById("query-error").innerHTML = error
+  const template = Handlebars.compile("{{error_text}}");
+  document.getElementById("query-error").innerHTML = template({error_text:error})
   document.getElementById("query-error").classList.remove("hide");
   resultsElement.classList.add("hide");
 }

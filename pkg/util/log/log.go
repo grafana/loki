@@ -21,7 +21,7 @@ var (
 	// Prefer accepting a non-global logger as an argument.
 	Logger = log.NewNopLogger()
 
-	bufferedLogger *log.LineBufferedLogger
+	bufferedLogger *LineBufferedLogger
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
@@ -92,15 +92,12 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 
 	var writer io.Writer
 	if buffered {
-		// TODO: it's technically possible here to lose logs between the 100ms flush and the process being killed
-		// 	=> call buf.Flush() in a signal handler if this is a concern, but this is unlikely to be a problem
-
 		// retain a reference to this logger because it doesn't conform to the standard Logger interface,
 		// and we can't unwrap it to get the underlying logger when we flush on shutdown
-		bufferedLogger = log.NewLineBufferedLogger(os.Stderr, logEntries,
-			log.WithFlushPeriod(flushTimeout),
-			log.WithPrellocatedBuffer(logBufferSize),
-			log.WithFlushCallback(func(entries uint32) {
+		bufferedLogger = NewLineBufferedLogger(os.Stderr, logEntries,
+			WithFlushPeriod(flushTimeout),
+			WithPrellocatedBuffer(logBufferSize),
+			WithFlushCallback(func(entries uint32) {
 				logFlushes.Observe(float64(entries))
 			}),
 		)
@@ -172,6 +169,9 @@ func CheckFatal(location string, err error, logger log.Logger) {
 	fmt.Fprintln(os.Stderr, errStr)
 
 	logger.Log("err", errStr)
+	if err = Flush(); err != nil {
+		fmt.Fprintln(os.Stderr, "Could not flush logger", err)
+	}
 	os.Exit(1)
 }
 
