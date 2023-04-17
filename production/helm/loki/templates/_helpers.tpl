@@ -657,7 +657,7 @@ http {
     }
 
     location ~ /admin/api/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}

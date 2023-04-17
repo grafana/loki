@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.3"
+"v1.7.0"
 </pre>
 </td>
 		</tr>
@@ -1686,6 +1686,17 @@ true
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.index_gateway</td>
+			<td>object</td>
+			<td>Optional index gateway configuration</td>
+			<td><pre lang="json">
+{
+  "mode": "ring"
+}
 </pre>
 </td>
 		</tr>
@@ -2798,7 +2809,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
