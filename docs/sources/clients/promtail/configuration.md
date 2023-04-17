@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Configuring Promtaim
+description: Configuring Promtail
 ---
 # Configuration
 
@@ -781,9 +781,13 @@ picking it from a field in the extracted data map.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID.
-  # Either source or value config option is required, but not both (they
+  # Either label, source or value config option is required, but not all (they
   # are mutually exclusive).
+
+  # Name from labels to whose value should be set as tenant ID.
+  [ label: <string> ]
+
+  # Name from extracted data to whose value should be set as tenant ID.
   [ source: <string> ]
 
   # Value to use to set the tenant ID when this stage is executed. Useful
@@ -1032,6 +1036,10 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# use_full_line to force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+# By default, if `textPayload` is present in the line, then it's used as log line.
+[use_full_line: <boolean> | default = false]
+
 # If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
 # than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
 # and respond with a 503 HTTP status code.
@@ -1049,8 +1057,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
 **Internal labels available for pull**
 
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 **Internal labels available for push**
 
@@ -1058,8 +1068,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_subscription_name`
 - `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 ### Azure Event Hubs
 
@@ -2088,7 +2100,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config

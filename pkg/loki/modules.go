@@ -689,6 +689,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
+		t.Cfg.Querier.Engine,
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
