@@ -351,28 +351,31 @@ For sending messages via UDP:
 ```
 
 ## Azure Event Hubs
+Promtail supports reading messages from Azure Event Hubs. Azure Event Hubs provides a Kafka endpoint (supports Apache Kafka protocol 1.0 and later). Azure Event Hubs exposes the same Kafka Connect API enabling the use of the Promtail Kafka Consumer with the Event Hubs service.
 
-Promtail supports reading messages from Azure Event Hubs.
-Targets can be configured using the `azure_event_hubs` stanza:
+Targets can be configured using the `kafka` stanza:
 
 ```yaml
-- job_name: azure_event_hubs
-  azure_event_hubs:
-    group_id: "mygroup"
-    fully_qualified_namespace: my-namespace.servicebus.windows.net:9093
-    connection_string: "my-connection-string"
-    event_hubs:
-      - event-hub-name
-    labels:
-      job: azure_event_hub
-  relabel_configs:
-    - action: replace
-      source_labels:
-        - __azure_event_hubs_category
-      target_label: category
+  - job_name: azure_event_hubs
+    kafka:
+      brokers:
+      - my-namespace.servicebus.windows.net:9093
+      topics:
+      - my-event-hub-name
+      group_id: my-group-id
+      version: 1.0.0
+      authentication:
+        type: sasl
+        sasl_config:
+          mechanism: PLAIN
+          user: '$ConnectionString'
+          password: "my-connection-string"
+          use_tls: true
+      labels:
+        job: azure_event_hub
 ```
 
-Only `fully_qualified_namespace`, `connection_string` and `event_hubs` are required fields.
+Only `broker`,`topics`, `connection_string` and `password` are required fields. Read this documentation on how to get the Azure Event Hubs connection string (https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-get-connection-string ) 
 Read the [configuration]({{< relref "configuration/#azure-event-hubs" >}}) section for more information.
 
 ## Kafka
