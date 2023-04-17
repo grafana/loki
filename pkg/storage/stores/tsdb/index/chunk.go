@@ -261,8 +261,8 @@ func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
 	// to use it as a factor to get the amount of bytes and entries
 	// factor = C = (T - (A + B)) / T = (chunkTime - (leadingTime + trailingTime)) / chunkTime
 	chunkTime := chk.MaxTime - chk.MinTime
-	leadingTime := math.Max64(0, int64(from)-chk.MinTime)
-	trailingTime := math.Max64(0, chk.MaxTime-int64(through))
+	leadingTime := math.Max64(0, from-chk.MinTime)
+	trailingTime := math.Max64(0, chk.MaxTime-through)
 	factor := float32(chunkTime-(leadingTime+trailingTime)) / float32(chunkTime)
 
 	kb := uint32(float32(chk.KB) * factor)
