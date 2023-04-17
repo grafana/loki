@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -479,6 +480,16 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
+
+	if len(t.Cfg.Ingester.PrepDownScalePath) != 0 {
+		_, err := os.Stat(t.Cfg.Ingester.PrepDownScalePath)
+		if err == nil {
+			rec := httptest.NewRecorder()
+			req := http.Request{}
+			t.Ingester.PrepareShutdown(rec, &req)
+		}
+	}
+
 	return t.Ingester, nil
 }
 
