@@ -24,4 +24,4 @@ jobs:
           metricsWriteAPIKey: ${{secrets.GRAFANA_MISC_STATS_API_KEY}}
           token: ${{secrets.GH_BOT_ACCESS_TOKEN}}
           labelsToAdd: "release-notes"
-          releaseNotesFile: docs/sources/release-notes/v2-8.md
+          releaseNotesFile: docs/sources/release-notes/next.md
