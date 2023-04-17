@@ -395,7 +395,7 @@ func CreateOrUpdateLokiStack(
 
 	// 1x.extra-small is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall {
+	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 

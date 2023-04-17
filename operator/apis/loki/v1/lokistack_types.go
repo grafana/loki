@@ -29,15 +29,20 @@ const (
 type LokiStackSizeType string
 
 const (
-	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with minimal resource requirements and without HA support.
-	//
-	// This is ONLY for development, testing, or demos on limited single-node clusters.
-	// There are NO performance guarantees.
-	// LokiStack will use whatever resources are available,
-	// and WILL NOT FUNCTION CORRECTLY if there is not enough memory or CPU.
-	//
+	// SizeOneXDemo defines the size of a single Loki deployment
+	// with tiny resource requirements and without HA support.
+	// This size is intended to run in single-node clusters on laptops,
+	// it is only useful for very light testing, demonstrations, or prototypes.
+	// There are no ingestion/query performance guarantees.
 	// DO NOT USE THIS IN PRODUCTION!
+	SizeOneXDemo LokiStackSizeType = "1x.demo"
+
+	// SizeOneXExtraSmall defines the size of a single Loki deployment
+	// with extra small resources/limits requirements and without HA support.
+	// This size is ultimately dedicated for development and demo purposes.
+	// DO NOT USE THIS IN PRODUCTION!
+	//
+	// FIXME: Add clear description of ingestion/query performance expectations.
 	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
 
 	// SizeOneXSmall defines the size of a single Loki deployment
@@ -422,7 +427,7 @@ type ObjectStorageTLSSpec struct {
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
 //
-// +kubebuilder:validation:Enum=azure;gcs;s3;swift
+// +kubebuilder:validation:Enum=azure;gcs;s3;swift;alibabacloud;
 type ObjectStorageSecretType string
 
 const (
@@ -437,6 +442,9 @@ const (
 
 	// ObjectStorageSecretSwift when using Swift for Loki storage
 	ObjectStorageSecretSwift ObjectStorageSecretType = "swift"
+
+	// ObjectStorageSecretAlibabaCloud when using AlibabaCloud OSS for Loki storage
+	ObjectStorageSecretAlibabaCloud ObjectStorageSecretType = "alibabacloud"
 )
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -445,7 +453,7 @@ type ObjectStorageSecretSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift"},displayName="Object Storage Secret Type"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift","urn:alm:descriptor:com.tectonic.ui:select:alibabacloud"},displayName="Object Storage Secret Type"
 	Type ObjectStorageSecretType `json:"type"`
 
 	// Name of a secret in the namespace configured for object storage secrets.
