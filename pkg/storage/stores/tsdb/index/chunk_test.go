@@ -461,7 +461,10 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 }
 
 func TestSearchWithPageMarkers(t *testing.T) {
-	for _, pageSize := range []int{2, 10} {
+	for _, pageSize := range []int{
+		2,
+		10,
+	} {
 		for _, tc := range []struct {
 			desc       string
 			chks, exp  []ChunkMeta
@@ -510,6 +513,23 @@ func TestSearchWithPageMarkers(t *testing.T) {
 					{MinTime: 1, MaxTime: 2},
 					{MinTime: 2, MaxTime: 3},
 					{MinTime: 3, MaxTime: 4},
+				},
+			},
+			{
+				desc: "semi ordered chunks",
+				chks: []ChunkMeta{
+					{MinTime: 5, MaxTime: 50},
+					{MinTime: 10, MaxTime: 20},
+					{MinTime: 11, MaxTime: 20},
+					{MinTime: 12, MaxTime: 20},
+					{MinTime: 13, MaxTime: 20},
+					{MinTime: 15, MaxTime: 30},
+				},
+				mint: 25,
+				maxt: 30,
+				exp: []ChunkMeta{
+					{MinTime: 5, MaxTime: 50},
+					{MinTime: 15, MaxTime: 30},
 				},
 			},
 		} {

@@ -2407,11 +2407,10 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 		nMarkers int
 		marker   chunkPageMarker
 		markers  chunkPageMarkers
-		start    int
 		prevMaxT int64
-		ok       bool
 	)
 
+	startMarkers := d.Len()
 	if nChunks < MaxChunksToBypassMarkerLookup {
 		d.Skip(markersLn)
 		goto iterate
@@ -2423,22 +2422,19 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	markers = make(chunkPageMarkers, nMarkers)
 	for i := range markers {
 		markers[i].decode(d)
+		if overlap(from, through, markers[i].MinTime, markers[i].MaxTime) {
+			d.Skip(markersLn - (startMarkers - d.Len())) // skip the rest of markers
+			marker = markers[i]
+			chunksRemaining = marker.ChunksRemaining
+			d.Skip(marker.Offset) // skip to the desired chunks
+			goto iterate
+		}
 	}
 
 	if d.Err() != nil {
 		return errors.Wrap(d.Err(), "read chunk markers")
 	}
-
-	// find the range of chunks we'll need to query
-	start, prevMaxT, ok = markers.Find(from, through)
-	// guaranteed to have no matching chunks
-	if !ok {
-		return nil
-	}
-
-	marker = markers[start]
-	d.Skip(marker.Offset)
-	chunksRemaining = marker.ChunksRemaining
+	return nil
 
 iterate:
 	for i := 0; i < chunksRemaining; i++ {
