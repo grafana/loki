@@ -5,7 +5,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
 
@@ -441,9 +440,7 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 					w.addChunks(chks, &primary, &scratch, pageSize)
 
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
-					dec := &Decoder{
-						chunksSample: map[storage.SeriesRef]*chunkSamples{},
-					}
+					dec := newDecoder(nil, 0)
 
 					dst := []ChunkMeta{}
 					require.Nil(t, dec.readChunks(version, &decbuf, 0, 0, math.MaxInt64, &dst))
@@ -541,9 +538,7 @@ func TestSearchWithPageMarkers(t *testing.T) {
 				w.addChunks(tc.chks, &primary, &scratch, pageSize)
 
 				decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
-				dec := &Decoder{
-					chunksSample: map[storage.SeriesRef]*chunkSamples{},
-				}
+				dec := newDecoder(nil, 0)
 				dst := []ChunkMeta{}
 				require.Nil(t, dec.readChunksV3(&decbuf, tc.mint, tc.maxt, &dst))
 				require.Equal(t, tc.exp, dst)
@@ -657,9 +652,7 @@ func TestDecoderChunkStats(t *testing.T) {
 					w.addChunks(tc.chks, &primary, &scratch, pageSize)
 
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
-					dec := &Decoder{
-						chunksSample: map[storage.SeriesRef]*chunkSamples{},
-					}
+					dec := newDecoder(nil, 0)
 
 					stats, err := dec.readChunkStats(version, &decbuf, 1, tc.from, tc.through)
 					require.Nil(t, err)
@@ -683,9 +676,7 @@ func BenchmarkChunkStats(b *testing.B) {
 				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				w.addChunks(chks, &primary, &scratch, ChunkPageSize)
 
-				dec := &Decoder{
-					chunksSample: map[storage.SeriesRef]*chunkSamples{},
-				}
+				dec := newDecoder(nil, DefaultMaxChunksToBypassMarkerLookup)
 				for i := 0; i < b.N; i++ {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 
@@ -710,9 +701,7 @@ func BenchmarkReadChunks(b *testing.B) {
 				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				w.addChunks(chks, &primary, &scratch, ChunkPageSize)
 
-				dec := &Decoder{
-					chunksSample: map[storage.SeriesRef]*chunkSamples{},
-				}
+				dec := newDecoder(nil, DefaultMaxChunksToBypassMarkerLookup)
 				for i := 0; i < b.N; i++ {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 

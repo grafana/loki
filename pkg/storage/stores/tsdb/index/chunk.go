@@ -230,7 +230,7 @@ const ChunkPageSize = 16
 
 // Minimum number of chunks present to use page based lookup
 // instead of linear scan which performs better at lower n-values.
-const MaxChunksToBypassMarkerLookup = 64
+const DefaultMaxChunksToBypassMarkerLookup = 64
 
 type chunkPageMarkers []chunkPageMarker
 

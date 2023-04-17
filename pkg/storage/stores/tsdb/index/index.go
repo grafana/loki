@@ -1424,10 +1424,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		return nil, errors.Wrap(err, "loading fingerprint offsets")
 	}
 
-	r.dec = &Decoder{
-		LookupSymbol: r.lookupSymbol,
-		chunksSample: map[storage.SeriesRef]*chunkSamples{},
-	}
+	r.dec = newDecoder(r.lookupSymbol, DefaultMaxChunksToBypassMarkerLookup)
 
 	return r, nil
 }
@@ -2052,9 +2049,21 @@ func (c *chunkSamples) getChunkSampleForQueryStarting(ts int64) *chunkSample {
 // It currently does not contain decoding methods for all entry types but can be extended
 // by them if there's demand.
 type Decoder struct {
-	LookupSymbol    func(uint32) (string, error)
-	chunksSample    map[storage.SeriesRef]*chunkSamples // used prior to v3
-	chunksSampleMtx sync.RWMutex                        // used prior to v3
+	LookupSymbol                  func(uint32) (string, error)
+	chunksSample                  map[storage.SeriesRef]*chunkSamples // used prior to v3
+	maxChunksToBypassMarkerLookup int
+	chunksSampleMtx               sync.RWMutex // used prior to v3
+}
+
+func newDecoder(
+	lookupSymbol func(uint32) (string, error),
+	maxChunksToBypassMarkerLookup int,
+) *Decoder {
+	return &Decoder{
+		LookupSymbol:                  lookupSymbol,
+		maxChunksToBypassMarkerLookup: maxChunksToBypassMarkerLookup,
+		chunksSample:                  map[storage.SeriesRef]*chunkSamples{},
+	}
 }
 
 // Postings returns a postings list for b and its number of elements.
@@ -2251,7 +2260,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	markersLn := int(d.Be32()) // markersLn
 	startMarkers := d.Len()
 
-	if nChunks < MaxChunksToBypassMarkerLookup {
+	if nChunks < dec.maxChunksToBypassMarkerLookup {
 		d.Skip(markersLn)
 		return dec.accumulateChunkStats(d, nChunks, from, through)
 	}
@@ -2415,7 +2424,7 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	)
 
 	startMarkers := d.Len()
-	if nChunks < MaxChunksToBypassMarkerLookup {
+	if nChunks < dec.maxChunksToBypassMarkerLookup {
 		d.Skip(markersLn)
 		goto iterate
 	}
