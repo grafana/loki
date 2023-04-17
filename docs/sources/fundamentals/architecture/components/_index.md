@@ -233,3 +233,5 @@ factor, it is possible that the querier may receive duplicate data. To resolve
 this, the querier internally **deduplicates** data that has the same nanosecond
 timestamp, label set, and log message.
 
+At read path, [replication factor]({{< relref "#replication-factor" >}}) also plays a role here. For example with `replication-factor` of `3`, we require that two queries to be running. 
+
