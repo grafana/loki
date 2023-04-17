@@ -377,12 +377,12 @@ func TestChunkMetas_Drop(t *testing.T) {
 func TestChunkPageMarkerEncodeDecode(t *testing.T) {
 	// Create a chunk page marker.
 	marker := chunkPageMarker{
-		ChunksRemaining: 1,
-		KB:              2,
-		Entries:         3,
-		Offset:          4,
-		MinTime:         5,
-		MaxTime:         6,
+		ChunksInPage: 1,
+		KB:           2,
+		Entries:      3,
+		Offset:       4,
+		MinTime:      5,
+		MaxTime:      6,
 	}
 
 	// Encode the chunk page marker.

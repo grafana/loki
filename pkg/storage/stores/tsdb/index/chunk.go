@@ -162,12 +162,9 @@ func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
 // this gives us a lot of wiggle room and they're already
 // encoded only for every n-th chunk based on `ChunkPageSize`
 type chunkPageMarker struct {
-	// stats in this page.
-	// unused for now, but will be used to
-	// optimize statistics via downsampling
-	// ChunksRemaining denotes the number of chunks left
-	// in the series, starting from this page
-	ChunksRemaining int
+	// ChunksInPage denotes the number of chunks
+	// in the page
+	ChunksInPage int
 
 	// KB, Entries denote the KB and number of entries
 	// in each page
@@ -217,7 +214,7 @@ func (m *chunkPageMarker) clear() {
 }
 
 func (m *chunkPageMarker) decode(d *encoding.Decbuf) {
-	m.ChunksRemaining = d.Uvarint()
+	m.ChunksInPage = d.Uvarint()
 	m.KB = d.Be32()
 	m.Entries = d.Be32()
 	m.Offset = d.Uvarint()
@@ -236,64 +233,6 @@ const ChunkPageSize = 16
 const MaxChunksToBypassMarkerLookup = 64
 
 type chunkPageMarkers []chunkPageMarker
-
-func (xs chunkPageMarkers) Len() int           { return len(xs) }
-func (xs chunkPageMarkers) Less(i, j int) bool { return xs[i].MinTime < xs[j].MinTime }
-func (xs chunkPageMarkers) Swap(i, j int)      { xs[i], xs[j] = xs[j], xs[i] }
-
-// Find the offset from which we need to start checking
-func (xs chunkPageMarkers) Find(from, through int64) (i int, prevMaxT int64, found bool) {
-	i = sort.Search(len(xs), func(i int) bool {
-		return overlap(from, through, xs[i].MinTime, xs[i].MaxTime) || xs[i].MinTime >= through
-	})
-
-	// All chunks were before our time range
-	if i == len(xs) {
-		return i, 0, false
-	}
-
-	// No markers with overlap
-	if xs[i].MinTime >= through {
-		return i, 0, false
-	}
-
-	if i > 0 {
-		prevMaxT = xs[i-1].MaxTime
-	}
-
-	return i, prevMaxT, true
-}
-
-type signalledChunkPageMarker struct {
-	fullyOverlapping bool
-	chunkPageMarker
-}
-
-type signalledChunkPageMarkers []signalledChunkPageMarker
-
-// todo(owen-d): determine if pooling here is necessary
-func (xs chunkPageMarkers) MarkedOverlapping(from, through int64) (relevantPages signalledChunkPageMarkers) {
-	i, _, found := xs.Find(from, through)
-	if !found {
-		return nil
-	}
-
-	for i := i; i < len(xs); i++ {
-		if xs[i].MinTime >= through {
-			break
-		}
-
-		page := signalledChunkPageMarker{
-			chunkPageMarker: xs[i],
-		}
-
-		if xs[i].subsetOf(from, through) {
-			page.fullyOverlapping = true
-		}
-		relevantPages = append(relevantPages, page)
-	}
-	return relevantPages
-}
 
 type ChunkStats struct {
 	Chunks, KB, Entries uint64

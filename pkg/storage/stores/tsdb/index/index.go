@@ -619,8 +619,7 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 
 			// test if this is the last chunk in the page
 			if i%chunkPageSize == chunkPageSize-1 {
-				remainingFromPageStart := len(chunks) - i/chunkPageSize*chunkPageSize
-				pageMarker.encode(primary, markerOffset, remainingFromPageStart)
+				pageMarker.encode(primary, markerOffset, chunkPageSize)
 				pageMarker.clear()
 				markerOffset = scratch.Len() - chunksStart
 			}
@@ -2250,6 +2249,7 @@ func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef st
 func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (res ChunkStats, err error) {
 	nChunks := d.Uvarint()
 	markersLn := int(d.Be32()) // markersLn
+	startMarkers := d.Len()
 
 	if nChunks < MaxChunksToBypassMarkerLookup {
 		d.Skip(markersLn)
@@ -2259,20 +2259,28 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	nMarkers := d.Uvarint()
 
 	// TODO(owen-d): use pool
-	markers := make(chunkPageMarkers, nMarkers)
-	for i := range markers {
-		markers[i].decode(d)
+	relevantPages := make(chunkPageMarkers, 0, nMarkers)
+	for i := 0; i < nMarkers; i++ {
+		var marker chunkPageMarker
+		marker.decode(d)
+		if overlap(from, through, marker.MinTime, marker.MaxTime) {
+			relevantPages = append(relevantPages, marker)
+		} else if marker.MinTime >= through {
+			break
+		}
 	}
 
 	if d.Err() != nil {
 		return res, errors.Wrap(d.Err(), "read chunk markers")
 	}
 
-	relevantPages := markers.MarkedOverlapping(from, through)
 	// guaranteed to have no matching chunks
 	if len(relevantPages) == 0 {
 		return ChunkStats{}, nil
 	}
+
+	// consume rest of markers, if any
+	d.Skip(markersLn - (startMarkers - d.Len()))
 
 	// length of buffer at beginning of chunks,
 	// later used to incrementally skip pages
@@ -2280,24 +2288,20 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 	for markerIdx := 0; markerIdx < len(relevantPages); markerIdx++ {
 		curMarker := relevantPages[markerIdx]
+
+		if curMarker.subsetOf(from, through) {
+			// use aggregated stats for this page
+			res.addRaw(curMarker.ChunksInPage, curMarker.KB, curMarker.Entries)
+			continue
+		}
+
 		// skip to the offset of the page, adjusting for where we currently
 		// are, since offsets are relative to the start
 		d.Skip(curMarker.Offset - (initialLn - d.Len()))
 
-		remainingInPage := curMarker.ChunksRemaining
-		if markerIdx < len(relevantPages)-1 {
-			remainingInPage -= relevantPages[markerIdx+1].ChunksRemaining
-		}
-
-		if curMarker.fullyOverlapping {
-			// use aggregated stats for this page
-			res.addRaw(remainingInPage, curMarker.KB, curMarker.Entries)
-			continue
-		}
-
 		// page partially overlaps -- need to check chunks individually
 		var prevMaxT int64
-		for i := 0; i < remainingInPage; i++ {
+		for i := 0; i < curMarker.ChunksInPage; i++ {
 			chunkMeta := &ChunkMeta{}
 
 			var err error
@@ -2422,13 +2426,15 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	markers = make(chunkPageMarkers, nMarkers)
 	for i := range markers {
 		markers[i].decode(d)
+
 		if overlap(from, through, markers[i].MinTime, markers[i].MaxTime) {
 			d.Skip(markersLn - (startMarkers - d.Len())) // skip the rest of markers
 			marker = markers[i]
-			chunksRemaining = marker.ChunksRemaining
 			d.Skip(marker.Offset) // skip to the desired chunks
 			goto iterate
 		}
+
+		chunksRemaining -= marker.ChunksInPage
 	}
 
 	if d.Err() != nil {
