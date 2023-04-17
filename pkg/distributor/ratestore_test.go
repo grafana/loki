@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/validation"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/stretchr/testify/require"
 
@@ -21,6 +22,52 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
 )
+
+func TestMovingAvg(t *testing.T) {
+	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
+
+	rs := &rateStore{
+		rateKeepAlive:   time.Millisecond,
+		ring:            newFakeRing(),
+		clientPool:      newFakeClientPool(),
+		maxParallelism:  cfg.MaxParallelism,
+		ingesterTimeout: cfg.IngesterReqTimeout,
+		limits:          &fakeOverrides{enabled: true},
+		metrics:         newRateStoreMetrics(prometheus.DefaultRegisterer),
+		rates:           make(map[string]map[uint64]expiringRate),
+	}
+
+	// tenant -> stream -> rate
+	rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
+		"fake-tenant": {
+			12345: expiringRate{rate: 1000, createdAt: time.Now()},
+		},
+	})
+	require.Equal(t, int64(1000), rs.RateFor("fake-tenant", 12345))
+
+	rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
+		"fake-tenant": {
+			12345: expiringRate{rate: 500, createdAt: time.Now()},
+		},
+	})
+	require.Equal(t, int64(500), rs.RateFor("fake-tenant", 12345))
+
+	// require.Eventually(t, func() bool { // There will be data
+	// 	return tc.rateStore.RateFor("tenant 1", 0) != 0
+	// }, time.Second, time.Millisecond)
+
+	// require.Equal(t, int64(15), tc.rateStore.RateFor("tenant 1", 0))
+
+	// require.Eventually(t, func() bool { // There will be data
+	// 	return tc.rateStore.RateFor("tenant 1", 0) == 0
+	// }, 2*time.Second, time.Millisecond)
+
+	// // scenario:
+	// // 1. ingester reports that rate was 1000
+	// // 2. distributor queries it, evaluate as X shards
+	// // 3. ingester reports that the rate now is 0
+	// // 4. distributor queries it, evaluate as less than X shards but not zero
+}
 
 func TestRateStore(t *testing.T) {
 	t.Run("it reports rates from all of the ingesters", func(t *testing.T) {
