@@ -1477,6 +1477,7 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+  repo: grafana/loki
 volumes:
 - host:
     path: /sys/fs/cgroup
@@ -1549,6 +1550,8 @@ steps:
   when:
     event:
     - pull_request
+    repo:
+    - grafana/loki
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -1564,6 +1567,8 @@ steps:
     repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
+  trigger:
+    repo: grafana/loki
   when:
     event:
     - push
@@ -1607,6 +1612,8 @@ steps:
   when:
     event:
     - pull_request
+    repo:
+    - grafana/loki
 - depends_on:
   - image-tag
   image: cstyan/ecr
@@ -1622,6 +1629,8 @@ steps:
     repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
+  trigger:
+    repo: grafana/loki
   when:
     event:
     - push
@@ -1740,6 +1749,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 3ccc42237f6cdd3de6afacf997575dafa52c9d5fee83cd3fee610e5fd365a283
+hmac: 4dfea3b5e08f5d2caf98bcf5eaaa9ebeb51fa87828d916d981e0cb533fc4e064
 
 ...
