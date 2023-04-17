@@ -122,10 +122,11 @@ type rateStats struct {
 }
 
 func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
+	streamCnt := 0
 	if s.debug {
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			sp.LogKV("event", "started to update rates")
-			defer sp.LogKV("event", "finished to update rates")
+			defer sp.LogKV("event", "finished to update rates", "streams", streamCnt)
 		}
 	}
 	s.rateLock.Lock()
@@ -138,6 +139,7 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 
 		for stream, rate := range tenant {
 			s.rates[tenantID][stream] = rate
+			streamCnt++
 		}
 	}
 
