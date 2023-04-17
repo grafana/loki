@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/dskit/ring/client"
 )
 
-func TestMovingAvg(t *testing.T) {
+func TestMovingAvg_AccuteDropScenario(t *testing.T) {
 	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
 
 	rs := &rateStore{
@@ -37,7 +37,15 @@ func TestMovingAvg(t *testing.T) {
 		rates:           make(map[string]map[uint64]expiringRate),
 	}
 
-	// tenant -> stream -> rate
+	// scenario:
+	// 1. ingester reports that rate was 1000
+	// 2. distributor queries it, so a call to RateFor returns 1000
+	// 3. ingester reports now that the rate is 0 (accute drop)
+	// 4. distributor queries it, but because of the new algorithm, the end value is now 800 instead of 0.
+	// 5. ingester reports now that the rate is 0 again
+	// 6. distributor queries it, new value is now 640
+	// 7. ingester reports finally that the new rate is 1000 again
+	// 8. instead of distributor taking into account that the previous rating was 640, jump straight to 1000
 	rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
 		"fake-tenant": {
 			12345: expiringRate{rate: 1000, createdAt: time.Now()},
@@ -47,26 +55,26 @@ func TestMovingAvg(t *testing.T) {
 
 	rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
 		"fake-tenant": {
-			12345: expiringRate{rate: 500, createdAt: time.Now()},
+			12345: expiringRate{rate: 0, createdAt: time.Now()},
 		},
 	})
-	require.Equal(t, int64(500), rs.RateFor("fake-tenant", 12345))
+	require.Equal(t, int64(800), rs.RateFor("fake-tenant", 12345))
 
-	// require.Eventually(t, func() bool { // There will be data
-	// 	return tc.rateStore.RateFor("tenant 1", 0) != 0
-	// }, time.Second, time.Millisecond)
+	rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
+		"fake-tenant": {
+			12345: expiringRate{rate: 0, createdAt: time.Now()},
+		},
+	})
+	require.Equal(t, int64(640), rs.RateFor("fake-tenant", 12345))
 
-	// require.Equal(t, int64(15), tc.rateStore.RateFor("tenant 1", 0))
+	rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
+		"fake-tenant": {
+			12345: expiringRate{rate: 1000, createdAt: time.Now()},
+		},
+	})
+	// scaleups are not smooth
+	require.Equal(t, int64(1000), rs.RateFor("fake-tenant", 12345))
 
-	// require.Eventually(t, func() bool { // There will be data
-	// 	return tc.rateStore.RateFor("tenant 1", 0) == 0
-	// }, 2*time.Second, time.Millisecond)
-
-	// // scenario:
-	// // 1. ingester reports that rate was 1000
-	// // 2. distributor queries it, evaluate as X shards
-	// // 3. ingester reports that the rate now is 0
-	// // 4. distributor queries it, evaluate as less than X shards but not zero
 }
 
 func TestRateStore(t *testing.T) {
