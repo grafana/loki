@@ -1,15 +1,9 @@
-## Next Patch / Unreleased
+## 2.8.1
 
 #### Loki
 
-##### Enhancements
-
-* [8953](https://github.com/grafana/loki/pull/8953) **dannykopping**: Querier: block queries by hash.
-* [8851](https://github.com/grafana/loki/pull/8851) **jeschkies**: Introduce limit to require a set of labels for selecting streams.
-
 ##### Fixes
-
-* [8971](https://github.com/grafana/loki/pull/8971) **dannykopping**: Stats: fix `Cache.Chunk.BytesSent` statistic and loki_chunk_fetcher_fetched_size_bytes metric with correct chunk size.
+* [9156](https://github.com/grafana/loki/pull/9156) **ashwanthgoli**: Expiration: do not drop index if period is a zero value
 
 ## 2.8.0 (2023-04-04)
 
