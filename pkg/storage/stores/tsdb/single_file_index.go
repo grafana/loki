@@ -103,6 +103,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
 func (i *TSDBIndex) forSeries(ctx context.Context, shard *index.ShardAnnotation, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
+	// TODO(owen-d): use pool
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
@@ -225,6 +226,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
 		if i.chunkFilter != nil {
