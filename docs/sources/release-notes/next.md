@@ -11,3 +11,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Features and enhancements
 
+
+-  **Add release notes appender action**: :warning: ADD DESCRIPTION HERE :warning:. [PR #9063](https://github.com/grafana/loki/pull/9063)]
