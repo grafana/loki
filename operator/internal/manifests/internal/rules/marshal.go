@@ -6,7 +6,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const tenantLabel = "tenantId"
+const (
+	namespaceLabel = "namespace"
+	tenantLabel    = "tenantId"
+)
 
 type alertingRuleSpec struct {
 	Groups []*lokiv1.AlertingRuleGroup `json:"groups"`
@@ -30,6 +33,7 @@ func MarshalAlertingRule(a lokiv1.AlertingRule) (string, error) {
 			}
 
 			rule.Labels[tenantLabel] = aa.Spec.TenantID
+			rule.Labels[namespaceLabel] = aa.Namespace
 		}
 	}
 
