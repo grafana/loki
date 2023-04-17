@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Actions
         uses: actions/checkout@v3
         with:
-          repository: "trevorwhitney/grafana-github-actions"
+          repository: "grafana/grafana-github-actions"
           path: ./actions
           ref: main
       - name: Install Actions
