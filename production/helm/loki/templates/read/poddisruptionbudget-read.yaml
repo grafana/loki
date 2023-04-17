@@ -10,5 +10,9 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.readSelectorLabels" . | nindent 6 }}
-  maxUnavailable: 1
+    {{- with .Values.read.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- else }}
+  minAvailable: {{ .Values.read.podDisruptionBudget.minAvailable | default 0 }}
+  {{- end }}
 {{- end }}
