@@ -73,7 +73,7 @@ local make(target, container=true, args=[]) = run(target, [
 local skipMissingSecretPipelineStep(secretName) = run(
   'skip pipeline if missing secret',
   [
-    'if [ "${#TEST_SECRET}" -eq 0 ]; then',
+    'if [ "$${#TEST_SECRET}" -eq 0 ]; then',
     '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed as a branch in main grafana/loki repository in order to run." && exit 78',
     'fi',
   ],
