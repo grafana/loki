@@ -193,6 +193,11 @@ loki:
     querier:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.index_gateway }}
+    index_gateway:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
@@ -281,11 +286,14 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional index gateway configuration
+  index_gateway:
+    mode: ring
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.6.3
+  version: v1.7.0
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -761,7 +769,7 @@ read:
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
   # 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will
   # run two targets, false will run 3 targets.
-  legacyReadTarget: true
+  legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
   # -- Environment variables to add to the read pods
