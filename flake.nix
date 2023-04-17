@@ -10,67 +10,12 @@
 
   outputs = { self, nixpkgs, flake-utils }:
     let
-      golangci-lint-overlay = final: prev: {
-        golangci-lint = prev.callPackage
-          "${prev.path}/pkgs/development/tools/golangci-lint"
-          {
-            buildGoModule = args:
-              prev.buildGoModule (args // rec {
-                version = "1.51.2";
-
-                src = prev.fetchFromGitHub rec {
-                  owner = "golangci";
-                  repo = "golangci-lint";
-                  rev = "v${version}";
-                  sha256 = "F2rkVZ5ia9/wyTw1WIeizFnuaHoS2A8VzVOGDcshy64=";
-                };
-
-                vendorHash =
-                  "sha256-JO/mRJB3gRTtBj6pW1267/xXUtalTJo0p3q5e34vqTs=";
-
-                ldflags = [
-                  "-s"
-                  "-w"
-                  "-X main.version=${version}"
-                  "-X main.commit=v${version}"
-                  "-X main.date=19700101-00:00:00"
-                ];
-              });
-          };
-      };
-
-      helm-docs-overlay = final: prev: {
-        helm-docs = prev.callPackage
-          "${prev.path}/pkgs/applications/networking/cluster/helm-docs"
-          {
-            buildGoModule = args:
-              prev.buildGoModule (args // rec {
-                version = "1.11.0";
-
-                src = prev.fetchFromGitHub {
-                  owner = "norwoodj";
-                  repo = "helm-docs";
-                  rev = "v${version}";
-                  sha256 = "sha256-476ZhjRwHlNJFkHzY8qQ7WbAUUpFNSoxXLGX9esDA/E=";
-                };
-
-                vendorSha256 = "sha256-xXwunk9rmzZEtqmSo8biuXnAjPp7fqWdQ+Kt9+Di9N8=";
-
-                ldflags = [
-                  "-w"
-                  "-s"
-                  "-X main.version=v${version}"
-                ];
-              });
-          };
-      };
-
       nix = import ./nix { inherit self; };
     in
     {
       overlays = {
-        golangci-lint = golangci-lint-overlay;
-        helm-docs = helm-docs-overlay;
+        golangci-lint = import ./nix/overlays/golangci-lint.nix;
+        helm-docs = import ./nix/overlays/helm-docs.nix;
         default = nix.overlay;
       };
     } //
@@ -80,8 +25,8 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            golangci-lint-overlay
-            helm-docs-overlay
+            (import ./nix/overlays/golangci-lint.nix)
+            (import ./nix/overlays/helm-docs.nix)
             nix.overlay
           ];
           config = { allowUnfree = true; };
