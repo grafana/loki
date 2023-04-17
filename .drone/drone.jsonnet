@@ -285,13 +285,14 @@ local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(a
       settings+: {
         dry_run: true,
       },
+      trigger: { repo: 'grafana/loki' },
     },
   ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
       when: onTagOrMain,
-      settings+: {},
+      trigger: { repo: 'grafana/loki' },
     },
   ],
   depends_on: ['check'],
@@ -740,6 +741,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   logql_analyzer(),
   pipeline('release') {
     trigger+: {
+      repo: 'grafana/loki',
       event: ['pull_request', 'tag'],
     },
     depends_on+: ['check'],
