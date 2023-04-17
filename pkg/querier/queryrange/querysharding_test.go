@@ -165,6 +165,7 @@ func Test_astMapper(t *testing.T) {
 				RowShards: 2,
 			},
 		},
+		testEngineOpts,
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
@@ -296,6 +297,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 						IndexType: config.TSDBType,
 					},
 				},
+				testEngineOpts,
 				handler,
 				log.NewNopLogger(),
 				nilShardingMetrics,
@@ -333,6 +335,7 @@ func Test_ShardingByPass(t *testing.T) {
 				RowShards: 2,
 			},
 		},
+		testEngineOpts,
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
@@ -404,7 +407,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, LokiCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, LokiCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
@@ -689,6 +692,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 
 			mware := newASTMapperware(
 				confs,
+				testEngineOpts,
 				handler,
 				log.NewNopLogger(),
 				nilShardingMetrics,
@@ -791,4 +795,47 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			require.Equal(t, tc.numExpectedShards, called)
 		})
 	}
+}
+
+func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
+	engineOpts := testEngineOpts
+	engineOpts.MaxLookBackPeriod = 1 * time.Hour
+
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); !ok {
+			return &LokiResponse{}, nil
+		}
+
+		// This is the actual check that we're testing.
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{
+				Bytes: 1 << 10,
+			},
+		}, nil
+	})
+
+	mware := newASTMapperware(
+		testSchemasTSDB,
+		engineOpts,
+		handler,
+		log.NewNopLogger(),
+		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
+		0,
+	)
+
+	lokiReq := &LokiInstantRequest{
+		Query:     `{cluster="dev-us-central-0"}`,
+		Limit:     1000,
+		TimeTs:    testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	_, err := mware.Do(ctx, lokiReq)
+	require.NoError(t, err)
+
 }

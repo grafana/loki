@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -687,6 +688,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
+		t.Cfg.Querier.Engine,
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
@@ -1112,15 +1114,32 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	var indexClient indexgateway.IndexClient
-	if schemaHasBoltDBShipperConfig(t.Cfg.SchemaConfig) {
-		var err error
-		indexClient, err = storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant, prometheus.DefaultRegisterer)
+	var indexClients []indexgateway.IndexClientWithRange
+	for i, period := range t.Cfg.SchemaConfig.Configs {
+		if period.IndexType != config.BoltDBShipperType {
+			continue
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(t.Cfg.SchemaConfig.Configs)-1 {
+			periodEndTime = config.DayTime{Time: t.Cfg.SchemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+		tableRange := period.GetIndexTableNumberRange(periodEndTime)
+
+		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant,
+			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
+		)
 		if err != nil {
 			return nil, err
 		}
+
+		indexClients = append(indexClients, indexgateway.IndexClientWithRange{
+			IndexClient: indexClient,
+			TableRange:  tableRange,
+		})
 	}
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClient)
+
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClients)
 	if err != nil {
 		return nil, err
 	}

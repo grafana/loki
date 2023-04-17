@@ -909,6 +909,8 @@ singleBinary:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the single binary pods
   extraEnvFrom: []
+  # -- Extra containers to add to the single binary loki pod
+  extraContainers: []
   # -- Init containers to add to the single binary pods
   initContainers: []
   # -- Volume mounts to add to the single binary pods

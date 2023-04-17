@@ -788,22 +788,6 @@ compactor:
 	})
 
 	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: s3
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-		})
-
 		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:

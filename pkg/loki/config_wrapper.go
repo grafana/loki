@@ -522,11 +522,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
-	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
 		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
@@ -545,11 +540,6 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
-	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
 		cfg.CompactorConfig.SharedStoreType = period.ObjectType
 	}
