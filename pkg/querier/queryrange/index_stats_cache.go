@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log"
 
@@ -14,19 +13,13 @@ import (
 )
 
 type IndexStatsSplitter struct {
-	Limits
+	cacheKeyLimits
 }
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (i IndexStatsSplitter) GenerateCacheKey(_ context.Context, userID string, r queryrangebase.Request) string {
-	split := i.QuerySplitDuration(userID)
-
-	var currentInterval int64
-	if denominator := int64(split / time.Millisecond); denominator > 0 {
-		currentInterval = r.GetStart() / denominator
-	}
-
-	return fmt.Sprintf("indexStats:%s:%s:%d", userID, r.GetQuery(), currentInterval)
+func (i IndexStatsSplitter) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
+	return fmt.Sprintf("indexStats:%s", cacheKey)
 }
 
 type IndexStatsExtractor struct{}
