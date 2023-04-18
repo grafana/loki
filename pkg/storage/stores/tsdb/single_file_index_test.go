@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -252,5 +253,115 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Len(b, chkRefs, numChunksToMatch*2)
+	}
+}
+
+func TestTSDBIndex_Stats(t *testing.T) {
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 2,
+					Entries:  20,
+					KB:       20,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 4,
+					Entries:  40,
+					KB:       40,
+				},
+			},
+		},
+	}
+
+	// Create the TSDB index
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series)
+
+	// Create the test cases
+	testCases := []struct {
+		name        string
+		from        model.Time
+		through     model.Time
+		expected    stats.Stats
+		expectedErr error
+	}{
+		{
+			name:    "from at the beginning of one chunk and through at the end of another chunk",
+			from:    0,
+			through: 20,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10 + 20 + 30 + 40) * 1024,
+				Entries: 10 + 20 + 30 + 40,
+			},
+		},
+		{
+			name:    "from inside one chunk and through inside another chunk",
+			from:    5,
+			through: 15,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10*0.5 + 20*0.5 + 30*0.5 + 40*0.5) * 1024,
+				Entries: 10*0.5 + 20*0.5 + 30*0.5 + 40*0.5,
+			},
+		},
+		{
+			name:    "from inside one chunk and through at the end of another chunk",
+			from:    5,
+			through: 20,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10*0.5 + 20 + 30*0.5 + 40) * 1024,
+				Entries: 10*0.5 + 20 + 30*0.5 + 40,
+			},
+		},
+		{
+			name:    "from at the beginning of one chunk and through inside another chunk",
+			from:    0,
+			through: 15,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10 + 20*0.5 + 30 + 40*0.5) * 1024,
+				Entries: 10 + 20*0.5 + 30 + 40*0.5,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			acc := &stats.Stats{}
+			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			require.Equal(t, tc.expectedErr, err)
+			require.Equal(t, tc.expected, *acc)
+		})
 	}
 }

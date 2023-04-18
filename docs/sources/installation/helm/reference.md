@@ -1,8 +1,8 @@
 ---
-title: Helm Chart Values
-menuTitle: Helm Chart Values
+title: Helm chart values
+menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 100
+weight: 200
 keywords: []
 ---
 
@@ -378,7 +378,7 @@ null
 		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
-			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
+			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`</td>
 			<td><pre lang="json">
 {
   "contents": "NOTAVALIDLICENSE"
@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.3"
+"v1.7.0"
 </pre>
 </td>
 		</tr>
@@ -1695,6 +1695,17 @@ true
 			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.index_gateway</td>
+			<td>object</td>
+			<td>Optional index gateway configuration</td>
+			<td><pre lang="json">
+{
+  "mode": "ring"
+}
 </pre>
 </td>
 		</tr>
@@ -2807,7 +2818,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -3067,6 +3078,15 @@ null
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.extraContainers</td>
+			<td>list</td>
+			<td>Extra containers to add to the single binary loki pod</td>
 			<td><pre lang="json">
 []
 </pre>

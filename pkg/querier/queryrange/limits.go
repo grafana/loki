@@ -213,29 +213,25 @@ type querySizeLimiter struct {
 func newQuerySizeLimiter(
 	next queryrangebase.Handler,
 	cfg []config.PeriodConfig,
+	engineOpts logql.EngineOpts,
 	logger log.Logger,
-	limits Limits,
-	codec queryrangebase.Codec,
 	limitFunc func(context.Context, string) int,
 	limitErrorTmpl string,
 	statsHandler ...queryrangebase.Handler,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
-		logger:         logger,
-		next:           next,
-		cfg:            cfg,
-		limitFunc:      limitFunc,
-		limitErrorTmpl: limitErrorTmpl,
+		logger:            logger,
+		next:              next,
+		cfg:               cfg,
+		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
+		limitFunc:         limitFunc,
+		limitErrorTmpl:    limitErrorTmpl,
 	}
 
 	q.statsHandler = next
 	if len(statsHandler) > 0 {
 		q.statsHandler = statsHandler[0]
 	}
-
-	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
-	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
-	q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
 
 	return q
 }
@@ -244,13 +240,13 @@ func newQuerySizeLimiter(
 // The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerierSizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
+	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
-	codec queryrangebase.Codec,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
 	})
 }
 
@@ -258,13 +254,13 @@ func NewQuerierSizeLimiterMiddleware(
 // The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerySizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
+	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
-	codec queryrangebase.Codec,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
 	})
 }
 
