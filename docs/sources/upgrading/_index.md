@@ -33,6 +33,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### Shutdown marker file
+
+A shutdown marker file can be written by the `/ingester/prepare_shutdown` endpoint.
+If the new `ingester.shutdown_marker_path` config setting has a value that value is used.
+If not the`common.path_prefix` config setting is used if it has a value. Otherwise an error is returned on startup.
+
 ## 2.8.0
 
 ### Loki
