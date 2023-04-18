@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix dns port in network-policy
 
+## 5.1.1
+
+- [FEATURE] add setting `useFederatedToken` from Azure configuration block back.
+
 ## 4.10.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.3
