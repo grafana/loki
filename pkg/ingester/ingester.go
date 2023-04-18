@@ -644,6 +644,9 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
 	allRates := i.streamRateCalculator.Rates()
 	rates := make([]*logproto.StreamRate, len(allRates))
+	for idx := range allRates {
+		rates[idx] = &allRates[idx]
+	}
 	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
 }
 
