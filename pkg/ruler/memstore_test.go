@@ -2,10 +2,11 @@ package ruler
 
 import (
 	"context"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/rulefmt"
 	"testing"
 	"time"
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/rulefmt"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"

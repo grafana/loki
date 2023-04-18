@@ -76,17 +76,17 @@ func (w *wrapper) Log(record *wal.Record) error {
 
 // logBatched logs to the WAL both series and records, batching the operation to prevent unnecessary page flushes.
 func (w *wrapper) logBatched(record *wal.Record) error {
-	seriesBuf := recordPool.GetBytes()[:0]
-	entriesBuf := recordPool.GetBytes()[:0]
+	seriesBuf := recordPool.GetBytes()
+	entriesBuf := recordPool.GetBytes()
 	defer func() {
 		recordPool.PutBytes(seriesBuf)
 		recordPool.PutBytes(entriesBuf)
 	}()
 
-	seriesBuf = record.EncodeSeries(seriesBuf)
-	entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, entriesBuf)
+	*seriesBuf = record.EncodeSeries(*seriesBuf)
+	*entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, *entriesBuf)
 	// Always write series then entries
-	if err := w.wal.Log(seriesBuf, entriesBuf); err != nil {
+	if err := w.wal.Log(*seriesBuf, *entriesBuf); err != nil {
 		return err
 	}
 	return nil
@@ -94,22 +94,22 @@ func (w *wrapper) logBatched(record *wal.Record) error {
 
 // logSingle logs to the WAL series and records in separate WAL operation. This causes a page flush after each operation.
 func (w *wrapper) logSingle(record *wal.Record) error {
-	buf := recordPool.GetBytes()[:0]
+	buf := recordPool.GetBytes()
 	defer func() {
 		recordPool.PutBytes(buf)
 	}()
 
 	// Always write series then entries.
 	if len(record.Series) > 0 {
-		buf = record.EncodeSeries(buf)
-		if err := w.wal.Log(buf); err != nil {
+		*buf = record.EncodeSeries(*buf)
+		if err := w.wal.Log(*buf); err != nil {
 			return err
 		}
-		buf = buf[:0]
+		*buf = (*buf)[:0]
 	}
 	if len(record.RefEntries) > 0 {
-		buf = record.EncodeEntries(wal.CurrentEntriesRec, buf)
-		if err := w.wal.Log(buf); err != nil {
+		*buf = record.EncodeEntries(wal.CurrentEntriesRec, *buf)
+		if err := w.wal.Log(*buf); err != nil {
 			return err
 		}
 

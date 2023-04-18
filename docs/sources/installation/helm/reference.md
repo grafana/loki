@@ -369,16 +369,16 @@ null
 		<tr>
 			<td>enterprise.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-"main-96f32b9f"
+null
 </pre>
 </td>
 		</tr>
 		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
-			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
+			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`</td>
 			<td><pre lang="json">
 {
   "contents": "NOTAVALIDLICENSE"
@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.2"
+"v1.7.0"
 </pre>
 </td>
 		</tr>
@@ -805,7 +805,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1690,6 +1690,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.index_gateway</td>
+			<td>object</td>
+			<td>Optional index gateway configuration</td>
+			<td><pre lang="json">
+{
+  "mode": "ring"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
@@ -1993,7 +2004,7 @@ false
 		<tr>
 			<td>migrate.fromDistributed.memberlistService</td>
 			<td>string</td>
-			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join it's ring.</td>
+			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join its ring.</td>
 			<td><pre lang="json">
 ""
 </pre>
@@ -2798,7 +2809,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -3058,6 +3069,15 @@ null
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.extraContainers</td>
+			<td>list</td>
+			<td>Extra containers to add to the single binary loki pod</td>
 			<td><pre lang="json">
 []
 </pre>

@@ -43,6 +43,10 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -83,6 +87,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=compactor",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -137,8 +142,8 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Compactor.Replicas),
+			RevisionHistoryLimit: pointer.Int32(10),
+			Replicas:             pointer.Int32(opts.Stack.Template.Compactor.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -167,7 +172,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 							},
 						},
 						VolumeMode:       &volumeFileSystemMode,
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 					},
 				},
 			},

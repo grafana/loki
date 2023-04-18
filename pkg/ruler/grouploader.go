@@ -2,14 +2,16 @@ package ruler
 
 import (
 	"bytes"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"os"
+	"sync"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"gopkg.in/yaml.v3"
-	"os"
-	"sync"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 type GroupLoader struct{}

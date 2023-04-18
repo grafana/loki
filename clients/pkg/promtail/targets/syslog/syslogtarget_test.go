@@ -361,8 +361,8 @@ func TestSyslogTarget(t *testing.T) {
 		protocol string
 		fmtFunc  formatFunc
 	}{
-		{"tpc newline separated", protocolTCP, fmtNewline},
-		{"tpc octetcounting", protocolTCP, fmtOctetCounting},
+		{"tcp newline separated", protocolTCP, fmtNewline},
+		{"tcp octetcounting", protocolTCP, fmtOctetCounting},
 		{"udp newline separated", protocolUDP, fmtNewline},
 		{"udp octetcounting", protocolUDP, fmtOctetCounting},
 	} {
@@ -478,8 +478,8 @@ func TestSyslogTarget_RFC5424Messages(t *testing.T) {
 		protocol string
 		fmtFunc  formatFunc
 	}{
-		{"tpc newline separated", protocolTCP, fmtNewline},
-		{"tpc octetcounting", protocolTCP, fmtOctetCounting},
+		{"tcp newline separated", protocolTCP, fmtNewline},
+		{"tcp octetcounting", protocolTCP, fmtOctetCounting},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {

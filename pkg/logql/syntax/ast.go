@@ -8,10 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
@@ -77,7 +81,7 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 
 func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	c := make([]log.Stage, 0, len(m))
-	for _, e := range m {
+	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
@@ -88,6 +92,60 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 		c = append(c, p)
 	}
 	return c, nil
+}
+
+// reorderStages reorders m such that LineFilters
+// are as close to the front of the filter as possible.
+func (m MultiStageExpr) reorderStages() []StageExpr {
+	var (
+		result  = make([]StageExpr, 0, len(m))
+		filters = make([]*LineFilterExpr, 0, len(m))
+		rest    = make([]StageExpr, 0, len(m))
+	)
+
+	for _, s := range m {
+		switch f := s.(type) {
+		case *LineFilterExpr:
+			filters = append(filters, f)
+		case *LineFmtExpr:
+			// line_format modifies the contents of the line so any line filter
+			// originally after a line_format must still be after the same
+			// line_format.
+
+			rest = append(rest, f)
+
+			if len(filters) > 0 {
+				result = append(result, combineFilters(filters))
+			}
+			result = append(result, rest...)
+
+			filters = filters[:0]
+			rest = rest[:0]
+		default:
+			rest = append(rest, f)
+		}
+	}
+
+	if len(filters) > 0 {
+		result = append(result, combineFilters(filters))
+	}
+	return append(result, rest...)
+}
+
+func combineFilters(in []*LineFilterExpr) StageExpr {
+	result := in[len(in)-1]
+	for i := len(in) - 2; i >= 0; i-- {
+		leafNode(result).Left = in[i]
+	}
+
+	return result
+}
+
+func leafNode(in *LineFilterExpr) *LineFilterExpr {
+	current := in
+	for ; current.Left != nil; current = current.Left {
+	}
+	return current
 }
 
 func (m MultiStageExpr) String() string {
@@ -410,6 +468,8 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
 		return ip, ip.PatternError()
+	case *log.NoopLabelFilter:
+		return log.NoopStage, nil
 	}
 	return e.LabelFilterer, nil
 }
@@ -645,11 +705,47 @@ func (l *LogfmtExpressionParser) String() string {
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
+	if t == labels.MatchRegexp || t == labels.MatchNotRegexp {
+		return simplifyRegexMatcher(t, n, v)
+	}
+
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
 	return m
+}
+
+func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matcher {
+	reg, err := syntax.Parse(value, syntax.Perl)
+	if err != nil {
+		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+	}
+	reg = reg.Simplify()
+
+	m, ok := simplify(typ, name, value, reg)
+	if !ok {
+		util.AllNonGreedy(reg)
+		return labels.MustNewMatcher(typ, name, reg.String())
+	}
+
+	return m
+}
+
+// simplify will return an equals matcher if there is a regex matching a literal
+func simplify(typ labels.MatchType, name, value string, reg *syntax.Regexp) (*labels.Matcher, bool) {
+	switch reg.Op {
+	case syntax.OpLiteral:
+		if !util.IsCaseInsensitive(reg) {
+			t := labels.MatchEqual
+			if typ == labels.MatchNotRegexp {
+				t = labels.MatchNotEqual
+			}
+			return labels.MustNewMatcher(t, name, value), true
+		}
+		return nil, false
+	}
+	return nil, false
 }
 
 func mustNewFloat(s string) float64 {
