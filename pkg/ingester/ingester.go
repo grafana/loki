@@ -645,8 +645,8 @@ func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequ
 	allRates := i.streamRateCalculator.Rates()
 
 	rates := make([]*logproto.StreamRate, 0, len(allRates))
-	for _, r := range allRates {
-		rates = append(rates, &r)
+	for idx := range allRates {
+		rates = append(rates, &allRates[idx])
 	}
 
 	return &logproto.StreamRatesResponse{StreamRates: rates}, nil

@@ -40,6 +40,31 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+func BenchmarkGetStreamRatesAllocs(b *testing.B) {
+	ingesterConfig := defaultIngesterTestConfig(b)
+	ingesterConfig.UpdateInterval = time.Minute
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(b, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(b, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	for idx := 0; idx < 1000; idx++ {
+		i.streamRateCalculator.Record("fake", uint64(idx), uint64(idx), 10)
+	}
+	i.streamRateCalculator.updateRates()
+
+	b.ReportAllocs()
+	for idx := 0; idx < b.N; idx++ {
+		i.GetStreamRates(context.TODO(), nil)
+	}
+}
+
 func TestIngester(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
