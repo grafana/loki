@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
+	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
 )
 
 const localhost = "127.0.0.1"
@@ -443,7 +444,7 @@ func waitForMessages(eh *fake.Client) {
 	}
 }
 
-func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
+func getServerConfigWithAvailablePort() (cfg phttp.Config, port int, err error) {
 	// Get a randomly available port by open and closing a TCP socket
 	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
 	if err != nil {
@@ -460,11 +461,13 @@ func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error)
 	}
 
 	// Adjust some of the defaults
-	cfg.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	cfg.HTTPListenAddress = localhost
-	cfg.HTTPListenPort = port
-	cfg.GRPCListenAddress = localhost
-	cfg.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+	c := server.Config{}
+	c.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
+	c.HTTPListenAddress = localhost
+	c.HTTPListenPort = port
+	c.GRPCListenAddress = localhost
+	c.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+	cfg.Server = c
 
 	return
 }

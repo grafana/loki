@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
+	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
 )
 
 // Config describes a job to scrape.
@@ -405,8 +406,8 @@ type GcplogTargetConfig struct {
 	// PushTimeout is used to set a maximum processing time for each incoming GCP Logs entry. Used just for `push` subscription type.
 	PushTimeout time.Duration `yaml:"push_timeout"`
 
-	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
-	Server server.Config `yaml:"server"`
+	// Server is used to configure the HTTP server the target exposes. Used just for `push` subscription type.
+	Server phttp.Config `yaml:",inline"`
 
 	// UseFullLine force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
 	// By default, if `textPayload` is present in the line, then it's used as log line.
