@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"sync"
 	"testing"
@@ -39,6 +40,72 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
+
+func TestPrepareShutdown(t *testing.T) {
+	tempDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfig(t)
+	ingesterConfig.ShutdownMarkerPath = tempDir
+	ingesterConfig.WAL.Enabled = true
+	ingesterConfig.WAL.Dir = tempDir
+	ingesterConfig.LifecyclerConfig.UnregisterOnShutdown = false
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	i.lifecycler.SetFlushOnShutdown(false)
+	i.lifecycler.SetUnregisterOnShutdown(false)
+
+	t.Run("GET", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("GET", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 200, resp.Code)
+		require.Equal(t, "unset", resp.Body.String())
+	})
+
+	t.Run("POST", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("POST", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 204, resp.Code)
+		require.True(t, i.lifecycler.FlushOnShutdown())
+		require.True(t, i.lifecycler.ShouldUnregisterOnShutdown())
+	})
+
+	t.Run("GET again", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("GET", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 200, resp.Code)
+		require.Equal(t, "set", resp.Body.String())
+	})
+
+	t.Run("DELETE", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("DELETE", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 204, resp.Code)
+		require.False(t, i.lifecycler.FlushOnShutdown())
+		require.False(t, i.lifecycler.ShouldUnregisterOnShutdown())
+	})
+
+	t.Run("GET last time", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("GET", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 200, resp.Code)
+		require.Equal(t, "unset", resp.Body.String())
+	})
+
+	t.Run("Unknown HTTP verb", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("PAUSE", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 405, resp.Code)
+		require.Empty(t, resp.Body.String())
+	})
+}
 
 func TestIngester(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)

@@ -653,7 +653,7 @@ func (i *Ingester) setPrepareShutdown() {
 
 func (i *Ingester) unsetPrepareShutdown() {
 	level.Info(util_log.Logger).Log("msg", "undoing preparation for full ingester shutdown")
-	i.lifecycler.SetFlushOnShutdown(i.lifecycler.FlushOnShutdown())
+	i.lifecycler.SetFlushOnShutdown(!i.cfg.WAL.Enabled || i.cfg.WAL.FlushOnShutdown)
 	i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
 	i.terminateOnShutdown = false
 	i.metrics.shutdownMarker.Set(0)
