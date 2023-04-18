@@ -516,6 +516,13 @@ github.com/docker/go-plugins-helpers/sdk
 # github.com/docker/go-units v0.5.0
 ## explicit
 github.com/docker/go-units
+# github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577
+## explicit; go 1.18
+github.com/dolthub/maphash
+# github.com/dolthub/swiss v0.1.0
+## explicit; go 1.18
+github.com/dolthub/swiss
+github.com/dolthub/swiss/simd
 # github.com/drone/envsubst v1.0.3
 ## explicit; go 1.13
 github.com/drone/envsubst

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/dolthub/swiss"
 	"pgregory.net/rand"
 )
 
@@ -88,7 +89,7 @@ type tenantQueue struct {
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
-	queriers    map[string]struct{}
+	queriers    *swiss.Map[string, struct{}]
 	maxQueriers int
 
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
@@ -181,7 +182,7 @@ func (q *tenantQueues) getNextQueueForQuerier(lastUserIndex QueueIndex, querierI
 		uid = tq.pos
 
 		if tq.queriers != nil {
-			if _, ok := tq.queriers[querierID]; !ok {
+			if !tq.queriers.Has(querierID) {
 				// This querier is not handling the user.
 				continue
 			}
@@ -302,12 +303,12 @@ func (q *tenantQueues) recomputeUserQueriers() {
 // shuffleQueriersForTenants returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
 // In that case *all* queriers should be used.
 // Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
-func shuffleQueriersForTenants(seed uint64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
+func shuffleQueriersForTenants(seed uint64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) *swiss.Map[string, struct{}] {
 	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
 		return nil
 	}
 
-	result := make(map[string]struct{}, queriersToSelect)
+	result := swiss.NewMap[string, struct{}](uint32(queriersToSelect))
 	rnd := rand.New(seed)
 
 	scratchpad = append(scratchpad[:0], allSortedQueriers...)
@@ -315,7 +316,7 @@ func shuffleQueriersForTenants(seed uint64, queriersToSelect int, allSortedQueri
 	last := len(scratchpad) - 1
 	for i := 0; i < queriersToSelect; i++ {
 		r := rnd.Intn(last + 1)
-		result[scratchpad[r]] = struct{}{}
+		result.Put(scratchpad[r], struct{}{})
 		// move selected item to the end, it won't be selected anymore.
 		scratchpad[r], scratchpad[last] = scratchpad[last], scratchpad[r]
 		last--

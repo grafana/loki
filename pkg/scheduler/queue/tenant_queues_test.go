@@ -134,7 +134,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 
 		// Verify it has maxQueriersPerUser queriers assigned now.
 		qs := uq.mapping.GetByKey(uid).queriers
-		assert.Equal(t, maxQueriersPerUser, len(qs))
+		assert.Equal(t, maxQueriersPerUser, qs.Count())
 	}
 
 	// After adding all users, verify results. For each querier, find out how many different users it handles,
@@ -449,8 +449,8 @@ func isConsistent(uq *tenantQueues) error {
 			return fmt.Errorf("user %s has queriers set despite not enough queriers available", u)
 		}
 
-		if q.maxQueriers > 0 && len(uq.sortedQueriers) > q.maxQueriers && len(q.queriers) != q.maxQueriers {
-			return fmt.Errorf("user %s has incorrect number of queriers, expected=%d, got=%d", u, len(q.queriers), q.maxQueriers)
+		if q.maxQueriers > 0 && len(uq.sortedQueriers) > q.maxQueriers && q.queriers.Count() != q.maxQueriers {
+			return fmt.Errorf("user %s has incorrect number of queriers, expected=%d, got=%d", u, q.queriers.Count(), q.maxQueriers)
 		}
 	}
 
@@ -471,7 +471,7 @@ func getUsersByQuerier(queues *tenantQueues, querierID string) []string {
 			userIDs = append(userIDs, userID)
 			continue
 		}
-		if _, ok := q.queriers[querierID]; ok {
+		if q.queriers.Has(querierID) {
 			userIDs = append(userIDs, userID)
 		}
 	}
@@ -485,11 +485,11 @@ func TestShuffleQueriers(t *testing.T) {
 	require.Nil(t, shuffleQueriersForTenants(12345, len(allQueriers), allQueriers, nil))
 
 	r1 := shuffleQueriersForTenants(12345, 3, allQueriers, nil)
-	require.Equal(t, 3, len(r1))
+	require.Equal(t, 3, r1.Count())
 
 	// Same input produces same output.
 	r2 := shuffleQueriersForTenants(12345, 3, allQueriers, nil)
-	require.Equal(t, 3, len(r2))
+	require.Equal(t, 3, r2.Count())
 	require.Equal(t, r1, r2)
 }
 
@@ -512,7 +512,7 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 
 		selected := shuffleQueriersForTenants(r.Uint64(), toSelect, allSortedQueriers, nil)
 
-		require.Equal(t, toSelect, len(selected))
+		require.Equal(t, toSelect, selected.Count())
 
 		sort.Strings(allSortedQueriers)
 		prevQuerier := ""
