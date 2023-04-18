@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -116,6 +117,10 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 			pr := existing.(*monitoringv1.PrometheusRule)
 			wantPr := desired.(*monitoringv1.PrometheusRule)
 			mutatePrometheusRule(pr, wantPr)
+		case *policyv1.PodDisruptionBudget:
+			pdb := existing.(*policyv1.PodDisruptionBudget)
+			wantPdb := desired.(*policyv1.PodDisruptionBudget)
+			mutatePodDisruptionBudget(pdb, wantPdb)
 
 		default:
 			t := reflect.TypeOf(existing).String()
@@ -239,4 +244,10 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) error {
 		return err
 	}
 	return nil
+}
+
+func mutatePodDisruptionBudget(existing, desired *policyv1.PodDisruptionBudget) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
 }

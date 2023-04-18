@@ -116,6 +116,14 @@ func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	return nil
 }
 
+func (t TableRanges) TableNameFor(table int64) (string, bool) {
+	cfg := t.ConfigForTableNumber(table)
+	if cfg == nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s%d", cfg.IndexTables.Prefix, table), true
+}
+
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
 func (t TableRange) TableInRange(tableName string) (bool, error) {
 	// non-periodic tables
