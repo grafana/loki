@@ -397,7 +397,6 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 
 	cfg.Common.InstanceAddr = localhost
 	cfg.Ingester.LifecyclerConfig.Addr = localhost
-	cfg.Ingester.ShutdownMarkerPath = dir
 	cfg.Distributor.DistributorRing.InstanceAddr = localhost
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
@@ -410,6 +409,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
+	cfg.Common.PathPrefix = dir
 
 	for _, transformer := range cfgTransformers {
 		if transformer != nil {
