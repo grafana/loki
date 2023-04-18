@@ -31,6 +31,8 @@ func (i IndexStatsSplitter) GenerateCacheKey(_ context.Context, userID string, r
 
 type IndexStatsExtractor struct{}
 
+// Extract favors the ability to cache over exactness of results. It assumes a constant distribution
+// of log volumes over a range and will extract subsets proportionally.
 func (p IndexStatsExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
 	factor, _, _ := util.GetFactorOfTime(start, end, resStart, resEnd)
 
