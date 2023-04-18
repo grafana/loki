@@ -642,7 +642,7 @@ func newDistinctFilterExpr(labels []string) *DistinctFilterExpr {
 	}
 }
 
-func (e *DistinctFilterExpr) Shardable() bool { return true }
+func (e *DistinctFilterExpr) Shardable() bool { return false }
 
 func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
 
