@@ -6,11 +6,11 @@
 package queue
 
 import (
-	"math/rand"
+	"hash/maphash"
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
+	"pgregory.net/rand"
 )
 
 type intPointerMap map[string]*int
@@ -93,7 +93,7 @@ type tenantQueue struct {
 
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
-	seed int64
+	seed uint64
 }
 
 func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
@@ -134,7 +134,7 @@ func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers i
 	uq := q.mapping.GetByKey(tenant)
 	if uq == nil {
 		uq = &tenantQueue{
-			seed: util.ShuffleShardSeed(tenant, ""),
+			seed: maphash.Bytes(maphash.MakeSeed(), []byte(tenant)),
 		}
 		uq.TreeQueue = newTreeQueue(q.maxUserQueueSize, tenant)
 		q.mapping.Put(tenant, uq)
@@ -302,16 +302,15 @@ func (q *tenantQueues) recomputeUserQueriers() {
 // shuffleQueriersForTenants returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
 // In that case *all* queriers should be used.
 // Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
-func shuffleQueriersForTenants(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
+func shuffleQueriersForTenants(seed uint64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
 	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
 		return nil
 	}
 
 	result := make(map[string]struct{}, queriersToSelect)
-	rnd := rand.New(rand.NewSource(userSeed))
+	rnd := rand.New(seed)
 
-	scratchpad = scratchpad[:0]
-	scratchpad = append(scratchpad, allSortedQueriers...)
+	scratchpad = append(scratchpad[:0], allSortedQueriers...)
 
 	last := len(scratchpad) - 1
 	for i := 0; i < queriersToSelect; i++ {

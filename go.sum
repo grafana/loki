@@ -2270,6 +2270,8 @@ modernc.org/mathutil v1.1.1/go.mod h1:mZW8CKdRPY1v87qxC/wUdX5O1qDzXMP5TH3wjfpga6
 modernc.org/memory v1.0.1/go.mod h1:NSjvC08+g3MLOpcAxQbdctcThAEX4YlJ20WWHYEhvRg=
 modernc.org/sqlite v1.7.4/go.mod h1:xse4RHCm8Fzw0COf5SJqAyiDrVeDwAQthAS1V/woNIA=
 modernc.org/tcl v1.4.1/go.mod h1:8YCvzidU9SIwkz7RZwlCWK61mhV8X9UwfkRDRp7y5e0=
+pgregory.net/rand v1.0.2 h1:ASEbkvwOmY/UPF2evJPBJ8XZg71xdKWYdByqKapI7Vw=
+pgregory.net/rand v1.0.2/go.mod h1:EyNx8APnDE3Svi8sWgUZ5lOiz60cNZUPPBTyzOUpPl4=
 rsc.io/binaryregexp v0.2.0 h1:HfqmD5MEmC0zvwBuF187nq9mdnXjXsSivRiXN7SmRkE=
 rsc.io/binaryregexp v0.2.0/go.mod h1:qTv7/COck+e2FymRvadv62gMdZztPaShugOCi3I+8D8=
 rsc.io/goversion v1.2.0/go.mod h1:Eih9y/uIBS3ulggl7KNJ09xGSLcuNaLgmvvqa07sgfo=

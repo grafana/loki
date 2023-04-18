@@ -2080,6 +2080,9 @@ k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/net
 k8s.io/utils/strings/slices
 k8s.io/utils/trace
+# pgregory.net/rand v1.0.2
+## explicit; go 1.18
+pgregory.net/rand
 # rsc.io/binaryregexp v0.2.0
 ## explicit; go 1.12
 rsc.io/binaryregexp

@@ -510,7 +510,7 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 			toSelect = 3
 		}
 
-		selected := shuffleQueriersForTenants(r.Int63(), toSelect, allSortedQueriers, nil)
+		selected := shuffleQueriersForTenants(r.Uint64(), toSelect, allSortedQueriers, nil)
 
 		require.Equal(t, toSelect, len(selected))
 
