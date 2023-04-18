@@ -2214,8 +2214,6 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 	fprint := d.Be64()
 	k := d.Uvarint()
 
-	// TODO(owen-d): We should consider adding an offset field prior to labels
-	// so they can be skipped while decoding series if they're not needed
 	for i := 0; i < k; i++ {
 		lno := uint32(d.Uvarint())
 		lvo := uint32(d.Uvarint())
@@ -2267,8 +2265,8 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 	nMarkers := d.Uvarint()
 
-	// TODO(owen-d): use pool
-	relevantPages := make(chunkPageMarkers, 0, nMarkers)
+	relevantPages := chunkPageMarkersPool.Get(nMarkers)
+	defer chunkPageMarkersPool.Put(relevantPages)
 	for i := 0; i < nMarkers; i++ {
 		var marker chunkPageMarker
 		marker.decode(d)
@@ -2431,8 +2429,9 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 
 	nMarkers = d.Uvarint()
 
-	// TODO(owen-d): use pool
-	markers = make(chunkPageMarkers, nMarkers)
+	markers = chunkPageMarkersPool.Get(nMarkers)
+	markers = markers[:nMarkers]
+	defer chunkPageMarkersPool.Put(markers)
 	for i := range markers {
 		markers[i].decode(d)
 
