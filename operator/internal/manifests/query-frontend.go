@@ -8,6 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -49,6 +50,7 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		deployment,
 		NewQueryFrontendGRPCService(opts),
 		NewQueryFrontendHTTPService(opts),
+		NewQueryFrontendPodDisruptionBudget(opts),
 	}, nil
 }
 
@@ -220,6 +222,30 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 				},
 			},
 			Selector: labels,
+		},
+	}
+}
+
+// NewQueryFrontendPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// query-frontend pods.
+func NewQueryFrontendPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	mu := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      QueryFrontendName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &mu,
 		},
 	}
 }
