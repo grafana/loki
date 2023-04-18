@@ -4,18 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"io"
 	"net/http"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gorilla/mux"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/relabel"
+
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/relabel"
 )
 
 type pushTarget struct {

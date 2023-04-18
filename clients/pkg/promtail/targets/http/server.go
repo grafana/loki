@@ -2,14 +2,17 @@ package http
 
 import (
 	"fmt"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // TargetServer is wrapper around WeaveWorks Server that handled some common configuration used in all Promtail targets
