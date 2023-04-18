@@ -1,5 +1,7 @@
 ## Main/Unreleased
 
+### All Changes
+
 #### Loki
 
 ##### Enhancements
@@ -29,8 +31,6 @@
 * [9130](https://github.com/grafana/loki/pull/9130) **salvacorts**: Pass LogQL engine options down to the _split by range_, _sharding_, and _query size limiter_ middlewares.
 * [9156](https://github.com/grafana/loki/pull/9156) **ashwanthgoli**: Expiration: do not drop index if period is a zero value
 
-### All Changes
-
 #### Promtail
 
 ##### Enhancements
@@ -42,6 +42,12 @@
 ##### Fixes
 
 * [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
+
+#### LogCLI
+
+##### Fixes
+
+* [8566](https://github.com/grafana/loki/pull/8566) **ndrpnt**: Allow queries to start with negative filters (`!=` and `!~`) when omitting stream selector with `--stdin` flag
 
 #### Mixins
 
