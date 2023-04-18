@@ -2343,8 +2343,8 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
 	var prevMaxT int64
+	chunkMeta := &ChunkMeta{}
 	for i := 0; i < nChunks; i++ {
-		chunkMeta := &ChunkMeta{}
 		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
 			return res, errors.Wrap(d.Err(), "read meta for chunk")
 		}
