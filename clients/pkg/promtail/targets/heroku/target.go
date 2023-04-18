@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -18,7 +19,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	herokuEncoding "github.com/heroku/x/logplex/encoding"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
