@@ -5,41 +5,35 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 )
 
+// TargetServer is wrapper around WeaveWorks Server that handled some common configuration used in all Promtail targets
+// that expose an HTTP server. It just handles configuration and initialization, the handlers implementation are left to
+// the consumer.
 type TargetServer struct {
-	logger         log.Logger
-	handler        api.EntryHandler
-	config         *Config
-	componentName  string
-	jobName        string
-	server         *server.Server
-	relabelConfigs []*relabel.Config
+	logger        log.Logger
+	config        *Config
+	componentName string
+	jobName       string
+	server        *server.Server
 }
 
+// NewTargetServer creates a new TargetServer, applying some defaults to the server configuration.
 func NewTargetServer(
-	mountRoute func(router *mux.Router),
 	logger log.Logger,
-	handler api.EntryHandler,
 	jobName, componentName string,
 	config *Config,
-	relabel []*relabel.Config,
 ) (*TargetServer, error) {
-	wrappedLogger := log.With(logger, "component", componentName)
-
 	t := &TargetServer{
-		logger:         wrappedLogger,
-		handler:        handler,
-		jobName:        jobName,
-		config:         config,
-		relabelConfigs: relabel,
+		logger:        logger,
+		componentName: componentName,
+		jobName:       jobName,
+		config:        config,
 	}
 
 	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
@@ -48,10 +42,13 @@ func NewTargetServer(
 	}
 	// Set the config to the new combined config.
 	config.Server = mergedServerConfigs
+	// Avoid logging entire received request on failures
+	config.Server.ExcludeRequestInLog = true
 
 	return t, nil
 }
 
+// MountAndRun does some final configuration of the WeaveWorks server, before mounting the handlers and starting the server.
 func (ts *TargetServer) MountAndRun(mountRoute func(router *mux.Router)) error {
 	level.Info(ts.logger).Log("msg", fmt.Sprintf("starting %s target", ts.componentName), "job", ts.jobName)
 
@@ -89,7 +86,8 @@ func (ts *TargetServer) MountAndRun(mountRoute func(router *mux.Router)) error {
 	return nil
 }
 
-func (ts *TargetServer) Stop() {
+// StopAndShutdown stops and shuts down the underlying server.
+func (ts *TargetServer) StopAndShutdown() {
 	ts.server.Stop()
 	ts.server.Shutdown()
 }
