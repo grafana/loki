@@ -729,6 +729,7 @@ func NewIndexStatsTripperware(
 				)
 			},
 			retentionEnabled,
+			cfg.Transformer,
 			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {

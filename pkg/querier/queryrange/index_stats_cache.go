@@ -56,12 +56,13 @@ func NewIndexStatsCacheMiddleware(
 	shouldCache queryrangebase.ShouldCacheFn,
 	parallelismForReq func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int,
 	retentionEnabled bool,
+	transformer UserIDTransformer,
 	metrics *queryrangebase.ResultsCacheMetrics,
 ) (queryrangebase.Middleware, error) {
 	return queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
-		IndexStatsSplitter{limits},
+		IndexStatsSplitter{cacheKeyLimits{limits, transformer}},
 		limits,
 		merger,
 		IndexStatsExtractor{},

@@ -37,6 +37,7 @@ func TestIndexStatsCache(t *testing.T) {
 		},
 		false,
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 
