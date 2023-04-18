@@ -51,4 +51,3 @@ pkg/loki/wal
 
 # nix
 result
-/docs/make-docs
