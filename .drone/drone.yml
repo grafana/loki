@@ -1419,7 +1419,7 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
-  - if [ "${#TEST_SECRET}" -eq 0 ]; then
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
   - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
     as a branch in main grafana/loki repository in order to run." && exit 78'
   - fi
@@ -1542,7 +1542,7 @@ steps:
   image: alpine
   name: image-tag
 - commands:
-  - if [ "${#TEST_SECRET}" -eq 0 ]; then
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
   - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
     as a branch in main grafana/loki repository in order to run." && exit 78'
   - fi
@@ -1611,7 +1611,7 @@ steps:
   image: alpine
   name: image-tag
 - commands:
-  - if [ "${#TEST_SECRET}" -eq 0 ]; then
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
   - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
     as a branch in main grafana/loki repository in order to run." && exit 78'
   - fi
@@ -1772,6 +1772,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 481157ef4226aeafda64e9c66b83938482889e19e190bfe72e06613c84efbfae
+hmac: 59c2b7df0660f1b6855eac6b71b4cf8ad62727d6b10314baf48a2ab85bf27463
 
 ...
