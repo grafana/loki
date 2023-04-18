@@ -38,9 +38,10 @@ import (
 var (
 	testTime   = time.Date(2019, 12, 2, 11, 10, 10, 10, time.UTC)
 	testConfig = Config{queryrangebase.Config{
-		AlignQueriesWithStep: true,
-		MaxRetries:           3,
-		CacheResults:         true,
+		AlignQueriesWithStep:   true,
+		MaxRetries:             3,
+		CacheResults:           true,
+		CacheIndexStatsResults: true,
 		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
@@ -144,6 +145,7 @@ func TestMetricsTripperware(t *testing.T) {
 	l = WithSplitByLimits(l, 4*time.Hour)
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
+	noCacheTestCfg.CacheIndexStatsResults = false
 	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil)
@@ -246,6 +248,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	}
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
+	noCacheTestCfg.CacheIndexStatsResults = false
 	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -315,6 +318,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	testShardingConfigNoCache := testConfig
 	testShardingConfigNoCache.ShardedQueries = true
 	testShardingConfigNoCache.CacheResults = false
+	testShardingConfigNoCache.CacheIndexStatsResults = false
 	var l Limits = fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
