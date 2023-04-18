@@ -22,6 +22,7 @@ import (
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
 )
 
 const localhost = "127.0.0.1"
@@ -274,7 +275,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			serverConfig, port, err := getServerConfigWithAvailablePort()
 			require.NoError(t, err, "error generating server config or finding open port")
 			config := &scrapeconfig.HerokuDrainTargetConfig{
-				Server:               serverConfig,
+				Server:               phttp.Config{Server: serverConfig},
 				Labels:               tc.args.Labels,
 				UseIncomingTimestamp: false,
 			}
@@ -335,7 +336,7 @@ func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.HerokuDrainTargetConfig{
-		Server:               serverConfig,
+		Server:               phttp.Config{Server: serverConfig},
 		Labels:               nil,
 		UseIncomingTimestamp: true,
 	}
@@ -378,7 +379,7 @@ func TestHerokuDrainTarget_ErrorOnNotPrometheusCompatibleJobName(t *testing.T) {
 	serverConfig, _, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.HerokuDrainTargetConfig{
-		Server:               serverConfig,
+		Server:               phttp.Config{Server: serverConfig},
 		Labels:               nil,
 		UseIncomingTimestamp: true,
 	}
@@ -404,7 +405,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	serverConfig, port, err := getServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.HerokuDrainTargetConfig{
-		Server:               serverConfig,
+		Server:               phttp.Config{Server: serverConfig},
 		Labels:               nil,
 		UseIncomingTimestamp: true,
 	}

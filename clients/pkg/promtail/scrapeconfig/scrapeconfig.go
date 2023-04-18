@@ -416,8 +416,8 @@ type GcplogTargetConfig struct {
 
 // HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.
 type HerokuDrainTargetConfig struct {
-	// Server is the weaveworks server config for listening connections
-	Server server.Config `yaml:"server"`
+	// Server is used to configure the HTTP server the target exposes.
+	Server phttp.Config `yaml:",inline"`
 
 	// Labels optionally holds labels to associate with each record received on the push api.
 	Labels model.LabelSet `yaml:"labels"`

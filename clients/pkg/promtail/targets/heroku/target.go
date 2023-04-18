@@ -2,35 +2,32 @@ package heroku
 
 import (
 	"fmt"
+	"github.com/gorilla/mux"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
-
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Target struct {
+	server         *phttp.TargetServer
 	logger         log.Logger
 	handler        api.EntryHandler
 	config         *scrapeconfig.HerokuDrainTargetConfig
 	jobName        string
-	server         *server.Server
 	metrics        *Metrics
 	relabelConfigs []*relabel.Config
 }
@@ -39,7 +36,13 @@ type Target struct {
 func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuDrainTargetConfig, relabel []*relabel.Config) (*Target, error) {
 	wrappedLogger := log.With(logger, "component", "heroku_drain")
 
+	server, err := phttp.NewTargetServer(wrappedLogger, jobName, "heroku_drain", &config.Server)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create heroku drain target server: %w", err)
+	}
+
 	ht := &Target{
+		server:         server,
 		metrics:        metrics,
 		logger:         wrappedLogger,
 		handler:        handler,
@@ -48,56 +51,14 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 		relabelConfigs: relabel,
 	}
 
-	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
+	err = ht.server.MountAndRun(func(router *mux.Router) {
+		router.Path("/heroku/api/v1/drain").Methods("POST").Handler(http.HandlerFunc(ht.drain))
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring heroku drain target: %w", err)
-	}
-	// Set the config to the new combined config.
-	config.Server = mergedServerConfigs
-
-	err = ht.run()
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start heroku drain target server: %w", err)
 	}
 
 	return ht, nil
-}
-
-func (h *Target) run() error {
-	level.Info(h.logger).Log("msg", "starting heroku drain target", "job", h.jobName)
-
-	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
-
-	tentativeServerMetricNamespace := "promtail_heroku_drain_target_" + h.jobName
-	if !model.IsValidMetricName(model.LabelValue(tentativeServerMetricNamespace)) {
-		return fmt.Errorf("invalid prometheus-compatible job name: %s", h.jobName)
-	}
-	h.config.Server.MetricsNamespace = tentativeServerMetricNamespace
-
-	// We don't want the /debug and /metrics endpoints running, since this is not the main promtail HTTP server.
-	// We want this target to expose the least surface area possible, hence disabling WeaveWorks HTTP server metrics
-	// and debugging functionality.
-	h.config.Server.RegisterInstrumentation = false
-
-	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
-
-	srv, err := server.New(h.config.Server)
-	if err != nil {
-		return err
-	}
-
-	h.server = srv
-	h.server.HTTP.Path("/heroku/api/v1/drain").Methods("POST").Handler(http.HandlerFunc(h.drain))
-
-	go func() {
-		err := srv.Run()
-		if err != nil {
-			level.Error(h.logger).Log("msg", "heroku drain target shutdown with error", "err", err)
-		}
-	}()
-
-	return nil
 }
 
 func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +147,7 @@ func (h *Target) Details() interface{} {
 
 func (h *Target) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping heroku drain target", "job", h.jobName)
-	h.server.Shutdown()
+	h.server.StopAndShutdown()
 	h.handler.Stop()
 	return nil
 }
