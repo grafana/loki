@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
@@ -227,30 +227,16 @@ func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through mode
 
 			// Assuming entries and bytes are evenly distributed in the chunk,
 			// We will take the proportional number of entries and number of bytes
-			// if (chk.MinTime < from) and/or (chk.MaxTime > through).
-			//
-			//       MinTime  From              Through  MaxTime
-			//       ┌────────┬─────────────────┬────────┐
-			//       │        *      Chunk      *        │
-			//       └────────┴─────────────────┴────────┘
-			//       ▲   A    |        C        |   B    ▲
-			//       └───────────────────────────────────┘
-			//               T = MinTime - MaxTime
-			//
-			// We want to get the percentage of time that fits into C
+			// We get the percentage of time that the range `from` to `through` fits into the chunk
 			// to use it as a factor to get the amount of bytes and entries
-			// factor = C = (T - (A + B)) / T = (chunkTime - (leadingTime + trailingTime)) / chunkTime
-			chunkTime := chk.MaxTime - chk.MinTime
-			leadingTime := math.Max64(0, int64(from)-chk.MinTime)
-			trailingTime := math.Max64(0, chk.MaxTime-int64(through))
-			factor := float32(chunkTime-(leadingTime+trailingTime)) / float32(chunkTime)
+			factor, leadingTime, trailingTime := util.GetFactorOfTime(int64(from), int64(through), chk.MinTime, chk.MaxTime)
 
 			adjustedChunkMeta := index.ChunkMeta{
 				Checksum: chk.Checksum,
 				MinTime:  chk.MinTime + leadingTime,
 				MaxTime:  chk.MinTime + trailingTime,
-				KB:       uint32(float32(chk.KB) * factor),
-				Entries:  uint32(float32(chk.Entries) * factor),
+				KB:       uint32(float64(chk.KB) * factor),
+				Entries:  uint32(float64(chk.Entries) * factor),
 			}
 
 			acc.AddChunk(fp, adjustedChunkMeta)
