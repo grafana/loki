@@ -42,7 +42,7 @@ func DefaultIndexClientOptions() IndexClientOptions {
 
 type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
-	AddChunk(fp model.Fingerprint, chk index.ChunkMeta)
+	AddChunkStats(s index.ChunkStats)
 	Stats() stats.Stats
 }
 

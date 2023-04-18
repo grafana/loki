@@ -146,6 +146,30 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, index.ChunkStats, error) {
+	s := h.head.series.getByID(uint64(ref))
+
+	if s == nil {
+		h.head.metrics.seriesNotFound.Inc()
+		return 0, index.ChunkStats{}, storage.ErrNotFound
+	}
+	*lbls = append((*lbls)[:0], s.ls...)
+
+	queryBounds := newBounds(model.Time(from), model.Time(through))
+
+	var res index.ChunkStats
+	s.Lock()
+	for _, chk := range s.chks {
+		if !Overlap(chk, queryBounds) {
+			continue
+		}
+		res.AddChunk(&chk, from, through)
+	}
+	s.Unlock()
+
+	return s.fp, res, nil
+}
+
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
 func (h *headIndexReader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
 	memSeries := h.head.series.getByID(uint64(id))
