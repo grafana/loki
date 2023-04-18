@@ -42,7 +42,6 @@ import (
 
 func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	ingesterConfig := defaultIngesterTestConfig(b)
-	ingesterConfig.UpdateInterval = time.Minute
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 

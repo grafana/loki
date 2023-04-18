@@ -643,12 +643,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
 func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
 	allRates := i.streamRateCalculator.Rates()
-
-	rates := make([]*logproto.StreamRate, 0, len(allRates))
-	for idx := range allRates {
-		rates = append(rates, &allRates[idx])
-	}
-
+	rates := make([]*logproto.StreamRate, len(allRates))
 	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
 }
 
