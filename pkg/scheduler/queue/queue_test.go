@@ -13,6 +13,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func BenchmarkRecomputeTenantQueriers(b *testing.B) {
+	benchCases := []struct {
+		minQueriers int
+		maxQueriers int
+	}{
+		{100, 500},
+		{200, 500},
+		{400, 500},
+		{500, 1000},
+	}
+
+	numTenants := 1000
+	type r struct{}
+
+	for _, bc := range benchCases {
+		bc := bc
+		b.Run(fmt.Sprintf("from_%d_to_%d", bc.minQueriers, bc.maxQueriers), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				queue := NewRequestQueue(1024, 0, NewMetrics("query_scheduler", nil))
+				for i := 0; i < numTenants; i++ {
+					_ = queue.Enqueue(fmt.Sprintf("tenant-%d", i), nil, &r{}, bc.maxQueriers/2, nil)
+				}
+				for ix := 0; ix < bc.minQueriers; ix++ {
+					querier := fmt.Sprintf("querier-%d", ix)
+					queue.RegisterQuerierConnection(querier)
+				}
+
+				b.ResetTimer()
+				b.ReportMetric(float64(bc.maxQueriers-bc.minQueriers), "queriers")
+				for ix := bc.minQueriers; ix < bc.maxQueriers; ix++ {
+					querier := fmt.Sprintf("querier-%d", ix)
+					queue.RegisterQuerierConnection(querier)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkGetNextRequest(b *testing.B) {
 	const maxOutstandingPerTenant = 2
 	const numTenants = 50
