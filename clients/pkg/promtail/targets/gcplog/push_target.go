@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	phttp "github.com/grafana/loki/clients/pkg/promtail/targets/http"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
@@ -23,6 +24,7 @@ import (
 )
 
 type pushTarget struct {
+	ts             *phttp.TargetServer
 	config         *scrapeconfig.GcplogTargetConfig
 	entries        chan<- api.Entry
 	handler        api.EntryHandler
