@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -641,7 +642,12 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 // GetStreamRates returns a response containing all streams and their current rate
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
-func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "ingester started to handle GetStreamRates")
+		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
+	}
+
 	allRates := i.streamRateCalculator.Rates()
 
 	rates := make([]*logproto.StreamRate, 0, len(allRates))
