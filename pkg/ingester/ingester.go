@@ -41,7 +41,6 @@ import (
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
-	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/wal"
 )
@@ -526,7 +525,7 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
-	var errs errUtil.MultiError
+	var errs util.MultiError
 	errs.Add(i.wal.Stop())
 
 	if i.flushOnShutdownSwitch.Get() {
@@ -854,13 +853,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
-			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
 	}
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
 	// sendBatches uses -1 to specify no limit.
 	batchLimit := int32(req.Limit)
@@ -900,14 +899,14 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
-			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 
 		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
 	return sendSampleBatches(ctx, it, queryServer)
 }
@@ -949,7 +948,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	reqStart = adjustQueryStartTime(asyncStoreMaxLookBack, reqStart, time.Now())
 
 	// parse the request
-	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
+	start, end := util.RoundToMilliseconds(reqStart, req.End)
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -1043,7 +1042,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	return &logproto.LabelResponse{
-		Values: errUtil.MergeStringLists(resp.Values, storeValues),
+		Values: util.MergeStringLists(resp.Values, storeValues),
 	}, nil
 }
 
