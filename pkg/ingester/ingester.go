@@ -644,8 +644,8 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
 func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "ingester started to handle get stream rates")
-		defer sp.LogKV("event", "ingester finished handling get stream rates")
+		sp.LogKV("event", "ingester started to handle GetStreamRates")
+		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
 
 	allRates := i.streamRateCalculator.Rates()
