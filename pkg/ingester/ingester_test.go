@@ -89,7 +89,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 
 	b.ReportAllocs()
 	for idx := 0; idx < b.N; idx++ {
-		i.GetStreamRates(context.TODO(), nil)
+		i.GetStreamRates(context.TODO(), nil) //nolint:errcheck
 	}
 }
 
