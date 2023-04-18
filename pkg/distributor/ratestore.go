@@ -125,7 +125,7 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 	streamCnt := 0
 	if s.debug {
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("event", "started to update rates")
+			sp.LogKV("event", "started updating rates")
 			defer sp.LogKV("event", "finished updating rates", "streams", streamCnt)
 		}
 	}
