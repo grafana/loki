@@ -167,6 +167,7 @@ func Test_astMapper(t *testing.T) {
 		},
 		testEngineOpts,
 		handler,
+		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
@@ -299,6 +300,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				},
 				testEngineOpts,
 				handler,
+				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{
@@ -337,6 +339,7 @@ func Test_ShardingByPass(t *testing.T) {
 		},
 		testEngineOpts,
 		handler,
+		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
@@ -414,7 +417,8 @@ func Test_InstantSharding(t *testing.T) {
 			maxQueryParallelism: 10,
 			queryTimeout:        time.Second,
 		},
-		0)
+		0,
+		nil)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
@@ -694,6 +698,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				confs,
 				testEngineOpts,
 				handler,
+				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
@@ -801,11 +806,11 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	engineOpts := testEngineOpts
 	engineOpts.MaxLookBackPeriod = 1 * time.Hour
 
-	handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		if _, ok := req.(*logproto.IndexStatsRequest); !ok {
-			return &LokiResponse{}, nil
-		}
+	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiResponse{}, nil
+	})
 
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
 		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
 
@@ -819,7 +824,8 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	mware := newASTMapperware(
 		testSchemasTSDB,
 		engineOpts,
-		handler,
+		queryHandler,
+		statsHandler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
