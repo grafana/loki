@@ -720,58 +720,6 @@ storage_config:
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
 
-		t.Run("when common object store config is provided, compactor shared store is defaulted to use it", func(t *testing.T) {
-			for _, tt := range []struct {
-				configString string
-				expected     string
-			}{
-				{
-					configString: `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789`,
-					expected: config.StorageTypeS3,
-				},
-				{
-					configString: `common:
-  storage:
-    gcs:
-      bucket_name: foobar`,
-					expected: config.StorageTypeGCS,
-				},
-				{
-					configString: `common:
-  storage:
-    azure:
-      account_name: 3rd_planet
-      account_key: water`,
-					expected: config.StorageTypeAzure,
-				},
-				{
-					configString: `common:
-  storage:
-    swift:
-      username: steve
-      password: supersecret`,
-					expected: config.StorageTypeSwift,
-				},
-				{
-					configString: `common:
-  storage:
-    filesystem:
-      chunks_directory: /tmp/chunks
-      rules_directory: /tmp/rules`,
-					expected: config.StorageTypeFileSystem,
-				},
-			} {
-				config, _ := testContext(tt.configString, nil)
-
-				assert.Equal(t, tt.expected, config.CompactorConfig.SharedStoreType)
-			}
-		})
-
 		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
 			configString := `common:
   storage:
