@@ -196,17 +196,18 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
+	now := time.Now()
 
 	for tID, tenant := range streamRates {
-		for _, streamRate := range tenant {
-			if _, ok := rates[tID]; !ok {
-				rates[tID] = map[uint64]expiringRate{}
-			}
+		if _, ok := rates[tID]; !ok {
+			rates[tID] = map[uint64]expiringRate{}
+		}
 
+		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
 			rate.shards++
-			rate.createdAt = time.Now()
+			rate.createdAt = now
 
 			rates[tID][streamRate.StreamHashNoShard] = rate
 		}
