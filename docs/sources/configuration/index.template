@@ -33,7 +33,7 @@ every option has a default value whether it is being used or not.
 This output can be an invaluable tool for debugging configuration-related issues. It is especially
 useful for verifying that your configuration files and flags are being properly read and loaded.
 
-When running Loki directly (e.g., ./loki), the `-print-config-stderr` flag is useful for quickly outputting 
+When running Loki directly (for example,  ./loki), the `-print-config-stderr` flag is useful for quickly outputting 
 the entire Loki configuration.
 
 In our environments, we run Loki with the `-log-config-reverse-order` flag, which reverses the order
