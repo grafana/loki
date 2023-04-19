@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-* [9175](https://github.com/grafana/loki/pull/9175) **MichelHollands**: Ingester: update the `prepare-shutdown` endpoint so it supports GET and DELETE and stores the state on disk.
+* [9175](https://github.com/grafana/loki/pull/9175) **MichelHollands**: Ingester: update the `prepare_shutdown` endpoint so it supports GET and DELETE and stores the state on disk.
 * [8953](https://github.com/grafana/loki/pull/8953) **dannykopping**: Querier: block queries by hash.
 * [8851](https://github.com/grafana/loki/pull/8851) **jeschkies**: Introduce limit to require a set of labels for selecting streams.
 * [9016](https://github.com/grafana/loki/pull/9016) **kavirajk**: Change response type of `format_query` handler to `application/json`
