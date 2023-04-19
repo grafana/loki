@@ -89,7 +89,9 @@ func deriveEndpoints(endpoint string, lookup func(host string) ([]string, error)
 	}
 
 	endpoints := strings.Split(endpoint, ",")
-	if len(endpoints) < 1 {
+
+	// no endpoints or multiple endpoints will not need derivation
+	if len(endpoints) != 1 {
 		return endpoints, nil
 	}
 
