@@ -490,7 +490,15 @@ func TestShuffleQueriers(t *testing.T) {
 	// Same input produces same output.
 	r2 := shuffleQueriersForTenants(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, r2.Count())
-	require.Equal(t, r1, r2)
+
+	// *SwissMap cannot be compared with require.Equal()
+	require.Equal(t, r1.Count(), r2.Count())
+	r1.Iter(func(k1 string, v1 struct{}) (stop bool) {
+		v2, ok := r2.Get(k1)
+		require.True(t, ok)
+		require.Equal(t, v1, v2)
+		return true
+	})
 }
 
 func TestShuffleQueriersCorrectness(t *testing.T) {
