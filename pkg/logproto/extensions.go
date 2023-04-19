@@ -37,10 +37,10 @@ func (m *IndexStatsResponse) AddStream(_ model.Fingerprint) {
 }
 
 // Safe for concurrent use
-func (m *IndexStatsResponse) AddChunk(_ model.Fingerprint, chk index.ChunkMeta) {
-	atomic.AddUint64(&m.Chunks, 1)
-	atomic.AddUint64(&m.Bytes, uint64(chk.KB<<10))
-	atomic.AddUint64(&m.Entries, uint64(chk.Entries))
+func (m *IndexStatsResponse) AddChunkStats(s index.ChunkStats) {
+	atomic.AddUint64(&m.Chunks, s.Chunks)
+	atomic.AddUint64(&m.Bytes, s.KB<<10)
+	atomic.AddUint64(&m.Entries, s.Entries)
 }
 
 func (m *IndexStatsResponse) Stats() IndexStatsResponse {
