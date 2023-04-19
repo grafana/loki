@@ -625,13 +625,21 @@ In microservices mode, the `/flush` endpoint is exposed by the ingester.
 ### Tell ingester to release all resources on next SIGTERM
 
 ```
-POST /ingester/prepare_shutdown
+GET, POST, DELETE /ingester/prepare_shutdown
 ```
 
-`/ingester/prepare_shutdown` will prepare the ingester to release resources on the next SIGTERM signal,
-where releasing resources means flushing data and unregistering from the ingester ring.
+After a `POST` to the `prepare_shutdown` endpoint returns, when the ingester process is stopped with `SIGINT` / `SIGTERM`,
+the ingester will be unregistered from the ring and in-memory time series data will be flushed to long-term storage.
 This endpoint supersedes any YAML configurations and isn't necessary if the ingester is already
 configured to unregister from the ring or to flush on shutdown.
+
+A `GET` to the `prepare_shutdown` endpoint returns the status of this configuration, either `set` or `unset`.
+
+A `DELETE` to the `prepare_shutdown` endpoint reverts the configuration of the ingester to its previous state
+(with respect to unregistering on shutdown and flushing of in-memory time series data to long-term storage).
+
+This API endpoint is usually used by Kubernetes-specific scale down automations such as the
+[rollout-operator](https://github.com/grafana/rollout-operator).
 
 ## Flush in-memory chunks and shut down
 

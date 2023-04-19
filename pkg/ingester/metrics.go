@@ -59,6 +59,9 @@ type ingesterMetrics struct {
 	samplesPerChunk    prometheus.Histogram
 	blocksPerChunk     prometheus.Histogram
 	chunkCreatedStats  *usagestats.Counter
+
+	// Shutdown marker for ingester scale down
+	shutdownMarker prometheus.Gauge
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -267,5 +270,12 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		}),
 
 		chunkCreatedStats: usagestats.NewCounter("ingester_chunk_created"),
+
+		shutdownMarker: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Subsystem: "ingester",
+			Name:      "shutdown_marker",
+			Help:      "1 if prepare shutdown has been called, 0 otherwise",
+		}),
 	}
 }

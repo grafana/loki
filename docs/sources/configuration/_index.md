@@ -1480,6 +1480,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# Path where the shutdown marker file is stored. If not set and
+# common.path_prefix is set then common.path_prefix will be used.
+# CLI flag: -ingester.shutdown-marker-path
+[shutdown_marker_path: <string> | default = ""]
 ```
 
 ### index_gateway
