@@ -193,15 +193,20 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	}
 }
 
-// buildChunkMetas builds 1ms wide chunk metas from -> to.
-func buildChunkMetas(from, to int64) index.ChunkMetas {
+// buildChunkMetas builds `span[0]` ms wide chunk metas from -> to.
+func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
+	var s int64 = 1
+	if len(span) > 0 {
+		s = span[0]
+	}
 	var chunkMetas index.ChunkMetas
-	for i := from; i <= to; i++ {
+	for i := from; i <= to; i += s {
 		chunkMetas = append(chunkMetas, index.ChunkMeta{
 			MinTime:  i,
-			MaxTime:  i + 1,
+			MaxTime:  i + s,
 			Checksum: uint32(i),
-			Entries:  1,
+			Entries:  uint32(s),
+			KB:       uint32(s),
 		})
 	}
 
@@ -596,7 +601,7 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 							actualChunks[lbls.String()] = chks
 						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
@@ -810,7 +815,7 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)
@@ -895,6 +900,10 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 type dummyChunkData struct {
 	chunk.Data
+}
+
+func (d dummyChunkData) UncompressedSize() int {
+	return 1 << 10 // 1KB
 }
 
 func (d dummyChunkData) Entries() int {

@@ -212,6 +212,20 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 }
 
+func BenchmarkAggregateByShard(b *testing.B) {
+	rs := &rateStore{rates: make(map[string]map[uint64]expiringRate)}
+	rates := make(map[string]map[uint64]*logproto.StreamRate)
+	rates["fake"] = make(map[uint64]*logproto.StreamRate)
+	for i := 0; i < 1000; i++ {
+		rates["fake"][uint64(i)] = &logproto.StreamRate{StreamHash: uint64(i), StreamHashNoShard: 12345}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rs.aggregateByShard(context.TODO(), rates)
+	}
+}
+
 func newFakeRing() *fakeRing {
 	return &fakeRing{}
 }
