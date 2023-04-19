@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/grafana/dskit/multierror"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
