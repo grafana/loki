@@ -41,6 +41,24 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	resp := httptest.NewRecorder()
+	i.PrepareShutdown(resp, httptest.NewRequest("GET", "/ingester/prepare-shutdown", nil))
+	require.Equal(t, 500, resp.Code)
+}
+
 func TestPrepareShutdown(t *testing.T) {
 	tempDir := t.TempDir()
 	ingesterConfig := defaultIngesterTestConfig(t)

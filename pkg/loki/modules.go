@@ -454,7 +454,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		t.Cfg.Ingester.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
 	}
 	if t.Cfg.Ingester.ShutdownMarkerPath == "" {
-		return nil, fmt.Errorf("The shutdown marker path is not set")
+		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer)

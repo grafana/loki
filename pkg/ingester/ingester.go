@@ -600,6 +600,10 @@ func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 // * `POST` enables this configuration
 // * `DELETE` disables this configuration
 func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
+	if i.cfg.ShutdownMarkerPath == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 
 	switch r.Method {
