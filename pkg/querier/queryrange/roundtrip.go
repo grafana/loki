@@ -707,7 +707,7 @@ func NewIndexStatsTripperware(
 	limits = WithSplitByLimits(limits, 24*time.Hour)
 
 	var cacheMiddleware queryrangebase.Middleware
-	if cfg.CacheResults {
+	if cfg.CacheIndexStatsResults {
 		var err error
 		cacheMiddleware, err = NewIndexStatsCacheMiddleware(
 			log,
@@ -744,7 +744,7 @@ func NewIndexStatsTripperware(
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 		}
 
-		if cfg.CacheResults {
+		if cfg.CacheIndexStatsResults {
 			middlewares = append(
 				middlewares,
 				queryrangebase.InstrumentMiddleware("log_results_cache", metrics.InstrumentMiddlewareMetrics),

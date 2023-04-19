@@ -739,6 +739,10 @@ results_cache:
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
 
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
