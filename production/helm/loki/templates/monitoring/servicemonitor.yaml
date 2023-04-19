@@ -43,8 +43,10 @@ spec:
         - sourceLabels: [job]
           replacement: "{{ $.Release.Namespace }}/$1"
           targetLabel: job
+          action: replace
         - replacement: "{{ include "loki.fullname" $ }}"
           targetLabel: cluster
+          action: replace
         {{- with .relabelings }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
