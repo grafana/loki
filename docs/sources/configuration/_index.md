@@ -1478,7 +1478,7 @@ wal:
 [max_dropped_streams: <int> | default = 10]
 
 # Path where the shutdown marker file is stored
-# CLI flag: -ingester.shutdown_marker_path
+# CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
 ```
 
