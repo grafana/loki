@@ -193,7 +193,7 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	}
 }
 
-// buildChunkMetas builds 1ms wide chunk metas from -> to.
+// buildChunkMetas builds `span[0]` ms wide chunk metas from -> to.
 func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
 	var s int64 = 1
 	if len(span) > 0 {
@@ -601,7 +601,7 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 							actualChunks[lbls.String()] = chks
 						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
@@ -815,7 +815,7 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)
