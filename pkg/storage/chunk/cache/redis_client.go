@@ -57,7 +57,7 @@ type RedisClient struct {
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
-	endpoints, err := deriveEndpoints(cfg.Endpoint)
+	endpoints, err := deriveEndpoints(cfg.Endpoint, net.LookupHost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive endpoints: %w", err)
 	}
@@ -83,10 +83,13 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 	}, nil
 }
 
-func deriveEndpoints(endpoint string) ([]string, error) {
-	endpoints := strings.Split(endpoint, ",")
+func deriveEndpoints(endpoint string, lookup func(host string) ([]string, error)) ([]string, error) {
+	if lookup == nil {
+		return nil, fmt.Errorf("lookup function is nil")
+	}
 
-	if len(endpoints) <= 1 {
+	endpoints := strings.Split(endpoint, ",")
+	if len(endpoints) < 1 {
 		return endpoints, nil
 	}
 
@@ -95,7 +98,7 @@ func deriveEndpoints(endpoint string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("splitting host:port failed :%w", err)
 	}
-	addrs, err := net.LookupHost(host)
+	addrs, err := lookup(host)
 	if err != nil {
 		return nil, fmt.Errorf("could not lookup host: %w", err)
 	}
