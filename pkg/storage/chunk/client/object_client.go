@@ -165,7 +165,7 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	readCloser, size, err := o.store.GetObject(ctx, key)
 	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return chunk.Chunk{}, errors.WithStack(errors.Wrapf(err, "failed to load chunk '%s'", key))
 	}
 
 	if readCloser == nil {
