@@ -48,6 +48,7 @@
 ##### Fixes
 
 * [8566](https://github.com/grafana/loki/pull/8566) **ndrpnt**: Allow queries to start with negative filters (`!=` and `!~`) when omitting stream selector with `--stdin` flag
+* [9191](https://github.com/grafana/loki/pull/9191) **salvacorts**: Fix loading global remote schema for backwards compatibility when tenant-specific schema is not found.
 
 #### Mixins
 
