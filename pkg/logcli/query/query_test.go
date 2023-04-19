@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,9 +14,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -23,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
@@ -905,5 +909,98 @@ func TestParallelJobs(t *testing.T) {
 				cmpParallelJobSlice(t, tt.jobs, jobs)
 			},
 		)
+	}
+}
+
+type mockObjectClient struct {
+	client.ObjectClient
+	schemas map[string]string
+}
+
+func (m mockObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
+	if schema, ok := m.schemas[objectKey]; ok {
+		return io.NopCloser(strings.NewReader(schema)), 0, nil
+	}
+
+	return nil, 0, errors.New("object doesn't exist")
+}
+
+func Test_loadRemoteSchema(t *testing.T) {
+	tenantSchemaStr := `
+schema_config:
+  configs:
+  - from: "1950-01-01"
+    store: tsdb
+    object_store: gcs
+    schema: v12
+`
+	var tenantSchema schemaConfigSection
+	require.NoError(t, yaml.Unmarshal([]byte(tenantSchemaStr), &tenantSchema))
+
+	globalSchemaStr := `
+schema_config:
+  configs:
+  - from: "1950-01-01"
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v12
+`
+	var globalSchema schemaConfigSection
+	require.NoError(t, yaml.Unmarshal([]byte(globalSchemaStr), &globalSchema))
+
+	for _, tc := range []struct {
+		name   string
+		client client.ObjectClient
+
+		wantErr        bool
+		expectedSchema schemaConfigSection
+	}{
+		{
+			name:           "No schema",
+			client:         mockObjectClient{},
+			wantErr:        true,
+			expectedSchema: schemaConfigSection{},
+		},
+		{
+			name: "tenant schema",
+			client: mockObjectClient{
+				schemas: map[string]string{
+					"fake-schemaconfig.yaml": tenantSchemaStr,
+				},
+			},
+			wantErr:        false,
+			expectedSchema: tenantSchema,
+		},
+		{
+			name: "tenant and global schema",
+			client: mockObjectClient{
+				schemas: map[string]string{
+					"fake-schemaconfig.yaml": tenantSchemaStr,
+					"schemaconfig.yaml":      globalSchemaStr,
+				},
+			},
+			wantErr:        false,
+			expectedSchema: tenantSchema,
+		},
+		{
+			name: "global schema",
+			client: mockObjectClient{
+				schemas: map[string]string{
+					"schemaconfig.yaml": globalSchemaStr,
+				},
+			},
+			wantErr:        false,
+			expectedSchema: globalSchema,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			loadedSchema, err := loadRemoteSchema(tc.client, "fake")
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedSchema.Configs, loadedSchema.Configs)
+			}
+		})
 	}
 }
