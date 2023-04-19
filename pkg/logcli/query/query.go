@@ -444,7 +444,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		}
 		loadedSchema, err := LoadSchemaUsingObjectClient(client, objects...)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to load schema config: %w", err)
 		}
 
 		conf.SchemaConfig = *loadedSchema
@@ -538,7 +538,7 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*confi
 			defer cancel()
 			rdr, _, err := oc.GetObject(ctx, name)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to load object '%s': %w", name, err)
 			}
 			defer rdr.Close()
 
@@ -547,7 +547,7 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*confi
 			section := schemaConfigSection{}
 			err = decoder.Decode(&section)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to decode downloaded object '%s': %w", name, err)
 			}
 
 			return &section.SchemaConfig, nil

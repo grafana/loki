@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -165,7 +166,7 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 	readCloser, size, err := o.store.GetObject(ctx, key)
 	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return chunk.Chunk{}, errors.WithStack(fmt.Errorf("failed to load object '%s': %w", key, err))
 	}
 
 	if readCloser == nil {
