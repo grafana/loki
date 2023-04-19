@@ -627,6 +627,10 @@ scheduler_ring:
   # zone-awareness is enabled.
   # CLI flag: -query-scheduler.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -query-scheduler.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 ```
 
 ### frontend
@@ -864,18 +868,18 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # Path to the key file for the client certificate. Also requires the client
+  # Path to the key for the client certificate. Also requires the client
   # certificate to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
   # CLI flag: -ruler.alertmanager-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
 
@@ -1137,18 +1141,18 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
-    # Path to the client certificate file, which will be used for authenticating
-    # with the server. Also requires the key path to be configured.
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
     [tls_cert_path: <string> | default = ""]
 
-    # Path to the key file for the client certificate. Also requires the client
+    # Path to the key for the client certificate. Also requires the client
     # certificate to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
     [tls_key_path: <string> | default = ""]
 
-    # Path to the CA certificates file to validate server certificate against.
-    # If not set, the host's root CA certificates are used.
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
     # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
     [tls_ca_path: <string> | default = ""]
 
@@ -1325,6 +1329,11 @@ lifecycler:
   # Name of network interface to read address from.
   # CLI flag: -ingester.lifecycler.interface
   [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Enable IPv6 support. Required to make use of IP addresses from IPv6
+  # interfaces.
+  # CLI flag: -ingester.enable-inet6
+  [enable_inet6: <boolean> | default = false]
 
   # Duration to sleep for before exiting, to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
@@ -1584,6 +1593,10 @@ ring:
   # zone-awareness is enabled.
   # CLI flag: -index-gateway.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -index-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
   # How many index gateway instances are assigned to each tenant.
   # CLI flag: -replication-factor
@@ -2147,6 +2160,10 @@ compactor_ring:
   # zone-awareness is enabled.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
@@ -3095,6 +3112,10 @@ ring:
   # CLI flag: -common.storage.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
+  # Enable using a IPv6 instance address.
+  # CLI flag: -common.storage.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
 [instance_interface_names: <list of strings>]
 
 [instance_addr: <string> | default = ""]
@@ -3182,18 +3203,18 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3312,18 +3333,18 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3379,18 +3400,18 @@ backoff_config:
 The TLS configuration.
 
 ```yaml
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -frontend.tail-tls-config.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
