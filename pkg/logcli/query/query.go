@@ -420,6 +420,27 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 	return length, entry
 }
 
+// loadRemoteSchema First tries to download the tenant specific schema config (tenant-schemaconfig.yaml),
+// if it doesn't exist, fallback to the global one (schemaconfig.yaml) for backwards compatibility.
+func loadRemoteSchema(client chunk.ObjectClient, tenant string) (*config.SchemaConfig, error) {
+	tenantSchemaConfigFilename := fmt.Sprintf("%s-%s.yaml", tenant, schemaConfigFilename)
+	globalSchemaConfigFilename := fmt.Sprintf("%s.yaml", schemaConfigFilename)
+	loadedSchema, err := LoadSchemaUsingObjectClient(client, tenantSchemaConfigFilename)
+	if err != nil {
+		if !strings.Contains(err.Error(), "object doesn't exist") {
+			return nil, fmt.Errorf("failed to load schema config: %w", err)
+		}
+
+		log.Printf("failed to load tenant specific schema config (%s). Falling back to load global schema", tenantSchemaConfigFilename)
+		loadedSchema, err = LoadSchemaUsingObjectClient(client, globalSchemaConfigFilename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load global schema config: %w", err)
+		}
+	}
+
+	return loadedSchema, nil
+}
+
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
 func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string, useRemoteSchema bool) error {
 	var conf loki.Config
@@ -433,26 +454,14 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	cm := storage.NewClientMetrics()
 	if useRemoteSchema {
-		client, err := GetObjectClient(conf, cm)
+		objectClient, err := GetObjectClient(conf, cm)
 		if err != nil {
 			return err
 		}
 
-		// First try to download the tenant specific schema config (tenant-schemaconfig.yaml),
-		// if it doesn't exist, fallback to the global one (schemaconfig.yaml) for backwards compatibility.
-		tenantSchemaConfigFilename := fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename)
-		globalSchemaConfigFilename := fmt.Sprintf("%s.yaml", schemaConfigFilename)
-		loadedSchema, err := LoadSchemaUsingObjectClient(client, tenantSchemaConfigFilename)
+		loadedSchema, err := loadRemoteSchema(objectClient, orgID)
 		if err != nil {
-			if !strings.Contains(err.Error(), "object doesn't exist") {
-				return fmt.Errorf("failed to load schema config: %w", err)
-			}
-
-			log.Printf("failed to load tenant specific schema config (%s). Falling back to load global schema", tenantSchemaConfigFilename)
-			loadedSchema, err = LoadSchemaUsingObjectClient(client, globalSchemaConfigFilename)
-			if err != nil {
-				return fmt.Errorf("failed to load global schema config: %w", err)
-			}
+			return err
 		}
 
 		conf.SchemaConfig = *loadedSchema
