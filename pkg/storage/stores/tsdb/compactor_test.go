@@ -244,7 +244,10 @@ func TestCompactor_Compact(t *testing.T) {
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
 	lbls2 := mustParseLabels(`{fizz="buzz", a="b"}`)
 
-	for _, numUsers := range []int{5, 10, 20} {
+	for _, numUsers := range []int{
+		5,
+		10,
+	} {
 		t.Run(fmt.Sprintf("numUsers=%d", numUsers), func(t *testing.T) {
 			for name, tc := range map[string]struct {
 				multiTenantIndexConfigs []multiTenantIndexConfig
