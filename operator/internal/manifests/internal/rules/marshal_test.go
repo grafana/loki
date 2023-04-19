@@ -6,6 +6,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestMarshalAlertingRule(t *testing.T) {
@@ -29,6 +30,7 @@ groups:
           environment: production
           severity: page
           tenantId: a-tenant
+          namespace: ns-1
       - expr: |-
           sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
             /
@@ -43,9 +45,14 @@ groups:
           environment: production
           severity: low
           tenantId: a-tenant
+          namespace: ns-1
 `
 
 	a := lokiv1.AlertingRule{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "an-alert",
+			Namespace: "ns-1",
+		},
 		Spec: lokiv1.AlertingRuleSpec{
 			TenantID: "a-tenant",
 			Groups: []*lokiv1.AlertingRuleGroup{
