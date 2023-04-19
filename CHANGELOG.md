@@ -8,6 +8,8 @@
 
 ##### Fixes
 
+* [9185](https://github.com/grafana/loki/pull/9185) **dannykopping**: Prevent redis client from incorrectly choosing cluster mode with local address.
+
 ##### Changes
 
 ##### Build
