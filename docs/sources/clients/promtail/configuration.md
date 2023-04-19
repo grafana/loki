@@ -592,7 +592,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
+a configurable [LogQL]({{<relref "../../query/">}}) stream selector.
 
 ```yaml
 match:
