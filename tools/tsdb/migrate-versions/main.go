@@ -15,23 +15,29 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
-	gzipExtension = ".gz"
+	gzipExtension  = ".gz"
+	tempFileSuffix = ".temp"
 )
 
 var (
-	desiredVer = flag.Int("ver", index.LiveFormat, "desired version to migrate")
+	desiredVer     = flag.Int("ver", tsdb_index.LiveFormat, "desired version to migrate")
+	tableNumMin    = flag.Int64("table-num-min", 0, "migrate tables starting with given number. 0 means from first table.")
+	tableNumMax    = flag.Int64("table-num-max", 0, "migrate tables upto given number. 0 means until last table.")
+	newTablePrefix = flag.String("new-table-prefix", "", "write the migrated index with a new table prefix. Old index will be retained.")
 )
 
 func exit(code int) {
@@ -74,6 +80,18 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 	}
 
 	for _, tableName := range tableNames {
+		tableNum, err := config.ExtractTableNumberFromName(tableName)
+		if err != nil {
+			return err
+		}
+		if *tableNumMin != 0 && tableNum < *tableNumMin {
+			continue
+		}
+
+		if *tableNumMax != 0 && tableNum > *tableNumMax {
+			continue
+		}
+
 		tableInRange, err := tableRange.TableInRange(tableName)
 		if err != nil {
 			return err
@@ -100,6 +118,16 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 	if len(uncompactedFiles) != 0 {
 		level.Warn(util_log.Logger).Log("msg", "skipping migration of table which has un-compacted files", "table_name", tableName)
 		return nil
+	}
+
+	newTableName := tableName
+	if *newTablePrefix != "" {
+		tableNum, err := config.ExtractTableNumberFromName(tableName)
+		if err != nil {
+			return err
+		}
+
+		newTableName = fmt.Sprintf("%s%d", *newTablePrefix, tableNum)
 	}
 
 	for _, tenant := range tenants {
@@ -144,20 +172,89 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 			return errors.Wrapf(err, "failed to build index with new version")
 		}
 
-		idxReader, err := idx.Reader()
-		if err != nil {
-			return errors.Wrapf(err, "failed to create reader for uploading index")
+		if err := os.Remove(dst); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to remove downloaded index file", "path", dst, "err", err)
 		}
-		if err := indexStorageClient.PutUserFile(context.Background(), tableName, tenant, idx.Name(), idxReader); err != nil {
+
+		if err := uploadFile(idx, indexStorageClient, newTableName, tenant); err != nil {
 			return errors.Wrapf(err, "failed to upload index file for tenant %s", tenant)
 		}
 
-		if err := indexStorageClient.DeleteUserFile(context.Background(), tableName, tenant, indexFiles[0].Name); err != nil {
-			return errors.Wrapf(err, "failed to remove older version index file %s for tenant %s", indexFiles[0].Name, tenant)
+		idxPath := idx.Path()
+		if err := idx.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close index file", "err", err)
+		}
+
+		if err := os.Remove(idxPath); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to remove local copy of migrated index file", "path", idxPath, "err", err)
+		}
+
+		// remove existing index file when writing migrated index in the same table since compactor would anyways be compacted it to a single file
+		if *newTablePrefix == "" {
+			if err := indexStorageClient.DeleteUserFile(context.Background(), tableName, tenant, indexFiles[0].Name); err != nil {
+				return errors.Wrapf(err, "failed to remove older version index file %s for tenant %s", indexFiles[0].Name, tenant)
+			}
 		}
 	}
 
 	return nil
+}
+
+func uploadFile(idx index.Index, indexStorageClient shipper_storage.Client, tableName, tenant string) error {
+	fileName := idx.Name()
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("uploading index %s", fileName))
+
+	idxPath := idx.Path()
+
+	filePath := fmt.Sprintf("%s%s", idxPath, tempFileSuffix)
+	f, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err := f.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
+		}
+
+		if err := os.Remove(filePath); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
+		}
+	}()
+
+	compressedWriter := chunkenc.Gzip.GetWriter(f)
+	defer chunkenc.Gzip.PutWriter(compressedWriter)
+
+	idxReader, err := idx.Reader()
+	if err != nil {
+		return err
+	}
+
+	_, err = idxReader.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(compressedWriter, idxReader)
+	if err != nil {
+		return err
+	}
+
+	err = compressedWriter.Close()
+	if err != nil {
+		return err
+	}
+
+	// flush the file to disk and seek the file to the beginning.
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	if _, err := f.Seek(0, 0); err != nil {
+		return err
+	}
+
+	return indexStorageClient.PutUserFile(context.Background(), tableName, tenant, fmt.Sprintf("%s.gz", idx.Name()), f)
 }
 
 func setup() loki.Config {

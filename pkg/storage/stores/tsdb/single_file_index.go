@@ -66,7 +66,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, parentDir, "")
+		return NewPrefixedIdentifier(id, parentDir, "")
 	})
 
 	if err != nil {
