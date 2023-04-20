@@ -212,6 +212,20 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 }
 
+func BenchmarkCleanupExpir(b *testing.B) {
+	rs := &rateStore{rates: make(map[string]map[uint64]expiringRate)}
+	yearOld := time.Now().AddDate(-1, 0, 0) // entries old enough to be expired
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
+			"fake": {
+				12345: expiringRate{rate: 20, createdAt: yearOld},
+			},
+		})
+		rs.cleanupExpired()
+	}
+}
+
 func newFakeRing() *fakeRing {
 	return &fakeRing{}
 }

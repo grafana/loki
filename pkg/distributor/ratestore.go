@@ -155,9 +155,6 @@ func (s *rateStore) cleanupExpired() rateStats {
 			if time.Since(rate.createdAt) > s.rateKeepAlive {
 				rs.expiredCount++
 				delete(s.rates[tID], stream)
-				if len(s.rates[tID]) == 0 {
-					delete(s.rates, tID)
-				}
 				continue
 			}
 
