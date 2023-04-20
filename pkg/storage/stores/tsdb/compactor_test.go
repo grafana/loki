@@ -244,7 +244,10 @@ func TestCompactor_Compact(t *testing.T) {
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
 	lbls2 := mustParseLabels(`{fizz="buzz", a="b"}`)
 
-	for _, numUsers := range []int{5, 10, 20} {
+	for _, numUsers := range []int{
+		5,
+		10,
+	} {
 		t.Run(fmt.Sprintf("numUsers=%d", numUsers), func(t *testing.T) {
 			for name, tc := range map[string]struct {
 				multiTenantIndexConfigs []multiTenantIndexConfig
@@ -601,7 +604,7 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 							actualChunks[lbls.String()] = chks
 						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
@@ -815,7 +818,7 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)

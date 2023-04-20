@@ -57,24 +57,11 @@ type RedisClient struct {
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
-	endpoints := strings.Split(cfg.Endpoint, ",")
-	// Handle single configuration endpoint which resolves multiple nodes.
-	if len(endpoints) == 1 {
-		host, port, err := net.SplitHostPort(endpoints[0])
-		if err != nil {
-			return nil, err
-		}
-		addrs, err := net.LookupHost(host)
-		if err != nil {
-			return nil, err
-		}
-		if len(addrs) > 1 {
-			endpoints = nil
-			for _, addr := range addrs {
-				endpoints = append(endpoints, net.JoinHostPort(addr, port))
-			}
-		}
+	endpoints, err := deriveEndpoints(cfg.Endpoint, net.LookupHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive endpoints: %w", err)
 	}
+
 	opt := &redis.UniversalOptions{
 		Addrs:         endpoints,
 		MasterName:    cfg.MasterName,
@@ -94,6 +81,51 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewUniversalClient(opt),
 	}, nil
+}
+
+func deriveEndpoints(endpoint string, lookup func(host string) ([]string, error)) ([]string, error) {
+	if lookup == nil {
+		return nil, fmt.Errorf("lookup function is nil")
+	}
+
+	endpoints := strings.Split(endpoint, ",")
+
+	// no endpoints or multiple endpoints will not need derivation
+	if len(endpoints) != 1 {
+		return endpoints, nil
+	}
+
+	// Handle single configuration endpoint which resolves multiple nodes.
+	host, port, err := net.SplitHostPort(endpoints[0])
+	if err != nil {
+		return nil, fmt.Errorf("splitting host:port failed :%w", err)
+	}
+	addrs, err := lookup(host)
+	if err != nil {
+		return nil, fmt.Errorf("could not lookup host: %w", err)
+	}
+
+	// only use the resolved addresses if they are not all loopback addresses;
+	// multiple addresses invokes cluster mode
+	allLoopback := allAddrsAreLoopback(addrs)
+	if len(addrs) > 1 && !allLoopback {
+		endpoints = nil
+		for _, addr := range addrs {
+			endpoints = append(endpoints, net.JoinHostPort(addr, port))
+		}
+	}
+
+	return endpoints, nil
+}
+
+func allAddrsAreLoopback(addrs []string) bool {
+	for _, addr := range addrs {
+		if !net.ParseIP(addr).IsLoopback() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (c *RedisClient) Ping(ctx context.Context) error {

@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"fmt"
+	"math"
 	"path"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -9,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -54,6 +56,7 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		deployment,
 		NewQuerierGRPCService(opts),
 		NewQuerierHTTPService(opts),
+		NewQuerierPodDisruptionBudget(opts),
 	}, nil
 }
 
@@ -213,6 +216,33 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 				},
 			},
 			Selector: labels,
+		},
+	}
+}
+
+// NewQuerierPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack querier pods.
+func NewQuerierPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+
+	// Have at least N-1 replicas available, unless N==1 in which case the minimum available is 1.
+	replicas := opts.Stack.Template.Querier.Replicas
+	ma := intstr.FromInt(int(math.Max(1, float64(replicas-1))))
+
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      QuerierName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
 		},
 	}
 }

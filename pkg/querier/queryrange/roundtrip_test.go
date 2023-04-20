@@ -38,9 +38,10 @@ import (
 var (
 	testTime   = time.Date(2019, 12, 2, 11, 10, 10, 10, time.UTC)
 	testConfig = Config{queryrangebase.Config{
-		AlignQueriesWithStep: true,
-		MaxRetries:           3,
-		CacheResults:         true,
+		AlignQueriesWithStep:   true,
+		MaxRetries:             3,
+		CacheResults:           true,
+		CacheIndexStatsResults: true,
 		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
@@ -142,7 +143,10 @@ func TestMetricsTripperware(t *testing.T) {
 		maxQuerierBytesRead:     100,
 	}
 	l = WithSplitByLimits(l, 4*time.Hour)
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	noCacheTestCfg := testConfig
+	noCacheTestCfg.CacheResults = false
+	noCacheTestCfg.CacheIndexStatsResults = false
+	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -185,8 +189,8 @@ func TestMetricsTripperware(t *testing.T) {
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
 	_, err = tpw(rt).RoundTrip(req)
 	require.Error(t, err)
-	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
+	require.Equal(t, 2, *statsCount)
 
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
@@ -201,6 +205,15 @@ func TestMetricsTripperware(t *testing.T) {
 	rt, err = newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
+
+	// Configure with cache
+	tpw, stopper, err = NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+		Configs: testSchemasTSDB,
+	}, nil, false, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
 
 	// testing split interval
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
@@ -233,7 +246,10 @@ func TestLogFilterTripperware(t *testing.T) {
 		maxQueryBytesRead:       1000,
 		maxQuerierBytesRead:     100,
 	}
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	noCacheTestCfg := testConfig
+	noCacheTestCfg.CacheResults = false
+	noCacheTestCfg.CacheIndexStatsResults = false
+	tpw, stopper, err := NewTripperware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -299,8 +315,10 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestInstantQueryTripperware(t *testing.T) {
-	testShardingConfig := testConfig
-	testShardingConfig.ShardedQueries = true
+	testShardingConfigNoCache := testConfig
+	testShardingConfigNoCache.ShardedQueries = true
+	testShardingConfigNoCache.CacheResults = false
+	testShardingConfigNoCache.CacheIndexStatsResults = false
 	var l Limits = fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
@@ -309,7 +327,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewTripperware(testShardingConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testShardingConfigNoCache, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -484,21 +502,28 @@ func TestIndexStatsTripperware(t *testing.T) {
 
 	count, h := indexStatsResult(response)
 	rt.setHandler(h)
-	resp, err := tpw(rt).RoundTrip(req)
+	_, err = tpw(rt).RoundTrip(req)
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
+
+	// Test the cache.
+	// It should have the answer already so the query handler shouldn't be hit
+	count, h = indexStatsResult(response)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
+	require.NoError(t, err)
+	require.Equal(t, 0, *count)
+
+	// Test the response is the expected
 	indexStatsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
 	res, ok := indexStatsResponse.(*IndexStatsResponse)
 	require.Equal(t, true, ok)
-
-	// make sure we return unique series since responses from
-	// SplitByInterval middleware might have duplicate series
 	require.Equal(t, response.Streams*2, res.Response.Streams)
 	require.Equal(t, response.Chunks*2, res.Response.Chunks)
 	require.Equal(t, response.Bytes*2, res.Response.Bytes)
 	require.Equal(t, response.Entries*2, res.Response.Entries)
-	require.NoError(t, err)
 }
 
 func TestLogNoFilter(t *testing.T) {
