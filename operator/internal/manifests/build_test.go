@@ -8,6 +8,7 @@ import (
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
@@ -19,6 +20,7 @@ import (
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -59,6 +61,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 
 func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -987,7 +990,7 @@ func extractAffinity(raw client.Object) (*corev1.Affinity, bool, error) {
 		return obj.Spec.Template.Spec.Affinity, false, nil
 	case *appsv1.StatefulSet:
 		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *corev1.ConfigMap, *corev1.Service:
+	case *corev1.ConfigMap, *corev1.Service, *policyv1.PodDisruptionBudget:
 		return nil, true, nil
 	default:
 	}

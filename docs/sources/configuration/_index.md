@@ -458,6 +458,10 @@ rate_store:
   # updating rates
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
+
+  # If enabled, detailed logs and spans will be emitted.
+  # CLI flag: -distributor.rate-store.debug
+  [debug: <boolean> | default = false]
 ```
 
 ### querier
@@ -734,6 +738,10 @@ results_cache:
 # Cache query results.
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
+
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
 
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
@@ -1472,6 +1480,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# Path where the shutdown marker file is stored. If not set and
+# common.path_prefix is set then common.path_prefix will be used.
+# CLI flag: -ingester.shutdown-marker-path
+[shutdown_marker_path: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -2277,6 +2290,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 30d1h]
 
+# Limit the length of the [range] inside a range query. Default is 0 or
+# unlimited
+# CLI flag: -querier.max-query-range
+[max_query_range: <duration> | default = 0s]
+
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 32]
@@ -2502,10 +2520,10 @@ shard_streams:
 [blocked_queries: <blocked_query...>]
 
 # Define a list of required selector labels.
-[required_label_matchers: <list of strings>]
+[required_labels: <list of strings>]
 
 # Minimum number of label matchers a query should contain.
-[required_number_label_matchers: <int>]
+[minimum_labels_number: <int>]
 ```
 
 ### frontend_worker
@@ -2922,6 +2940,10 @@ Configuration for usage report.
 # Enable anonymous usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
+
+# URL to which reports are sent
+# CLI flag: -reporting.usage-stats-url
+[usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 
 ### common
@@ -4320,6 +4342,18 @@ backoff_config:
 # IAM Auth Endpoint for authentication.
 # CLI flag: -<prefix>.cos.auth-endpoint
 [auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
+
+# Compute resource token file path.
+# CLI flag: -<prefix>.cos.cr-token-file-path
+[cr_token_file_path: <string> | default = ""]
+
+# Name of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-name
+[trusted_profile_name: <string> | default = ""]
+
+# ID of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-id
+[trusted_profile_id: <string> | default = ""]
 ```
 
 ### local_storage_config

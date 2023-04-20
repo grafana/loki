@@ -240,6 +240,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -306,6 +307,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -454,15 +456,6 @@ Create the service endpoint including port for MinIO.
 {{- if .Values.minio.enabled -}}
 {{- printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString) -}}
 {{- end -}}
-{{- end -}}
-
-{{/* Return the appropriate apiVersion for PodDisruptionBudget. */}}
-{{- define "loki.podDisruptionBudget.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">= 1.21-0" .Capabilities.KubeVersion.Version) -}}
-    {{- print "policy/v1" -}}
-  {{- else -}}
-    {{- print "policy/v1beta1" -}}
-  {{- end -}}
 {{- end -}}
 
 {{/* Determine if deployment is using object storage */}}
@@ -666,7 +659,7 @@ http {
     }
 
     location ~ /admin/api/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}

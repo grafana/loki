@@ -1,8 +1,8 @@
 ---
-title: Helm Chart Values
-menuTitle: Helm Chart Values
+title: Helm chart values
+menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 100
+weight: 200
 keywords: []
 ---
 

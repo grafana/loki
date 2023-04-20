@@ -788,22 +788,6 @@ compactor:
 	})
 
 	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: s3
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-		})
-
 		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:
@@ -1569,6 +1553,8 @@ func Test_instanceAddr(t *testing.T) {
 ingester:
   lifecycler:
     address: myingester
+memberlist:
+  advertise_addr: mymemberlist
 ruler:
   ring:
     instance_addr: myruler
@@ -1591,6 +1577,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "mydistributor", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "myingester", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "mymemberlist", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "myruler", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "myqueryfrontend", config.Frontend.FrontendV2.Addr)
@@ -1605,6 +1592,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "99.99.99.99", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
@@ -1622,6 +1610,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "22.22.22.22", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr) /// not a ring.
 		assert.Equal(t, "22.22.22.22", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr) // not a ring.

@@ -2,22 +2,24 @@ package syntax
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/util"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/regexp/syntax"
+
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/regexp/syntax"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
