@@ -22,10 +22,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          matchers:: {
                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                            queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
-                           querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                           parallelQueryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'parallel-query-frontend'))],
+                           querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                           parallelQuerier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'parallel-querier'))],
                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                            ingesterZoneAware: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
-                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|parallel-querier|index-gateway)'))],
                          },
 
                          local selector(matcherId) =
@@ -36,7 +38,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                          cortexGwSelector:: selector('cortexgateway'),
                          queryFrontendSelector:: selector('queryFrontend'),
+                         parallelQueryFrontendSelector:: selector('parallelQueryFrontend'),
                          querierSelector:: selector('querier'),
+                         parallelQuerierSelector:: selector('parallelQuerier'),
                          ingesterSelector:: selector('ingester'),
                          ingesterZoneSelector:: selector('ingesterZoneAware'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
@@ -76,6 +80,21 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
+                       .addRow(
+                         $.row(if $._config.ssd.enabled then 'Read Path' else 'Frontend (parallel-query-frontend)')
+                         .addPanel(
+                           $.panel('QPS') +
+                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].parallelQueryFrontendSelector, http_routes])
+                         )
+                         .addPanel(
+                           $.panel('Latency') +
+                           utils.latencyRecordingRulePanel(
+                             'loki_request_duration_seconds',
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.parallelQueryFrontend + [utils.selector.re('route', http_routes)],
+                             sum_by=['route']
+                           )
+                         )
+                       )
                        .addRowIf(
                          !$._config.ssd.enabled,
                          $.row('Querier')
@@ -88,6 +107,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
                              dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', http_routes)],
+                             sum_by=['route']
+                           )
+                         )
+                       )
+                       .addRowIf(
+                         !$._config.ssd.enabled,
+                         $.row('Parallel Querier')
+                         .addPanel(
+                           $.panel('QPS') +
+                           $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].parallelQuerierSelector, http_routes])
+                         )
+                         .addPanel(
+                           $.panel('Latency') +
+                           utils.latencyRecordingRulePanel(
+                             'loki_request_duration_seconds',
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.parallelQuerier + [utils.selector.re('route', http_routes)],
                              sum_by=['route']
                            )
                          )

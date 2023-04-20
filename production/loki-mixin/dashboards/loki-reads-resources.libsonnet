@@ -43,6 +43,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
         )
         .addRowIf(
           !$._config.ssd.enabled,
+          $.row('Parallel Query Frontend')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'parallel-query-frontend'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'parallel-query-frontend'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'parallel-query-frontend'),
+          )
+        )
+        .addRowIf(
+          !$._config.ssd.enabled,
           $.row('Query Scheduler')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'query-scheduler'),
@@ -52,6 +65,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+          )
+        )
+        .addRowIf(
+          !$._config.ssd.enabled,
+          $.row('Parallel Query Scheduler')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'parallel-query-scheduler'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'parallel-query-scheduler'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'parallel-query-scheduler'),
           )
         )
         .addRowIf(
@@ -86,6 +112,40 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'querier'),
+          )
+        )
+        .addRowIf(
+          !$._config.ssd.enabled,
+          grafana.row.new('Parllel Querier')
+          .addPanel(
+            $.containerCPUUsagePanel('CPU', 'querier'),
+          )
+          .addPanel(
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'parallel-querier'),
+          )
+          .addPanel(
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'parallle-querier'),
+          )
+          .addPanel(
+            $.panel('Disk Writes') +
+            $.queryPanel(
+              'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('parallel-querier')],
+              '{{%s}} - {{device}}' % $._config.per_instance_label
+            ) +
+            $.stack +
+            { yaxes: $.yaxes('Bps') },
+          )
+          .addPanel(
+            $.panel('Disk Reads') +
+            $.queryPanel(
+              'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDiskContainer('parallel-querier')],
+              '{{%s}} - {{device}}' % $._config.per_instance_label
+            ) +
+            $.stack +
+            { yaxes: $.yaxes('Bps') },
+          )
+          .addPanel(
+            $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'parallel-querier'),
           )
         )
         .addRow(
