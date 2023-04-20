@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/weaveworks/common/server"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -37,7 +38,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -144,8 +144,8 @@ var (
 		},
 		{
 			Name:       "analytics",
-			StructType: reflect.TypeOf(usagestats.Config{}),
-			Desc:       "Configuration for usage report.",
+			StructType: reflect.TypeOf(analytics.Config{}),
+			Desc:       "Configuration for analytics.",
 		},
 
 		{

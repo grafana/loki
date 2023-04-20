@@ -40,7 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/wal"
@@ -62,10 +62,10 @@ var (
 		Name: "cortex_ingester_flush_queue_length",
 		Help: "The total number of series pending in the flush queue.",
 	})
-	compressionStats   = usagestats.NewString("ingester_compression")
-	targetSizeStats    = usagestats.NewInt("ingester_target_size_bytes")
-	walStats           = usagestats.NewString("ingester_wal")
-	activeTenantsStats = usagestats.NewInt("ingester_active_tenants")
+	compressionStats   = analytics.NewString("ingester_compression")
+	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
+	walStats           = analytics.NewString("ingester_wal")
+	activeTenantsStats = analytics.NewInt("ingester_active_tenants")
 )
 
 // Config for an ingester.

@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -65,8 +65,8 @@ const (
 )
 
 var (
-	retentionEnabledStats = usagestats.NewString("compactor_retention_enabled")
-	defaultRetentionStats = usagestats.NewString("compactor_default_retention")
+	retentionEnabledStats = analytics.NewString("compactor_retention_enabled")
+	defaultRetentionStats = analytics.NewString("compactor_default_retention")
 )
 
 type Config struct {
