@@ -29,6 +29,7 @@ import (
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -54,7 +55,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
@@ -99,7 +99,7 @@ type Config struct {
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
-	Analytics     analytics.Config    `yaml:"analytics"`
+	Analytics     analytics.Config     `yaml:"analytics"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
 

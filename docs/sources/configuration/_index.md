@@ -192,7 +192,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for tracing.
 [tracing: <tracing>]
 
-# Configuration for usage report.
+# Configuration for analytics.
 [analytics: <analytics>]
 
 # Common configuration to be shared between multiple modules. If a more specific
@@ -2934,15 +2934,15 @@ Configuration for `tracing`.
 
 ### analytics
 
-Configuration for usage report.
+Configuration for `analytics`.
 
 ```yaml
 # Enable anonymous usage reporting.
-# CLI flag: -reporting.enabled
+# CLI flag: -analytics.enabled
 [reporting_enabled: <boolean> | default = true]
 
 # URL to which reports are sent
-# CLI flag: -reporting.usage-stats-url
+# CLI flag: -analytics.usage-stats-url
 [usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 

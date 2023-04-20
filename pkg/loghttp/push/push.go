@@ -17,10 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
@@ -133,32 +133,4 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		for _, e := range s.Entries {
 			totalEntries++
 			entriesSize += int64(len(e.Line))
-			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(int64(len(e.Line))))
-			bytesReceivedStats.Inc(int64(len(e.Line)))
-			if e.Timestamp.After(mostRecentEntry) {
-				mostRecentEntry = e.Timestamp
-			}
-		}
-	}
-
-	// incrementing tenant metrics if we have a tenant.
-	if totalEntries != 0 && userID != "" {
-		linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
-	}
-	linesReceivedStats.Inc(totalEntries)
-
-	level.Debug(logger).Log(
-		"msg", "push request parsed",
-		"path", r.URL.Path,
-		"contentType", contentType,
-		"contentEncoding", contentEncoding,
-		"bodySize", humanize.Bytes(uint64(bodySize.Size())),
-		"streams", len(req.Streams),
-		"entries", totalEntries,
-		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
-		"entriesSize", humanize.Bytes(uint64(entriesSize)),
-		"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
-		"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
-	)
-	return &req, nil
-}
+			by
