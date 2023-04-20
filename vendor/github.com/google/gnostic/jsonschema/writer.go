@@ -16,6 +16,7 @@ package jsonschema
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,7 +34,11 @@ func renderMappingNode(node *yaml.Node, indent string) (result string) {
 		value := node.Content[i+1]
 		switch value.Kind {
 		case yaml.ScalarNode:
-			result += "\"" + value.Value + "\""
+			if value.Tag == "!!bool" {
+				result += value.Value
+			} else {
+				result += "\"" + value.Value + "\""
+			}
 		case yaml.MappingNode:
 			result += renderMappingNode(value, innerIndent)
 		case yaml.SequenceNode:
@@ -58,7 +63,11 @@ func renderSequenceNode(node *yaml.Node, indent string) (result string) {
 		item := node.Content[i]
 		switch item.Kind {
 		case yaml.ScalarNode:
-			result += innerIndent + "\"" + item.Value + "\""
+			if item.Tag == "!!bool" {
+				result += innerIndent + item.Value
+			} else {
+				result += innerIndent + "\"" + item.Value + "\""
+			}
 		case yaml.MappingNode:
 			result += innerIndent + renderMappingNode(item, innerIndent) + ""
 		default:
@@ -260,10 +269,25 @@ func (schema *Schema) nodeValue() *yaml.Node {
 		content = appendPair(content, "title", nodeForString(*schema.Title))
 	}
 	if schema.ID != nil {
-		content = appendPair(content, "id", nodeForString(*schema.ID))
+		switch strings.TrimSuffix(*schema.Schema, "#") {
+		case "http://json-schema.org/draft-04/schema":
+			fallthrough
+		case "#":
+			fallthrough
+		case "":
+			content = appendPair(content, "id", nodeForString(*schema.ID))
+		default:
+			content = appendPair(content, "$id", nodeForString(*schema.ID))
+		}
 	}
 	if schema.Schema != nil {
 		content = appendPair(content, "$schema", nodeForString(*schema.Schema))
+	}
+	if schema.ReadOnly != nil && *schema.ReadOnly {
+		content = appendPair(content, "readOnly", nodeForBoolean(*schema.ReadOnly))
+	}
+	if schema.WriteOnly != nil && *schema.WriteOnly {
+		content = appendPair(content, "writeOnly", nodeForBoolean(*schema.WriteOnly))
 	}
 	if schema.Type != nil {
 		content = appendPair(content, "type", schema.Type.nodeValue())

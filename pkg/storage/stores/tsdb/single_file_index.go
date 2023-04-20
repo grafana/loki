@@ -102,11 +102,8 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
-func (i *TSDBIndex) forSeries(ctx context.Context, shard *index.ShardAnnotation, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
-	p, err := PostingsForMatchers(i.reader, shard, matchers...)
-	if err != nil {
-		return err
-	}
+func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
+	// TODO(owen-d): use pool
 
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
@@ -117,24 +114,41 @@ func (i *TSDBIndex) forSeries(ctx context.Context, shard *index.ShardAnnotation,
 		filterer = i.chunkFilter.ForRequest(ctx)
 	}
 
-	for p.Next() {
-		hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
-		if err != nil {
-			return err
-		}
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+		for p.Next() {
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			if err != nil {
+				return err
+			}
 
-		// skip series that belong to different shards
-		if shard != nil && !shard.Match(model.Fingerprint(hash)) {
-			continue
-		}
+			// skip series that belong to different shards
+			if shard != nil && !shard.Match(model.Fingerprint(hash)) {
+				continue
+			}
 
-		if filterer != nil && filterer.ShouldFilter(ls) {
-			continue
-		}
+			if filterer != nil && filterer.ShouldFilter(ls) {
+				continue
+			}
 
-		fn(ls, model.Fingerprint(hash), chks)
+			fn(ls, model.Fingerprint(hash), chks)
+		}
+		return p.Err()
+	})
+
+}
+
+func (i *TSDBIndex) forPostings(
+	ctx context.Context,
+	shard *index.ShardAnnotation,
+	from, through model.Time,
+	matchers []*labels.Matcher,
+	fn func(index.Postings) error,
+) error {
+	p, err := PostingsForMatchers(i.reader, shard, matchers...)
+	if err != nil {
+		return err
 	}
-	return p.Err()
+	return fn(p)
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
@@ -143,7 +157,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	}
 	res = res[:0]
 
-	if err := i.forSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		for _, chk := range chks {
 
 			res = append(res, ChunkRef{
@@ -167,7 +181,7 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 	}
 	res = res[:0]
 
-	if err := i.forSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		if len(chks) == 0 {
 			return
 		}
@@ -212,20 +226,36 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	if err := i.forSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-		var addedStream bool
-		for _, chk := range chks {
-			if shouldIncludeChunk(chk) {
-				if !addedStream {
-					acc.AddStream(fp)
-					addedStream = true
-				}
-				acc.AddChunk(fp, chk)
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+		// TODO(owen-d): use pool
+		var ls labels.Labels
+		var filterer chunk.Filterer
+		if i.chunkFilter != nil {
+			filterer = i.chunkFilter.ForRequest(ctx)
+		}
+
+		for p.Next() {
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			if err != nil {
+				return err
+			}
+
+			// skip series that belong to different shards
+			if shard != nil && !shard.Match(model.Fingerprint(fp)) {
+				continue
+			}
+
+			if filterer != nil && filterer.ShouldFilter(ls) {
+				continue
+			}
+
+			if stats.Entries > 0 {
+				// need to add stream
+				acc.AddStream(model.Fingerprint(fp))
+				acc.AddChunkStats(stats)
 			}
 		}
-	}, matchers...); err != nil {
-		return err
-	}
+		return p.Err()
+	})
 
-	return nil
 }

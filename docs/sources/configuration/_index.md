@@ -739,6 +739,10 @@ results_cache:
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
 
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
@@ -1476,6 +1480,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# Path where the shutdown marker file is stored. If not set and
+# common.path_prefix is set then common.path_prefix will be used.
+# CLI flag: -ingester.shutdown-marker-path
+[shutdown_marker_path: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -3806,6 +3815,10 @@ dynamodb:
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -4080,6 +4093,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -<prefix>.storage.s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]

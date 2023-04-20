@@ -68,7 +68,7 @@ scrape_configs:
 
 Important details are:
 * It relies on the `\n` character to separate the data into different log lines.
-* The max expected log line is 2MB bytes within the compressed file.
+* The max expected log line is 2MB within the compressed file.
 * The data is decompressed in blocks of 4096 bytes. i.e: it first fetches a block of 4096 bytes
   from the compressed file and processes it. After processing this block and pushing the data to Loki,
   it fetches the following 4096 bytes, and so on.
@@ -77,7 +77,7 @@ Important details are:
   - `.z`: Data will be decompressed with the native Zlib Golang pkg (`pkg/compress/zlib`)
   - `.bz2`: Data will be decompressed with the native Bzip2 Golang pkg (`pkg/compress/bzip2`)
   - `.tar.gz`: Data will be decompressed exactly as the `.gz` extension.
-      However, because `tar` will add its metadata at the beggining of the
+      However, because `tar` will add its metadata at the beginning of the
       compressed file, **the first parsed line will contains metadata together with
       your log line**. It is illustrated at
       `./clients/pkg/promtail/targets/file/decompresser_test.go`.

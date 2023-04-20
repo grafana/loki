@@ -25,6 +25,16 @@ Example:
 {{ .path | replace " " "_" | trunc 5 | upper }}
 ```
 
+For function that returns a `bool` such as `contains`, `eq`, `hasPrefix` and `hasSuffix`, you can apply `AND` / `OR` and nested `if` logic.
+
+Example:
+
+```template
+{{ if and (contains "he" "hello") (contains "llo" "hello") }} yes {{end}}
+{{ if or (contains "he" "hello") (contains("llo" "hello") }} yes {{end}}
+{{ if contains .err "ErrTimeout" }} timeout {{else if contains "he" "hello"}} yes {{else}} no {{end}}
+```
+
 ## __line__
 
 This function returns the current log line.
@@ -271,6 +281,19 @@ Examples:
 ```template
 {{ if contains .err "ErrTimeout" }} timeout {{end}}
 {{ if contains "he" "hello" }} yes {{end}}
+```
+
+## eq
+
+Use this function to test to see if one string has exact matching inside of another.
+
+Signature: `eq(s string, src string) bool`
+
+Examples:
+
+```template
+{{ if eq .err "ErrTimeout" }} timeout {{end}}
+{{ if eq "he" "hello" }} yes {{end}}
 ```
 
 ## hasPrefix and hasSuffix

@@ -797,9 +797,20 @@ func (m *Listener_ConnectionBalanceConfig) validate(all bool) error {
 
 	var errors []error
 
-	switch m.BalanceType.(type) {
-
+	oneofBalanceTypePresent := false
+	switch v := m.BalanceType.(type) {
 	case *Listener_ConnectionBalanceConfig_ExactBalance_:
+		if v == nil {
+			err := Listener_ConnectionBalanceConfigValidationError{
+				field:  "BalanceType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofBalanceTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetExactBalance()).(type) {
@@ -831,6 +842,9 @@ func (m *Listener_ConnectionBalanceConfig) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofBalanceTypePresent {
 		err := Listener_ConnectionBalanceConfigValidationError{
 			field:  "BalanceType",
 			reason: "value is required",
@@ -839,7 +853,6 @@ func (m *Listener_ConnectionBalanceConfig) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
