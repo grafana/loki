@@ -160,7 +160,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
-	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL base of the explore page.")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "Base URL of the Grafana instance.")
 	f.StringVar(&cfg.DatasourceUID, "ruler.datasource-uid", "", "Datasource UID for the dashboard.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")

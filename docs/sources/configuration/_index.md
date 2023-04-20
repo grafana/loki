@@ -769,7 +769,7 @@ The `ruler` block configures the Loki ruler.
 
 # Datasource UID for the dashboard.
 # CLI flag: -ruler.datasource-uid
-[datasource_uid: <url>]
+[datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
