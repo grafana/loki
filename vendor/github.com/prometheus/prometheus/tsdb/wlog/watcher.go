@@ -50,6 +50,7 @@ type WriteTo interface {
 	Append([]record.RefSample) bool
 	AppendExemplars([]record.RefExemplar) bool
 	AppendHistograms([]record.RefHistogramSample) bool
+	AppendFloatHistograms([]record.RefFloatHistogramSample) bool
 	StoreSeries([]record.RefSeries, int)
 
 	// Next two methods are intended for garbage-collection: first we call
@@ -404,9 +405,10 @@ func (w *Watcher) watch(segmentNum int, tail bool) error {
 
 			// Ignore errors reading to end of segment whilst replaying the WAL.
 			if !tail {
-				if err != nil && errors.Cause(err) != io.EOF {
+				switch {
+				case err != nil && errors.Cause(err) != io.EOF:
 					level.Warn(w.logger).Log("msg", "Ignoring error reading to end of segment, may have dropped data", "err", err)
-				} else if reader.Offset() != size {
+				case reader.Offset() != size:
 					level.Warn(w.logger).Log("msg", "Expected to have read whole segment, may have dropped data", "segment", segmentNum, "read", reader.Offset(), "size", size)
 				}
 				return nil
@@ -424,9 +426,10 @@ func (w *Watcher) watch(segmentNum int, tail bool) error {
 
 			// Ignore all errors reading to end of segment whilst replaying the WAL.
 			if !tail {
-				if err != nil && errors.Cause(err) != io.EOF {
+				switch {
+				case err != nil && errors.Cause(err) != io.EOF:
 					level.Warn(w.logger).Log("msg", "Ignoring error reading to end of segment, may have dropped data", "segment", segmentNum, "err", err)
-				} else if reader.Offset() != size {
+				case reader.Offset() != size:
 					level.Warn(w.logger).Log("msg", "Expected to have read whole segment, may have dropped data", "segment", segmentNum, "read", reader.Offset(), "size", size)
 				}
 				return nil
@@ -476,13 +479,15 @@ func (w *Watcher) garbageCollectSeries(segmentNum int) error {
 // Also used with readCheckpoint - implements segmentReadFn.
 func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 	var (
-		dec              record.Decoder
-		series           []record.RefSeries
-		samples          []record.RefSample
-		samplesToSend    []record.RefSample
-		exemplars        []record.RefExemplar
-		histograms       []record.RefHistogramSample
-		histogramsToSend []record.RefHistogramSample
+		dec                   record.Decoder
+		series                []record.RefSeries
+		samples               []record.RefSample
+		samplesToSend         []record.RefSample
+		exemplars             []record.RefExemplar
+		histograms            []record.RefHistogramSample
+		histogramsToSend      []record.RefHistogramSample
+		floatHistograms       []record.RefFloatHistogramSample
+		floatHistogramsToSend []record.RefFloatHistogramSample
 	)
 	for r.Next() && !isClosed(w.quit) {
 		rec := r.Record()
@@ -567,7 +572,33 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 				w.writer.AppendHistograms(histogramsToSend)
 				histogramsToSend = histogramsToSend[:0]
 			}
-
+		case record.FloatHistogramSamples:
+			// Skip if experimental "histograms over remote write" is not enabled.
+			if !w.sendHistograms {
+				break
+			}
+			if !tail {
+				break
+			}
+			floatHistograms, err := dec.FloatHistogramSamples(rec, floatHistograms[:0])
+			if err != nil {
+				w.recordDecodeFailsMetric.Inc()
+				return err
+			}
+			for _, fh := range floatHistograms {
+				if fh.T > w.startTimestamp {
+					if !w.sendSamples {
+						w.sendSamples = true
+						duration := time.Since(w.startTime)
+						level.Info(w.logger).Log("msg", "Done replaying WAL", "duration", duration)
+					}
+					floatHistogramsToSend = append(floatHistogramsToSend, fh)
+				}
+			}
+			if len(floatHistogramsToSend) > 0 {
+				w.writer.AppendFloatHistograms(floatHistogramsToSend)
+				floatHistogramsToSend = floatHistogramsToSend[:0]
+			}
 		case record.Tombstones:
 
 		default:

@@ -194,7 +194,8 @@ func Test_EmptyTable(t *testing.T) {
 
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
-	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil, util_log.Logger)
+	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
+	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 
@@ -210,7 +211,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
 	labelsBuilder.Set(labels.MetricName, "logs")
-	metric := labelsBuilder.Labels(nil)
+	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
 

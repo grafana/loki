@@ -458,15 +458,6 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 {{- end -}}
 
-{{/* Return the appropriate apiVersion for PodDisruptionBudget. */}}
-{{- define "loki.podDisruptionBudget.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">= 1.21-0" .Capabilities.KubeVersion.Version) -}}
-    {{- print "policy/v1" -}}
-  {{- else -}}
-    {{- print "policy/v1beta1" -}}
-  {{- end -}}
-{{- end -}}
-
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
 {{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
@@ -558,7 +549,7 @@ http {
   resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
 
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
-  {{ . | nindent 2 }}
+  {{- tpl . $ | nindent 2 }}
   {{- end }}
 
   server {
@@ -588,73 +579,87 @@ http {
     {{- $writeHost = include "loki.singleBinaryFullname" .}}
     {{- end }}
 
+    {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   .Release.Namespace .Values.global.clusterDomain }}
+    {{- $readUrl     := printf "http://%s.%s.svc.%s:3100" $readHost    .Release.Namespace .Values.global.clusterDomain }}
+    {{- $backendUrl  := printf "http://%s.%s.svc.%s:3100" $backendHost .Release.Namespace .Values.global.clusterDomain }}
+
+    {{- if .Values.gateway.nginxConfig.customWriteUrl }}
+    {{- $writeUrl  = .Values.gateway.nginxConfig.customWriteUrl }}
+    {{- end }}
+    {{- if .Values.gateway.nginxConfig.customReadUrl }}
+    {{- $readUrl = .Values.gateway.nginxConfig.customReadUrl }}
+    {{- end }}
+    {{- if .Values.gateway.nginxConfig.customBackendUrl }}
+    {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
+    {{- end }}
+
     location = /api/prom/push {
-      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $writeUrl }}$request_uri;
     }
 
     location = /api/prom/tail {
-      proxy_pass       http://{{ $readHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $readUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
 
     location ~ /api/prom/.* {
-      proxy_pass       http://{{ $readHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $readUrl }}$request_uri;
     }
 
     location ~ /prometheus/api/v1/alerts.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
     location ~ /prometheus/api/v1/rules.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
     location ~ /ruler/.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     location = /loki/api/v1/push {
-      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $writeUrl }}$request_uri;
     }
 
     location = /loki/api/v1/tail {
-      proxy_pass       http://{{ $readHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $readUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
 
     location ~ /compactor/.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     location ~ /distributor/.* {
-      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $writeUrl }}$request_uri;
     }
 
     location ~ /ring {
-      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $writeUrl }}$request_uri;
     }
 
     location ~ /ingester/.* {
-      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $writeUrl }}$request_uri;
     }
 
     location ~ /store-gateway/.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     location ~ /query-scheduler/.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
     location ~ /scheduler/.* {
-      proxy_pass       http://{{ $backendHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     location ~ /loki/api/.* {
-      proxy_pass       http://{{ $readHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $readUrl }}$request_uri;
     }
 
     location ~ /admin/api/.* {
-      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}

@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -43,6 +44,10 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -51,6 +56,7 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
 		NewIndexGatewayHTTPService(opts),
+		NewIndexGatewayPodDisruptionBudget(opts),
 	}, nil
 }
 
@@ -83,6 +89,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=index-gateway",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -138,8 +145,8 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.IndexGateway.Replicas),
+			RevisionHistoryLimit: pointer.Int32(10),
+			Replicas:             pointer.Int32(opts.Stack.Template.IndexGateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -167,7 +174,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.IndexGateway.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -229,6 +236,30 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 				},
 			},
 			Selector: labels,
+		},
+	}
+}
+
+// NewIndexGatewayPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// index-gateway pods.
+func NewIndexGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
+	ma := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      IndexGatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
 		},
 	}
 }

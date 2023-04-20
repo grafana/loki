@@ -84,10 +84,13 @@ func JoinHeaders(ctx context.Context, headers []*definitions.PrometheusResponseH
 	context.mtx.Lock()
 	defer context.mtx.Unlock()
 
-	for i := range headers {
-		header := headers[i]
-		context.headers[header.Name] = header.Values
-	}
+	ExtendHeaders(context.headers, headers)
 
 	return nil
+}
+
+func ExtendHeaders(dst map[string][]string, src []*definitions.PrometheusResponseHeader) {
+	for _, header := range src {
+		dst[header.Name] = header.Values
+	}
 }

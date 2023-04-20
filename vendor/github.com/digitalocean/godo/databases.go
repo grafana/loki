@@ -9,27 +9,29 @@ import (
 )
 
 const (
-	databaseBasePath           = "/v2/databases"
-	databaseSinglePath         = databaseBasePath + "/%s"
-	databaseCAPath             = databaseBasePath + "/%s/ca"
-	databaseConfigPath         = databaseBasePath + "/%s/config"
-	databaseResizePath         = databaseBasePath + "/%s/resize"
-	databaseMigratePath        = databaseBasePath + "/%s/migrate"
-	databaseMaintenancePath    = databaseBasePath + "/%s/maintenance"
-	databaseBackupsPath        = databaseBasePath + "/%s/backups"
-	databaseUsersPath          = databaseBasePath + "/%s/users"
-	databaseUserPath           = databaseBasePath + "/%s/users/%s"
-	databaseResetUserAuthPath  = databaseUserPath + "/reset_auth"
-	databaseDBPath             = databaseBasePath + "/%s/dbs/%s"
-	databaseDBsPath            = databaseBasePath + "/%s/dbs"
-	databasePoolPath           = databaseBasePath + "/%s/pools/%s"
-	databasePoolsPath          = databaseBasePath + "/%s/pools"
-	databaseReplicaPath        = databaseBasePath + "/%s/replicas/%s"
-	databaseReplicasPath       = databaseBasePath + "/%s/replicas"
-	databaseEvictionPolicyPath = databaseBasePath + "/%s/eviction_policy"
-	databaseSQLModePath        = databaseBasePath + "/%s/sql_mode"
-	databaseFirewallRulesPath  = databaseBasePath + "/%s/firewall"
-	databaseOptionsPath        = databaseBasePath + "/options"
+	databaseBasePath                    = "/v2/databases"
+	databaseSinglePath                  = databaseBasePath + "/%s"
+	databaseCAPath                      = databaseBasePath + "/%s/ca"
+	databaseConfigPath                  = databaseBasePath + "/%s/config"
+	databaseResizePath                  = databaseBasePath + "/%s/resize"
+	databaseMigratePath                 = databaseBasePath + "/%s/migrate"
+	databaseMaintenancePath             = databaseBasePath + "/%s/maintenance"
+	databaseBackupsPath                 = databaseBasePath + "/%s/backups"
+	databaseUsersPath                   = databaseBasePath + "/%s/users"
+	databaseUserPath                    = databaseBasePath + "/%s/users/%s"
+	databaseResetUserAuthPath           = databaseUserPath + "/reset_auth"
+	databaseDBPath                      = databaseBasePath + "/%s/dbs/%s"
+	databaseDBsPath                     = databaseBasePath + "/%s/dbs"
+	databasePoolPath                    = databaseBasePath + "/%s/pools/%s"
+	databasePoolsPath                   = databaseBasePath + "/%s/pools"
+	databaseReplicaPath                 = databaseBasePath + "/%s/replicas/%s"
+	databaseReplicasPath                = databaseBasePath + "/%s/replicas"
+	databaseEvictionPolicyPath          = databaseBasePath + "/%s/eviction_policy"
+	databaseSQLModePath                 = databaseBasePath + "/%s/sql_mode"
+	databaseFirewallRulesPath           = databaseBasePath + "/%s/firewall"
+	databaseOptionsPath                 = databaseBasePath + "/options"
+	databaseUpgradeMajorVersionPath     = databaseBasePath + "/%s/upgrade"
+	databasePromoteReplicaToPrimaryPath = databaseReplicaPath + "/promote"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -124,10 +126,12 @@ type DatabasesService interface {
 	CreatePool(context.Context, string, *DatabaseCreatePoolRequest) (*DatabasePool, *Response, error)
 	GetPool(context.Context, string, string) (*DatabasePool, *Response, error)
 	DeletePool(context.Context, string, string) (*Response, error)
+	UpdatePool(context.Context, string, string, *DatabaseUpdatePoolRequest) (*Response, error)
 	GetReplica(context.Context, string, string) (*DatabaseReplica, *Response, error)
 	ListReplicas(context.Context, string, *ListOptions) ([]DatabaseReplica, *Response, error)
 	CreateReplica(context.Context, string, *DatabaseCreateReplicaRequest) (*DatabaseReplica, *Response, error)
 	DeleteReplica(context.Context, string, string) (*Response, error)
+	PromoteReplicaToPrimary(context.Context, string, string) (*Response, error)
 	GetEvictionPolicy(context.Context, string) (string, *Response, error)
 	SetEvictionPolicy(context.Context, string, string) (*Response, error)
 	GetSQLMode(context.Context, string) (string, *Response, error)
@@ -141,6 +145,7 @@ type DatabasesService interface {
 	UpdateRedisConfig(context.Context, string, *RedisConfig) (*Response, error)
 	UpdateMySQLConfig(context.Context, string, *MySQLConfig) (*Response, error)
 	ListOptions(todo context.Context) (*DatabaseOptions, *Response, error)
+	UpgradeMajorVersion(context.Context, string, *UpgradeVersionRequest) (*Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -294,6 +299,14 @@ type DatabasePool struct {
 type DatabaseCreatePoolRequest struct {
 	User     string `json:"user"`
 	Name     string `json:"name"`
+	Size     int    `json:"size"`
+	Database string `json:"db"`
+	Mode     string `json:"mode"`
+}
+
+// DatabaseUpdatePoolRequest is used to update a database connection pool
+type DatabaseUpdatePoolRequest struct {
+	User     string `json:"user,omitempty"`
 	Size     int    `json:"size"`
 	Database string `json:"db"`
 	Mode     string `json:"mode"`
@@ -519,6 +532,10 @@ type databaseReplicasRoot struct {
 
 type evictionPolicyRoot struct {
 	EvictionPolicy string `json:"eviction_policy"`
+}
+
+type UpgradeVersionRequest struct {
+	Version string `json:"version"`
 }
 
 type sqlModeRoot struct {
@@ -904,6 +921,37 @@ func (svc *DatabasesServiceOp) DeletePool(ctx context.Context, databaseID, name 
 	return resp, nil
 }
 
+// UpdatePool will update an existing database connection pool
+func (svc *DatabasesServiceOp) UpdatePool(ctx context.Context, databaseID, name string, updatePool *DatabaseUpdatePoolRequest) (*Response, error) {
+	path := fmt.Sprintf(databasePoolPath, databaseID, name)
+
+	if updatePool == nil {
+		return nil, NewArgError("updatePool", "cannot be nil")
+	}
+
+	if updatePool.Mode == "" {
+		return nil, NewArgError("mode", "cannot be empty")
+	}
+
+	if updatePool.Database == "" {
+		return nil, NewArgError("database", "cannot be empty")
+	}
+
+	if updatePool.Size < 1 {
+		return nil, NewArgError("size", "cannot be less than 1")
+	}
+
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updatePool)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
 // GetReplica returns a single database replica
 func (svc *DatabasesServiceOp) GetReplica(ctx context.Context, databaseID, name string) (*DatabaseReplica, *Response, error) {
 	path := fmt.Sprintf(databaseReplicaPath, databaseID, name)
@@ -957,6 +1005,20 @@ func (svc *DatabasesServiceOp) CreateReplica(ctx context.Context, databaseID str
 func (svc *DatabasesServiceOp) DeleteReplica(ctx context.Context, databaseID, name string) (*Response, error) {
 	path := fmt.Sprintf(databaseReplicaPath, databaseID, name)
 	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// PromoteReplicaToPrimary will sever the read replica integration and then promote the replica cluster to be a R/W cluster
+func (svc *DatabasesServiceOp) PromoteReplicaToPrimary(ctx context.Context, databaseID, name string) (*Response, error) {
+	path := fmt.Sprintf(databasePromoteReplicaToPrimaryPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1178,4 +1240,20 @@ func (svc *DatabasesServiceOp) ListOptions(ctx context.Context) (*DatabaseOption
 	}
 
 	return root.Options, resp, nil
+}
+
+// UpgradeMajorVersion upgrades the major version of a cluster.
+func (svc *DatabasesServiceOp) UpgradeMajorVersion(ctx context.Context, databaseID string, upgradeReq *UpgradeVersionRequest) (*Response, error) {
+	path := fmt.Sprintf(databaseUpgradeMajorVersionPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, upgradeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
 }

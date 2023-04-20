@@ -57,6 +57,11 @@ func (shard ShardAnnotation) RequiredBits() uint64 {
 }
 
 func (shard ShardAnnotation) Validate() error {
+	if shard.Of == 0 {
+		// 0 factor is explicitly not sharding
+		return nil
+	}
+
 	if shard.Of == 1 {
 		return errDisallowedIdentityShard
 	}

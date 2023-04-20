@@ -6,54 +6,59 @@ IMAGE_TAG := $(shell ../../../tools/image-tag)
 EXISTING_REGISTRY_PORT := $(shell k3d registry list -o json | jq -r '.[] | select(.name == "k3d-grafana") | .portMappings."5000/tcp" | .[0].HostPort')
 REGISTRY_PORT ?= $(or $(EXISTING_REGISTRY_PORT),46453)
 
-# For verbose output, run make DEBUG=true <TARGET>
+# Time in seconds to wait for completion of cluster operation, run 'make SLEEP=10 <TARGET>'
+SLEEP := 5
+# For verbose output, run 'make DEBUG=true <TARGET>'
 DEBUG := false
 HELM := helm --debug=$(DEBUG)
 
 enterprise-logs: prepare-gel helm-cluster
 	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
-	echo "Waiting 5s for cluster to be ready for helm installation."
+	echo "Waiting $(SLEEP)s for cluster to be ready for helm installation."
 	echo "The helm install will take a while. It's useful to monitor progress using a tool like k9s."
-	# wait 5s for tk apply to finish and cluster is ready for helm install
-	sleep 5
+	# wait for tk apply to finish and cluster is ready for helm install
+	sleep $(SLEEP)
 	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
 enterprise-logs-ha-single-binary: prepare-gel helm-cluster
 	$(MAKE) -C $(CURDIR) apply-enterprise-helm-cluster
-	echo "Waiting 5s for cluster to be ready for helm installation."
+	echo "Waiting $(SLEEP)s for cluster to be ready for helm installation."
 	echo "The helm install will take a while. It's useful to monitor progress using a tool like k9s."
-	# wait 5s for tk apply to finish and cluster is ready for helm install
-	sleep 5
+	# wait for tk apply to finish and cluster is ready for helm install
+	sleep $(SLEEP)
 	$(MAKE) -C $(CURDIR) helm-install-enterprise-logs-ha-single-binary
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
 loki: prepare helm-cluster
 	$(MAKE) -C $(CURDIR) apply-loki-helm-cluster
-	echo "Waiting 5s for cluster to be ready for helm installation."
-	# wait 5s for tk apply to finish and cluster is ready for helm install
-	sleep 5
+	echo "Waiting $(SLEEP)s for cluster to be ready for helm installation."
+	# wait for tk apply to finish and cluster is ready for helm install
+	sleep $(SLEEP)
 	$(MAKE) -C $(CURDIR) helm-install-loki
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
 loki-ha-single-binary: prepare helm-cluster
 	$(MAKE) -C $(CURDIR) apply-loki-helm-cluster
-	echo "Waiting 5s for cluster to be ready for helm installation."
-	# wait 5s for tk apply to finish and cluster is ready for helm install
-	sleep 5
+	echo "Waiting $(SLEEP)s for cluster to be ready for helm installation."
+	# wait for tk apply to finish and cluster is ready for helm install
+	sleep $(SLEEP)
 	$(MAKE) -C $(CURDIR) helm-install-loki-ha-single-binary
 	echo "Helm installation finished. You can tear down this cluster with make down."
 
 helm-cluster: prepare
 	$(CURDIR)/scripts/create_cluster.sh helm-cluster $(REGISTRY_PORT)
-	# wait 5s for the cluster to be ready
-	sleep 5
+	# wait for the cluster to be ready
+	sleep $(SLEEP)
 
 apply-enterprise-helm-cluster:
 	tk apply --ext-code enterprise=true environments/helm-cluster
 
 apply-loki-helm-cluster:
 	tk apply --ext-code enterprise=false environments/helm-cluster
+
+apply-empty-helm-cluster:
+	tk apply --ext-code enterprise=false environments/helm-cluster/empty.jsonnet
 
 down:
 	k3d cluster delete helm-cluster
@@ -149,3 +154,12 @@ helm-upgrade-loki-ha-single-binary:
 
 helm-uninstall-loki-binary:
 	$(HELM) uninstall loki-single-binary -n loki
+
+helm-install-kube-state-metrics:
+	helm install kube-state-metrics --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/kube-state-metrics.yaml
+
+helm-install-enterprise-logs-cloud-monitoring:
+	helm install enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --create-namespace --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"
+
+helm-upgrade-enterprise-logs-cloud-monitoring:
+	helm upgrade enterprise-logs-test-fixture "$(HELM_DIR)" -n loki --values "$(CURDIR)/environments/helm-cluster/values/enterprise-logs-cloud-monitoring.yaml"

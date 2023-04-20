@@ -76,7 +76,74 @@ data points between the start and end query time. This output is used to
 build graphs, similar to what is seen in the Grafana Explore graph view.
 If you are querying metrics and just want the most recent data point
 (like what is seen in the Grafana Explore table view), then you should use
-the "instant-query" command instead.`)
+the "instant-query" command instead.
+
+Parallelization:
+
+You can download an unlimited number of logs in parallel, there are a few
+flags which control this behaviour:
+
+	--parallel-duration
+	--parallel-max-workers
+	--part-path-prefix
+	--overwrite-completed-parts
+	--merge-parts
+	--keep-parts
+
+Refer to the help for each flag for details about what each of them do.
+
+Example:
+
+	logcli query
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output=jsonl
+	   --parallel-duration="15m"
+	   --parallel-max-workers="4"
+	   --part-path-prefix="/tmp/my_query"
+	   --merge-parts
+	   'my-query'
+
+This example will create a queue of jobs to execute, each being 15 minutes in
+duration. In this case, that means, for the 10-hour total duration, there will
+be forty 15-minute jobs. The --limit flag is ignored.
+
+It will start four workers, and they will each take a job to work on from the
+queue until all the jobs have been completed.
+
+Each job will save a "part" file to the location specified by the --part-path-prefix.
+Different prefixes can be used to run multiple queries at the same time.
+The timestamp of the start and end of the part is in the file name.
+While the part is being downloaded, the filename will end in ".part", when it
+is complete, the file will be renamed to remove this ".part" extension.
+By default, if a completed part file is found, that part will not be downloaded
+again. This can be overridden with the --overwrite-completed-parts flag.
+
+Part file example using the previous command, adding --keep-parts so they are
+not deleted:
+
+Since we don't have the --forward flag, the parts will be downloaded in reverse.
+Two of the workers have finished their jobs (last two files), and have picked
+up the next jobs in the queue.
+Running ls, this is what we should expect to see.
+
+$ ls -1 /tmp/my_query*
+/tmp/my_query_20210119T183000_20210119T184500.part.tmp
+/tmp/my_query_20210119T184500_20210119T190000.part.tmp
+/tmp/my_query_20210119T190000_20210119T191500.part.tmp
+/tmp/my_query_20210119T191500_20210119T193000.part.tmp
+/tmp/my_query_20210119T193000_20210119T194500.part
+/tmp/my_query_20210119T194500_20210119T200000.part
+
+If you do not specify the --merge-parts flag, the part files will be
+downloaded, and logcli will exit, and you can process the files as you wish.
+With the flag specified, the part files will be read in order, and the output
+printed to the terminal. The lines will be printed as soon as the next part is
+complete, you don't have to wait for all the parts to download before getting
+output. The --merge-parts flag will remove the part files when it is done
+reading each of them. To change this, you can use the --keep-parts flag, and
+the part files will not be removed.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
 	follow     = queryCmd.Flag("follow", "Alias for --tail").Short('f').Default("false").Bool()
@@ -162,15 +229,14 @@ func main() {
 		// 1. Query with stream selector(e.g: `{foo="bar"}|="error"`)
 		// 2. Query without stream selector (e.g: `|="error"`)
 
-		qs := rangeQuery.QueryString
-		if strings.HasPrefix(strings.TrimSpace(qs), "|") {
+		qs := strings.TrimSpace(rangeQuery.QueryString)
+		if strings.HasPrefix(qs, "|") || strings.HasPrefix(qs, "!") {
 			// inject the dummy stream selector
-			qs = `{source="logcli"}` + qs
-			rangeQuery.QueryString = qs
+			rangeQuery.QueryString = `{source="logcli"}` + rangeQuery.QueryString
 		}
 
 		// `--limit` doesn't make sense when using `--stdin` flag.
-		rangeQuery.Limit = math.MaxInt // TODO(kavi): is it a good idea?
+		rangeQuery.Limit = 0
 	}
 
 	switch cmd {
@@ -193,8 +259,12 @@ func main() {
 
 		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
-		} else {
+		} else if rangeQuery.ParallelMaxWorkers == 1 {
 			rangeQuery.DoQuery(queryClient, out, *statistics)
+		} else {
+			// `--limit` doesn't make sense when using parallelism.
+			rangeQuery.Limit = 0
+			rangeQuery.DoQueryParallel(queryClient, out, *statistics)
 		}
 	case instantQueryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -357,12 +427,18 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 
 			q.Start = mustParse(from, defaultStart)
 			q.End = mustParse(to, defaultEnd)
+
+			if q.ParallelMaxWorkers < 1 {
+				log.Println("parallel-max-workers must be greater than 0, defaulting to 1.")
+				q.ParallelMaxWorkers = 1
+			}
 		}
 		q.Quiet = *quiet
+
 		return nil
 	})
 
-	cmd.Flag("limit", "Limit on number of entries to print.").Default("30").IntVar(&q.Limit)
+	cmd.Flag("limit", "Limit on number of entries to print. Setting it to 0 will fetch all entries.").Default("30").IntVar(&q.Limit)
 	if instant {
 		cmd.Arg("query", "eg 'rate({foo=\"bar\"} |~ \".*error.*\" [5m])'").Required().StringVar(&q.QueryString)
 		cmd.Flag("now", "Time at which to execute the instant query.").StringVar(&now)
@@ -374,7 +450,12 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
-
+		cmd.Flag("parallel-duration", "Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create a file per job to maintain ordering.").Default("1h").DurationVar(&q.ParallelDuration)
+		cmd.Flag("parallel-max-workers", "Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers. When using parallel workers, limit is ignored.").Default("1").IntVar(&q.ParallelMaxWorkers)
+		cmd.Flag("part-path-prefix", "When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-utc_start-utc_end.part'. Intended to be used with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.").StringVar(&q.PartPathPrefix)
+		cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").Default("false").BoolVar(&q.OverwriteCompleted)
+		cmd.Flag("merge-parts", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").Default("false").BoolVar(&q.MergeParts)
+		cmd.Flag("keep-parts", "Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been read. This option will keep the part files.").Default("false").BoolVar(&q.KeepParts)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)

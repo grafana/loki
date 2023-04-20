@@ -11,6 +11,7 @@ import (
 
 // NOTE(kavi): Why new type?
 // Our linter won't allow to use basic types like string to be used as key in context.
+// TODO(chaudum): Can we safely change the type of the header key?
 type ctxKey string
 
 var (

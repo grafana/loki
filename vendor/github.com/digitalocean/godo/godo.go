@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.91.1"
+	libraryVersion = "1.98.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -54,34 +54,36 @@ type Client struct {
 	Balance           BalanceService
 	BillingHistory    BillingHistoryService
 	CDNs              CDNService
+	Certificates      CertificatesService
+	Databases         DatabasesService
 	Domains           DomainsService
 	Droplets          DropletsService
 	DropletActions    DropletActionsService
+	Firewalls         FirewallsService
+	FloatingIPs       FloatingIPsService
+	FloatingIPActions FloatingIPActionsService
+	Functions         FunctionsService
 	Images            ImagesService
 	ImageActions      ImageActionsService
 	Invoices          InvoicesService
 	Keys              KeysService
+	Kubernetes        KubernetesService
+	LoadBalancers     LoadBalancersService
+	Monitoring        MonitoringService
+	OneClick          OneClickService
+	Projects          ProjectsService
 	Regions           RegionsService
-	Sizes             SizesService
-	FloatingIPs       FloatingIPsService
-	FloatingIPActions FloatingIPActionsService
+	Registry          RegistryService
 	ReservedIPs       ReservedIPsService
 	ReservedIPActions ReservedIPActionsService
+	Sizes             SizesService
 	Snapshots         SnapshotsService
 	Storage           StorageService
 	StorageActions    StorageActionsService
 	Tags              TagsService
-	LoadBalancers     LoadBalancersService
-	Certificates      CertificatesService
-	Firewalls         FirewallsService
-	Projects          ProjectsService
-	Kubernetes        KubernetesService
-	Registry          RegistryService
-	Databases         DatabasesService
+	Tokens            TokensService
+	UptimeChecks      UptimeChecksService
 	VPCs              VPCsService
-	OneClick          OneClickService
-	Monitoring        MonitoringService
-	Functions         FunctionsService
 
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
@@ -216,6 +218,7 @@ func NewClient(httpClient *http.Client) *Client {
 	baseURL, _ := url.Parse(defaultBaseURL)
 
 	c := &Client{client: httpClient, BaseURL: baseURL, UserAgent: userAgent}
+
 	c.Account = &AccountServiceOp{client: c}
 	c.Actions = &ActionsServiceOp{client: c}
 	c.Apps = &AppsServiceOp{client: c}
@@ -223,33 +226,36 @@ func NewClient(httpClient *http.Client) *Client {
 	c.BillingHistory = &BillingHistoryServiceOp{client: c}
 	c.CDNs = &CDNServiceOp{client: c}
 	c.Certificates = &CertificatesServiceOp{client: c}
+	c.Databases = &DatabasesServiceOp{client: c}
 	c.Domains = &DomainsServiceOp{client: c}
 	c.Droplets = &DropletsServiceOp{client: c}
 	c.DropletActions = &DropletActionsServiceOp{client: c}
 	c.Firewalls = &FirewallsServiceOp{client: c}
 	c.FloatingIPs = &FloatingIPsServiceOp{client: c}
 	c.FloatingIPActions = &FloatingIPActionsServiceOp{client: c}
-	c.ReservedIPs = &ReservedIPsServiceOp{client: c}
-	c.ReservedIPActions = &ReservedIPActionsServiceOp{client: c}
+	c.Functions = &FunctionsServiceOp{client: c}
 	c.Images = &ImagesServiceOp{client: c}
 	c.ImageActions = &ImageActionsServiceOp{client: c}
 	c.Invoices = &InvoicesServiceOp{client: c}
 	c.Keys = &KeysServiceOp{client: c}
+	c.Kubernetes = &KubernetesServiceOp{client: c}
 	c.LoadBalancers = &LoadBalancersServiceOp{client: c}
+	c.Monitoring = &MonitoringServiceOp{client: c}
+	c.OneClick = &OneClickServiceOp{client: c}
 	c.Projects = &ProjectsServiceOp{client: c}
 	c.Regions = &RegionsServiceOp{client: c}
+	c.Registry = &RegistryServiceOp{client: c}
+	c.ReservedIPs = &ReservedIPsServiceOp{client: c}
+	c.ReservedIPActions = &ReservedIPActionsServiceOp{client: c}
 	c.Sizes = &SizesServiceOp{client: c}
 	c.Snapshots = &SnapshotsServiceOp{client: c}
 	c.Storage = &StorageServiceOp{client: c}
 	c.StorageActions = &StorageActionsServiceOp{client: c}
 	c.Tags = &TagsServiceOp{client: c}
-	c.Kubernetes = &KubernetesServiceOp{client: c}
-	c.Registry = &RegistryServiceOp{client: c}
-	c.Databases = &DatabasesServiceOp{client: c}
+	c.Tokens = &TokensServiceOp{client: c}
+	c.UptimeChecks = &UptimeChecksServiceOp{client: c}
 	c.VPCs = &VPCsServiceOp{client: c}
-	c.OneClick = &OneClickServiceOp{client: c}
-	c.Monitoring = &MonitoringServiceOp{client: c}
-	c.Functions = &FunctionsServiceOp{client: c}
+
 	c.headers = make(map[string]string)
 
 	return c
@@ -436,7 +442,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*Res
 		return response, err
 	}
 
-	if v != nil {
+	if resp.StatusCode != http.StatusNoContent && v != nil {
 		if w, ok := v.(io.Writer); ok {
 			_, err = io.Copy(w, resp.Body)
 			if err != nil {

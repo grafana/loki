@@ -1,0 +1,42 @@
+{"records": [
+	{ "time": "2023-03-08T12:06:46Z",
+	"resourceId": "AZURE-FUNC-APP",
+	"category": "FunctionAppLogs",
+	"operationName": "Microsoft.Web/sites/functions/log",
+	"level": "Informational",
+	"location": "My Location",
+	"properties": {
+	'appName':'',
+	'roleInstance':'123123123123',
+	'message':'Loading functions metadata',
+	'category':'Host.Startup',
+	'hostVersion':'X.XX.X.X',
+	'hostInstanceId':'myInstance',
+	'level':'Information',
+	'levelId':2,
+	'processId':155,
+	'eventId':3143,
+	'eventName':'FunctionMetadataManagerLoadingFunctionsMetadata'
+	}
+	},
+	{ "time": "2023-03-08T12:06:47Z",
+	"resourceId": "AZURE-FUNC-APP-2",
+	"category": "FunctionAppLogs",
+	"operationName": "Microsoft.Web/sites/functions/log",
+	"level": "Informational",
+	"location": "My Location",
+	"properties": {
+	'appName':'',
+	'roleInstance':'123123123123',
+	'message':'Loading functions metadata',
+	'category':'Host.Startup',
+	'hostVersion':'X.XX.X.X',
+	'hostInstanceId':'myInstance',
+	'level':'Information',
+	'levelId':2,
+	'processId':155,
+	'eventId':3143,
+	'eventName':'FunctionMetadataManagerLoadingFunctionsMetadata'
+	}
+	}
+]}

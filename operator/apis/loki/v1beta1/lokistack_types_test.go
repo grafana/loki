@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestConvertToV1(t *testing.T) {
+func TestConvertToV1_LokiStack(t *testing.T) {
 	tt := []struct {
 		desc string
 		src  v1beta1.LokiStack
@@ -632,7 +632,7 @@ func TestConvertToV1(t *testing.T) {
 	}
 }
 
-func TestConvertFromV1(t *testing.T) {
+func TestConvertFromV1_LokiStack(t *testing.T) {
 	tt := []struct {
 		desc string
 		src  v1.LokiStack

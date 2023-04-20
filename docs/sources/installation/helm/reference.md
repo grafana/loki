@@ -1,8 +1,8 @@
 ---
-title: Helm Chart Values
-menuTitle: Helm Chart Values
+title: Helm chart values
+menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 100
+weight: 200
 keywords: []
 ---
 
@@ -369,16 +369,16 @@ null
 		<tr>
 			<td>enterprise.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-"main-96f32b9f"
+null
 </pre>
 </td>
 		</tr>
 		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
-			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
+			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`</td>
 			<td><pre lang="json">
 {
   "contents": "NOTAVALIDLICENSE"
@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.1"
+"v1.7.0"
 </pre>
 </td>
 		</tr>
@@ -803,9 +803,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }}"
+"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1016,6 +1016,33 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.customBackendUrl</td>
+			<td>string</td>
+			<td>Override Backend URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customReadUrl</td>
+			<td>string</td>
+			<td>Override Read URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customWriteUrl</td>
+			<td>string</td>
+			<td>Override Write URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
@@ -1027,9 +1054,9 @@ See values.yaml
 		<tr>
 			<td>gateway.nginxConfig.httpSnippet</td>
 			<td>string</td>
-			<td>Allows appending custom configuration to the http block</td>
+			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1663,6 +1690,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.index_gateway</td>
+			<td>object</td>
+			<td>Optional index gateway configuration</td>
+			<td><pre lang="json">
+{
+  "mode": "ring"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
@@ -1912,6 +1950,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.tenants</td>
+			<td>list</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
@@ -1958,7 +2005,7 @@ false
 		<tr>
 			<td>migrate.fromDistributed.memberlistService</td>
 			<td>string</td>
-			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join it's ring.</td>
+			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join its ring.</td>
 			<td><pre lang="json">
 ""
 </pre>
@@ -2369,9 +2416,9 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.interval</td>
 			<td>string</td>
-			<td>ServiceMonitor scrape interval</td>
+			<td>ServiceMonitor scrape interval Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at least 1/4 rate interval.</td>
 			<td><pre lang="json">
-null
+"15s"
 </pre>
 </td>
 		</tr>
@@ -2763,7 +2810,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -3023,6 +3070,15 @@ null
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.extraContainers</td>
+			<td>list</td>
+			<td>Extra containers to add to the single binary loki pod</td>
 			<td><pre lang="json">
 []
 </pre>

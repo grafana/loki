@@ -11,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -1063,5 +1064,42 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 	// Partial mutation checks
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.Spec, want.Spec)
+}
+
+func TestGetMutateFunc_MutatePodDisruptionBudget(t *testing.T) {
+	mu := intstr.FromInt(1)
+	got := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test":  "test",
+				"other": "label",
+			},
+		},
+	}
+
+	want := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"other": "label",
+				"new":   "label",
+			},
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: &mu,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"label": "test",
+					"and":   "another",
+				},
+			},
+		},
+	}
+
+	f := manifests.MutateFuncFor(got, want, nil)
+	err := f()
+
+	require.NoError(t, err)
+	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Spec, want.Spec)
 }

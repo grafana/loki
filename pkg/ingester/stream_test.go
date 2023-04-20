@@ -217,6 +217,40 @@ func TestStreamIterator(t *testing.T) {
 	}
 }
 
+func TestEntryErrorCorrectlyReported(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.MaxChunkAge = time.Minute
+	l := validation.Limits{
+		PerStreamRateLimit:      15,
+		PerStreamRateLimitBurst: 15,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	s := newStream(
+		&cfg,
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NewStreamRateCalculator(),
+		NilMetrics,
+	)
+	s.highestTs = time.Now()
+
+	entries := []logproto.Entry{
+		{Line: "observability", Timestamp: time.Now().AddDate(-1 /* year */, 0 /* month */, 0 /* day */)},
+		{Line: "short", Timestamp: time.Now()},
+	}
+	_, failed := s.validateEntries(entries, false, true)
+	require.NotEmpty(t, failed)
+	require.False(t, hasRateLimitErr(failed))
+}
+
 func TestUnorderedPush(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MaxChunkAge = 10 * time.Second

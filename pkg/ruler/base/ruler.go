@@ -45,10 +45,6 @@ import (
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	supportedShardingAlgos      = []string{util.ShardingAlgoByGroup, util.ShardingAlgoByRule}
-
-	// Validation errors.
-	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
 )
 
 const (
@@ -710,7 +706,7 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 	var result = make([]*rulespb.RuleGroupDesc, 0, len(ruleGroups))
 
 	for _, g := range ruleGroups {
-		logger = log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
+		glog := log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
 
 		switch shardingAlgo {
 
@@ -719,15 +715,15 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 			owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 			if err != nil {
 				ringCheckErrors.Inc()
-				level.Error(logger).Log("msg", "failed to check if the ruler replica owns the rule group", "err", err)
+				level.Error(glog).Log("msg", "failed to check if the ruler replica owns the rule group", "err", err)
 				continue
 			}
 
 			if owned {
-				level.Debug(logger).Log("msg", "rule group owned")
+				level.Debug(glog).Log("msg", "rule group owned")
 				result = append(result, g)
 			} else {
-				level.Debug(logger).Log("msg", "rule group not owned, ignoring")
+				level.Debug(glog).Log("msg", "rule group not owned, ignoring")
 			}
 
 			continue
@@ -735,7 +731,7 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 		// if we are sharding by rule, we need to create rule groups for each rule to comply with Prometheus' rule engine's expectations
 		case util.ShardingAlgoByRule:
 			for _, r := range g.Rules {
-				rlog := log.With(logger, "rule", getRuleIdentifier(r))
+				rlog := log.With(glog, "rule", getRuleIdentifier(r))
 
 				owned, err := instanceOwnsRule(ring, g, r, instanceAddr)
 				if err != nil {

@@ -115,17 +115,17 @@ func NewExemplarMetrics(reg prometheus.Registerer) *ExemplarMetrics {
 // 1GB of extra memory, accounting for the fact that this is heap allocated space.
 // If len <= 0, then the exemplar storage is essentially a noop storage but can later be
 // resized to store exemplars.
-func NewCircularExemplarStorage(len int64, m *ExemplarMetrics) (ExemplarStorage, error) {
-	if len < 0 {
-		len = 0
+func NewCircularExemplarStorage(length int64, m *ExemplarMetrics) (ExemplarStorage, error) {
+	if length < 0 {
+		length = 0
 	}
 	c := &CircularExemplarStorage{
-		exemplars: make([]*circularBufferEntry, len),
-		index:     make(map[string]*indexEntry, len/estimatedExemplarsPerSeries),
+		exemplars: make([]*circularBufferEntry, length),
+		index:     make(map[string]*indexEntry, length/estimatedExemplarsPerSeries),
 		metrics:   m,
 	}
 
-	c.metrics.maxExemplars.Set(float64(len))
+	c.metrics.maxExemplars.Set(float64(length))
 
 	return c, nil
 }
@@ -226,13 +226,16 @@ func (ce *CircularExemplarStorage) validateExemplar(key []byte, e exemplar.Exemp
 	// Exemplar label length does not include chars involved in text rendering such as quotes
 	// equals sign, or commas. See definition of const ExemplarMaxLabelLength.
 	labelSetLen := 0
-	for _, l := range e.Labels {
+	if err := e.Labels.Validate(func(l labels.Label) error {
 		labelSetLen += utf8.RuneCountInString(l.Name)
 		labelSetLen += utf8.RuneCountInString(l.Value)
 
 		if labelSetLen > exemplar.ExemplarMaxLabelSetLength {
 			return storage.ErrExemplarLabelLength
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	idx, ok := ce.index[string(key)]
