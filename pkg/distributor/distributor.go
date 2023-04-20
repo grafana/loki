@@ -160,7 +160,6 @@ func New(
 		ingestersRing:         ingestersRing,
 		validator:             validator,
 		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
-		ingestionRateLimiter:  limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -202,6 +201,7 @@ func New(
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
 	}
 
+	d.ingestionRateLimiter = limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second)
 	d.distributorsRing = distributorsRing
 	d.distributorsLifecycler = distributorsLifecycler
 
