@@ -588,12 +588,30 @@ func (m *Node) validate(all bool) error {
 
 	}
 
-	switch m.UserAgentVersionType.(type) {
-
+	switch v := m.UserAgentVersionType.(type) {
 	case *Node_UserAgentVersion:
+		if v == nil {
+			err := NodeValidationError{
+				field:  "UserAgentVersionType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 		// no validation rules for UserAgentVersion
-
 	case *Node_UserAgentBuildVersion:
+		if v == nil {
+			err := NodeValidationError{
+				field:  "UserAgentVersionType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetUserAgentBuildVersion()).(type) {
@@ -624,6 +642,8 @@ func (m *Node) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -1700,9 +1720,20 @@ func (m *DataSource) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Specifier.(type) {
-
+	oneofSpecifierPresent := false
+	switch v := m.Specifier.(type) {
 	case *DataSource_Filename:
+		if v == nil {
+			err := DataSourceValidationError{
+				field:  "Specifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofSpecifierPresent = true
 
 		if len(m.GetFilename()) < 1 {
 			err := DataSourceValidationError{
@@ -1716,6 +1747,17 @@ func (m *DataSource) validate(all bool) error {
 		}
 
 	case *DataSource_InlineBytes:
+		if v == nil {
+			err := DataSourceValidationError{
+				field:  "Specifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofSpecifierPresent = true
 
 		if len(m.GetInlineBytes()) < 1 {
 			err := DataSourceValidationError{
@@ -1729,6 +1771,17 @@ func (m *DataSource) validate(all bool) error {
 		}
 
 	case *DataSource_InlineString:
+		if v == nil {
+			err := DataSourceValidationError{
+				field:  "Specifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofSpecifierPresent = true
 
 		if len(m.GetInlineString()) < 1 {
 			err := DataSourceValidationError{
@@ -1742,6 +1795,9 @@ func (m *DataSource) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofSpecifierPresent {
 		err := DataSourceValidationError{
 			field:  "Specifier",
 			reason: "value is required",
@@ -1750,7 +1806,6 @@ func (m *DataSource) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -2189,9 +2244,20 @@ func (m *AsyncDataSource) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Specifier.(type) {
-
+	oneofSpecifierPresent := false
+	switch v := m.Specifier.(type) {
 	case *AsyncDataSource_Local:
+		if v == nil {
+			err := AsyncDataSourceValidationError{
+				field:  "Specifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetLocal()).(type) {
@@ -2223,6 +2289,17 @@ func (m *AsyncDataSource) validate(all bool) error {
 		}
 
 	case *AsyncDataSource_Remote:
+		if v == nil {
+			err := AsyncDataSourceValidationError{
+				field:  "Specifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRemote()).(type) {
@@ -2254,6 +2331,9 @@ func (m *AsyncDataSource) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofSpecifierPresent {
 		err := AsyncDataSourceValidationError{
 			field:  "Specifier",
 			reason: "value is required",
@@ -2262,7 +2342,6 @@ func (m *AsyncDataSource) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -2376,9 +2455,18 @@ func (m *TransportSocket) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *TransportSocket_Config:
+		if v == nil {
+			err := TransportSocketValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetConfig()).(type) {
@@ -2410,6 +2498,16 @@ func (m *TransportSocket) validate(all bool) error {
 		}
 
 	case *TransportSocket_TypedConfig:
+		if v == nil {
+			err := TransportSocketValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -2440,6 +2538,8 @@ func (m *TransportSocket) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {

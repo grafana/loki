@@ -605,12 +605,8 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 func Test_MergeBinOpVectors_Filter(t *testing.T) {
 	res, err := MergeBinOp(
 		OpTypeGT,
-		&promql.Sample{
-			Point: promql.Point{V: 2},
-		},
-		&promql.Sample{
-			Point: promql.Point{V: 0},
-		},
+		&promql.Sample{F: 2},
+		&promql.Sample{F: 0},
 		true,
 		true,
 	)
@@ -618,9 +614,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 
 	// ensure we return the left hand side's value (2) instead of the
 	// comparison operator's result (1: the truthy answer)
-	require.Equal(t, &promql.Sample{
-		Point: promql.Point{V: 2},
-	}, res)
+	require.Equal(t, &promql.Sample{F: 2}, res)
 }
 
 func TestFilterReodering(t *testing.T) {
