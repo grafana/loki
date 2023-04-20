@@ -42,6 +42,10 @@ If the new `ingester.shutdown_marker_path` config setting has a value that value
 If not the`common.path_prefix` config setting is used if it has a value. Otherwise a warning is shown
 in the logs on startup and the `/ingester/prepare_shutdown` endpoint will return a 500 status code.
 
+#### Rename UsageReport to Analytics
+
+The `UsageReport` module has been renamed to `Analytics` to match the config file, which was already expecting an `analytics` section. As a result the commandline flags `-reporting.*` have been renamed to `-analytics.*`.
+
 ## 2.8.0
 
 ### Loki
