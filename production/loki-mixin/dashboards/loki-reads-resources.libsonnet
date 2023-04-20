@@ -116,7 +116,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         )
         .addRowIf(
           !$._config.ssd.enabled,
-          grafana.row.new('Parllel Querier')
+          grafana.row.new('Parallel Querier')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'querier'),
           )
@@ -124,7 +124,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'parallel-querier'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'parallle-querier'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'paralle-querier'),
           )
           .addPanel(
             $.panel('Disk Writes') +
