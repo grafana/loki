@@ -746,9 +746,13 @@ results_cache:
 The `ruler` block configures the Loki ruler.
 
 ```yaml
-# URL of alerts return path.
+# URL of the Grafana dashboard.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
+
+# Datasource UID for the dashboard.
+# CLI flag: -ruler.datasource-uid
+[datasource_uid: <url>]
 
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
