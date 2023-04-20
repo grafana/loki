@@ -36,7 +36,7 @@
 
 ##### Changes
 
-* [9212](https://github.com/grafana/loki/pull/9212) **trevorwhitney**: Rename UsageReport to Analytics. This changed the `-reporting.*` command line flags to be renamed to `-analytics.*`.
+* [9212](https://github.com/grafana/loki/pull/9212) **trevorwhitney**: Rename UsageReport to Analytics. The only external impact of this change is a change in the `-list-targets` output.
 
 #### Promtail
 

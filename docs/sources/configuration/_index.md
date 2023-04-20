@@ -2938,11 +2938,11 @@ Configuration for `analytics`.
 
 ```yaml
 # Enable anonymous usage reporting.
-# CLI flag: -analytics.enabled
+# CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
 
 # URL to which reports are sent
-# CLI flag: -analytics.usage-stats-url
+# CLI flag: -reporting.usage-stats-url
 [usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 
