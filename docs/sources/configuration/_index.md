@@ -746,7 +746,7 @@ results_cache:
 The `ruler` block configures the Loki ruler.
 
 ```yaml
-# URL base of the explore page.
+# Base URL of the Grafana instance.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
 
