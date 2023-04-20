@@ -124,7 +124,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'parallel-querier'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'paralle-querier'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'parallel-querier'),
           )
           .addPanel(
             $.panel('Disk Writes') +
