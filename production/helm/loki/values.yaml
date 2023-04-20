@@ -14,6 +14,8 @@ global:
 nameOverride: null
 # -- Overrides the chart's computed fullname
 fullnameOverride: null
+# -- Overrides the chart's cluster label
+clusterLabelOverride: null
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
 kubectlImage:

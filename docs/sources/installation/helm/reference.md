@@ -257,6 +257,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>clusterLabelOverride</td>
+			<td>string</td>
+			<td>Overrides the chart's cluster label</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.adminApi</td>
 			<td>object</td>
 			<td>If enabled, the correct admin_client storage will be configured. If disabled while running enterprise, make sure auth is set to `type: trust`, or that `auth_enabled` is set to `false`.</td>
