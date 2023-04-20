@@ -1667,7 +1667,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
-					GeneratorURL: fmt.Sprintf("http://localhost:9090/explore?left={\"queries\":[%s]}", escapedExpression),
+					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1687,7 +1687,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
-					GeneratorURL: fmt.Sprintf("http://localhost:9090/explore?left={\"queries\":[%s]}", escapedExpression),
+					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1705,7 +1705,7 @@ func TestSendAlerts(t *testing.T) {
 				}
 				require.Equal(t, tc.exp, alerts)
 			})
-			SendAlerts(senderFunc, "http://localhost:9090", "uid")(context.TODO(), "up", tc.in...)
+			SendAlerts(senderFunc, "http://localhost:8080", "uid")(context.TODO(), "up", tc.in...)
 		})
 	}
 }
