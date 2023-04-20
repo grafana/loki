@@ -122,7 +122,7 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 		for _, stream := range streams {
 			lb := labels.NewBuilder(stream.labels)
 			lb.Set(TenantLabel, userID)
-			withTenant := lb.Labels(nil)
+			withTenant := lb.Labels()
 
 			b.AddSeries(
 				withTenant,
@@ -184,7 +184,7 @@ func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time
 
 func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) stream {
 	if userLabel != "" {
-		lbls = labels.NewBuilder(lbls.Copy()).Set("user_id", userLabel).Labels(nil)
+		lbls = labels.NewBuilder(lbls.Copy()).Set("user_id", userLabel).Labels()
 	}
 	return stream{
 		labels: lbls,
@@ -704,7 +704,7 @@ func TestCompactedIndex(t *testing.T) {
 		"__name__ label should get dropped while indexing chunks": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(nil),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
@@ -772,7 +772,7 @@ func TestCompactedIndex(t *testing.T) {
 		"adding chunk to non-existing stream should error": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set("new", "label").Labels(nil),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set("new", "label").Labels(),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},

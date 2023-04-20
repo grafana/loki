@@ -19,7 +19,6 @@ type MsgAcceptFunc func(dh Header) MsgAcceptAction
 // * has more than 0 RRs in the Authority section
 //
 // * has more than 2 RRs in the Additional section
-//
 var DefaultMsgAcceptFunc MsgAcceptFunc = defaultMsgAcceptFunc
 
 // MsgAcceptAction represents the action to be taken.

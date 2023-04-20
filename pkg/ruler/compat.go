@@ -74,7 +74,7 @@ func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker,
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point{T: v.T, V: v.V},
+				T: v.T, F: v.V,
 				Metric: labels.Labels{},
 			}}, nil
 		default:
@@ -178,7 +178,7 @@ type CachingRulesManager struct {
 // Update reconciles the state of the CachingGroupLoader after a manager.Update.
 // The GroupLoader is mutated as part of a call to Update but it might still
 // contain removed files. Update tells the loader which files to keep
-func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error {
+func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.GroupEvalIterationFunc) error {
 	err := m.manager.Update(interval, files, externalLabels, externalURL, ruleGroupPostProcessFunc)
 	if err != nil {
 		return err

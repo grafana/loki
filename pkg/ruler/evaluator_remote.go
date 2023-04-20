@@ -299,7 +299,8 @@ func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTT
 		for _, s := range vec {
 			res = append(res, promql.Sample{
 				Metric: series.MetricToLabels(s.Metric),
-				Point:  promql.Point{V: float64(s.Value), T: int64(s.Timestamp)},
+				F:      float64(s.Value),
+				T:      int64(s.Timestamp),
 			})
 		}
 
