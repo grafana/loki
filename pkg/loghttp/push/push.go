@@ -133,4 +133,32 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		for _, e := range s.Entries {
 			totalEntries++
 			entriesSize += int64(len(e.Line))
-			by
+			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(int64(len(e.Line))))
+			bytesReceivedStats.Inc(int64(len(e.Line)))
+			if e.Timestamp.After(mostRecentEntry) {
+				mostRecentEntry = e.Timestamp
+			}
+		}
+	}
+
+	// incrementing tenant metrics if we have a tenant.
+	if totalEntries != 0 && userID != "" {
+		linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
+	}
+	linesReceivedStats.Inc(totalEntries)
+
+	level.Debug(logger).Log(
+		"msg", "push request parsed",
+		"path", r.URL.Path,
+		"contentType", contentType,
+		"contentEncoding", contentEncoding,
+		"bodySize", humanize.Bytes(uint64(bodySize.Size())),
+		"streams", len(req.Streams),
+		"entries", totalEntries,
+		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
+		"entriesSize", humanize.Bytes(uint64(entriesSize)),
+		"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
+		"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
+	)
+	return &req, nil
+}
