@@ -743,7 +743,7 @@ func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, thr
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
 
 }
 
