@@ -1646,7 +1646,7 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 }
 
 func TestSendAlerts(t *testing.T) {
-	escapedExpression := url.QueryEscape("{\"editorMode\":\"code\",\"expr\":\"up\",\"queryType\":\"range\"}")
+	escapedExpression := url.QueryEscape("{\"expr\":\"up\",\"queryType\":\"range\",\"datasource\":{\"type\":\"loki\",\"uid\":\"uid\"}}")
 	testCases := []struct {
 		in  []*promRules.Alert
 		exp []*notifier.Alert
@@ -1705,7 +1705,7 @@ func TestSendAlerts(t *testing.T) {
 				}
 				require.Equal(t, tc.exp, alerts)
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(senderFunc, "http://localhost:9090", "uid")(context.TODO(), "up", tc.in...)
 		})
 	}
 }

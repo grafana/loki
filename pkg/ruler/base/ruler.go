@@ -80,6 +80,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// This is used for template expansion in alerts, and represents the corresponding Grafana datasource UID.
+	DatasourceUID string `yaml:"datasource_uid"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
@@ -162,7 +164,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
-	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of the Grafana dashboard.")
+	f.StringVar(&cfg.DatasourceUID, "ruler.datasource-uid", "", "Datasource UID for the dashboard.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
 
@@ -379,16 +382,27 @@ type sender interface {
 }
 
 type query struct {
-	EditorMode string `json:"editorMode"`
-	Expr       string `json:"expr"`
-	QueryType  string `json:"queryType"`
+	Expr       string      `json:"expr"`
+	QueryType  string      `json:"queryType"`
+	Datasource *datasource `json:"datasource,omitempty"`
 }
 
-func grafanaLinkForExpression(expr string) string {
+type datasource struct {
+	Type string `json:"type"`
+	UID  string `json:"uid"`
+}
+
+func grafanaLinkForExpression(expr, datasourceUID string) string {
 	exprStruct := query{
-		EditorMode: "code",
-		Expr:       expr,
-		QueryType:  "range",
+		Expr:      expr,
+		QueryType: "range",
+	}
+
+	if datasourceUID != "" {
+		exprStruct.Datasource = &datasource{
+			Type: "loki",
+			UID:  datasourceUID,
+		}
 	}
 
 	marshaledExpression, _ := json.Marshal(exprStruct)
@@ -401,7 +415,7 @@ func grafanaLinkForExpression(expr string) string {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -410,7 +424,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + grafanaLinkForExpression(expr),
+				GeneratorURL: externalURL + grafanaLinkForExpression(expr, datasourceUID),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt

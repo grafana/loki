@@ -156,7 +156,7 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
 			Logger:          logger,
 			Registerer:      reg,
 			OutageTolerance: cfg.OutageTolerance,
