@@ -34,7 +34,6 @@ These endpoints are exposed by the querier and the query frontend:
 - [`GET /loki/api/v1/series`](#list-series)
 - [`GET /loki/api/v1/index/stats`](#index-stats)
 - [`GET /loki/api/v1/tail`](#stream-log-messages)
-- [`POST /loki/api/v1/push`](#push-log-entries-to-loki)
 - [`GET /ready`](#identify-ready-loki-instance)
 - [`GET /metrics`](#return-exposed-prometheus-metrics)
 - **Deprecated** [`GET /api/prom/tail`](#get-apipromtail)
