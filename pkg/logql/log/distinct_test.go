@@ -32,6 +32,7 @@ func Test_DistinctFilter(t *testing.T) {
 			`{"event": "access", "id": "2", "time": "3"}`,
 			`{"event": "access", "id": "2", "time": "4"}`,
 			`{"event": "access", "id": "1", "time": "5"}`,
+			`{"event": "delete", "id": "1", "time": "1"}`,
 		},
 		expectedCount: 2,
 		expectedLines: []string{
