@@ -272,12 +272,7 @@ Label filter expressions have support matching IP addresses. See [Matching IP ad
 
 Distinct filter expression allows filtering log lines using their original and extracted labels to filter out duplicate label values. The first line occurrence of a distinct value is returned, and the others are dropped.
 
-For example the following expression:
-
-```logql
-{job="varlogs"} |distinct filename
-```
-
+For example, for the following log lines:
 ### Parser expression
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{<relref "../metric_queries">}}).
