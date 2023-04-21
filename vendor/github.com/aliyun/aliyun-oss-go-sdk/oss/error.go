@@ -15,18 +15,22 @@ type ServiceError struct {
 	RequestID  string   `xml:"RequestId"` // The UUID used to uniquely identify the request
 	HostID     string   `xml:"HostId"`    // The OSS server cluster's Id
 	Endpoint   string   `xml:"Endpoint"`
+	Ec         string   `xml:"EC"`
 	RawMessage string   // The raw messages from OSS
 	StatusCode int      // HTTP status code
+
 }
 
 // Error implements interface error
 func (e ServiceError) Error() string {
-	if e.Endpoint == "" {
-		return fmt.Sprintf("oss: service returned error: StatusCode=%d, ErrorCode=%s, ErrorMessage=\"%s\", RequestId=%s",
-			e.StatusCode, e.Code, e.Message, e.RequestID)
+	errorStr := fmt.Sprintf("oss: service returned error: StatusCode=%d, ErrorCode=%s, ErrorMessage=\"%s\", RequestId=%s", e.StatusCode, e.Code, e.Message, e.RequestID)
+	if len(e.Endpoint) > 0 {
+		errorStr = fmt.Sprintf("%s, Endpoint=%s", errorStr, e.Endpoint)
 	}
-	return fmt.Sprintf("oss: service returned error: StatusCode=%d, ErrorCode=%s, ErrorMessage=\"%s\", RequestId=%s, Endpoint=%s",
-		e.StatusCode, e.Code, e.Message, e.RequestID, e.Endpoint)
+	if len(e.Ec) > 0 {
+		errorStr = fmt.Sprintf("%s, Ec=%s", errorStr, e.Ec)
+	}
+	return errorStr
 }
 
 // UnexpectedStatusCodeError is returned when a storage service responds with neither an error
