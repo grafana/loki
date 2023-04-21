@@ -45,18 +45,18 @@ func Test_DistinctFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	total := 0
-	passLines := make([]string, 0)
+	lines := make([]string, 0)
 	b := NewBaseLabelsBuilder().ForLabels(c.lbs, c.lbs.Hash())
 	for _, line := range c.input {
 		NewJSONParser().Process(1, []byte(line), b)
-		_, pass := distinctFilter.Process(1, []byte(line), b)
-		if pass {
+		_, ok := distinctFilter.Process(1, []byte(line), b)
+		if ok {
 			total++
-			passLines = append(passLines, line)
+			lines = append(lines, line)
 		}
 	}
 
 	require.Equal(t, c.expectedCount, total)
-	require.Equal(t, c.expectedLines, passLines)
+	require.Equal(t, c.expectedLines, lines)
 
 }
