@@ -20,7 +20,7 @@ func Test_DistinctFilter(t *testing.T) {
 		expectedLines []string
 	}{
 		name:  "distinct test",
-		label: []string{"id", "time"},
+		label: []string{"id", "time", "none"},
 		lbs: labels.Labels{
 			{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			{Name: "status", Value: "200"},

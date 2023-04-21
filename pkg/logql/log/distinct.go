@@ -20,7 +20,7 @@ func (r *distinctFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]by
 	for _, label := range r.labels {
 		val, ok := lbs.Get(label)
 		if !ok {
-			return line, false
+			return line, true
 		}
 		_, ok = r.datas[label][val]
 		if ok {
