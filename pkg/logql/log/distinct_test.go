@@ -45,8 +45,8 @@ func Test_DistinctFilter(t *testing.T) {
 
 	total := 0
 	passLines := make([]string, 0)
+	b := NewBaseLabelsBuilder().ForLabels(c.lbs, c.lbs.Hash())
 	for _, line := range c.input {
-		b := NewBaseLabelsBuilder().ForLabels(c.lbs, c.lbs.Hash())
 		NewJSONParser().Process(1, []byte(line), b)
 		_, pass := distinctFilter.Process(1, []byte(line), b)
 		if pass {
