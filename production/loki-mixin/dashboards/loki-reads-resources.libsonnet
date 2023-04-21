@@ -118,7 +118,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           !$._config.ssd.enabled,
           grafana.row.new('Parallel Querier')
           .addPanel(
-            $.containerCPUUsagePanel('CPU', 'querier'),
+            $.containerCPUUsagePanel('CPU', 'parallel-querier'),
           )
           .addPanel(
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'parallel-querier'),
