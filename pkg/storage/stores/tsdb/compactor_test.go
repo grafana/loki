@@ -887,7 +887,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 		builder.FinalizeChunks()
 
-		return newCompactedIndex(context.Background(), tableName, buildUserID(0), t.TempDir(), periodConfig, builder)
+		return newCompactedIndex(context.Background(), tableName, buildUserID(0), t.TempDir(), periodConfig, builder, log.NewNopLogger())
 	}
 
 	expectedChunkEntries := map[string][]retention.ChunkEntry{

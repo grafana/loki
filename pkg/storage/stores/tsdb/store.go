@@ -166,6 +166,18 @@ func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.T
 			Entries:  uint32(chk.Data.Entries()),
 		},
 	}
+
+	level.Info(s.logger).Log(
+    "msg", "appending chunk to index", 
+    "org_id", chk.UserID,
+    "minTime", metas[0].MinTime, 
+    "maxTime", metas[0].MaxTime, 
+    "entries", metas[0].Entries, 
+    "kb", metas[0].KB,
+    "fingerprint", chk.ChunkRef.Fingerprint,
+    "labels", chk.Metric.String(),
+  )
+
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}

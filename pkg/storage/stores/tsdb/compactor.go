@@ -57,7 +57,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 
 	builder.chunksFinalized = true
 
-	return newCompactedIndex(ctx, tableName, userID, workingDir, periodConfig, builder), nil
+	return newCompactedIndex(ctx, tableName, userID, workingDir, periodConfig, builder, logger), nil
 }
 
 type tableCompactor struct {
@@ -154,7 +154,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder)
+		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder, existingUserIndexSet.GetLogger())
 		t.compactedIndexes[userID] = compactedIndex
 
 		if err := existingUserIndexSet.SetCompactedIndex(compactedIndex, true); err != nil {
@@ -174,7 +174,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		compactedIndex := newCompactedIndex(t.ctx, srcIdxSet.GetTableName(), userID, srcIdxSet.GetWorkingDir(), t.periodConfig, builder)
+		compactedIndex := newCompactedIndex(t.ctx, srcIdxSet.GetTableName(), userID, srcIdxSet.GetWorkingDir(), t.periodConfig, builder, srcIdxSet.GetLogger())
 		t.compactedIndexes[userID] = compactedIndex
 		if err := srcIdxSet.SetCompactedIndex(compactedIndex, true); err != nil {
 			return err
@@ -254,9 +254,11 @@ type compactedIndex struct {
 	indexChunks     []chunk.Chunk
 	deleteChunks    map[string][]index.ChunkMeta
 	seriesToCleanup map[string]struct{}
+
+	logger log.Logger
 }
 
-func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string, periodConfig config.PeriodConfig, builder *Builder) *compactedIndex {
+func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string, periodConfig config.PeriodConfig, builder *Builder, logger log.Logger) *compactedIndex {
 	return &compactedIndex{
 		ctx:             ctx,
 		userID:          userID,
@@ -266,6 +268,7 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 		tableInterval:   retention.ExtractIntervalFromTableName(tableName),
 		deleteChunks:    map[string][]index.ChunkMeta{},
 		seriesToCleanup: map[string]struct{}{},
+		logger:          logger,
 	}
 }
 
@@ -361,13 +364,24 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		ls := b.Labels(nil)
 
 		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
+		chkMeta := index.ChunkMeta{
 			Checksum: chk.Checksum,
 			MinTime:  int64(chk.From),
 			MaxTime:  int64(chk.Through),
 			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
-		})
+		}
+		level.Info(c.logger).Log(
+			"msg", "indexing chunk for compacted index",
+			"labels", ls.String(),
+			"org_id", chk.UserID,
+			"minTime", chkMeta.MinTime,
+			"maxTime", chkMeta.MaxTime,
+			"entries", chkMeta.Entries,
+			"kb", chkMeta.KB,
+			"fingerprint", chk.Fingerprint,
+		)
+		err := c.builder.InsertChunk(ls.String(), chkMeta)
 		if err != nil {
 			return nil, err
 		}
