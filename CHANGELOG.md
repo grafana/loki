@@ -3,8 +3,19 @@
 #### Loki
 
 ##### Fixes
+
 * [9156](https://github.com/grafana/loki/pull/9156) **ashwanthgoli**: Expiration: do not drop index if period is a zero value
 * [9185](https://github.com/grafana/loki/pull/9185) **dannykopping**: Prevent redis client from incorrectly choosing cluster mode with local address.
+* [9176](https://github.com/grafana/loki/pull/9176) **DylanGuedes**: Fix incorrect association of per-stream rate limit when sharding is enabled.
+
+##### Changes
+
+* [9106](https://github.com/grafana/loki/pull/9106) **trevorwhitney**: Update go to 1.20.3
+
+#### Promtail
+
+##### Fixes
+* [9095](https://github.com/grafana/loki/pull/9095) **JordanRushing** Fix journald support in amd64 binary build
 
 ## 2.8.0 (2023-04-04)
 
