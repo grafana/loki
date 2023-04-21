@@ -146,7 +146,7 @@ func New(
 			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
 
-		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", registerer))
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor lifecycler")
 		}
