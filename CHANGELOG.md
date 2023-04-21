@@ -15,6 +15,7 @@
 #### Promtail
 
 ##### Fixes
+
 * [9095](https://github.com/grafana/loki/pull/9095) **JordanRushing** Fix journald support in amd64 binary build
 
 ## 2.8.0 (2023-04-04)
