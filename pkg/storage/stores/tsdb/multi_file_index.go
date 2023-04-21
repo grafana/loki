@@ -109,10 +109,6 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 }
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	if res == nil {
-		panic("res == nil")
-	}
-
 	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
 		// keep track of duplicates
 		seen := make(map[ChunkRef]struct{})
