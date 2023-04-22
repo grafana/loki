@@ -48,7 +48,8 @@ var signKeyList = []string{"acl", "uploads", "location", "cors",
 	"worm", "wormId", "wormExtend", "withHashContext",
 	"x-oss-enable-md5", "x-oss-enable-sha1", "x-oss-enable-sha256",
 	"x-oss-hash-ctx", "x-oss-md5-ctx", "transferAcceleration",
-	"regionList",
+	"regionList", "cloudboxes", "x-oss-ac-source-ip", "x-oss-ac-subnet-mask", "x-oss-ac-vpc-id", "x-oss-ac-forward-allow",
+	"metaQuery", "resourceGroup", "rtc",
 }
 
 // init initializes Conn
@@ -91,7 +92,14 @@ func (conn Conn) Do(method, bucketName, objectName string, params map[string]int
 	urlParams := conn.getURLParams(params)
 	subResource := conn.getSubResource(params)
 	uri := conn.url.getURL(bucketName, objectName, urlParams)
-	resource := conn.getResource(bucketName, objectName, subResource)
+
+	resource := ""
+	if conn.config.AuthVersion != AuthV4 {
+		resource = conn.getResource(bucketName, objectName, subResource)
+	} else {
+		resource = conn.getResourceV4(bucketName, objectName, subResource)
+	}
+
 	return conn.doRequest(method, uri, resource, headers, data, initCRC, listener)
 }
 
@@ -196,7 +204,7 @@ func (conn Conn) getSubResource(params map[string]interface{}) string {
 	keys := make([]string, 0, len(params))
 	signParams := make(map[string]string)
 	for k := range params {
-		if conn.config.AuthVersion == AuthV2 {
+		if conn.config.AuthVersion == AuthV2 || conn.config.AuthVersion == AuthV4 {
 			encodedKey := url.QueryEscape(k)
 			keys = append(keys, encodedKey)
 			if params[k] != nil && params[k] != "" {
@@ -253,6 +261,25 @@ func (conn Conn) getResource(bucketName, objectName, subResource string) string 
 	return fmt.Sprintf("/%s/%s%s", bucketName, objectName, subResource)
 }
 
+// getResource gets canonicalized resource
+func (conn Conn) getResourceV4(bucketName, objectName, subResource string) string {
+	if subResource != "" {
+		subResource = "?" + subResource
+	}
+
+	if bucketName == "" {
+		return fmt.Sprintf("/%s", subResource)
+	}
+
+	if objectName != "" {
+		objectName = url.QueryEscape(objectName)
+		objectName = strings.Replace(objectName, "+", "%20", -1)
+		objectName = strings.Replace(objectName, "%2F", "/", -1)
+		return fmt.Sprintf("/%s/%s%s", bucketName, objectName, subResource)
+	}
+	return fmt.Sprintf("/%s/%s", bucketName, subResource)
+}
+
 func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource string, headers map[string]string,
 	data io.Reader, initCRC uint64, listener ProgressListener) (*Response, error) {
 	method = strings.ToUpper(method)
@@ -281,10 +308,14 @@ func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource st
 		req.Header.Set("Proxy-Authorization", basic)
 	}
 
-	date := time.Now().UTC().Format(http.TimeFormat)
-	req.Header.Set(HTTPHeaderDate, date)
+	stNow := time.Now().UTC()
+	req.Header.Set(HTTPHeaderDate, stNow.Format(http.TimeFormat))
 	req.Header.Set(HTTPHeaderHost, req.Host)
 	req.Header.Set(HTTPHeaderUserAgent, conn.config.UserAgent)
+
+	if conn.config.AuthVersion == AuthV4 {
+		req.Header.Set(HttpHeaderOssContentSha256, DefaultContentSha256)
+	}
 
 	akIf := conn.config.GetCredentials()
 	if akIf.GetSecurityToken() != "" {
@@ -475,27 +506,37 @@ func (conn Conn) handleResponse(resp *http.Response, crc hash.Hash64) (*Response
 		if statusCode >= 400 && statusCode <= 505 {
 			// 4xx and 5xx indicate that the operation has error occurred
 			var respBody []byte
+			var errorXml []byte
 			respBody, err := readResponseBody(resp)
 			if err != nil {
 				return nil, err
 			}
-
-			if len(respBody) == 0 {
+			errorXml = respBody
+			if len(respBody) == 0 && len(resp.Header.Get(HTTPHeaderOssErr)) > 0 {
+				errorXml, err = base64.StdEncoding.DecodeString(resp.Header.Get(HTTPHeaderOssErr))
+				if err != nil {
+					errorXml = respBody
+				}
+			}
+			if len(errorXml) == 0 {
 				err = ServiceError{
 					StatusCode: statusCode,
 					RequestID:  resp.Header.Get(HTTPHeaderOssRequestID),
+					Ec:         resp.Header.Get(HTTPHeaderOssEc),
 				}
 			} else {
-				// Response contains storage service error object, unmarshal
-				srvErr, errIn := serviceErrFromXML(respBody, resp.StatusCode,
+				srvErr, errIn := serviceErrFromXML(errorXml, resp.StatusCode,
 					resp.Header.Get(HTTPHeaderOssRequestID))
-				if errIn != nil { // error unmarshaling the error response
-					err = fmt.Errorf("oss: service returned invalid response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+				if errIn != nil { // error unmarshal the error response
+					if len(resp.Header.Get(HTTPHeaderOssEc)) > 0 {
+						err = fmt.Errorf("oss: service returned invalid response body, status = %s, RequestId = %s, ec = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID), resp.Header.Get(HTTPHeaderOssEc))
+					} else {
+						err = fmt.Errorf("oss: service returned invalid response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+					}
 				} else {
 					err = srvErr
 				}
 			}
-
 			return &Response{
 				StatusCode: resp.StatusCode,
 				Headers:    resp.Header,
@@ -513,27 +554,37 @@ func (conn Conn) handleResponse(resp *http.Response, crc hash.Hash64) (*Response
 			// (0,300) [308,400) [506,)
 			// Other extended http StatusCode
 			var respBody []byte
+			var errorXml []byte
 			respBody, err := readResponseBody(resp)
 			if err != nil {
 				return &Response{StatusCode: resp.StatusCode, Headers: resp.Header, Body: ioutil.NopCloser(bytes.NewReader(respBody))}, err
 			}
-
-			if len(respBody) == 0 {
+			errorXml = respBody
+			if len(respBody) == 0 && len(resp.Header.Get(HTTPHeaderOssErr)) > 0 {
+				errorXml, err = base64.StdEncoding.DecodeString(resp.Header.Get(HTTPHeaderOssErr))
+				if err != nil {
+					errorXml = respBody
+				}
+			}
+			if len(errorXml) == 0 {
 				err = ServiceError{
 					StatusCode: statusCode,
 					RequestID:  resp.Header.Get(HTTPHeaderOssRequestID),
+					Ec:         resp.Header.Get(HTTPHeaderOssEc),
 				}
 			} else {
-				// Response contains storage service error object, unmarshal
-				srvErr, errIn := serviceErrFromXML(respBody, resp.StatusCode,
+				srvErr, errIn := serviceErrFromXML(errorXml, resp.StatusCode,
 					resp.Header.Get(HTTPHeaderOssRequestID))
-				if errIn != nil { // error unmarshaling the error response
-					err = fmt.Errorf("unkown response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+				if errIn != nil { // error unmarshal the error response
+					if len(resp.Header.Get(HTTPHeaderOssEc)) > 0 {
+						err = fmt.Errorf("unknown response body, status = %s, RequestId = %s, ec = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID), resp.Header.Get(HTTPHeaderOssEc))
+					} else {
+						err = fmt.Errorf("unknown response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+					}
 				} else {
 					err = srvErr
 				}
 			}
-
 			return &Response{
 				StatusCode: resp.StatusCode,
 				Headers:    resp.Header,
@@ -772,7 +823,7 @@ func (um *urlMaker) Init(endpoint string, isCname bool, isProxy bool) error {
 	host, _, err := net.SplitHostPort(um.NetLoc)
 	if err != nil {
 		host = um.NetLoc
-		if host[0] == '[' && host[len(host)-1] == ']' {
+		if len(host) > 0 && host[0] == '[' && host[len(host)-1] == ']' {
 			host = host[1 : len(host)-1]
 		}
 	}
@@ -848,5 +899,39 @@ func (um urlMaker) buildURL(bucket, object string) (string, string) {
 		}
 	}
 
+	return host, path
+}
+
+// buildURL builds URL
+func (um urlMaker) buildURLV4(bucket, object string) (string, string) {
+	var host = ""
+	var path = ""
+
+	object = url.QueryEscape(object)
+	object = strings.Replace(object, "+", "%20", -1)
+
+	// no escape /
+	object = strings.Replace(object, "%2F", "/", -1)
+
+	if um.Type == urlTypeCname {
+		host = um.NetLoc
+		path = "/" + object
+	} else if um.Type == urlTypeIP {
+		if bucket == "" {
+			host = um.NetLoc
+			path = "/"
+		} else {
+			host = um.NetLoc
+			path = fmt.Sprintf("/%s/%s", bucket, object)
+		}
+	} else {
+		if bucket == "" {
+			host = um.NetLoc
+			path = "/"
+		} else {
+			host = bucket + "." + um.NetLoc
+			path = fmt.Sprintf("/%s/%s", bucket, object)
+		}
+	}
 	return host, path
 }

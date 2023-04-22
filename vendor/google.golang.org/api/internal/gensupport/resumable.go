@@ -209,7 +209,6 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 				}
 				return prepareReturn(resp, err)
 			case <-pauseTimer.C:
-				quitAfterTimer.Stop()
 			case <-quitAfterTimer.C:
 				pauseTimer.Stop()
 				return prepareReturn(resp, err)
@@ -231,7 +230,6 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			case <-quitAfterTimer.C:
 				return prepareReturn(resp, err)
 			default:
-				quitAfterTimer.Stop()
 			}
 
 			resp, err = rx.transferChunk(ctx)
@@ -243,6 +241,7 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 
 			// Check if we should retry the request.
 			if !errorFunc(status, err) {
+				quitAfterTimer.Stop()
 				break
 			}
 

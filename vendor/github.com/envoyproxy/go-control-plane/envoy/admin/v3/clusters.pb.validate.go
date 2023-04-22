@@ -321,6 +321,8 @@ func (m *ClusterStatus) validate(all bool) error {
 
 	// no validation rules for ObservabilityName
 
+	// no validation rules for EdsServiceName
+
 	if len(errors) > 0 {
 		return ClusterStatusMultiError(errors)
 	}

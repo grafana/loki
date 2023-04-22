@@ -249,6 +249,7 @@ loki:
       accountName: null
       accountKey: null
       useManagedIdentity: false
+      useFederatedToken: false
       userAssignedId: null
       requestTimeout: null
     filesystem:

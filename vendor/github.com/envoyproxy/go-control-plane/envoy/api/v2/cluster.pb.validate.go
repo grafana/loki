@@ -1035,9 +1035,18 @@ func (m *Cluster) validate(all bool) error {
 
 	// no validation rules for TrackTimeoutBudgets
 
-	switch m.ClusterDiscoveryType.(type) {
-
+	switch v := m.ClusterDiscoveryType.(type) {
 	case *Cluster_Type:
+		if v == nil {
+			err := ClusterValidationError{
+				field:  "ClusterDiscoveryType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if _, ok := Cluster_DiscoveryType_name[int32(m.GetType())]; !ok {
 			err := ClusterValidationError{
@@ -1051,6 +1060,16 @@ func (m *Cluster) validate(all bool) error {
 		}
 
 	case *Cluster_ClusterType:
+		if v == nil {
+			err := ClusterValidationError{
+				field:  "ClusterDiscoveryType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetClusterType()).(type) {
@@ -1081,11 +1100,21 @@ func (m *Cluster) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
-
-	switch m.LbConfig.(type) {
-
+	switch v := m.LbConfig.(type) {
 	case *Cluster_RingHashLbConfig_:
+		if v == nil {
+			err := ClusterValidationError{
+				field:  "LbConfig",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetRingHashLbConfig()).(type) {
@@ -1117,6 +1146,16 @@ func (m *Cluster) validate(all bool) error {
 		}
 
 	case *Cluster_OriginalDstLbConfig_:
+		if v == nil {
+			err := ClusterValidationError{
+				field:  "LbConfig",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetOriginalDstLbConfig()).(type) {
@@ -1148,6 +1187,16 @@ func (m *Cluster) validate(all bool) error {
 		}
 
 	case *Cluster_LeastRequestLbConfig_:
+		if v == nil {
+			err := ClusterValidationError{
+				field:  "LbConfig",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetLeastRequestLbConfig()).(type) {
@@ -1178,6 +1227,8 @@ func (m *Cluster) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -2765,9 +2816,18 @@ func (m *Cluster_CommonLbConfig) validate(all bool) error {
 		}
 	}
 
-	switch m.LocalityConfigSpecifier.(type) {
-
+	switch v := m.LocalityConfigSpecifier.(type) {
 	case *Cluster_CommonLbConfig_ZoneAwareLbConfig_:
+		if v == nil {
+			err := Cluster_CommonLbConfigValidationError{
+				field:  "LocalityConfigSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetZoneAwareLbConfig()).(type) {
@@ -2799,6 +2859,16 @@ func (m *Cluster_CommonLbConfig) validate(all bool) error {
 		}
 
 	case *Cluster_CommonLbConfig_LocalityWeightedLbConfig_:
+		if v == nil {
+			err := Cluster_CommonLbConfigValidationError{
+				field:  "LocalityConfigSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetLocalityWeightedLbConfig()).(type) {
@@ -2829,6 +2899,8 @@ func (m *Cluster_CommonLbConfig) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {

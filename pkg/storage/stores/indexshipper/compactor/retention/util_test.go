@@ -303,7 +303,7 @@ func entryFromChunk(c chunk.Chunk) ChunkEntry {
 			From:     c.From,
 			Through:  c.Through,
 		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(nil),
+		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
 	}
 }
 

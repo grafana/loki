@@ -74,9 +74,9 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 
 	// apply relabeling
 	if len(relabelConfig) > 0 {
-		processed, _ = relabel.Process(lbs.Labels(nil), relabelConfig...)
+		processed, _ = relabel.Process(lbs.Labels(), relabelConfig...)
 	} else {
-		processed = lbs.Labels(nil)
+		processed = lbs.Labels()
 	}
 
 	// final labelset that will be sent to loki

@@ -409,6 +409,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
+	cfg.Common.PathPrefix = dir
 
 	for _, transformer := range cfgTransformers {
 		if transformer != nil {

@@ -143,6 +143,40 @@ func (m *Router) validate(all bool) error {
 
 	// no validation rules for SuppressGrpcRequestFailureCodeStats
 
+	for idx, item := range m.GetUpstreamHttpFilters() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RouterValidationError{
+						field:  fmt.Sprintf("UpstreamHttpFilters[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RouterValidationError{
+						field:  fmt.Sprintf("UpstreamHttpFilters[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouterValidationError{
+					field:  fmt.Sprintf("UpstreamHttpFilters[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if len(errors) > 0 {
 		return RouterMultiError(errors)
 	}
