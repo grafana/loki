@@ -16,7 +16,7 @@ func NewDistinctFilter(labels []string) (Stage, error) {
 	}, nil
 }
 func (r *distinctFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	isPass := false
+	keep := false
 	for _, label := range r.labels {
 		val, ok := lbs.Get(label)
 		if !ok {
@@ -27,9 +27,9 @@ func (r *distinctFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]by
 			return line, false
 		}
 		r.datas[label][val] = 1
-		isPass = true
+		keep = true
 	}
-	return line, isPass
+	return line, keep
 }
 
 func (r *distinctFilter) RequiredLabelNames() []string {
