@@ -1,3 +1,4 @@
+//go:build tools
 // +build tools
 
 // We include our tool dependencies for `go generate` here to ensure they're

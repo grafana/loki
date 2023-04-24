@@ -57,10 +57,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "buzz", // an extra label
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 			promql.Sample{
 				Metric: labels.FromMap(map[string]string{
@@ -68,10 +66,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "bork", // an extra label (second variant)
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 		}, nil
 	})

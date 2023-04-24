@@ -217,14 +217,28 @@ func BenchmarkUpdateRates(b *testing.B) {
 	rates := map[string]map[uint64]expiringRate{}
 	rates["fake"] = make(map[uint64]expiringRate)
 
-	now := time.Now()
+	oneYearAgo := time.Now().AddDate(-1, 0, 0) // one year ago
 	for i := 0; i < 500; i++ {
-		rates["fake"][uint64(i)] = expiringRate{rate: 20, createdAt: now}
+		rates["fake"][uint64(i)] = expiringRate{rate: 20, createdAt: oneYearAgo}
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rs.updateRates(context.TODO(), rates)
+	}
+}
+
+func BenchmarkAggregateByShard(b *testing.B) {
+	rs := &rateStore{rates: make(map[string]map[uint64]expiringRate)}
+	rates := make(map[string]map[uint64]*logproto.StreamRate)
+	rates["fake"] = make(map[uint64]*logproto.StreamRate)
+	for i := 0; i < 1000; i++ {
+		rates["fake"][uint64(i)] = &logproto.StreamRate{StreamHash: uint64(i), StreamHashNoShard: 12345}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rs.aggregateByShard(context.TODO(), rates)
 	}
 }
 

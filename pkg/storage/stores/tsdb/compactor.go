@@ -358,7 +358,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 		b := labels.NewBuilder(chk.Metric)
 		b.Del(labels.MetricName)
-		ls := b.Labels(nil)
+		ls := b.Labels()
 
 		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{

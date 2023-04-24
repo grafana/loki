@@ -151,11 +151,12 @@ func (s *rateStore) cleanupExpired() rateStats {
 
 	now := time.Now()
 	minAllowedCreatedAt := now.Add(-s.rateKeepAlive)
+	minAllowedCreatedAtNs := minAllowedCreatedAt.Nanosecond()
 
 	for tID, tenant := range s.rates {
 		rs.totalStreams += int64(len(tenant))
 		for stream, rate := range tenant {
-			if rate.createdAt.Before(minAllowedCreatedAt) {
+			if rate.createdAt.Nanosecond() < minAllowedCreatedAtNs {
 				rs.expiredCount++
 				delete(s.rates[tID], stream)
 				if len(s.rates[tID]) == 0 {
@@ -199,17 +200,18 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
+	now := time.Now()
 
 	for tID, tenant := range streamRates {
-		for _, streamRate := range tenant {
-			if _, ok := rates[tID]; !ok {
-				rates[tID] = map[uint64]expiringRate{}
-			}
+		if _, ok := rates[tID]; !ok {
+			rates[tID] = map[uint64]expiringRate{}
+		}
 
+		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
 			rate.shards++
-			rate.createdAt = time.Now()
+			rate.createdAt = now
 
 			rates[tID][streamRate.StreamHashNoShard] = rate
 		}

@@ -169,7 +169,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 		// Embed the tenant label into TSDB
 		lb := labels.NewBuilder(ls)
 		lb.Set(TenantLabel, user)
-		withTenant := lb.Labels(nil)
+		withTenant := lb.Labels()
 
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {
