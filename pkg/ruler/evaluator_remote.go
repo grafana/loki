@@ -253,14 +253,15 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 
 	fullBody := resp.Body
 	// created a limited reader to avoid logging the entire response body should it be very large
-	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 1024)
+	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 128)
 
 	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
 	//   i.e. critical alerts or recording rules producing crucial RemoteEvaluatorMetrics series
 	if resp.Code/100 != 2 {
 		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
 
-		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", limitedBody)
+		respBod, _ := io.ReadAll(limitedBody)
+		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", respBod)
 		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d", resp.Code)
 	}
 
