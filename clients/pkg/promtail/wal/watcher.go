@@ -44,11 +44,14 @@ type WriteCleanup interface {
 	SeriesReset(segmentNum int)
 }
 
-// WriteTo is responsible for doing the necessary work to process both series and entries while the Watcher
-// is reading / tailing segments. Note that StoreSeries and SeriesReset might be called concurrently.
+// WatcherActions is an interface used by the Watcher to send the samples it's read from the WAL on to
+// somewhere else, or clean them up. It's the intermediary between all information read by the Watcher
+// and the final destination.
 //
 // Based on https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go#L46
-type WriteTo interface {
+type WatcherActions interface {
+	// WriteCleanup is used to allow the Watcher to react upon being notified of WAL cleanup events, such as segments
+	// being reclaimed.
 	WriteCleanup
 
 	// StoreSeries is called when series are found in WAL entries by the watcher, alongside with the segmentNum they were
@@ -63,7 +66,7 @@ type Watcher struct {
 	// the metric/log line corresponds.
 	id string
 
-	writeTo    WriteTo
+	actions    WatcherActions
 	readNotify chan struct{}
 	done       chan struct{}
 	quit       chan struct{}
@@ -77,11 +80,11 @@ type Watcher struct {
 }
 
 // NewWatcher creates a new Watcher.
-func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger, config WatchConfig) *Watcher {
+func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WatcherActions, logger log.Logger, config WatchConfig) *Watcher {
 	return &Watcher{
 		walDir:      walDir,
 		id:          id,
-		writeTo:     writeTo,
+		actions:     writeTo,
 		readNotify:  make(chan struct{}),
 		quit:        make(chan struct{}),
 		done:        make(chan struct{}),
@@ -255,11 +258,11 @@ func (w *Watcher) decodeAndDispatch(b []byte, segmentNum int) (bool, error) {
 
 	// First process all series to ensure we don't write entries to non-existent series.
 	var firstErr error
-	w.writeTo.StoreSeries(rec.Series, segmentNum)
+	w.actions.StoreSeries(rec.Series, segmentNum)
 	readData = true
 
 	for _, entries := range rec.RefEntries {
-		if err := w.writeTo.AppendEntries(entries); err != nil && firstErr == nil {
+		if err := w.actions.AppendEntries(entries); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

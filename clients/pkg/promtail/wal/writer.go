@@ -30,8 +30,6 @@ const (
 // CleanupEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
 // they can subscribe to events by adding themselves as subscribers on the Writer with writer.SubscribeCleanup.
 type CleanupEventSubscriber interface {
-	// WriteCleanup is implemented by WriteTo, who can subscribe to these type of events for cleaning up the series cache
-	// entries that originated from deleted segments.
 	WriteCleanup
 }
 
@@ -107,7 +105,7 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
 			if err := wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log); err != nil {
-				level.Error(wrt.log).Log("msg", "Failed to write entry to wal", "err", err)
+				level.Error(wrt.log).Log("msg", "failed to write entry", "err", err)
 				// if an error occurred while writing the wal, go to next entry and don't notify write subscribers
 				continue
 			}
@@ -246,9 +244,6 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) er
 	// Reset wal record slices
 	ew.reusableWALRecord.RefEntries = ew.reusableWALRecord.RefEntries[:0]
 	ew.reusableWALRecord.Series = ew.reusableWALRecord.Series[:0]
-
-	defer func() {
-	}()
 
 	var fp uint64
 	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
