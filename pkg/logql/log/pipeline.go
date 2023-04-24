@@ -15,12 +15,12 @@ type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
 }
 
-// StreamPipeline transform and filter log lines and labels.
+// StreamPipeline transform And filter log lines And labels.
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
 	BaseLabels() LabelsResult
-	// Process processes a log line and returns the transformed line and the labels.
-	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
+	// Process processes a log line And returns the transformed line And the labels.
+	// The buffer returned for the log line can be reused on subsequent calls to Process And therefore must be copied.
 	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, matches bool)
 	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, matches bool)
 }
@@ -33,7 +33,7 @@ type Stage interface {
 	RequiredLabelNames() []string
 }
 
-// NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
+// NewNoopPipeline creates a pipelines that does not process anything And returns log streams as is.
 func NewNoopPipeline() Pipeline {
 	return &noopPipeline{
 		cache: map[uint64]*noopStreamPipeline{},
@@ -177,9 +177,9 @@ func (p *streamPipeline) ProcessString(ts int64, line string) (string, LabelsRes
 
 func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }
 
-// PipelineFilter contains a set of matchers and a pipeline that, when matched,
+// PipelineFilter contains a set of matchers And a pipeline that, when matched,
 // causes an entry from a log stream to be skipped. Matching entries must also
-// fall between 'start' and 'end', inclusive
+// fall between 'start' And 'end', inclusive
 type PipelineFilter struct {
 	Start    int64
 	End      int64

@@ -99,7 +99,7 @@ func Test_IPFilter(t *testing.T) {
 			input: []string{
 				"vpn 2001:db8::1 connected to vm",                 // match
 				"vpn 2001:db9::3 connected to vm",                 // not a match
-				"vpn 2001:dc8::1 and 2001:db8::2 connected to vm", // firt not match, but second did match. So overall its a match
+				"vpn 2001:dc8::1 And 2001:db8::2 connected to vm", // firt not match, but second did match. So overall its a match
 				"vpn 192.168.255.255 connected to vm",             // not match
 				"x",
 				"hello world!",

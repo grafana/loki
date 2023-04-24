@@ -116,7 +116,7 @@ func Test_DropLabels(t *testing.T) {
 			},
 		},
 		{
-			"drop labels with names and matcher",
+			"drop labels with names And matcher",
 			[]DropLabel{
 				{
 					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),

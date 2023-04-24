@@ -604,7 +604,7 @@ func Benchmark_Parser(b *testing.B) {
 
 	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
 	logfmtLine := `level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`
-	nginxline := `10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1" 200 60755 "https://grafana.com/go/observabilitycon/grafana-the-open-and-composable-observability-platform/?tech=ggl-o&pg=oss-graf&plcmt=hero-txt" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15" "123.123.123.123, 35.35.122.223" "TLSv1.3"`
+	nginxline := `10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1" 200 60755 "https://grafana.com/go/observabilitycon/grafana-the-open-And-composable-observability-platform/?tech=ggl-o&pg=oss-graf&plcmt=hero-txt" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15" "123.123.123.123, 35.35.122.223" "TLSv1.3"`
 	packedLike := `{"job":"123","pod":"someuid123","app":"foo","_entry":"10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1"}`
 
 	for _, tt := range []struct {
@@ -708,7 +708,7 @@ func TestNewRegexpParser(t *testing.T) {
 	}{
 		{"no sub", "w.*", true},
 		{"sub but not named", "f(.*) (foo|bar|buzz)", true},
-		{"named and unamed", "blah (.*) (?P<foo>)", false},
+		{"named And unamed", "blah (.*) (?P<foo>)", false},
 		{"named", "blah (.*) (?P<foo>foo)(?P<bar>barr)", false},
 		{"invalid name", "blah (.*) (?P<foo$>foo)(?P<bar>barr)", true},
 		{"duplicate", "blah (.*) (?P<foo>foo)(?P<foo>barr)", true},
@@ -899,7 +899,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			noParserHints,
 		},
 		{
-			"literal newline and escaped slash logfmt",
+			"literal newline And escaped slash logfmt",
 			[]byte("foobar=\"foo bar\nb\\\\az\""),
 			labels.Labels{
 				{Name: "a", Value: "b"},
@@ -1049,7 +1049,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			},
 		},
 		{
-			"value with spaces and ÜFT8👌",
+			"value with spaces And ÜFT8👌",
 			testLine,
 			[]LabelExtractionExpr{
 				NewLabelExtractionExpr("spaces", "spaces"),
@@ -1233,7 +1233,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			noParserHints,
 		},
 		{
-			"should not change log and labels if no packed entry",
+			"should not change log And labels if no packed entry",
 			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
 			labels.Labels{
 				{Name: "app", Value: "bar"},

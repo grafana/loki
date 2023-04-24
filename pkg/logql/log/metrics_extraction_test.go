@@ -204,7 +204,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 		shouldFail bool
 	}{
 		{
-			name: "with just logfmt and stringlabelfilter",
+			name: "with just logfmt And stringlabelfilter",
 			// {foo="bar"} | logfmt | subqueries != "0" (note: "0", a stringlabelfilter)
 			extractor: mustSampleExtractor(
 				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0"))}, NoopStage),
@@ -216,7 +216,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			},
 		},
 		{
-			name: "with just logfmt and numeric labelfilter",
+			name: "with just logfmt And numeric labelfilter",
 			// {foo="bar"} | logfmt | subqueries != 0 (note: "0", a numericLabelFilter)
 			extractor: mustSampleExtractor(
 				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewNumericLabelFilter(LabelFilterNotEqual, "subqueries", 0)}, NoopStage),

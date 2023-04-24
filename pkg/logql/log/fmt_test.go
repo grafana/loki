@@ -81,7 +81,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			nil,
 		},
 		{
-			"substr and trunc",
+			"substr And trunc",
 			newMustLineFormatter(
 				`{{.foo | substr 1 3 }} {{ .bar  | trunc 1 }} {{ .bar  | trunc 3 }}`,
 			),
@@ -103,7 +103,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			nil,
 		},
 		{
-			"lower and upper",
+			"lower And upper",
 			newMustLineFormatter(`{{.foo | lower }} {{ .bar  | upper }}`),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
 			0,
@@ -265,28 +265,28 @@ func Test_lineFormatter_Format(t *testing.T) {
 		},
 		{
 			"min",
-			newMustLineFormatter("min is {{ min .foo .bar .baz }} and max is {{ max .foo .bar .baz }}"),
+			newMustLineFormatter("min is {{ min .foo .bar .baz }} And max is {{ max .foo .bar .baz }}"),
 			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "10"}, {Name: "baz", Value: "15"}},
 			0,
-			[]byte("min is 5 and max is 15"),
+			[]byte("min is 5 And max is 15"),
 			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "10"}, {Name: "baz", Value: "15"}},
 			nil,
 		},
 		{
 			"max",
-			newMustLineFormatter("minf is {{ minf .foo .bar .baz }} and maxf is {{maxf .foo .bar .baz}}"),
+			newMustLineFormatter("minf is {{ minf .foo .bar .baz }} And maxf is {{maxf .foo .bar .baz}}"),
 			labels.Labels{{Name: "foo", Value: "5.3"}, {Name: "bar", Value: "10.5"}, {Name: "baz", Value: "15.2"}},
 			0,
-			[]byte("minf is 5.3 and maxf is 15.2"),
+			[]byte("minf is 5.3 And maxf is 15.2"),
 			labels.Labels{{Name: "foo", Value: "5.3"}, {Name: "bar", Value: "10.5"}, {Name: "baz", Value: "15.2"}},
 			nil,
 		},
 		{
 			"ceilfloor",
-			newMustLineFormatter("ceil is {{ ceil .foo }} and floor is {{floor .foo }}"),
+			newMustLineFormatter("ceil is {{ ceil .foo }} And floor is {{floor .foo }}"),
 			labels.Labels{{Name: "foo", Value: "5.3"}},
 			0,
-			[]byte("ceil is 6 and floor is 5"),
+			[]byte("ceil is 6 And floor is 5"),
 			labels.Labels{{Name: "foo", Value: "5.3"}},
 			nil,
 		},
@@ -498,27 +498,27 @@ func Test_labelsFormatter_Format(t *testing.T) {
 	}{
 		{
 			"combined with template",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} And {{.bar}}")}),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "foo", Value: "blip and blop"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "foo", Value: "blip And blop"}, {Name: "bar", Value: "blop"}},
 		},
 		{
-			"combined with template and rename",
+			"combined with template And rename",
 			mustNewLabelsFormatter([]LabelFmt{
-				NewTemplateLabelFmt("blip", "{{.foo}} and {{.bar}}"),
+				NewTemplateLabelFmt("blip", "{{.foo}} And {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "blip", Value: "blip and blop"}, {Name: "bar", Value: "blip"}},
+			labels.Labels{{Name: "blip", Value: "blip And blop"}, {Name: "bar", Value: "blip"}},
 		},
 		{
 			"fn",
 			mustNewLabelsFormatter([]LabelFmt{
-				NewTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
+				NewTemplateLabelFmt("blip", "{{.foo | ToUpper }} And {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
+			labels.Labels{{Name: "blip", Value: "BLIP And blop"}, {Name: "bar", Value: "blip"}},
 		},
 		{
 			"math",
@@ -529,10 +529,10 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"default",
 			mustNewLabelsFormatter([]LabelFmt{
-				NewTemplateLabelFmt("blip", `{{.foo | default "-" }} and {{.bar}}`),
+				NewTemplateLabelFmt("blip", `{{.foo | default "-" }} And {{.bar}}`),
 			}),
 			labels.Labels{{Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "blip", Value: "- and blop"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "blip", Value: "- And blop"}, {Name: "bar", Value: "blop"}},
 		},
 		{
 			"template error",
@@ -791,8 +791,8 @@ func TestLineFormatter_RequiredLabelNames(t *testing.T) {
 		fmt  string
 		want []string
 	}{
-		{`{{.foo}} and {{.bar}}`, []string{"foo", "bar"}},
-		{`{{ .foo | ToUpper | .buzz }} and {{.bar}}`, []string{"foo", "buzz", "bar"}},
+		{`{{.foo}} And {{.bar}}`, []string{"foo", "bar"}},
+		{`{{ .foo | ToUpper | .buzz }} And {{.bar}}`, []string{"foo", "buzz", "bar"}},
 		{`{{ regexReplaceAllLiteral "(p)" .foo "${1}" }}`, []string{"foo"}},
 		{`{{ if  .foo | hasSuffix "Ip" }} {{.bar}} {{end}}-{{ if  .foo | hasSuffix "pw"}}no{{end}}`, []string{"foo", "bar"}},
 		{`{{with .foo}}{{printf "%q" .}} {{end}}`, []string{"foo"}},
@@ -812,8 +812,8 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 		want []string
 	}{
 		{"rename", []LabelFmt{NewRenameLabelFmt("foo", "bar")}, []string{"bar"}},
-		{"rename and fmt", []LabelFmt{NewRenameLabelFmt("fuzz", "bar"), NewTemplateLabelFmt("1", "{{ .foo | ToUpper | .buzz }} and {{.bar}}")}, []string{"bar", "foo", "buzz"}},
-		{"fmt", []LabelFmt{NewTemplateLabelFmt("1", "{{.blip}}"), NewTemplateLabelFmt("2", "{{ .foo | ToUpper | .buzz }} and {{.bar}}")}, []string{"blip", "foo", "buzz", "bar"}},
+		{"rename And fmt", []LabelFmt{NewRenameLabelFmt("fuzz", "bar"), NewTemplateLabelFmt("1", "{{ .foo | ToUpper | .buzz }} And {{.bar}}")}, []string{"bar", "foo", "buzz"}},
+		{"fmt", []LabelFmt{NewTemplateLabelFmt("1", "{{.blip}}"), NewTemplateLabelFmt("2", "{{ .foo | ToUpper | .buzz }} And {{.bar}}")}, []string{"blip", "foo", "buzz", "bar"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

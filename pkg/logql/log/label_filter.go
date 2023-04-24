@@ -62,15 +62,15 @@ type LabelFilterer interface {
 type BinaryLabelFilter struct {
 	Left  LabelFilterer
 	Right LabelFilterer
-	and   bool
+	And   bool
 }
 
-// NewAndLabelFilter creates a new LabelFilterer from a and binary operation of two LabelFilterer.
+// NewAndLabelFilter creates a new LabelFilterer from a And binary operation of two LabelFilterer.
 func NewAndLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilter {
 	return &BinaryLabelFilter{
 		Left:  left,
 		Right: right,
-		and:   true,
+		And:   true,
 	}
 }
 
@@ -84,11 +84,11 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 
 func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	line, lok := b.Left.Process(ts, line, lbs)
-	if !b.and && lok {
+	if !b.And && lok {
 		return line, true
 	}
 	line, rok := b.Right.Process(ts, line, lbs)
-	if !b.and {
+	if !b.And {
 		return line, lok || rok
 	}
 	return line, lok && rok
@@ -105,7 +105,7 @@ func (b *BinaryLabelFilter) String() string {
 	var sb strings.Builder
 	sb.WriteString("( ")
 	sb.WriteString(b.Left.String())
-	if b.and {
+	if b.And {
 		sb.WriteString(" , ")
 	} else {
 		sb.WriteString(" or ")
@@ -131,7 +131,7 @@ func (f NoopLabelFilter) String() string {
 	return ""
 }
 
-// ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
+// ReduceAndLabelFilter Reduces multiple label filterer into one using binary And operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
 	if len(filters) == 0 {
 		return &NoopLabelFilter{}
@@ -153,7 +153,7 @@ type BytesLabelFilter struct {
 }
 
 // NewBytesLabelFilter creates a new label filterer which parses bytes string representation (1KB) from the value of the named label
-// and compares it with the given b value.
+// And compares it with the given b value.
 func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFilter {
 	return &BytesLabelFilter{
 		Name:  name,
@@ -218,7 +218,7 @@ type DurationLabelFilter struct {
 }
 
 // NewDurationLabelFilter creates a new label filterer which parses duration string representation (5s)
-// from the value of the named label and compares it with the given d value.
+// from the value of the named label And compares it with the given d value.
 func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *DurationLabelFilter {
 	return &DurationLabelFilter{
 		Name:  name,
@@ -278,7 +278,7 @@ type NumericLabelFilter struct {
 }
 
 // NewNumericLabelFilter creates a new label filterer which parses float64 string representation (5.2)
-// from the value of the named label and compares it with the given f value.
+// from the value of the named label And compares it with the given f value.
 func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLabelFilter {
 	return &NumericLabelFilter{
 		Name:  name,

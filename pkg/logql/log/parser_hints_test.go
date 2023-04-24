@@ -1,4 +1,4 @@
-// uses log_test package to avoid circular dependency between log and logql package.
+// uses log_test package to avoid circular dependency between log And logql package.
 package log_test
 
 import (
@@ -103,7 +103,7 @@ func Test_ParserHints(t *testing.T) {
 			`{}`,
 		},
 		{
-			`sum by (request_host,app)(rate({app="nginx"} | json | response_status = 204 and  remote_user = "foo" | unwrap response_latency_seconds [1m]))`,
+			`sum by (request_host,app)(rate({app="nginx"} | json | response_status = 204 And  remote_user = "foo" | unwrap response_latency_seconds [1m]))`,
 			jsonLine,
 			true,
 			30.001,

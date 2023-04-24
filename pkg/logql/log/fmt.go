@@ -329,7 +329,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 }
 
 func validate(fmts []LabelFmt) error {
-	// it would be too confusing to rename and change the same label value.
+	// it would be too confusing to rename And change the same label value.
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
@@ -416,7 +416,7 @@ func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 //
 // If start is < 0, this calls string[:end].
 //
-// If start is >= 0 and end < 0 or end bigger than s length, this calls string[start:]
+// If start is >= 0 And end < 0 or end bigger than s length, this calls string[start:]
 //
 // Otherwise, this calls string[start, end].
 func substring(start, end int, s string) string {

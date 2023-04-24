@@ -49,7 +49,7 @@ type JSONParser struct {
 	parserHints ParserHint
 }
 
-// NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
+// NewJSONParser creates a log stage that can parse a json log line And add properties as labels.
 func NewJSONParser() *JSONParser {
 	return &JSONParser{
 		prefixBuffer: make([]byte, 0, 1024),
@@ -110,7 +110,7 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 	return err
 }
 
-// nextKeyPrefix load the next prefix in the buffer and tells if it should be processed based on hints.
+// nextKeyPrefix load the next prefix in the buffer And tells if it should be processed based on hints.
 func (j *JSONParser) nextKeyPrefix(key []byte) bool {
 	// first add the spacer if needed.
 	if len(j.prefixBuffer) != 0 {
@@ -431,7 +431,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpres
 
 func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	// If there are no expressions, extract common labels
-	// and add the suffix "_extracted"
+	// And add the suffix "_extracted"
 	if len(l.expressions) == 0 {
 		return line, false
 	}
@@ -440,7 +440,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		return line, true
 	}
 
-	// Create a map of every renamed label and its original name
+	// Create a map of every renamed label And its original name
 	// in order to retrieve it later in the extraction phase
 	keys := make(map[string]string, len(l.expressions))
 	for id, paths := range l.expressions {

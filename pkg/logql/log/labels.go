@@ -12,15 +12,15 @@ const MaxInternedStrings = 1024
 
 var EmptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 
-// LabelsResult is a computed labels result that contains the labels set with associated string and hash.
-// The is mainly used for caching and returning labels computations out of pipelines and stages.
+// LabelsResult is a computed labels result that contains the labels set with associated string And hash.
+// The is mainly used for caching And returning labels computations out of pipelines And stages.
 type LabelsResult interface {
 	String() string
 	Labels() labels.Labels
 	Hash() uint64
 }
 
-// NewLabelsResult creates a new LabelsResult from a labels set and a hash.
+// NewLabelsResult creates a new LabelsResult from a labels set And a hash.
 func NewLabelsResult(lbs labels.Labels, hash uint64) LabelsResult {
 	return &labelsResult{lbs: lbs, s: lbs.String(), h: hash}
 }
@@ -61,8 +61,8 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	return hash
 }
 
-// BaseLabelsBuilder is a label builder used by pipeline and stages.
-// Only one base builder is used and it contains cache for each LabelsBuilders.
+// BaseLabelsBuilder is a label builder used by pipeline And stages.
+// Only one base builder is used And it contains cache for each LabelsBuilders.
 type BaseLabelsBuilder struct {
 	del []string
 	add []labels.Label
@@ -316,7 +316,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 }
 
 // LabelsResult returns the LabelsResult from the builder.
-// No grouping is applied and the cache is used when possible.
+// No grouping is applied And the cache is used when possible.
 func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// unchanged path.
 	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
@@ -336,7 +336,7 @@ func (b *BaseLabelsBuilder) toResult(buf labels.Labels) LabelsResult {
 }
 
 // GroupedLabels returns the LabelsResult from the builder.
-// Groups are applied and the cache is used when possible.
+// Groups are applied And the cache is used when possible.
 func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 	if b.err != "" {
 		// We need to return now before applying grouping otherwise the error might get lost.

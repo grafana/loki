@@ -187,9 +187,9 @@ func containsError(hints []string) bool {
 	return false
 }
 
-// appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
+// appendLabelHints Appends the label to the list of hints with And without the duplicate suffix.
 // If a parsed label collides with a stream label we add the `_extracted` suffix to it, however hints
-// are used by the parsers before we know they will collide with a stream label and hence before the
+// are used by the parsers before we know they will collide with a stream label And hence before the
 // _extracted suffix is added. Therefore we must strip the _extracted suffix from any required labels
 // that were parsed from somewhere in the query, say in a filter or an aggregation clause.
 // Because it's possible for a valid json or logfmt key to already end with _extracted, we'll just

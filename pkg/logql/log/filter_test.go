@@ -124,17 +124,17 @@ func Test_TrueFilter(t *testing.T) {
 		{"empty match", newContainsFilter(empty, false), true},
 		{"not empty match", newNotFilter(newContainsFilter(empty, true)), false},
 		{"match", newContainsFilter([]byte("foo"), false), false},
-		{"empty match and", NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
+		{"empty match And", NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
 		{"empty match or", newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
-		{"nil right and", NewAndFilter(newContainsFilter(empty, false), nil), true},
+		{"nil right And", NewAndFilter(newContainsFilter(empty, false), nil), true},
 		{"nil left or", newOrFilter(nil, newContainsFilter(empty, false)), true},
-		{"nil right and not empty", NewAndFilter(newContainsFilter([]byte("foo"), false), nil), false},
+		{"nil right And not empty", NewAndFilter(newContainsFilter([]byte("foo"), false), nil), false},
 		{"nil left or not empty", newOrFilter(nil, newContainsFilter([]byte("foo"), false)), false},
-		{"nil both and", NewAndFilter(nil, nil), false}, // returns nil
+		{"nil both And", NewAndFilter(nil, nil), false}, // returns nil
 		{"nil both or", newOrFilter(nil, nil), false},   // returns nil
-		{"empty match and chained", NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
+		{"empty match And chained", NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
 		{"empty match or chained", newOrFilter(newContainsFilter(empty, false), newOrFilter(newContainsFilter(empty, true), newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
-		{"empty match and", newNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match And", newNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
 		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {

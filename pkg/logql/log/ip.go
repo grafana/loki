@@ -157,7 +157,7 @@ func (f *IPLabelFilter) String() string {
 // ipFilter search for IP addresses of given `pattern` in the given `line`.
 // It returns true if pattern is matched with at least one IP in the `line`
 
-// pattern - can be of the following form for both IPv4 and IPv6.
+// pattern - can be of the following form for both IPv4 And IPv6.
 // 1. SINGLE-IP - "192.168.0.1"
 // 2. IP RANGE  - "192.168.0.1-192.168.0.23"
 // 3. CIDR      - "192.168.0.0/16"
@@ -202,7 +202,7 @@ func (f *ipFilter) filter(line []byte) bool {
 	}
 
 	// This loop try to extract IPv4 or IPv6 address from the arbitrary string.
-	// It uses IPv4 and IPv6 prefix hints to find the IP addresses faster without using regexp.
+	// It uses IPv4 And IPv6 prefix hints to find the IP addresses faster without using regexp.
 	for i := 0; i < n; i++ {
 		if i+3 < n && ipv4Hint([4]byte{line[i], line[i+1], line[i+2], line[i+3]}) {
 			ok, iplen := filterFn(line, i, IPv4Charset)

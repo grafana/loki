@@ -479,13 +479,15 @@ func (e *LabelFilterExpr) String() string {
 }
 
 type LineFmtExpr struct {
-	Value string
+	FmtType string
+	Value   string
 	implicit
 }
 
 func newLineFmtExpr(value string) *LineFmtExpr {
 	return &LineFmtExpr{
-		Value: value,
+		FmtType: "LineFmt",
+		Value:   value,
 	}
 }
 
@@ -558,12 +560,14 @@ func (e *LineFmtExpr) String() string {
 }
 
 type LabelFmtExpr struct {
+	FmtType string
 	Formats []log.LabelFmt
 	implicit
 }
 
 func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 	return &LabelFmtExpr{
+		FmtType: "LabelFmt",
 		Formats: fmts,
 	}
 }
