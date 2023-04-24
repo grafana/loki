@@ -126,9 +126,12 @@ func NewPipeline(stages []Stage) Pipeline {
 	if len(stages) == 0 {
 		return NewNoopPipeline()
 	}
+
+	hints := NewParserHint(nil, nil, false, false, "", stages)
+	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false)
 	return &pipeline{
 		stages:          stages,
-		baseBuilder:     NewBaseLabelsBuilder(),
+		baseBuilder:     builder,
 		streamPipelines: make(map[uint64]StreamPipeline),
 	}
 }

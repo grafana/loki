@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -448,6 +450,13 @@ func (t *Loki) initQuerier() (services.Service, error) {
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	if t.Cfg.Ingester.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
+		t.Cfg.Ingester.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
+	}
+	if t.Cfg.Ingester.ShutdownMarkerPath == "" {
+		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
+	}
+
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -470,6 +479,9 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	)
 	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.LegacyShutdownHandler)),
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
 	)
 	t.Server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
@@ -683,6 +695,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
+		t.Cfg.Querier.Engine,
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
@@ -792,6 +805,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -999,9 +1013,14 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			break
 		}
 
-		evaluator, err = ruler.NewLocalEvaluator(&t.Cfg.Ruler.Evaluation, engine, logger)
+		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
 	case ruler.EvalModeRemote:
-		evaluator, err = ruler.NewRemoteEvaluator(&t.Cfg.Ruler.Evaluation, logger)
+		qfClient, e := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
+		if e != nil {
+			return nil, fmt.Errorf("failed to dial query frontend for remote rule evaluation: %w", err)
+		}
+
+		evaluator, err = ruler.NewRemoteEvaluator(qfClient, t.Overrides, logger, prometheus.DefaultRegisterer)
 	default:
 		err = fmt.Errorf("unknown rule evaluation mode %q", mode)
 	}
@@ -1010,7 +1029,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		return nil, fmt.Errorf("failed to create %s rule evaluator: %w", mode, err)
 	}
 
-	t.ruleEvaluator = evaluator
+	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.Evaluation.MaxJitter, fnv.New32a(), logger)
 
 	return nil, nil
 }
@@ -1103,11 +1122,32 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	indexClient, err := storage.NewIndexClient(config.BoltDBShipperType, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
+	var indexClients []indexgateway.IndexClientWithRange
+	for i, period := range t.Cfg.SchemaConfig.Configs {
+		if period.IndexType != config.BoltDBShipperType {
+			continue
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(t.Cfg.SchemaConfig.Configs)-1 {
+			periodEndTime = config.DayTime{Time: t.Cfg.SchemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+		tableRange := period.GetIndexTableNumberRange(periodEndTime)
+
+		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant,
+			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		indexClients = append(indexClients, indexgateway.IndexClientWithRange{
+			IndexClient: indexClient,
+			TableRange:  tableRange,
+		})
 	}
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClient)
+
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClients)
 	if err != nil {
 		return nil, err
 	}
@@ -1378,4 +1418,14 @@ func (dh ignoreSignalHandler) Loop() {
 
 func (dh ignoreSignalHandler) Stop() {
 	close(dh)
+}
+
+func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
+	for _, cfg := range scfg.Configs {
+		if cfg.IndexType == config.BoltDBShipperType {
+			return true
+		}
+	}
+
+	return false
 }

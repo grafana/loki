@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
@@ -48,12 +50,21 @@ type RulesLimits interface {
 	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
 	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
+
+	RulerRemoteEvaluationTimeout(userID string) time.Duration
+	RulerRemoteEvaluationMaxResponseSize(userID string) int64
 }
 
-// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
+// queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
+func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		hash := logql.HashedQuery(qs)
+		detail := rules.FromOriginContext(ctx)
+		detailLog := log.With(logger, "rule_name", detail.Name, "rule_type", detail.Kind, "query", qs, "query_hash", hash)
+
+		level.Info(detailLog).Log("msg", "evaluating rule")
+
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
 		if !checker.isReady(userID) {
@@ -64,6 +75,7 @@ func engineQueryFunc(evaluator Evaluator, overrides RulesLimits, checker readyCh
 		res, err := evaluator.Eval(ctx, qs, adjusted)
 
 		if err != nil {
+			level.Error(detailLog).Log("msg", "rule evaluation failed", "err", err)
 			return nil, fmt.Errorf("rule evaluation failed: %w", err)
 		}
 		switch v := res.Data.(type) {
@@ -71,10 +83,11 @@ func engineQueryFunc(evaluator Evaluator, overrides RulesLimits, checker readyCh
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point{T: v.T, V: v.V},
+				T: v.T, F: v.V,
 				Metric: labels.Labels{},
 			}}, nil
 		default:
+			level.Error(detailLog).Log("msg", "rule result is not a vector or scalar", "err", err)
 			return nil, errors.New("rule result is not a vector or scalar")
 		}
 	}
@@ -131,8 +144,8 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(evaluator, overrides, registry, userID)
-		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFn := queryFunc(evaluator, overrides, registry, userID, logger)
+		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the
 		// manager.This is used to back the memstore
@@ -141,10 +154,10 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:      registry,
 			Queryable:       memStore,
-			QueryFunc:       queryFunc,
+			QueryFunc:       queryFn,
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
 			Logger:          logger,
 			Registerer:      reg,
 			OutageTolerance: cfg.OutageTolerance,
@@ -175,7 +188,7 @@ type CachingRulesManager struct {
 // Update reconciles the state of the CachingGroupLoader after a manager.Update.
 // The GroupLoader is mutated as part of a call to Update but it might still
 // contain removed files. Update tells the loader which files to keep
-func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error {
+func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.GroupEvalIterationFunc) error {
 	err := m.manager.Update(interval, files, externalLabels, externalURL, ruleGroupPostProcessFunc)
 	if err != nil {
 		return err

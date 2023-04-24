@@ -8,7 +8,7 @@ In this tutorial we're going to setup [Promtail]({{< relref "../../promtail/" >}
 
 <!-- TOC -->
 
-- [Running Promtail on AWS EC2](#ec2)
+- [EC2](#ec2)
   - [Requirements](#requirements)
   - [Creating an EC2 instance](#creating-an-ec2-instance)
   - [Setting up Promtail](#setting-up-promtail)
@@ -101,7 +101,7 @@ Now we're going to download the [Promtail configuration]({{< relref "../../promt
 The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
 vi ec2-promtail.yaml
 ```
 
@@ -156,7 +156,8 @@ Finally the [`relabeling_configs`][relabel] section has three purposes:
 
 2. Choosing where Promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
-3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieve by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environnement variable, the target will be dropped.
+3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieved by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environment variable, the target will be dropped. 
+If `__meta_ec2_private_dns_name` doesn't match your instance's hostname (on EC2 Windows instance for example, where it is the IP address and not the hostname), you can hardcode the hostname at this stage, or check if any of the instances tag contain the hostname (`__meta_ec2_tag_<tagkey>: each tag value of the instance`)
 
 Alright we should be ready to fire up Promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and won't remember any file positions.
 
@@ -292,5 +293,5 @@ Let's head back to Grafana and verify that your Promtail logs are available in G
 [live tailing]: https://grafana.com/docs/grafana/latest/features/datasources/loki/#live-tailing
 [systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [journald]: https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html
-[final config]: https://github.com/grafana/loki/blob/master/docs/sources/clients/aws/ec2/promtail-ec2-final.yaml
+[final config]: https://github.com/grafana/loki/blob/main/docs/sources/clients/aws/ec2/promtail-ec2-final.yaml
 [relabeling]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config

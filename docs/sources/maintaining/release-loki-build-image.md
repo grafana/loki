@@ -4,7 +4,7 @@ description: Releasing Loki Build Image
 ---
 # Releasing Loki Build Image
 
-The [`loki-build-image`](https://github.com/grafana/loki/tree/master/loki-build-image)
+The [`loki-build-image`](https://github.com/grafana/loki/blob/main/loki-build-image)
 is the Docker image used to run tests and build Grafana Loki binaries in CI.
 
 The build and publish process of the image is triggered upon a merge to `main`
@@ -25,9 +25,7 @@ if there were made any changes in the folder `./loki-build-image/`.
 
 1. create a branch
 2. update the `BUILD_IMAGE_VERSION` variable in the `Makefile`
-3. Repeat step 1.3, which will use the new image
-4. run `loki-build-image/version-updater.sh <new-version>` to update all the references
-
-5. run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone` to update the Drone config to use the new build image
-6. create a PR
+3. run `loki-build-image/version-updater.sh <new-version>` to update all the references
+4. run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone` to update the Drone config to use the new build image
+5. create a PR
 

@@ -42,8 +42,8 @@ But these are not:
 
 If you run Promtail with the `--config.expand-env=true` flag the configuration
 will run through [envsubst](https://pkg.go.dev/github.com/drone/envsubst)  which will
-replace double slashes with single slashes. Because of this when using
-`expand-env=true` you need to use double slashes for each single slash. For
+replace double backslashes with single backslashes. Because of this when using
+`expand-env=true` you need to use double backslashes for each single backslash. For
 example:
 
 - `expression: '\w*'` must be `expression: '\\w*'`

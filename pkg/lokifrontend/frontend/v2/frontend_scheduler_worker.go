@@ -286,7 +286,8 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			err := loop.Send(&schedulerpb.FrontendToScheduler{
 				Type:            schedulerpb.ENQUEUE,
 				QueryID:         req.queryID,
-				UserID:          req.userID,
+				UserID:          req.tenantID,
+				QueuePath:       req.actor,
 				HttpRequest:     req.request,
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,

@@ -203,7 +203,7 @@ func (bucket Bucket) ListLiveChannel(options ...Option) (ListLiveChannelResult, 
 
 	params["live"] = nil
 
-	resp, err := bucket.do("GET", "", params, nil, nil, nil)
+	resp, err := bucket.doInner("GET", "", params, nil, nil, nil)
 	if err != nil {
 		return out, err
 	}

@@ -57,17 +57,6 @@ func (m *OpenTelemetryConfig) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetGrpcService() == nil {
-		err := OpenTelemetryConfigValidationError{
-			field:  "GrpcService",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
 	if all {
 		switch v := interface{}(m.GetGrpcService()).(type) {
 		case interface{ ValidateAll() error }:
@@ -96,6 +85,8 @@ func (m *OpenTelemetryConfig) validate(all bool) error {
 			}
 		}
 	}
+
+	// no validation rules for ServiceName
 
 	if len(errors) > 0 {
 		return OpenTelemetryConfigMultiError(errors)

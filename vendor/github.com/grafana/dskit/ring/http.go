@@ -93,7 +93,7 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ownedTokens := ringDesc.countTokens()
+	ownedTokens := ringDesc.CountTokens()
 
 	var ingesterIDs []string
 	for id := range ringDesc.Ingesters {

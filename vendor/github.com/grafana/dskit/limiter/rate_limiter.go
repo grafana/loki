@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -45,6 +46,14 @@ func NewRateLimiter(strategy RateLimiterStrategy, recheckPeriod time.Duration) *
 // AllowN reports whether n tokens may be consumed happen at time now.
 func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) bool {
 	return l.getTenantLimiter(now, tenantID).AllowN(now, n)
+}
+
+// WaitN blocks until n events are allowed to happen.
+// It returns an error if n exceeds the Limiter's burst size, the Context is
+// canceled, or the expected wait time exceeds the Context's Deadline.
+// The burst limit is ignored if the rate limit is Inf.
+func (l *RateLimiter) WaitN(ctx context.Context, tenantID string, n int) error {
+	return l.getTenantLimiter(time.Now(), tenantID).WaitN(ctx, n)
 }
 
 // Limit returns the currently configured maximum overall tokens rate.

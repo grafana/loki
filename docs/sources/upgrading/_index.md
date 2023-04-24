@@ -35,6 +35,22 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Shutdown marker file
+
+A shutdown marker file can be written by the `/ingester/prepare_shutdown` endpoint.
+If the new `ingester.shutdown_marker_path` config setting has a value that value is used.
+If not the`common.path_prefix` config setting is used if it has a value. Otherwise a warning is shown
+in the logs on startup and the `/ingester/prepare_shutdown` endpoint will return a 500 status code.
+
+## 2.8.0
+
+### Loki
+
+#### Change in LogQL behavior
+
+When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
+was kept.
+
 #### Default retention_period has changed
 
 This change will affect you if you have:
@@ -80,7 +96,7 @@ The go build tag `promtail_journal_enabled` should be passed to include Journal 
 If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
 
 ```shell
-go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
@@ -133,6 +149,10 @@ level=info ts=2022-12-20T15:27:54.858554127Z caller=metrics.go:147 component=fro
 ```
 
 These statistics are also displayed when using `--stats` with LogCLI.
+
+#### Index shipper multi-store support
+In releases prior to 2.8.1, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
+In releases 2.8.1 and later, these defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
 
 ## 2.7.0
 
@@ -348,7 +368,7 @@ Following 2 compactor configs that were defined as command line arguments in jso
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
-# Supported types: gcs, s3, azure, swift, filesystem.
+# Supported types: gcs, s3, azure, swift, cos, filesystem.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 ```
@@ -484,7 +504,7 @@ We decided the default would be better to disable this sleep behavior but anyone
 * [4624](https://github.com/grafana/loki/pull/4624) **chaudum**: Disable chunk transfers in jsonnet lib
 
 This changes a few default values, resulting in the ingester WAL now being on by default,
-and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for its WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
 
 Previous defaults:
 ```yaml
@@ -1116,7 +1136,7 @@ exit
 docker run -d --name=loki --mount source=loki-data,target=/loki -p 3100:3100 grafana/loki:1.5.0
 ```
 
-Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/tree/master/cmd/loki/loki-docker-config.yaml).
+Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/blob/main/cmd/loki/loki-docker-config.yaml).
 
 The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.
 That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container.

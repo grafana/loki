@@ -85,6 +85,7 @@ type Limits struct {
 	MaxQuerySeries             int            `yaml:"max_query_series" json:"max_query_series"`
 	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange              model.Duration `yaml:"max_query_range" json:"max_query_range"`
 	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
@@ -97,10 +98,14 @@ type Limits struct {
 	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
 
 	// Ruler defaults and limits.
+
+	// TODO(dannyk): this setting is misnamed and probably deprecatable.
 	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
@@ -143,6 +148,10 @@ type Limits struct {
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
+	// TODO(dannyk): possible enhancement is to align this with rule group interval
+	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
+	RulerRemoteEvaluationMaxResponseSize int64         `yaml:"ruler_remote_evaluation_max_response_size" json:"ruler_remote_evaluation_max_response_size" doc:"description=Maximum size (in bytes) of the allowable response size from a remote rule evaluation. Set to 0 to allow any response size (default)."`
+
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
@@ -160,6 +169,9 @@ type Limits struct {
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+
+	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 }
 
 type StreamRetention struct {
@@ -210,6 +222,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series that is returned by a metric query. When the limit is reached an error is returned.")
+	_ = l.MaxQueryRange.Set("0s")
+	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
 	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
 
@@ -223,6 +237,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MinShardingLookback.Set("0s")
 	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit queries that can be sharded. Queries within the time range of now and now minus this sharding lookback are not sharded. The default value of 0s disables the lookback, causing sharding of all queries at all times.")
+
+	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "Max number of bytes a query can fetch. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
+	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
 
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -428,6 +445,11 @@ func (o *Overrides) MaxQuerySeries(ctx context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
+// MaxQueryRange returns the limit for the max [range] value that can be in a range query
+func (o *Overrides) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryRange)
+}
+
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
@@ -473,6 +495,16 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
+}
+
+// MaxQueryBytesRead returns the maximum bytes a query can read.
+func (o *Overrides) MaxQueryBytesRead(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
+}
+
+// MaxQuerierBytesRead returns the maximum bytes a sub query can read after splitting and sharding.
+func (o *Overrides) MaxQuerierBytesRead(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxQuerierBytesRead.Val()
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
@@ -624,6 +656,22 @@ func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.Rem
 	return nil
 }
 
+// RulerRemoteEvaluationTimeout returns the duration after which to timeout a remote rule evaluation request for a given user.
+func (o *Overrides) RulerRemoteEvaluationTimeout(userID string) time.Duration {
+	// if not defined, use the base query timeout
+	timeout := o.getOverridesForUser(userID).RulerRemoteEvaluationTimeout
+	if timeout <= 0 {
+		return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
+	}
+
+	return timeout
+}
+
+// RulerRemoteEvaluationMaxResponseSize returns the maximum allowable response size from a remote rule evaluation for a given user.
+func (o *Overrides) RulerRemoteEvaluationMaxResponseSize(userID string) int64 {
+	return o.getOverridesForUser(userID).RulerRemoteEvaluationMaxResponseSize
+}
+
 // RetentionPeriod returns the retention period for a given user.
 func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RetentionPeriod)
@@ -648,6 +696,14 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 
 func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
+}
+
+func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
+	return o.getOverridesForUser(userID).RequiredLabels
+}
+
+func (o *Overrides) RequiredNumberLabels(ctx context.Context, userID string) int {
+	return o.getOverridesForUser(userID).RequiredNumberLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
