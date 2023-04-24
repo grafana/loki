@@ -1411,6 +1411,21 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: gpg_private_key
+  image: alpine
+  name: skip pipeline if missing secret
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
     NFPM_SIGNING_KEY:
@@ -1518,8 +1533,19 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
+- commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: ecr_key
+  image: alpine
+  name: skip pipeline if missing secret
 - depends_on:
   - image-tag
+  - skip pipeline if missing secret
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -1576,8 +1602,19 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
+- commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: ecr_key
+  image: alpine
+  name: skip pipeline if missing secret
 - depends_on:
   - image-tag
+  - skip pipeline if missing secret
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -1727,6 +1764,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: ae19447e0f2e91746c5b4e6a3dc469a08a63c44045f4b995a6980d0e401e071f
+hmac: 4d39ab03ec412635f09675f8975fb8b74031afca291e7e84a40a2454be50f862
 
 ...
