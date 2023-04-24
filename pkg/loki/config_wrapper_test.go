@@ -1081,7 +1081,7 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 		assert.Equal(t, 8,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 12,
+		assert.Equal(t, 13,
 			reflect.TypeOf(util.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
 	})
