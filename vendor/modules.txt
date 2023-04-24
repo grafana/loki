@@ -155,7 +155,7 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 # github.com/IBM/go-sdk-core/v5 v5.13.1
 ## explicit; go 1.18
 github.com/IBM/go-sdk-core/v5/core
-# github.com/IBM/ibm-cos-sdk-go v1.9.4
+# github.com/IBM/ibm-cos-sdk-go v1.10.0
 ## explicit; go 1.11
 github.com/IBM/ibm-cos-sdk-go/aws
 github.com/IBM/ibm-cos-sdk-go/aws/arn
