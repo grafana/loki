@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
@@ -464,6 +465,25 @@ func Test_TruncateLogLines(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
 	})
+}
+
+func BenchmarkTruncateLogLines(b *testing.B) {
+	var entries []push.Entry
+	now := time.Now()
+	for i := 0; i < 10000; i++ {
+		entries = append(entries, push.Entry{Line: "abcdeeeeefg", Timestamp: now})
+	}
+
+	stream := &logproto.Stream{Entries: entries}
+	vCtx := validationContext{maxLineSize: 1000, maxLineSizeTruncate: true}
+
+	d := &Distributor{}
+	d.truncateLines(vCtx, stream)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		d.truncateLines(vCtx, stream)
+	}
 }
 
 func TestStreamShard(t *testing.T) {
