@@ -1078,7 +1078,7 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 	t.Run("Attempt to catch changes to a RingConfig", func(t *testing.T) {
 		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
-		assert.Equal(t, 8,
+		assert.Equal(t, 9,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
 		assert.Equal(t, 13,
