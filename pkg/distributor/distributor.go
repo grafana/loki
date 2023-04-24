@@ -297,7 +297,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		if sp != nil {
 			sp.LogKV("event", "start to validate request")
 			defer func() {
-				sp.LogKV("event", "finished to validate request")
+				sp.LogKV("event", "finished to validate request", "validated_lines", validatedLineCount)
 			}()
 		}
 		for _, stream := range req.Streams {
