@@ -178,6 +178,10 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 	})
 }
 
+func (s *GatewayClient) QueryIndex(ctx context.Context, in *logproto.QueryIndexRequest, opts ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
+	panic("not implemented")
+}
+
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
 	if s.cfg.Mode == indexgateway.RingMode {
 		var (

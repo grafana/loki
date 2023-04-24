@@ -7,7 +7,6 @@ import (
 	"github.com/gogo/status"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -18,7 +17,7 @@ import (
 )
 
 type IndexGatewayClientStore struct {
-	client IndexGatewayClient
+	client logproto.IndexGatewayClient
 	// fallbackStore is used only to keep index gateways backwards compatible.
 	// Previously index gateways would only serve index rows from boltdb-shipper files.
 	// tsdb also supports configuring index gateways but there is no concept of serving index rows so
@@ -26,15 +25,7 @@ type IndexGatewayClientStore struct {
 	fallbackStore index.Reader
 }
 
-type IndexGatewayClient interface {
-	GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error)
-	GetSeries(ctx context.Context, in *logproto.GetSeriesRequest, opts ...grpc.CallOption) (*logproto.GetSeriesResponse, error)
-	LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error)
-	LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error)
-	GetStats(ctx context.Context, req *logproto.IndexStatsRequest, opts ...grpc.CallOption) (*logproto.IndexStatsResponse, error)
-}
-
-func NewIndexGatewayClientStore(client IndexGatewayClient, fallbackStore index.Reader) index.ReaderWriter {
+func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, fallbackStore index.Reader) index.ReaderWriter {
 	return &IndexGatewayClientStore{
 		client:        client,
 		fallbackStore: fallbackStore,
