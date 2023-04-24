@@ -352,6 +352,20 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"foobar", true}},
 		},
 		{
+			`{app="foo"} |~ "foo\\.bar\\.baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"foo.bar.baz", true}},
+		},
+		{
+			"{app=\"foo\"} | logfmt | field =~ `foo\\.bar`",
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"field=foo", false}, {"field=bar", false}, {"field=foo.bar", true}},
+		},
+		{
 			`{app="foo"} | logfmt | duration > 1s and total_bytes < 1GB`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
