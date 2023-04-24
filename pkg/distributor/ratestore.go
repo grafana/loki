@@ -149,12 +149,18 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 func (s *rateStore) cleanupExpired() rateStats {
 	var rs rateStats
 
+	now := time.Now()
+	minAllowedCreatedAt := now.Add(-s.rateKeepAlive)
+
 	for tID, tenant := range s.rates {
 		rs.totalStreams += int64(len(tenant))
 		for stream, rate := range tenant {
-			if time.Since(rate.createdAt) > s.rateKeepAlive {
+			if rate.createdAt.Before(minAllowedCreatedAt) {
 				rs.expiredCount++
 				delete(s.rates[tID], stream)
+				if len(s.rates[tID]) == 0 {
+					delete(s.rates, tID)
+				}
 				continue
 			}
 

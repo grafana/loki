@@ -212,17 +212,19 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 }
 
-func BenchmarkCleanupExpir(b *testing.B) {
+func BenchmarkUpdateRates(b *testing.B) {
 	rs := &rateStore{rates: make(map[string]map[uint64]expiringRate)}
-	yearOld := time.Now().AddDate(-1, 0, 0) // entries old enough to be expired
+	rates := map[string]map[uint64]expiringRate{}
+	rates["fake"] = make(map[uint64]expiringRate)
+
+	now := time.Now()
+	for i := 0; i < 500; i++ {
+		rates["fake"][uint64(i)] = expiringRate{rate: 20, createdAt: now}
+	}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rs.updateRates(context.Background(), map[string]map[uint64]expiringRate{
-			"fake": {
-				12345: expiringRate{rate: 20, createdAt: yearOld},
-			},
-		})
-		rs.cleanupExpired()
+		rs.updateRates(context.TODO(), rates)
 	}
 }
 
