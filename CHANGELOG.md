@@ -35,10 +35,6 @@
 * [9130](https://github.com/grafana/loki/pull/9130) **salvacorts**: Pass LogQL engine options down to the _split by range_, _sharding_, and _query size limiter_ middlewares.
 * [9252](https://github.com/grafana/loki/pull/9252) **jeschkies**: Use un-escaped regex literal for string matching.
 
-##### Changes
-
-##### Build
-
 #### Promtail
 
 ##### Enhancements
