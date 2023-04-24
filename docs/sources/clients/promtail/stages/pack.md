@@ -66,7 +66,11 @@ For example:
 {cluster="us-central1", job="myjob"} | unpack
 ```
 
-Will automatically unpack embedded labels and log line and replace the log line with the original log line automatically.
+Will automatically unpack embedded labels and log line and replace the log line with the original log line automatically. 
+
+# End User Considerations 
+
+End users will need to understand that the logs they are searching and querying on are packed, and will need to apply the `unpack` stage to operate on those fields.  Grafana Explore Loki query builder will `hint` to add `unpack` to queries, however for large user bases who will not always be aware of the pack stage, consider using alternatives such as `labeldrop` or `replace`.  
 
 ### More Examples
 
