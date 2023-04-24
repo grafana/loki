@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 )
 
 func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -168,4 +169,31 @@ func TestNewRulerStatefulSet_ShardedRulesConfigMap(t *testing.T) {
 
 	require.Len(t, volumeNames, 2)
 	require.Len(t, volumeProjections, 2)
+}
+
+func TestBuildRuler_PodDisruptionBudget(t *testing.T) {
+	opts := manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+
+	objs, err := manifests.BuildRuler(opts)
+
+	require.NoError(t, err)
+	require.Len(t, objs, 4)
+
+	pdb := objs[3].(*policyv1.PodDisruptionBudget)
+	require.NotNil(t, pdb)
+	require.Equal(t, "abcd-ruler", pdb.Name)
+	require.Equal(t, "efgh", pdb.Namespace)
+	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelRulerComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
