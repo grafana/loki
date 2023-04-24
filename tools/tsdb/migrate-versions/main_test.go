@@ -99,7 +99,7 @@ func TestMigrateTables(t *testing.T) {
 
 	for _, migrateToVer := range []int{index.FormatV3, index.FormatV2} {
 		t.Run(fmt.Sprintf("migrate_to_ver_%d", migrateToVer), func(t *testing.T) {
-			*desiredVer = migrateToVer
+			desiredVer = migrateToVer
 			require.NoError(t, migrateTables(pcfg, storageCfg, clientMetrics, config.TableRange{
 				Start:        0,
 				End:          currTableNum,
@@ -134,7 +134,7 @@ func TestMigrateTables(t *testing.T) {
 				require.NoError(t, err)
 
 				// try running migration again, it should throw error saying already on desired verion
-				_, err = tsdb.RebuildWithVersion(context.Background(), dst, *desiredVer)
+				_, err = tsdb.RebuildWithVersion(context.Background(), dst, desiredVer)
 				require.ErrorIs(t, err, tsdb.ErrAlreadyOnDesiredVersion)
 			}
 		})
