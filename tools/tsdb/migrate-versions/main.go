@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,10 +36,9 @@ const (
 )
 
 var (
-	desiredVer     = flag.Int("ver", tsdb_index.LiveFormat, "desired version to migrate")
-	tableNumMin    = flag.Int64("table-num-min", 0, "migrate tables starting with given number. 0 means from first table.")
-	tableNumMax    = flag.Int64("table-num-max", 0, "migrate tables upto given number. 0 means until last table.")
-	newTablePrefix = flag.String("new-table-prefix", "", "write the migrated index with a new table prefix. Old index will be retained.")
+	desiredVer               = tsdb_index.LiveFormat
+	tableNumMin, tableNumMax int64
+	newTablePrefix           string
 )
 
 func exit(code int) {
@@ -45,9 +46,38 @@ func exit(code int) {
 	os.Exit(code)
 }
 
+// Ussage: TSDB_VERSION=3 TABLE_NUM_MIN=19464 TABLE_NUM_MAX=19465 NEW_TABLE_PREFIX=tsdb_v3_ go run tools/tsdb/migrate-versions/main.go --config.file /tmp/loki-config.yaml
 func main() {
 	lokiCfg := setup()
 	clientMetrics := storage.NewClientMetrics()
+
+	if got := os.Getenv("TSDB_VERSION"); got != "" {
+		n, err := strconv.Atoi(got)
+		if err != nil {
+			log.Fatalf("invalid TSDB_VERSION: %v", err)
+		}
+		desiredVer = n
+	}
+
+	if got := os.Getenv("TABLE_NUM_MIN"); got != "" {
+		n, err := strconv.Atoi(got)
+		if err != nil {
+			log.Fatalf("invalid TABLE_NUM_MIN: %v", err)
+		}
+		tableNumMin = int64(n)
+	}
+
+	if got := os.Getenv("TABLE_NUM_MAX"); got != "" {
+		n, err := strconv.Atoi(got)
+		if err != nil {
+			log.Fatalf("invalid TABLE_NUM_MAX: %v", err)
+		}
+		tableNumMax = int64(n)
+	}
+
+	if got := os.Getenv("NEW_TABLE_PREFIX"); got != "" {
+		newTablePrefix = got
+	}
 
 	for i, cfg := range lokiCfg.SchemaConfig.Configs {
 		if cfg.IndexType != config.TSDBType {
@@ -80,15 +110,18 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 	}
 
 	for _, tableName := range tableNames {
+		if !strings.HasPrefix(tableName, pCfg.IndexTables.Prefix) {
+			continue
+		}
 		tableNum, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
 			return err
 		}
-		if *tableNumMin != 0 && tableNum < *tableNumMin {
+		if tableNumMin != 0 && tableNum < tableNumMin {
 			continue
 		}
 
-		if *tableNumMax != 0 && tableNum > *tableNumMax {
+		if tableNumMax != 0 && tableNum > tableNumMax {
 			continue
 		}
 
@@ -103,6 +136,7 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 		if err := migrateTable(tableName, indexStorageClient); err != nil {
 			return err
 		}
+		level.Info(util_log.Logger).Log("msg", "succesfully migrated", "table_name", tableName)
 	}
 
 	return nil
@@ -121,13 +155,13 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 	}
 
 	newTableName := tableName
-	if *newTablePrefix != "" {
+	if newTablePrefix != "" {
 		tableNum, err := config.ExtractTableNumberFromName(tableName)
 		if err != nil {
 			return err
 		}
 
-		newTableName = fmt.Sprintf("%s%d", *newTablePrefix, tableNum)
+		newTableName = fmt.Sprintf("%s%d", newTablePrefix, tableNum)
 	}
 
 	for _, tenant := range tenants {
@@ -164,7 +198,7 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 			return err
 		}
 
-		idx, err := tsdb.RebuildWithVersion(context.Background(), dst, *desiredVer)
+		idx, err := tsdb.RebuildWithVersion(context.Background(), dst, desiredVer)
 		if err != nil {
 			if errors.Is(err, tsdb.ErrAlreadyOnDesiredVersion) {
 				continue
@@ -190,7 +224,7 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 		}
 
 		// remove existing index file when writing migrated index in the same table since compactor would anyways be compacted it to a single file
-		if *newTablePrefix == "" {
+		if newTablePrefix == "" {
 			if err := indexStorageClient.DeleteUserFile(context.Background(), tableName, tenant, indexFiles[0].Name); err != nil {
 				return errors.Wrapf(err, "failed to remove older version index file %s for tenant %s", indexFiles[0].Name, tenant)
 			}
