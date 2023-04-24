@@ -59,7 +59,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 // ToLifecyclerConfig returns a BasicLifecyclerConfig based on the distributor
 // ring config.
 func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
-	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger)
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger, false)
 	if err != nil {
 		return ring.BasicLifecyclerConfig{}, err
 	}
