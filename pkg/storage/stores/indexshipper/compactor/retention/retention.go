@@ -90,7 +90,7 @@ type Marker struct {
 	markTimeout      time.Duration
 }
 
-func NewMarker(workingDirectory, objectStoreType string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
@@ -274,7 +274,7 @@ type Sweeper struct {
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir, objectStoreType string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 
 	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
@@ -428,9 +428,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 	return wroteChunks, linesDeleted, nil
 }
 
-// since compactor supports multiple stores, markers need to be written to store specific dir.
-// MigrateMarkers checks for markers in retention dir and migrates them.
-func MigrateMarkers(workingDir string, store string) error {
+// CopyMarkers checks for markers in common markers dir and copies them to store specific markers dir.
+func CopyMarkers(workingDir string, store string) error {
 	markersDir := filepath.Join(workingDir, MarkersFolder)
 	info, err := os.Stat(markersDir)
 	if err != nil {

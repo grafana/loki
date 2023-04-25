@@ -918,7 +918,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 func TestMigrateMarkers(t *testing.T) {
 	t.Run("nothing to migrate", func(t *testing.T) {
 		workDir := t.TempDir()
-		require.NoError(t, MigrateMarkers(workDir, "store-1"))
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
 		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
 	})
 
@@ -932,7 +932,7 @@ func TestMigrateMarkers(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, MigrateMarkers(workDir, "store-1"))
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
 		targetDir := path.Join(workDir, "store-1", MarkersFolder)
 		require.DirExists(t, targetDir)
 		for _, marker := range markers {
@@ -949,7 +949,7 @@ func TestMigrateMarkers(t *testing.T) {
 		require.NoError(t, err)
 		defer f.Close()
 
-		require.NoError(t, MigrateMarkers(workDir, "store-1"))
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
 		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
 	})
 }

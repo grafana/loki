@@ -81,7 +81,7 @@ type Config struct {
 	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
 	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
 	DeleteRequestStore        string          `yaml:"delete_request_store"`
-	LegacySharedStoreDefault  string          `yaml:"-" doc:"hidden"`
+	DefaultDeleteRequestStore string          `yaml:"-" doc:"hidden"`
 	DeleteBatchSize           int             `yaml:"delete_batch_size"`
 	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
 	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
@@ -266,7 +266,7 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 				// This ensures that any pending delete requests are processed.
 				return c.cfg.SharedStoreType
 			default:
-				return c.cfg.LegacySharedStoreDefault
+				return c.cfg.DefaultDeleteRequestStore
 			}
 		}()
 
@@ -286,7 +286,9 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 		sc.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 
 		if c.cfg.RetentionEnabled {
-			if err := retention.MigrateMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), objectStoreType); err != nil {
+			// given that compaction can now run on multiple object stores, marker files are stored under /retention/{objectStoreType}/markers/
+			// if any markers are found in the common markers dir (/retention/markers/), copy them to the store specific dirs
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), objectStoreType); err != nil {
 				return fmt.Errorf("failed to move markers to store specific dir: %w", err)
 			}
 
@@ -301,12 +303,12 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
 
-			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, objectStoreType, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
+			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
 			if err != nil {
 				return fmt.Errorf("failed to init sweeper: %w", err)
 			}
 
-			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, objectStoreType, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
+			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
 			if err != nil {
 				return fmt.Errorf("failed to init table marker: %w", err)
 			}

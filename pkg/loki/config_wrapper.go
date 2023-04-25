@@ -516,8 +516,8 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.LegacySharedStoreDefault == defaults.CompactorConfig.LegacySharedStoreDefault {
-		cfg.CompactorConfig.LegacySharedStoreDefault = period.ObjectType
+	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
+		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -534,8 +534,8 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.LegacySharedStoreDefault == defaults.CompactorConfig.LegacySharedStoreDefault {
-		cfg.CompactorConfig.LegacySharedStoreDefault = period.ObjectType
+	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
+		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {

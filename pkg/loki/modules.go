@@ -534,13 +534,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
-	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.ChunkStoreConfig.DisableIndexDeduplication = true
 		t.Cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
 	// Set configs pertaining to object storage based indices
-	if config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 
@@ -584,7 +584,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	if config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		var asyncStore bool
 
 		shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
@@ -735,7 +735,7 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 }
 
 func (t *Loki) supportIndexDeleteRequest() bool {
-	return config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
+	return config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs)
 }
 
 // compactorAddress returns the configured address of the compactor.
@@ -1074,7 +1074,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	if !config.ContainsObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
 		return nil, nil
 	}
@@ -1089,7 +1089,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		objectClients[sharedStoreType] = objectClient
 	} else {
 		for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
-			if !config.UsingObjectStoreIndex(periodConfig) {
+			if !config.IsObjectStorageIndex(periodConfig.IndexType) {
 				continue
 			}
 

@@ -294,26 +294,26 @@ func ActivePeriodConfig(configs []PeriodConfig) int {
 	return i
 }
 
-func usingForPeriodConfigs(configs []PeriodConfig, fn func(PeriodConfig) bool) bool {
+func usingForPeriodConfigs(configs []PeriodConfig, fn func(string) bool) bool {
 	activePCIndex := ActivePeriodConfig(configs)
 
-	if fn(configs[activePCIndex]) ||
-		(len(configs)-1 > activePCIndex && fn(configs[activePCIndex+1])) {
+	if fn(configs[activePCIndex].IndexType) ||
+		(len(configs)-1 > activePCIndex && fn(configs[activePCIndex+1].IndexType)) {
 		return true
 	}
 
 	return false
 }
 
-// UsingObjectStoreIndex returns true if the period config uses either boltdb-shipper or tsdb index.
-func UsingObjectStoreIndex(cfg PeriodConfig) bool {
-	return cfg.IndexType == BoltDBShipperType || cfg.IndexType == TSDBType
+// IsObjectStorageIndex returns true if the index type is either boltdb-shipper or tsdb.
+func IsObjectStorageIndex(indexType string) bool {
+	return indexType == BoltDBShipperType || indexType == TSDBType
 }
 
-// ContainsObjectStorageIndex returns true if the current or any of the upcoming periods
+// UsingObjectStorageIndex returns true if the current or any of the upcoming periods
 // use an object store index.
-func ContainsObjectStorageIndex(configs []PeriodConfig) bool {
-	return usingForPeriodConfigs(configs, UsingObjectStoreIndex)
+func UsingObjectStorageIndex(configs []PeriodConfig) bool {
+	return usingForPeriodConfigs(configs, IsObjectStorageIndex)
 }
 
 func defaultRowShards(schema string) uint32 {
