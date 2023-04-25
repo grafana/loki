@@ -240,6 +240,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -306,6 +307,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -657,7 +659,7 @@ http {
     }
 
     location ~ /admin/api/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+      proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}

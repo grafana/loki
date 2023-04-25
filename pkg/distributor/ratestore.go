@@ -122,10 +122,11 @@ type rateStats struct {
 }
 
 func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
+	streamCnt := 0
 	if s.debug {
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("event", "started to update rates")
-			defer sp.LogKV("event", "finished to update rates")
+			sp.LogKV("event", "started updating rates")
+			defer sp.LogKV("event", "finished updating rates", "streams", streamCnt)
 		}
 	}
 	s.rateLock.Lock()
@@ -138,6 +139,7 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 
 		for stream, rate := range tenant {
 			s.rates[tenantID][stream] = rate
+			streamCnt++
 		}
 	}
 
@@ -194,17 +196,18 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
+	now := time.Now()
 
 	for tID, tenant := range streamRates {
-		for _, streamRate := range tenant {
-			if _, ok := rates[tID]; !ok {
-				rates[tID] = map[uint64]expiringRate{}
-			}
+		if _, ok := rates[tID]; !ok {
+			rates[tID] = map[uint64]expiringRate{}
+		}
 
+		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
 			rate.shards++
-			rate.createdAt = time.Now()
+			rate.createdAt = now
 
 			rates[tID][streamRate.StreamHashNoShard] = rate
 		}

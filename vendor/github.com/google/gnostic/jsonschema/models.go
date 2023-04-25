@@ -23,9 +23,11 @@ import "gopkg.in/yaml.v3"
 // All fields are pointers and are nil if the associated values
 // are not specified.
 type Schema struct {
-	Schema *string // $schema
-	ID     *string // id keyword used for $ref resolution scope
-	Ref    *string // $ref, i.e. JSON Pointers
+	Schema    *string // $schema
+	ID        *string // id keyword used for $ref resolution scope
+	Ref       *string // $ref, i.e. JSON Pointers
+	ReadOnly  *bool
+	WriteOnly *bool
 
 	// http://json-schema.org/latest/json-schema-validation.html
 	// 5.1.  Validation keywords for numeric instances (number and integer)

@@ -53,7 +53,7 @@ var (
 
 	defaultAuthFunctions = authFunctions{
 		NewOAuthConfigFunc: adal.NewOAuthConfig,
-		NewServicePrincipalTokenFromFederatedTokenFunc: adal.NewServicePrincipalTokenFromFederatedToken,
+		NewServicePrincipalTokenFromFederatedTokenFunc: adal.NewServicePrincipalTokenFromFederatedToken, //nolint:staticcheck // SA1019: use of deprecated function.
 	}
 
 	// default Azure http client.

@@ -240,7 +240,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
 	b.Del(labels.MetricName)
-	ls = b.Labels(nil)
+	ls = b.Labels()
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()

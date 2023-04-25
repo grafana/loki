@@ -589,9 +589,18 @@ func (m *HealthCheckRequestOrEndpointHealthResponse) validate(all bool) error {
 
 	var errors []error
 
-	switch m.RequestType.(type) {
-
+	switch v := m.RequestType.(type) {
 	case *HealthCheckRequestOrEndpointHealthResponse_HealthCheckRequest:
+		if v == nil {
+			err := HealthCheckRequestOrEndpointHealthResponseValidationError{
+				field:  "RequestType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetHealthCheckRequest()).(type) {
@@ -623,6 +632,16 @@ func (m *HealthCheckRequestOrEndpointHealthResponse) validate(all bool) error {
 		}
 
 	case *HealthCheckRequestOrEndpointHealthResponse_EndpointHealthResponse:
+		if v == nil {
+			err := HealthCheckRequestOrEndpointHealthResponseValidationError{
+				field:  "RequestType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetEndpointHealthResponse()).(type) {
@@ -653,6 +672,8 @@ func (m *HealthCheckRequestOrEndpointHealthResponse) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {

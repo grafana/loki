@@ -68,9 +68,20 @@ func (m *RegexMatcher) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.EngineType.(type) {
-
+	oneofEngineTypePresent := false
+	switch v := m.EngineType.(type) {
 	case *RegexMatcher_GoogleRe2:
+		if v == nil {
+			err := RegexMatcherValidationError{
+				field:  "EngineType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofEngineTypePresent = true
 
 		if m.GetGoogleRe2() == nil {
 			err := RegexMatcherValidationError{
@@ -113,6 +124,9 @@ func (m *RegexMatcher) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofEngineTypePresent {
 		err := RegexMatcherValidationError{
 			field:  "EngineType",
 			reason: "value is required",
@@ -121,7 +135,6 @@ func (m *RegexMatcher) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

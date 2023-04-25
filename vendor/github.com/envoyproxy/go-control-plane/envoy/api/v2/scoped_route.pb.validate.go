@@ -370,12 +370,25 @@ func (m *ScopedRouteConfiguration_Key_Fragment) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Type.(type) {
-
+	oneofTypePresent := false
+	switch v := m.Type.(type) {
 	case *ScopedRouteConfiguration_Key_Fragment_StringKey:
+		if v == nil {
+			err := ScopedRouteConfiguration_Key_FragmentValidationError{
+				field:  "Type",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTypePresent = true
 		// no validation rules for StringKey
-
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofTypePresent {
 		err := ScopedRouteConfiguration_Key_FragmentValidationError{
 			field:  "Type",
 			reason: "value is required",
@@ -384,7 +397,6 @@ func (m *ScopedRouteConfiguration_Key_Fragment) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

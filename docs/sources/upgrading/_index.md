@@ -35,6 +35,17 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Index shipper multi-store support
+In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
+These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
+
+#### Shutdown marker file
+
+A shutdown marker file can be written by the `/ingester/prepare_shutdown` endpoint.
+If the new `ingester.shutdown_marker_path` config setting has a value that value is used.
+If not the`common.path_prefix` config setting is used if it has a value. Otherwise a warning is shown
+in the logs on startup and the `/ingester/prepare_shutdown` endpoint will return a 500 status code.
+
 #### Compactor multi-store support
 
 In previous releases, setting `-boltdb.shipper.compactor.shared-store` configured the following:
@@ -55,9 +66,6 @@ A new config option `-boltdb.shipper.compactor.delete-request-store` decides whe
 
 In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
 
-#### Index shipper multi-store support
-In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
-These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
 
 ## 2.8.0
 

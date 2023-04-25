@@ -1,6 +1,6 @@
 ---
-title: Helm Chart Components
-menuTitle: Helm Chart components
+title: Helm chart components
+menuTitle: Helm chart components
 description: A short introduction to the components installed with the Loki Helm Chart.
 aliases:
   - /docs/installation/helm/concepts
@@ -11,11 +11,11 @@ keywords:
   - caching
 ---
 
-# Helm Chart Components
+# Helm chart components
 
 This section describes the components installed by the Helm Chart.
 
-## Loki Read and Write
+## Loki read and write
 
 By default Loki will be installed in the scalable mode. This consists of a read and write component. These can be scaled-out independently.
 
