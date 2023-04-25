@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -145,12 +144,12 @@ func Test_Retention(t *testing.T) {
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
 			chunkClient := &mockChunkClient{deletedChunks: map[string]struct{}{}}
-			sweep, err := NewSweeper(workDir, config.StorageTypeFileSystem, chunkClient, 10, 0, nil)
+			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, config.StorageTypeFileSystem, expiration, time.Hour, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
