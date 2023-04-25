@@ -43,7 +43,7 @@ In previous releases, setting `-boltdb.shipper.compactor.shared-store` configure
 
 If `-boltdb.shipper.compactor.shared-store` was not set, it used to default to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
 
-In release 2.9 and later, the Compactor supports index compaction on multiple buckets/object stores.
+Compactor now supports index compaction on multiple buckets/object stores.
 And going forward loki will not set any defaults on `-boltdb.shipper.compactor.shared-store`, this has a couple of side effects detailed as follows:
 
 ##### store on which index compaction should be performed:
@@ -57,8 +57,7 @@ In the case where neither of these options are set, the `object_store` configure
 
 #### Index shipper multi-store support
 In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
-In release 2.9 and later, these defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
-
+These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
 
 ## 2.8.0
 
