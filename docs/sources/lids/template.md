@@ -1,6 +1,7 @@
 ---
 title: "XXXX: Template"
 description: "Template"
+draft: true
 ---
 
 # XXXX: Template
