@@ -25,7 +25,7 @@ func identifierFromPath(p string) (Identifier, error) {
 	// try parsing as single tenant since the filename is more deterministic without an arbitrary nodename for uploader
 	id, ok := parseSingleTenantTSDBPath(p)
 	if ok {
-		return newPrefixedIdentifier(id, filepath.Dir(p), ""), nil
+		return NewPrefixedIdentifier(id, filepath.Dir(p), ""), nil
 	}
 
 	multiID, ok := parseMultitenantTSDBPath(p)
@@ -34,10 +34,10 @@ func identifierFromPath(p string) (Identifier, error) {
 	}
 
 	parent := filepath.Dir(p)
-	return newPrefixedIdentifier(multiID, parent, ""), nil
+	return NewPrefixedIdentifier(multiID, parent, ""), nil
 }
 
-func newPrefixedIdentifier(id Identifier, path, name string) prefixedIdentifier {
+func NewPrefixedIdentifier(id Identifier, path, name string) Identifier {
 	return prefixedIdentifier{
 		Identifier: id,
 		parentPath: path,
