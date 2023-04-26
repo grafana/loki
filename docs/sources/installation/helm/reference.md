@@ -1918,7 +1918,8 @@ null
     "region": null,
     "s3": null,
     "s3ForcePathStyle": false,
-    "secretAccessKey": null
+    "secretAccessKey": null,
+    "signatureVersion": null
   },
   "type": "s3"
 }
