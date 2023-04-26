@@ -48,8 +48,6 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-// TODO: Remove
-
 func main() {
 	var configFile string
 	flag.StringVar(&configFile, "config", "",
