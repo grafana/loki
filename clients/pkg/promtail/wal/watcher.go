@@ -44,12 +44,12 @@ type WriteCleanup interface {
 	SeriesReset(segmentNum int)
 }
 
-// WatcherActions is an interface used by the Watcher to send the samples it's read from the WAL on to
+// WriteTo is an interface used by the Watcher to send the samples it's read from the WAL on to
 // somewhere else, or clean them up. It's the intermediary between all information read by the Watcher
 // and the final destination.
 //
 // Based on https://github.com/prometheus/prometheus/blob/main/tsdb/wlog/watcher.go#L46
-type WatcherActions interface {
+type WriteTo interface {
 	// WriteCleanup is used to allow the Watcher to react upon being notified of WAL cleanup events, such as segments
 	// being reclaimed.
 	WriteCleanup
@@ -66,7 +66,7 @@ type Watcher struct {
 	// the metric/log line corresponds.
 	id string
 
-	actions    WatcherActions
+	actions    WriteTo
 	readNotify chan struct{}
 	done       chan struct{}
 	quit       chan struct{}
@@ -80,7 +80,7 @@ type Watcher struct {
 }
 
 // NewWatcher creates a new Watcher.
-func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WatcherActions, logger log.Logger, config WatchConfig) *Watcher {
+func NewWatcher(walDir, id string, metrics *WatcherMetrics, writeTo WriteTo, logger log.Logger, config WatchConfig) *Watcher {
 	return &Watcher{
 		walDir:      walDir,
 		id:          id,
