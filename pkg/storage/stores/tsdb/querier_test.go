@@ -98,7 +98,7 @@ func TestQueryIndex(t *testing.T) {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, dir, dir)
+		return NewPrefixedIdentifier(id, dir, dir)
 	})
 	require.Nil(t, err)
 
