@@ -120,6 +120,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.singleBinary.resources | nindent 12 }}
+        {{- with .Values.singleBinary.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.singleBinary.affinity }}
       affinity:
         {{- tpl . $ | nindent 8 }}

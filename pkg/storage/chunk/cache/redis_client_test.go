@@ -2,11 +2,13 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,4 +99,78 @@ func mockRedisClientCluster() (*RedisClient, error) {
 			},
 		}),
 	}, nil
+}
+
+func Test_deriveEndpoints(t *testing.T) {
+	const (
+		upstream   = "upstream"
+		downstream = "downstream"
+		lookback   = "localhost"
+	)
+
+	tests := []struct {
+		name      string
+		endpoints string
+		lookup    func(host string) ([]string, error)
+		want      []string
+		wantErr   string
+	}{
+		{
+			name:      "single endpoint",
+			endpoints: fmt.Sprintf("%s:6379", upstream),
+			lookup: func(host string) ([]string, error) {
+				return []string{upstream}, nil
+			},
+			want:    []string{fmt.Sprintf("%s:6379", upstream)},
+			wantErr: "",
+		},
+		{
+			name:      "multiple endpoints",
+			endpoints: fmt.Sprintf("%s:6379,%s:6379", upstream, downstream), // note the space
+			lookup: func(host string) ([]string, error) {
+				return []string{host}, nil
+			},
+			want:    []string{fmt.Sprintf("%s:6379", upstream), fmt.Sprintf("%s:6379", downstream)},
+			wantErr: "",
+		},
+		{
+			name:      "all loopback",
+			endpoints: fmt.Sprintf("%s:6379", lookback),
+			lookup: func(host string) ([]string, error) {
+				return []string{"::1", "127.0.0.1"}, nil
+			},
+			want:    []string{fmt.Sprintf("%s:6379", lookback)},
+			wantErr: "",
+		},
+		{
+			name:      "non-loopback address resolving to multiple addresses",
+			endpoints: fmt.Sprintf("%s:6379", upstream),
+			lookup: func(host string) ([]string, error) {
+				return []string{upstream, downstream}, nil
+			},
+			want:    []string{fmt.Sprintf("%s:6379", upstream), fmt.Sprintf("%s:6379", downstream)},
+			wantErr: "",
+		},
+		{
+			name:      "no such host",
+			endpoints: fmt.Sprintf("%s:6379", upstream),
+			lookup: func(host string) ([]string, error) {
+				return nil, fmt.Errorf("no such host")
+			},
+			want:    nil,
+			wantErr: "no such host",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := deriveEndpoints(tt.endpoints, tt.lookup)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equalf(t, tt.want, got, "failed to derive correct endpoints from %v", tt.endpoints)
+		})
+	}
 }

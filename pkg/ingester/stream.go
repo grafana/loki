@@ -394,13 +394,13 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
 	now := time.Now()
-	if rateLimitWholeStream && !s.limiter.AllowN(now, totalBytes) {
+	if rateLimitWholeStream && !s.limiter.AllowN(now, validBytes) {
 		// Report that the whole stream was rate limited
-		rateLimitedSamples = len(entries)
-		failedEntriesWithError = make([]entryWithError, 0, len(entries))
-		for i := 0; i < len(entries); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
-			rateLimitedBytes += len(entries[i].Line)
+		rateLimitedSamples = len(toStore)
+		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
+		for i := 0; i < len(toStore); i++ {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			rateLimitedBytes += len(toStore[i].Line)
 		}
 	}
 

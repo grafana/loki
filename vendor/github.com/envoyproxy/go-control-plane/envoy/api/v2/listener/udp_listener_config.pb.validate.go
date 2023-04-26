@@ -59,9 +59,18 @@ func (m *UdpListenerConfig) validate(all bool) error {
 
 	// no validation rules for UdpListenerName
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *UdpListenerConfig_Config:
+		if v == nil {
+			err := UdpListenerConfigValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetConfig()).(type) {
@@ -93,6 +102,16 @@ func (m *UdpListenerConfig) validate(all bool) error {
 		}
 
 	case *UdpListenerConfig_TypedConfig:
+		if v == nil {
+			err := UdpListenerConfigValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -123,6 +142,8 @@ func (m *UdpListenerConfig) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {

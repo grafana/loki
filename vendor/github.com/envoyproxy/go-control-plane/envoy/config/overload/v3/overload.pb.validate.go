@@ -68,9 +68,18 @@ func (m *ResourceMonitor) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *ResourceMonitor_TypedConfig:
+		if v == nil {
+			err := ResourceMonitorValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -101,6 +110,8 @@ func (m *ResourceMonitor) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -446,9 +457,20 @@ func (m *Trigger) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.TriggerOneof.(type) {
-
+	oneofTriggerOneofPresent := false
+	switch v := m.TriggerOneof.(type) {
 	case *Trigger_Threshold:
+		if v == nil {
+			err := TriggerValidationError{
+				field:  "TriggerOneof",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTriggerOneofPresent = true
 
 		if all {
 			switch v := interface{}(m.GetThreshold()).(type) {
@@ -480,6 +502,17 @@ func (m *Trigger) validate(all bool) error {
 		}
 
 	case *Trigger_Scaled:
+		if v == nil {
+			err := TriggerValidationError{
+				field:  "TriggerOneof",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTriggerOneofPresent = true
 
 		if all {
 			switch v := interface{}(m.GetScaled()).(type) {
@@ -511,6 +544,9 @@ func (m *Trigger) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofTriggerOneofPresent {
 		err := TriggerValidationError{
 			field:  "TriggerOneof",
 			reason: "value is required",
@@ -519,7 +555,6 @@ func (m *Trigger) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -1328,9 +1363,20 @@ func (m *ScaleTimersOverloadActionConfig_ScaleTimer) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.OverloadAdjust.(type) {
-
+	oneofOverloadAdjustPresent := false
+	switch v := m.OverloadAdjust.(type) {
 	case *ScaleTimersOverloadActionConfig_ScaleTimer_MinTimeout:
+		if v == nil {
+			err := ScaleTimersOverloadActionConfig_ScaleTimerValidationError{
+				field:  "OverloadAdjust",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOverloadAdjustPresent = true
 
 		if all {
 			switch v := interface{}(m.GetMinTimeout()).(type) {
@@ -1362,6 +1408,17 @@ func (m *ScaleTimersOverloadActionConfig_ScaleTimer) validate(all bool) error {
 		}
 
 	case *ScaleTimersOverloadActionConfig_ScaleTimer_MinScale:
+		if v == nil {
+			err := ScaleTimersOverloadActionConfig_ScaleTimerValidationError{
+				field:  "OverloadAdjust",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOverloadAdjustPresent = true
 
 		if all {
 			switch v := interface{}(m.GetMinScale()).(type) {
@@ -1393,6 +1450,9 @@ func (m *ScaleTimersOverloadActionConfig_ScaleTimer) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofOverloadAdjustPresent {
 		err := ScaleTimersOverloadActionConfig_ScaleTimerValidationError{
 			field:  "OverloadAdjust",
 			reason: "value is required",
@@ -1401,7 +1461,6 @@ func (m *ScaleTimersOverloadActionConfig_ScaleTimer) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

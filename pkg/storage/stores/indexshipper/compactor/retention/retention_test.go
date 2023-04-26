@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -211,7 +213,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
 	labelsBuilder.Set(labels.MetricName, "logs")
-	metric := labelsBuilder.Labels(nil)
+	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
 
@@ -910,4 +912,43 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	require.False(t, store.HasChunk(c3))
 	require.False(t, store.HasChunk(c4))
 	require.False(t, store.HasChunk(c5))
+}
+
+func TestMigrateMarkers(t *testing.T) {
+	t.Run("nothing to migrate", func(t *testing.T) {
+		workDir := t.TempDir()
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
+	})
+
+	t.Run("migrate markers dir", func(t *testing.T) {
+		workDir := t.TempDir()
+		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
+
+		markers := []string{"foo", "bar", "buzz"}
+		for _, marker := range markers {
+			err := os.WriteFile(path.Join(workDir, MarkersFolder, marker), []byte(marker), 0o666)
+			require.NoError(t, err)
+		}
+
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		targetDir := path.Join(workDir, "store-1", MarkersFolder)
+		require.DirExists(t, targetDir)
+		for _, marker := range markers {
+			require.FileExists(t, path.Join(targetDir, marker))
+			b, err := os.ReadFile(path.Join(targetDir, marker))
+			require.NoError(t, err)
+			require.Equal(t, marker, string(b))
+		}
+	})
+
+	t.Run("file named markers should not be migrated", func(t *testing.T) {
+		workDir := t.TempDir()
+		f, err := os.Create(path.Join(workDir, MarkersFolder))
+		require.NoError(t, err)
+		defer f.Close()
+
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
+	})
 }

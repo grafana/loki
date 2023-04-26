@@ -69,7 +69,7 @@ func TestFileTargetSync(t *testing.T) {
 	path := logDir1 + "/*.log"
 	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
-	}, nil, fakeHandler, "", nil)
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
@@ -221,7 +221,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	pathExclude := filepath.Join(dirName, "log3", "*.log")
 	target, err := NewFileTarget(metrics, logger, client, ps, path, pathExclude, nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
-	}, nil, fakeHandler, "", nil)
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
@@ -350,7 +350,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
-	}, fakeFileHandler, fakeTargetHandler, "", nil)
+	}, DefaultWatchConig, fakeFileHandler, fakeTargetHandler, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -478,7 +478,7 @@ func makeRandomLabels() labels.Labels {
 	for _, ln := range labelNames {
 		ls.Set(ln, fmt.Sprintf("%d", rand.Int31()))
 	}
-	return ls.Labels(nil)
+	return ls.Labels()
 }
 
 func Benchmark_PushInstance(b *testing.B) {

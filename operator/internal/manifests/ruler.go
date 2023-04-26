@@ -10,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -61,6 +62,7 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		statefulSet,
 		NewRulerGRPCService(opts),
 		NewRulerHTTPService(opts),
+		NewRulerPodDisruptionBudget(opts),
 	), nil
 }
 
@@ -363,4 +365,29 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 	}
 
 	return items
+}
+
+// NewRulerPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack ruler pods.
+func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+
+	ma := intstr.FromInt(1)
+
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      RulerName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
+		},
+	}
 }
