@@ -205,6 +205,9 @@ s3:
   {{- with .accessKeyId }}
   access_key_id: {{ . }}
   {{- end }}
+  {{- with .signatureVersion }}
+  signature_version: {{ . }}
+  {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
   {{- with .http_config}}
