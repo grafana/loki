@@ -186,7 +186,7 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-If you suddenly must delete ingested logs, you can delete old chunks in your object store. Note,
+If you must delete ingested logs, you can delete old chunks in your object store. Note,
 however, that this only deletes the log content and keeps the label index
 intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
