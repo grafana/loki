@@ -138,6 +138,7 @@ func (m *tsdbManager) Start() (err error) {
 					"err", err.Error(),
 				)
 				loadingErrors++
+				continue
 			}
 
 			if err := m.shipper.AddIndex(bucket, "", loaded); err != nil {
