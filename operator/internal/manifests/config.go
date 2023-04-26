@@ -27,8 +27,6 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 		return nil, "", err
 	}
 
-	_ = c // TODO: Remove
-
 	s := sha1.New()
 	_, err = s.Write(c)
 	if err != nil {
