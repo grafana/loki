@@ -194,7 +194,7 @@ retrieve the deleted log content.
 For further details on the Table Manager internals, refer to the
 [Table Manager]({{<relref "table-manager">}}) documentation.
 
-Alternatively, if the BoltDB Shipper is configured for the index store, you can enable [Log entry deletion]({{<relref "logs-deletion">}}) to delete log entries from a specific stream.
+Alternatively, if the BoltDB Shipper is configured for the index store, you can enable [Log entry deletion]({{<relref "logs-deletion.md">}}) to delete log entries from a specific stream.
 
 
 ## Example Configuration
