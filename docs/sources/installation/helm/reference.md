@@ -1,5 +1,5 @@
 ---
-title: Helm Chart Values
+title: Helm chart values
 menuTitle: Helm chart values
 description: Reference for Helm Chart values.
 weight: 200
