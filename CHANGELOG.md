@@ -1,3 +1,11 @@
+## 2.8.2
+
+#### Loki
+
+##### Enhancements
+
+* [9184](https://github.com/grafana/loki/pull/9184) **periklis**: Bump dskit to introduce IPv6 support for memberlist
+
 ## 2.8.1
 
 #### Loki
