@@ -692,7 +692,7 @@ func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matc
 	}
 	reg = reg.Simplify()
 
-	m, ok := simplify(typ, name, value, reg)
+	m, ok := simplify(typ, name, reg)
 	if !ok {
 		util.AllNonGreedy(reg)
 		return labels.MustNewMatcher(typ, name, reg.String())
@@ -702,7 +702,7 @@ func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matc
 }
 
 // simplify will return an equals matcher if there is a regex matching a literal
-func simplify(typ labels.MatchType, name, value string, reg *syntax.Regexp) (*labels.Matcher, bool) {
+func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
 	switch reg.Op {
 	case syntax.OpLiteral:
 		if !util.IsCaseInsensitive(reg) {
@@ -710,7 +710,7 @@ func simplify(typ labels.MatchType, name, value string, reg *syntax.Regexp) (*la
 			if typ == labels.MatchNotRegexp {
 				t = labels.MatchNotEqual
 			}
-			return labels.MustNewMatcher(t, name, value), true
+			return labels.MustNewMatcher(t, name, string(reg.Rune)), true
 		}
 		return nil, false
 	}

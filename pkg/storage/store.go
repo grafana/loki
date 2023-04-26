@@ -45,14 +45,11 @@ var (
 	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
-// Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	stores.Store
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	stores.ChunkReader
+	index.Filterable
 	GetSchemaConfigs() []config.PeriodConfig
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 }
 
 type store struct {

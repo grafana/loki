@@ -63,7 +63,7 @@ const (
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 
 	// The format that will be written by this process
-	LiveFormat = FormatV2
+	LiveFormat = FormatV3
 )
 
 type indexWriterStage uint8

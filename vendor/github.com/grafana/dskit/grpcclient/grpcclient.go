@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
@@ -92,8 +91,8 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	return append(
 		opts,
 		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
-		grpc.WithUnaryInterceptor(middleware.ChainUnaryClient(unaryClientInterceptors...)),
-		grpc.WithStreamInterceptor(middleware.ChainStreamClient(streamClientInterceptors...)),
+		grpc.WithChainUnaryInterceptor(unaryClientInterceptors...),
+		grpc.WithChainStreamInterceptor(streamClientInterceptors...),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                time.Second * 20,
 			Timeout:             time.Second * 10,
