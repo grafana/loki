@@ -2,7 +2,6 @@ package remote
 
 import (
 	"context"
-	"github.com/weaveworks/common/user"
 	"net/http"
 	"net/url"
 	"testing"
@@ -10,6 +9,7 @@ import (
 
 	config_util "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"

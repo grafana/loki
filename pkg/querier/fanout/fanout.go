@@ -2,7 +2,6 @@ package fanout
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/querier/remote"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
@@ -12,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/querier/remote"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 

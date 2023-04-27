@@ -2,17 +2,17 @@ package fanout
 
 import (
 	"context"
-	"github.com/google/uuid"
-	"github.com/grafana/loki/pkg/loghttp"
 	"net/http"
 	"net/url"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	config_util "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"

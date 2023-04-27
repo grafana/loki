@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/grafana/dskit/tenant"
-	"github.com/weaveworks/common/user"
 	"io"
 	"log"
 	"net/http"
@@ -16,10 +14,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/tenant"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
-
-	"github.com/grafana/dskit/backoff"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
