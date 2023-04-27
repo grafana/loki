@@ -228,25 +228,26 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 }
 
 func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
-	if len(buffer.Bytes()) > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(buffer.Bytes()), maxSize)
+	bufBytes := buffer.Bytes()
+	if len(bufBytes) > maxSize {
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(bufBytes), maxSize)
 	}
 	switch compression {
 	case NoCompression:
-		return buffer.Bytes(), nil
+		return bufBytes, nil
 	case RawSnappy:
 		if sp != nil {
 			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
-				otlog.Int("size", len(buffer.Bytes())))
+				otlog.Int("size", len(bufBytes)))
 		}
-		size, err := snappy.DecodedLen(buffer.Bytes())
+		size, err := snappy.DecodedLen(bufBytes)
 		if err != nil {
 			return nil, err
 		}
 		if size > maxSize {
 			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
 		}
-		body, err := snappy.Decode(nil, buffer.Bytes())
+		body, err := snappy.Decode(nil, bufBytes)
 		if err != nil {
 			return nil, err
 		}
