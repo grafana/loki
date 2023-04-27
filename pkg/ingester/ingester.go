@@ -547,6 +547,18 @@ func (i *Ingester) stopping(_ error) error {
 	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
+		shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+		exists, err := shutdownMarkerExists(shutdownMarkerPath)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+		}
+		if exists {
+			err = removeShutdownMarker(shutdownMarkerPath)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+			}
+		}
+
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
@@ -740,20 +752,6 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("Ingester is stopping or already stopped."))
 		return
-	}
-
-	if i.terminateOnShutdown {
-		shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
-		exists, err := shutdownMarkerExists(shutdownMarkerPath)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
-		}
-		if exists {
-			err = removeShutdownMarker(shutdownMarkerPath)
-			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
-			}
-		}
 	}
 
 	params := r.URL.Query()
