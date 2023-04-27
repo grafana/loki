@@ -74,13 +74,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800)
   else {},
 
-  ingester_data_pvc:: if $._config.stateful_ingesters then
-    pvc.new('ingester-data') +
-    pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_pvc_size }) +
-    pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_pvc_class)
-  else {},
-
   ingester_statefulset: self.newIngesterStatefulSet('ingester', $.ingester_container, !$._config.ingester_allow_multiple_replicas_on_same_node),
 
   ingester_service:

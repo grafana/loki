@@ -2014,7 +2014,9 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos, cos.
+# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
+# to operate on all the object stores that contain either boltdb-shipper or tsdb
+# index.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -2050,6 +2052,11 @@ The `compactor` block configures the compactor component, which compacts index s
 # given table in the index.
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
+
+# Store used for managing delete requests. Defaults to
+# -boltdb.shipper.compactor.shared-store.
+# CLI flag: -boltdb.shipper.compactor.delete-request-store
+[delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
