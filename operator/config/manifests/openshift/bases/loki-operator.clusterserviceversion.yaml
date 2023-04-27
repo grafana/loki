@@ -16,7 +16,7 @@ metadata:
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=5.4.0-0 <5.7.0'
+    olm.skipRange: '>=5.6.0-0 <5.8.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift

@@ -1,5 +1,5 @@
 ---
-title: Helm chart values
+title: Helm Chart Values
 menuTitle: Helm chart values
 description: Reference for Helm Chart values.
 weight: 200
@@ -1927,7 +1927,8 @@ null
     "region": null,
     "s3": null,
     "s3ForcePathStyle": false,
-    "secretAccessKey": null
+    "secretAccessKey": null,
+    "signatureVersion": null
   },
   "type": "s3"
 }

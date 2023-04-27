@@ -381,7 +381,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, c.workingDir, "")
+		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})
 	if err != nil {
 		return nil, err

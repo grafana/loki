@@ -35,12 +35,37 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Index shipper multi-store support
+In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
+These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
+
 #### Shutdown marker file
 
 A shutdown marker file can be written by the `/ingester/prepare_shutdown` endpoint.
 If the new `ingester.shutdown_marker_path` config setting has a value that value is used.
 If not the`common.path_prefix` config setting is used if it has a value. Otherwise a warning is shown
 in the logs on startup and the `/ingester/prepare_shutdown` endpoint will return a 500 status code.
+
+#### Compactor multi-store support
+
+In previous releases, setting `-boltdb.shipper.compactor.shared-store` configured the following:
+- store used for managing delete requests.
+- store on which index compaction should be performed.
+
+If `-boltdb.shipper.compactor.shared-store` was not set, it used to default to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
+
+Compactor now supports index compaction on multiple buckets/object stores.
+And going forward loki will not set any defaults on `-boltdb.shipper.compactor.shared-store`, this has a couple of side effects detailed as follows:
+
+##### store on which index compaction should be performed:
+If `-boltdb.shipper.compactor.shared-store` is configured by the user, loki would run index compaction only on the store specified by the config.
+If not set, compaction would be performed on all the object stores that contain either a boltdb-shipper or tsdb index.
+
+##### store used for managing delete requests:
+A new config option `-boltdb.shipper.compactor.delete-request-store` decides where delete requests should be stored. This new option takes precedence over `-boltdb.shipper.compactor.shared-store`.
+
+In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
+
 
 ## 2.8.0
 
@@ -149,10 +174,6 @@ level=info ts=2022-12-20T15:27:54.858554127Z caller=metrics.go:147 component=fro
 ```
 
 These statistics are also displayed when using `--stats` with LogCLI.
-
-#### Index shipper multi-store support
-In releases prior to 2.8.1, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
-In releases 2.8.1 and later, these defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
 
 ## 2.7.0
 

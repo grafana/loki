@@ -31,7 +31,7 @@ require (
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.1
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
-	github.com/fatih/color v1.14.1
+	github.com/fatih/color v1.15.0
 	github.com/felixge/fgprof v0.9.3
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/fsouza/fake-gcs-server v1.7.0
@@ -64,7 +64,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.16.0
+	github.com/klauspost/compress v1.16.5
 	github.com/klauspost/pgzip v1.2.5
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/minio/minio-go/v7 v7.0.52
@@ -100,9 +100,9 @@ require (
 	go.uber.org/atomic v1.10.0
 	go.uber.org/goleak v1.2.1
 	golang.org/x/crypto v0.7.0
-	golang.org/x/net v0.8.0
+	golang.org/x/net v0.9.0
 	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.6.0
+	golang.org/x/sys v0.7.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.114.0
 	google.golang.org/grpc v1.53.0
@@ -297,7 +297,7 @@ require (
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/mod v0.9.0 // indirect
-	golang.org/x/term v0.6.0 // indirect
+	golang.org/x/term v0.7.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
