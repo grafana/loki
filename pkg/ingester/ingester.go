@@ -547,20 +547,26 @@ func (i *Ingester) stopping(_ error) error {
 	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
-		shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
-		exists, err := shutdownMarkerExists(shutdownMarkerPath)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
-		}
-		if exists {
-			err = removeShutdownMarker(shutdownMarkerPath)
-			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
-			}
-		}
+		i.removeShutdownMarkerFile()
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
+}
+
+// removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
+func (i *Ingester) removeShutdownMarkerFile() {
+	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+	exists, err := shutdownMarkerExists(shutdownMarkerPath)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+	}
+	if exists {
+		err = removeShutdownMarker(shutdownMarkerPath)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+		}
+	}
+
 }
 
 func (i *Ingester) loop() {
