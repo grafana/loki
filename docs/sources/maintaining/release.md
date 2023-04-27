@@ -75,7 +75,7 @@ export GPG_TTY=$(tty)
        git tag -s $RELEASE -m "tagging release $RELEASE"
        git push origin $RELEASE
        ```
-1. Watch CircleCI and wait for all the jobs to finish running.
+1. Watch Drone and wait for all the jobs to finish running.
 
 ## Updating Helm and Ksonnet configs
 

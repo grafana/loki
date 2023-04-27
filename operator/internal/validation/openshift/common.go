@@ -38,7 +38,12 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 		return lokiv1.ErrParseLogQLNotSample
 	}
 
-	matchers := sampleExpr.Selector().Matchers()
+	selector, err := sampleExpr.Selector()
+	if err != nil {
+		return lokiv1.ErrParseLogQLSelector
+	}
+
+	matchers := selector.Matchers()
 	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
 		return lokiv1.ErrRuleMustMatchNamespace
 	}

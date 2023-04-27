@@ -139,26 +139,39 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	for _, tc := range []struct {
 		metricName, labelName string
 		expect                []string
+		matchers              []*labels.Matcher
 	}{
 		{
 			`foo`, `bar`,
 			[]string{"baz", "beep", "bop"},
+			nil,
 		},
 		{
 			`bar`, `toms`,
 			[]string{"code"},
+			nil,
 		},
 		{
 			`bar`, `bar`,
 			[]string{"baz"},
+			nil,
 		},
 		{
 			`foo`, `foo`,
+			nil,
 			nil,
 		},
 		{
 			`foo`, `flip`,
 			[]string{"flap", "flop"},
+			nil,
+		},
+		{
+			`foo`, `toms`,
+			[]string{"code"},
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "bar", "baz|beep"),
+			},
 		},
 	} {
 		for _, schema := range schemas {
@@ -180,7 +193,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName)
+					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues1) {
@@ -188,7 +201,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName)
+					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues2) {
@@ -196,7 +209,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					labelValues3, err := store.LabelValuesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName)
+					labelValues3, err := store.LabelValuesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 					if len(labelValues3) != 0 {
 						t.Fatalf("%s/%s: future query should yield empty resultset ... actually got %v label values: %#v",
@@ -456,54 +469,54 @@ func Test_GetSeries(t *testing.T) {
 		{
 			`foo`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{flip=""}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{bar="baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{bar="beep"}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{toms="code"}`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{bar!="baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{bar=~"beeping|baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil),
+				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
 			},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 	}
 	for _, schema := range schemas {
@@ -556,11 +569,11 @@ func Test_GetSeriesShard(t *testing.T) {
 	}{
 		{
 			`foo{__cortex_shard__="6_of_16"}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
 		},
 		{
 			`foo{__cortex_shard__="8_of_16"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(nil)},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
 		},
 	}
 	for _, storeCase := range stores {
@@ -698,6 +711,13 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
 				labels.MustNewMatcher(labels.MatchEqual, "toms", "code"),
+			},
+		},
+		{
+			`foo`, `toms`,
+			[]string{"code"},
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "env", "dev|prod"),
 			},
 		},
 	} {

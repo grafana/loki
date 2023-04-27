@@ -96,7 +96,11 @@ var (
 	})
 	createUpdateOrDeletePred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
+			if e.ObjectOld.GetGeneration() == 0 && len(e.ObjectOld.GetAnnotations()) == 0 {
+				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+			}
+
+			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() ||
 				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
 		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
@@ -125,6 +129,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:urls=/api/v2/alerts,verbs=create
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 
@@ -206,7 +211,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
-		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred)
+		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
+		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -293,6 +299,34 @@ func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHand
 			}
 
 			r.Log.Info("Enqueued requests for all LokiStacks because of UserWorkload Alertmanager Service resource change", "count", len(requests), "kind", obj.GetObjectKind())
+		}
+
+		return requests
+	})
+}
+
+func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
+	ctx := context.TODO()
+	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.Client.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error getting LokiStack resources in event handler")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if obj.GetName() == stack.Spec.Storage.Secret.Name && obj.GetNamespace() == stack.Namespace {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: stack.Namespace,
+						Name:      stack.Name,
+					},
+				})
+				r.Log.Info("Enqueued requests for LokiStack because of Storage Secret resource change", "LokiStack", stack.Name, "Secret", obj.GetName())
+
+				return requests
+			}
 		}
 
 		return requests

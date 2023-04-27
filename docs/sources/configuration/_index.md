@@ -460,6 +460,10 @@ rate_store:
   # updating rates
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
+
+  # If enabled, detailed logs and spans will be emitted.
+  # CLI flag: -distributor.rate-store.debug
+  [debug: <boolean> | default = false]
 ```
 
 ### querier
@@ -634,6 +638,10 @@ scheduler_ring:
   # zone-awareness is enabled.
   # CLI flag: -query-scheduler.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -query-scheduler.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 ```
 
 ### frontend
@@ -746,6 +754,10 @@ results_cache:
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
 
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
@@ -766,9 +778,13 @@ results_cache:
 The `ruler` block configures the Loki ruler.
 
 ```yaml
-# URL of alerts return path.
+# Base URL of the Grafana instance.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
+
+# Datasource UID for the dashboard.
+# CLI flag: -ruler.datasource-uid
+[datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
@@ -790,7 +806,7 @@ The `ruler` block configures the Loki ruler.
 # options instead.
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
-  # local, bos)
+  # local, bos, cos)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = ""]
 
@@ -817,6 +833,10 @@ storage:
   # Configures backend rule storage for Swift.
   # The CLI flags prefix for this block configuration is: ruler.storage
   [swift: <swift_storage_config>]
+
+  # Configures backend rule storage for IBM Cloud Object Storage (COS).
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [cos: <cos_storage_config>]
 
   # Configures backend rule storage for a local file system directory.
   local:
@@ -859,18 +879,18 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # Path to the key file for the client certificate. Also requires the client
+  # Path to the key for the client certificate. Also requires the client
   # certificate to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
   # CLI flag: -ruler.alertmanager-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
 
@@ -1132,18 +1152,18 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
-    # Path to the client certificate file, which will be used for authenticating
-    # with the server. Also requires the key path to be configured.
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
     [tls_cert_path: <string> | default = ""]
 
-    # Path to the key file for the client certificate. Also requires the client
+    # Path to the key for the client certificate. Also requires the client
     # certificate to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
     [tls_key_path: <string> | default = ""]
 
-    # Path to the CA certificates file to validate server certificate against.
-    # If not set, the host's root CA certificates are used.
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
     # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
     [tls_ca_path: <string> | default = ""]
 
@@ -1321,6 +1341,11 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.interface
   [interface_names: <list of strings> | default = [<private network interfaces>]]
 
+  # Enable IPv6 support. Required to make use of IP addresses from IPv6
+  # interfaces.
+  # CLI flag: -ingester.enable-inet6
+  [enable_inet6: <boolean> | default = false]
+
   # Duration to sleep for before exiting, to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
   [final_sleep: <duration> | default = 0s]
@@ -1479,6 +1504,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# Path where the shutdown marker file is stored. If not set and
+# common.path_prefix is set then common.path_prefix will be used.
+# CLI flag: -ingester.shutdown-marker-path
+[shutdown_marker_path: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -1574,6 +1604,10 @@ ring:
   # zone-awareness is enabled.
   # CLI flag: -index-gateway.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -index-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
   # How many index gateway instances are assigned to each tenant.
   # CLI flag: -replication-factor
@@ -1797,6 +1831,10 @@ hedging:
 # in period_config.
 [named_stores: <named_stores_config>]
 
+# The cos_storage_config block configures the connection to IBM Cloud Object
+# Storage (COS) backend.
+[cos: <cos_storage_config>]
+
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
 # CLI flag: -store.index-cache-validity
@@ -1819,16 +1857,16 @@ hedging:
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
 
-# Configures storing index in an Object Store (GCS/S3/Azure/Swift/Filesystem) in
-# the form of boltdb files. Required fields only required when boltdb-shipper is
-# defined in config.
+# Configures storing index in an Object Store
+# (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required
+# fields only required when boltdb-shipper is defined in config.
 boltdb_shipper:
   # Directory where ingesters would write index files which would then be
   # uploaded by shipper to configured storage
   # CLI flag: -boltdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure,
+  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
   # filesystem
   # CLI flag: -boltdb.shipper.shared-store
   [shared_store: <string> | default = ""]
@@ -1892,7 +1930,7 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure,
+  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
   # filesystem
   # CLI flag: -tsdb.shipper.shared-store
   [shared_store: <string> | default = ""]
@@ -1987,7 +2025,9 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos.
+# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
+# to operate on all the object stores that contain either boltdb-shipper or tsdb
+# index.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -2023,6 +2063,11 @@ The `compactor` block configures the compactor component, which compacts index s
 # given table in the index.
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
+
+# Store used for managing delete requests. Defaults to
+# -boltdb.shipper.compactor.shared-store.
+# CLI flag: -boltdb.shipper.compactor.delete-request-store
+[delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
@@ -2133,6 +2178,10 @@ compactor_ring:
   # zone-awareness is enabled.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
@@ -2279,6 +2328,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # The limit to length of chunk store queries. 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 30d1h]
+
+# Limit the length of the [range] inside a range query. Default is 0 or
+# unlimited
+# CLI flag: -querier.max-query-range
+[max_query_range: <duration> | default = 0s]
 
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
@@ -2505,7 +2559,10 @@ shard_streams:
 [blocked_queries: <blocked_query...>]
 
 # Define a list of required selector labels.
-[required_label_matchers: <list of strings>]
+[required_labels: <list of strings>]
+
+# Minimum number of label matchers a query should contain.
+[minimum_labels_number: <int>]
 ```
 
 ### frontend_worker
@@ -2922,6 +2979,10 @@ Configuration for usage report.
 # Enable anonymous usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
+
+# URL to which reports are sent
+# CLI flag: -reporting.usage-stats-url
+[usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 
 ### common
@@ -2983,6 +3044,11 @@ storage:
     # The maximum of hedge requests allowed per seconds.
     # CLI flag: -common.storage.hedge-max-per-second
     [max_per_second: <int> | default = 5]
+
+  # The cos_storage_config block configures the connection to IBM Cloud Object
+  # Storage (COS) backend.
+  # The CLI flags prefix for this block configuration is: common.storage
+  [cos: <cos_storage_config>]
 
 [persist_tokens: <boolean>]
 
@@ -3063,6 +3129,10 @@ ring:
   # zone-awareness is enabled.
   # CLI flag: -common.storage.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -common.storage.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
 [instance_interface_names: <list of strings>]
 
@@ -3151,18 +3221,18 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3281,18 +3351,18 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3348,18 +3418,18 @@ backoff_config:
 The TLS configuration.
 
 ```yaml
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -frontend.tail-tls-config.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3788,6 +3858,10 @@ dynamodb:
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -4062,6 +4136,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -<prefix>.storage.s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -4238,6 +4316,89 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 [request_timeout: <duration> | default = 5s]
 ```
 
+### cos_storage_config
+
+The `cos_storage_config` block configures the connection to IBM Cloud Object Storage (COS) backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common.storage`
+- `ruler.storage`
+
+&nbsp;
+
+```yaml
+# Set this to `true` to force the request to use path-style addressing.
+# CLI flag: -<prefix>.cos.force-path-style
+[forcepathstyle: <boolean> | default = false]
+
+# Comma separated list of bucket names to evenly distribute chunks over.
+# CLI flag: -<prefix>.cos.buckets
+[bucketnames: <string> | default = ""]
+
+# COS Endpoint to connect to.
+# CLI flag: -<prefix>.cos.endpoint
+[endpoint: <string> | default = ""]
+
+# COS region to use.
+# CLI flag: -<prefix>.cos.region
+[region: <string> | default = ""]
+
+# COS HMAC Access Key ID.
+# CLI flag: -<prefix>.cos.access-key-id
+[access_key_id: <string> | default = ""]
+
+# COS HMAC Secret Access Key.
+# CLI flag: -<prefix>.cos.secret-access-key
+[secret_access_key: <string> | default = ""]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  # CLI flag: -<prefix>.cos.http.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's response
+  # headers after fully writing the request.
+  # CLI flag: -<prefix>.cos.http.response-header-timeout
+  [response_header_timeout: <duration> | default = 0s]
+
+# Configures back off when cos get Object.
+backoff_config:
+  # Minimum backoff time when cos get Object.
+  # CLI flag: -<prefix>.cos.min-backoff
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum backoff time when cos get Object.
+  # CLI flag: -<prefix>.cos.max-backoff
+  [max_period: <duration> | default = 3s]
+
+  # Maximum number of times to retry when cos get Object.
+  # CLI flag: -<prefix>.cos.max-retries
+  [max_retries: <int> | default = 5]
+
+# IAM API key to access COS.
+# CLI flag: -<prefix>.cos.api-key
+[api_key: <string> | default = ""]
+
+# COS service instance id to use.
+# CLI flag: -<prefix>.cos.service-instance-id
+[service_instance_id: <string> | default = ""]
+
+# IAM Auth Endpoint for authentication.
+# CLI flag: -<prefix>.cos.auth-endpoint
+[auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
+
+# Compute resource token file path.
+# CLI flag: -<prefix>.cos.cr-token-file-path
+[cr_token_file_path: <string> | default = ""]
+
+# Name of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-name
+[trusted_profile_name: <string> | default = ""]
+
+# ID of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-id
+[trusted_profile_id: <string> | default = ""]
+```
+
 ### local_storage_config
 
 The `local_storage_config` block configures the usage of local file system as object storage backend.
@@ -4275,6 +4436,8 @@ Named store from this example can be used by setting object_store to store-1 in 
 [alibabacloud: <map of string to alibabacloud_storage_config>]
 
 [swift: <map of string to swift_storage_config>]
+
+[cos: <map of string to cos_storage_config>]
 ```
 
 ## Runtime Configuration file

@@ -97,15 +97,18 @@ func NewReader(writer io.Writer,
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
 	httpClient := http.DefaultClient
-	if tlsConfig != nil {
+	if tlsConfig != nil && (certFile != "" || keyFile != "" || caFile != "") {
 		// For the mTLS case, use a http.Client configured with the client side certificates.
 		rt, err := config.NewTLSRoundTripper(tlsConfig, caFile, certFile, keyFile, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil
 		})
 		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to create HTTPS transport with TLS config")
+			return nil, errors.Wrapf(err, "Failed to create HTTPS transport with mTLS config")
 		}
 		httpClient = &http.Client{Transport: rt}
+	} else if tlsConfig != nil {
+		// non-mutual TLS
+		httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	}
 	if user != "" {
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))

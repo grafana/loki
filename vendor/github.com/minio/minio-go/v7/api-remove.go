@@ -235,7 +235,7 @@ func generateRemoveMultiObjectsRequest(objects []ObjectInfo) []byte {
 
 // processRemoveMultiObjectsResponse - parse the remove multi objects web service
 // and return the success/failure result status for each object
-func processRemoveMultiObjectsResponse(body io.Reader, objects []ObjectInfo, resultCh chan<- RemoveObjectResult) {
+func processRemoveMultiObjectsResponse(body io.Reader, resultCh chan<- RemoveObjectResult) {
 	// Parse multi delete XML response
 	rmResult := &deleteMultiObjectsResult{}
 	err := xmlDecoder(body, rmResult)
@@ -459,7 +459,7 @@ func (c *Client) removeObjects(ctx context.Context, bucketName string, objectsCh
 		}
 
 		// Process multiobjects remove xml response
-		processRemoveMultiObjectsResponse(resp.Body, batch, resultCh)
+		processRemoveMultiObjectsResponse(resp.Body, resultCh)
 
 		closeResponse(resp)
 	}

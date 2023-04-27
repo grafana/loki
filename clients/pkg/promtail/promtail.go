@@ -154,6 +154,11 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else if cfg.WAL.Enabled {
+		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+		if err != nil {
+			return fmt.Errorf("failed to create wal writer: %w", err)
+		}
+
 		p.client, err = client.NewManager(
 			p.metrics,
 			p.logger,
@@ -162,16 +167,13 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 			cfg.LimitsConfig.MaxLineSizeTruncate,
 			p.reg,
 			cfg.WAL,
+			p.walWriter,
 			cfg.ClientConfigs...,
 		)
 		if err != nil {
 			return err
 		}
 
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return fmt.Errorf("failed to create wal writer: %w", err)
-		}
 		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
 		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
 		entryHandlers = append(entryHandlers, p.walWriter)
@@ -185,7 +187,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	entryHandlers = append(entryHandlers, p.client)
 	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig, cfg.Global.FileWatch)
 	if err != nil {
 		return err
 	}

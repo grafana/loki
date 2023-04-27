@@ -11,6 +11,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -18,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/prometheus/common/model"
 )
 
 func shardResolverForConf(
@@ -71,7 +73,7 @@ func getStatsForMatchers(
 	start, end model.Time,
 	matcherGroups []syntax.MatcherRange,
 	parallelism int,
-	defaultLookback ...time.Duration,
+	defaultLookback time.Duration,
 ) ([]*stats.Stats, error) {
 	startTime := time.Now()
 
@@ -80,12 +82,12 @@ func getStatsForMatchers(
 		matchers := syntax.MatchersString(matcherGroups[i].Matchers)
 		diff := matcherGroups[i].Interval + matcherGroups[i].Offset
 		adjustedFrom := start.Add(-diff)
-		if matcherGroups[i].Interval == 0 && len(defaultLookback) > 0 {
+		if matcherGroups[i].Interval == 0 {
 			// For limited instant queries, when start == end, the queries would return
 			// zero results. Prometheus has a concept of "look back amount of time for instant queries"
 			// since metric data is sampled at some configurable scrape_interval (commonly 15s, 30s, or 1m).
 			// We copy that idea and say "find me logs from the past when start=end".
-			adjustedFrom = adjustedFrom.Add(-defaultLookback[0])
+			adjustedFrom = adjustedFrom.Add(-defaultLookback)
 		}
 
 		adjustedThrough := end.Add(-matcherGroups[i].Offset)
@@ -128,8 +130,10 @@ func getStatsForMatchers(
 }
 
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
-	sp, ctx := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.GetStats")
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
+	log := spanlogger.FromContext(r.ctx)
+	defer log.Finish()
 
 	start := time.Now()
 
@@ -146,14 +150,14 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
-	results, err := getStatsForMatchers(ctx, sp, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	results, err := getStatsForMatchers(ctx, log, r.handler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
 	}
 
 	combined := stats.MergeStats(results...)
 
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "queried index",
@@ -168,8 +172,10 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 }
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
-	sp, _ := spanlogger.NewWithLogger(r.ctx, r.logger, "dynamicShardResolver.Shards")
+	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
 	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
+	defer log.Finish()
 
 	combined, err := r.GetStats(e)
 	if err != nil {
@@ -183,7 +189,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
 
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "Got shard factor",

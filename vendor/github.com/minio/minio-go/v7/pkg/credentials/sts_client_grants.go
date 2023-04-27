@@ -22,7 +22,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -138,7 +138,7 @@ func getClientGrantsCredentials(clnt *http.Client, endpoint string,
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		var errResp ErrorResponse
-		buf, err := ioutil.ReadAll(resp.Body)
+		buf, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return AssumeRoleWithClientGrantsResponse{}, err
 		}

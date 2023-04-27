@@ -254,7 +254,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	require.IsType(t, promql.Vector{}, res.Data)
 	vector := res.Data.(promql.Vector)
 	require.EqualValues(t, now.UnixMilli(), vector[0].T)
-	require.EqualValues(t, value, vector[0].V)
+	require.EqualValues(t, value, vector[0].F)
 	require.EqualValues(t, map[string]string{
 		"foo": "bar",
 	}, vector[0].Metric.Map())

@@ -34,11 +34,14 @@ import (
 )
 
 const (
-	limitErrTmpl          = "maximum of series (%d) reached for a single query"
-	maxSeriesErrTmpl      = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
-	requiredLabelsErrTmpl = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
-	limErrQueryTooManyBytesTmpl   = "the query would read too many bytes (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
-	limErrQuerierTooManyBytesTmpl = "query too large to execute on a single querier, either because parallelization is not enabled, the query is unshardable, or a shard query is too big to execute: (query: %s, limit: %s). Consider adding more specific stream selectors or reduce the time range of the query"
+	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
+	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
+	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
+	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesTmpl            = "query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings"
+	limErrQuerierTooManyBytesUnshardableTmpl = "un-shardable query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
+	limErrQuerierTooManyBytesShardableTmpl   = "shard query is too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 )
 
 var (
@@ -57,6 +60,7 @@ type Limits interface {
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
 	RequiredLabels(context.Context, string) []string
+	RequiredNumberLabels(context.Context, string) int
 	MaxQueryBytesRead(context.Context, string) int
 	MaxQuerierBytesRead(context.Context, string) int
 }
@@ -146,7 +150,9 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 }
 
 func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log, ctx := spanlogger.New(ctx, "limits")
+	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
+	defer span.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -207,34 +213,25 @@ type querySizeLimiter struct {
 func newQuerySizeLimiter(
 	next queryrangebase.Handler,
 	cfg []config.PeriodConfig,
+	engineOpts logql.EngineOpts,
 	logger log.Logger,
-	limits Limits,
-	codec queryrangebase.Codec,
 	limitFunc func(context.Context, string) int,
 	limitErrorTmpl string,
 	statsHandler ...queryrangebase.Handler,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
-		logger:         logger,
-		next:           next,
-		cfg:            cfg,
-		limitFunc:      limitFunc,
-		limitErrorTmpl: limitErrorTmpl,
+		logger:            logger,
+		next:              next,
+		cfg:               cfg,
+		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
+		limitFunc:         limitFunc,
+		limitErrorTmpl:    limitErrorTmpl,
 	}
 
 	q.statsHandler = next
 	if len(statsHandler) > 0 {
 		q.statsHandler = statsHandler[0]
 	}
-
-	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-	statsSplitTimeMiddleware := SplitByIntervalMiddleware(cfg, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, nil)
-	q.statsHandler = statsSplitTimeMiddleware.Wrap(q.statsHandler)
-
-	// Get MaxLookBackPeriod from downstream engine. This is needed for instant limited queries at getStatsForMatchers
-	ng := logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{next: next, limits: limits}, limits, logger)
-	q.maxLookBackPeriod = ng.Opts().MaxLookBackPeriod
 
 	return q
 }
@@ -243,13 +240,13 @@ func newQuerySizeLimiter(
 // The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerierSizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
+	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
-	codec queryrangebase.Codec,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, logger, limits, codec, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
 	})
 }
 
@@ -257,13 +254,13 @@ func NewQuerierSizeLimiterMiddleware(
 // The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerySizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
+	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
-	codec queryrangebase.Codec,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, logger, limits, codec, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
 	})
 }
 
@@ -279,8 +276,10 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
-	sp, ctx := spanlogger.NewWithLogger(ctx, q.logger, "querySizeLimiter.getBytesReadForRequest")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.Finish()
+	log := spanlogger.FromContextWithFallback(ctx, q.logger)
+	defer log.Finish()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -302,7 +301,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
-	level.Debug(sp).Log(
+	level.Debug(log).Log(
 		append(
 			combinedStats.LoggingKeyValues(),
 			"msg", "queried index",
@@ -333,20 +332,25 @@ func (q *querySizeLimiter) guessLimitName() string {
 	if q.limitErrorTmpl == limErrQueryTooManyBytesTmpl {
 		return "MaxQueryBytesRead"
 	}
-	if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl {
+	if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl ||
+		q.limitErrorTmpl == limErrQuerierTooManyBytesShardableTmpl ||
+		q.limitErrorTmpl == limErrQuerierTooManyBytesUnshardableTmpl {
 		return "MaxQuerierBytesRead"
 	}
 	return "unknown"
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log, ctx := spanlogger.New(ctx, "query_size_limits")
+	span, ctx := opentracing.StartSpanFromContext(ctx, "query_size_limits")
+	defer span.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get schema config: %s", err.Error())
+		level.Error(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
+		return q.next.Do(ctx, r)
 	}
 	if schemaCfg.IndexType != config.TSDBType {
 		return q.next.Do(ctx, r)
@@ -364,8 +368,8 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
 
-		statsBytesStr := humanize.Bytes(bytesRead)
-		maxBytesReadStr := humanize.Bytes(uint64(maxBytesRead))
+		statsBytesStr := humanize.IBytes(bytesRead)
+		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
 		if bytesRead > uint64(maxBytesRead) {
 			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
@@ -557,6 +561,9 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 }
 
 func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
+	defer sp.Finish()
+
 	request, err := rt.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
@@ -737,6 +744,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 		present = append(present, m.Name)
 	}
 
+	// Enforce RequiredLabels limit
 	for _, tenant := range tenants {
 		required := limits.RequiredLabels(req.Context(), tenant)
 		var missing []string
@@ -750,5 +758,17 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 			return fmt.Errorf(requiredLabelsErrTmpl, strings.Join(missing, ", "), strings.Join(present, ", "))
 		}
 	}
+
+	// Enforce RequiredNumberLabels limit.
+	// The reason to enforce this one after RequiredLabels is to avoid users
+	// from adding enough label matchers to pass the RequiredNumberLabels limit but then
+	// having to modify them to use the ones required by RequiredLabels.
+	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(req.Context(), id) }
+	if requiredNumberLabels := validation.SmallestPositiveNonZeroIntPerTenant(tenants, requiredNumberLabelsCapture); requiredNumberLabels > 0 {
+		if len(present) < requiredNumberLabels {
+			return fmt.Errorf(requiredNumberLabelsErrTmpl, strings.Join(present, ", "), len(present), requiredNumberLabels)
+		}
+	}
+
 	return nil
 }

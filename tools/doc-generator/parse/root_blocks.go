@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
@@ -225,6 +226,11 @@ var (
 			Name:       "swift_storage_config",
 			StructType: reflect.TypeOf(openstack.SwiftConfig{}),
 			Desc:       "The swift_storage_config block configures the connection to OpenStack Object Storage (Swift) object storage backend.",
+		},
+		{
+			Name:       "cos_storage_config",
+			StructType: reflect.TypeOf(ibmcloud.COSConfig{}),
+			Desc:       "The cos_storage_config block configures the connection to IBM Cloud Object Storage (COS) backend.",
 		},
 		{
 			Name:       "local_storage_config",
