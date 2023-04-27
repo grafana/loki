@@ -566,7 +566,6 @@ func (i *Ingester) removeShutdownMarkerFile() {
 			level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
 		}
 	}
-
 }
 
 func (i *Ingester) loop() {
