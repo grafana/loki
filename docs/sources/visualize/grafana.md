@@ -1,6 +1,6 @@
 ---
 title: Visualize log data
-menuTitle: Visualize data
+menuTitle: Visualize log data with Grafana
 description: Visualize your log data with Grafana
 
 aliases:
@@ -13,7 +13,7 @@ keywords:
    - grafana
    - dashboards
 ---
-# Visualize log data
+# Visualize log data 
 
 [Grafana 6.0](/grafana/download/6.0.0) and more recent
 versions have built-in support for Grafana Loki.
