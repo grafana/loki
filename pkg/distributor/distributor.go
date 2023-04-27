@@ -479,6 +479,11 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		streamCount = streamCount(totalShards, stream)
 	)
 
+	if totalShards <= 0 {
+		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards")
+		return derivedKeys, derivedStreams
+	}
+
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
