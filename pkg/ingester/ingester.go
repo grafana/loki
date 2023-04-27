@@ -558,7 +558,6 @@ func (i *Ingester) stopping(_ error) error {
 				level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
 			}
 		}
-
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
@@ -753,7 +752,6 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("Ingester is stopping or already stopped."))
 		return
 	}
-
 	params := r.URL.Query()
 	doFlush := util.FlagFromValues(params, "flush", true)
 	doDeleteRingTokens := util.FlagFromValues(params, "delete_ring_tokens", false)
