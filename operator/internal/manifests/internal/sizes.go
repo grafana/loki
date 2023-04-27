@@ -1,9 +1,10 @@
 package internal
 
 import (
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // ComponentResources is a map of component->requests/limits
@@ -22,9 +23,10 @@ type ComponentResources struct {
 
 // ResourceRequirements sets CPU, Memory, and PVC requirements for a component
 type ResourceRequirements struct {
-	Limits   corev1.ResourceList
-	Requests corev1.ResourceList
-	PVCSize  resource.Quantity
+	Limits          corev1.ResourceList
+	Requests        corev1.ResourceList
+	PVCSize         resource.Quantity
+	PDBMinAvailable int
 }
 
 // ResourceRequirementsTable defines the default resource requests and limits for each size
@@ -66,6 +68,7 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("1"),
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
+			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -123,6 +126,7 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("4"),
 				corev1.ResourceMemory: resource.MustParse("20Gi"),
 			},
+			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -180,6 +184,7 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("6"),
 				corev1.ResourceMemory: resource.MustParse("30Gi"),
 			},
+			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
