@@ -233,6 +233,7 @@ loki:
       region: null
       secretAccessKey: null
       accessKeyId: null
+      signatureVersion: null
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
