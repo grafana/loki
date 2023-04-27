@@ -480,7 +480,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 	)
 
 	if totalShards <= 0 {
-		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards")
+		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
 		return derivedKeys, derivedStreams
 	}
 
