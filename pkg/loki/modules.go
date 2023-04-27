@@ -33,6 +33,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
@@ -65,7 +66,6 @@ import (
 	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -109,7 +109,7 @@ const (
 	Read                     string = "read"
 	Write                    string = "write"
 	Backend                  string = "backend"
-	UsageReport              string = "usage-report"
+	Analytics                string = "analytics"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -1042,7 +1042,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
-		usagestats.JSONCodec,
+		analytics.JSONCodec,
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
@@ -1266,16 +1266,16 @@ func (t *Loki) initQueryLimitsTripperware() (services.Service, error) {
 	return nil, nil
 }
 
-func (t *Loki) initUsageReport() (services.Service, error) {
-	if !t.Cfg.UsageReport.Enabled {
+func (t *Loki) initAnalytics() (services.Service, error) {
+	if !t.Cfg.Analytics.Enabled {
 		return nil, nil
 	}
-	t.Cfg.UsageReport.Leader = false
+	t.Cfg.Analytics.Leader = false
 	if t.isModuleActive(Ingester) {
-		t.Cfg.UsageReport.Leader = true
+		t.Cfg.Analytics.Leader = true
 	}
 
-	usagestats.Target(t.Cfg.Target.String())
+	analytics.Target(t.Cfg.Target.String())
 	period, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, err
@@ -1286,7 +1286,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
 		return nil, nil
 	}
-	ur, err := usagestats.NewReporter(t.Cfg.UsageReport, t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore, objectClient, util_log.Logger, prometheus.DefaultRegisterer)
+	ur, err := analytics.NewReporter(t.Cfg.Analytics, t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore, objectClient, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
 		return nil, nil
