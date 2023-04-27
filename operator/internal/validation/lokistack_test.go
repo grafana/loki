@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/validation"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/validation"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -524,7 +525,6 @@ func prepFakeClient() *k8sfakes.FakeClient {
 	}
 
 	k.ListStub = func(_ context.Context, object client.ObjectList, opts ...client.ListOption) error {
-
 		res := corev1.NodeList{
 			Items: []corev1.Node{},
 		}
