@@ -372,8 +372,6 @@ type Loki struct {
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
-
-	ingesterRelease *atomic.Bool
 }
 
 // New makes a new Loki.
