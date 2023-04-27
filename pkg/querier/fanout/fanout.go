@@ -104,7 +104,7 @@ func (q *Querier) queryBatchLog(ctx context.Context, params logql.SelectLogParam
 		if err != nil {
 			return nil, err
 		}
-		//process resp data
+		//process resp data.
 		isLoopOver := false
 		lastEntryLen = 0
 		for _, respStream := range respStreams {
