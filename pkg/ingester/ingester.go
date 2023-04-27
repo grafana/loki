@@ -741,6 +741,21 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("Ingester is stopping or already stopped."))
 		return
 	}
+
+	if i.terminateOnShutdown {
+		shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+		exists, err := shutdownMarkerExists(shutdownMarkerPath)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+		}
+		if exists {
+			err = removeShutdownMarker(shutdownMarkerPath)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+			}
+		}
+	}
+
 	params := r.URL.Query()
 	doFlush := util.FlagFromValues(params, "flush", true)
 	doDeleteRingTokens := util.FlagFromValues(params, "delete_ring_tokens", false)
