@@ -2392,7 +2392,7 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, "series %s", lbls.String())
 	}
 	return fprint, nil
 
@@ -2417,7 +2417,6 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	var (
 		nMarkers int
 		marker   chunkPageMarker
-		markers  chunkPageMarkers
 		prevMaxT int64
 	)
 
@@ -2429,19 +2428,16 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 
 	nMarkers = d.Uvarint()
 
-	markers = chunkPageMarkersPool.Get(nMarkers)
-	markers = markers[:nMarkers]
-	defer chunkPageMarkersPool.Put(markers)
-	for i := range markers {
-		markers[i].decode(d)
+	for i := 0; i < nMarkers; i++ {
+		marker.decode(d)
 
-		if overlap(from, through, markers[i].MinTime, markers[i].MaxTime) {
+		if overlap(from, through, marker.MinTime, marker.MaxTime) {
 			d.Skip(markersLn - (startMarkers - d.Len())) // skip the rest of markers
-			marker = markers[i]
-			d.Skip(marker.Offset) // skip to the desired chunks
+			d.Skip(marker.Offset)                        // skip to the desired chunks
 			goto iterate
 		}
 
+		prevMaxT = marker.MaxTime
 		chunksRemaining -= marker.ChunksInPage
 	}
 
