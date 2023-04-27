@@ -174,7 +174,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -420,7 +422,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -525,7 +529,9 @@ overrides:
 func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -815,7 +821,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1157,7 +1165,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1513,7 +1523,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1837,7 +1849,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2217,7 +2231,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2598,7 +2614,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2978,7 +2996,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -3352,7 +3372,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{

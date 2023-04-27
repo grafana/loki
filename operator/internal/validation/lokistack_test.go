@@ -2,11 +2,15 @@ package validation_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/validation"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -285,6 +289,159 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "valid replication zones",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+	},
+	{
+		desc: "invalid zones to replication factor ratio",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+					},
+					Factor: 2,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "replication", "factor"),
+					2,
+					lokiv1.ErrReplicationFactorToZonesRatio.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "invalid zones topologyKey",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+						{
+							TopologyKey: "region",
+						},
+						{
+							TopologyKey: "planet",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "replication", "zones"),
+					[]lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+						{
+							TopologyKey: "region",
+						},
+						{
+							TopologyKey: "planet",
+						},
+					},
+					lokiv1.ErrReplicationZonesNodes.Error(),
+				),
+				field.Invalid(
+					field.NewPath("spec", "replication", "factor"),
+					1,
+					lokiv1.ErrReplicationFactorToZonesRatio.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "using both replication and replicationFactor",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				ReplicationFactor: 2,
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+						{
+							TopologyKey: "region",
+						},
+						{
+							TopologyKey: "planet",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "replicationFactor"),
+					2,
+					lokiv1.ErrReplicationSpecConflict.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
@@ -300,7 +457,10 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 			}
 			ctx := context.Background()
 
-			v := &validation.LokiStackValidator{}
+			k := prepFakeClient()
+			v := &validation.LokiStackValidator{
+				Client: k,
+			}
 			err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
@@ -324,7 +484,10 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 			ctx := context.Background()
 
-			v := &validation.LokiStackValidator{}
+			k := prepFakeClient()
+			v := &validation.LokiStackValidator{
+				Client: k,
+			}
 			err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
@@ -333,4 +496,54 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func prepFakeClient() *k8sfakes.FakeClient {
+	k := &k8sfakes.FakeClient{}
+	nodes := corev1.NodeList{
+		Items: []corev1.Node{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+					Labels: map[string]string{
+						"zone":   "z1",
+						"region": "r1",
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node2",
+					Labels: map[string]string{
+						"zone":   "z2",
+						"region": "r1",
+					},
+				},
+			},
+		},
+	}
+
+	k.ListStub = func(_ context.Context, object client.ObjectList, opts ...client.ListOption) error {
+
+		res := corev1.NodeList{
+			Items: []corev1.Node{},
+		}
+
+		for _, opt := range opts {
+			optLabels := opt.(client.HasLabels)
+			for _, l := range optLabels {
+				for _, node := range nodes.Items {
+					if _, ok := node.Labels[l]; !ok {
+						return fmt.Errorf("node with label %s not found", l)
+					}
+					res.Items = append(res.Items, node)
+				}
+			}
+		}
+
+		k.SetClientObjectList(object, &nodes)
+		return nil
+	}
+
+	return k
 }

@@ -46,10 +46,12 @@ func randomConfigOptions() manifests.Options {
 		Namespace: uuid.New().String(),
 		Image:     uuid.New().String(),
 		Stack: lokiv1.LokiStackSpec{
-			Size:              lokiv1.SizeOneXExtraSmall,
-			Storage:           lokiv1.ObjectStorageSpec{},
-			StorageClassName:  uuid.New().String(),
-			ReplicationFactor: rand.Int31(),
+			Size:             lokiv1.SizeOneXExtraSmall,
+			Storage:          lokiv1.ObjectStorageSpec{},
+			StorageClassName: uuid.New().String(),
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: rand.Int31(),
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1038,6 +1040,100 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 			require.Nil(t, err)
 			require.EqualValues(t, tc.wantOverridesOptions, cfg.Overrides)
 			require.EqualValues(t, tc.wantOptions, cfg.Ruler.AlertManager)
+		})
+	}
+}
+
+func TestConfigOptions_Replication(t *testing.T) {
+	tt := []struct {
+		desc        string
+		spec        lokiv1.LokiStackSpec
+		wantOptions lokiv1.ReplicationSpec
+	}{
+		{
+			desc: "nominal case",
+			spec: lokiv1.LokiStackSpec{
+				Replication: &lokiv1.ReplicationSpec{
+					Factor: 2,
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "us-east-1a",
+							MaxSkew:     1,
+						},
+						{
+							TopologyKey: "us-east-1b",
+							MaxSkew:     2,
+						},
+					},
+				},
+			},
+			wantOptions: lokiv1.ReplicationSpec{
+				Factor: 2,
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "us-east-1a",
+						MaxSkew:     1,
+					},
+					{
+						TopologyKey: "us-east-1b",
+						MaxSkew:     2,
+					},
+				},
+			},
+		},
+		{
+			desc: "using deprecated ReplicationFactor",
+			spec: lokiv1.LokiStackSpec{
+				ReplicationFactor: 3,
+			},
+			wantOptions: lokiv1.ReplicationSpec{
+				Factor: 3,
+			},
+		},
+		{
+			desc: "using deprecated ReplicationFactor with ReplicationSpec",
+			spec: lokiv1.LokiStackSpec{
+				ReplicationFactor: 2,
+				Replication: &lokiv1.ReplicationSpec{
+					Factor: 4,
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "us-east-1a",
+							MaxSkew:     1,
+						},
+						{
+							TopologyKey: "us-east-1b",
+							MaxSkew:     2,
+						},
+					},
+				},
+			},
+			wantOptions: lokiv1.ReplicationSpec{
+				Factor: 4,
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "us-east-1a",
+						MaxSkew:     1,
+					},
+					{
+						TopologyKey: "us-east-1b",
+						MaxSkew:     2,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			inOpt := manifests.Options{
+				Stack: tc.spec,
+			}
+			options := manifests.ConfigOptions(inOpt)
+			require.Equal(t, tc.wantOptions, *options.Stack.Replication)
 		})
 	}
 }

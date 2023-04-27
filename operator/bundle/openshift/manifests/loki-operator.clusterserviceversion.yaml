@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-04-18T07:59:33Z"
+    createdAt: "2023-04-27T09:00:49Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -451,12 +451,35 @@ spec:
       - description: NoProxy configures the NO_PROXY/no_proxy env variable.
         displayName: NoProxy
         path: proxy.noProxy
-      - description: ReplicationFactor defines the policy for log stream replication.
+      - description: Replication defines the configuration for Loki data replication.
+        displayName: Replication Spec
+        path: replication
+      - description: Factor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replication.factor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Zone is the key that defines a topology in the Nodes' labels.
+        displayName: Zones Spec
+        path: replication.zones
+      - description: MaxSkew describes the maximum degree to which Pods can be unevenly
+          distributed.
+        displayName: Max Skew
+        path: replication.zones[0].maxSkew
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: TopologyKey is the key that defines a topology in the Nodes'
+          labels.
+        displayName: Topology Key
+        path: replication.zones[0].topologyKey
+      - description: 'Deprecated: Please use replication.factor instead. This field
+          will be removed in future versions of this CRD. ReplicationFactor defines
+          the policy for log stream replication.'
         displayName: Replication Factor
         path: replicationFactor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Rules defines the spec for the ruler component
+      - description: Rules defines the spec for the ruler component.
         displayName: Rules
         path: rules
         x-descriptors:
@@ -527,7 +550,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:StorageClass
       - description: Template defines the resource/limits/tolerations/nodeselectors
-          per component
+          per component.
         displayName: Node Placement
         path: template
         x-descriptors:
