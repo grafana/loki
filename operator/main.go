@@ -8,6 +8,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
+
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/grafana/loki/operator/internal/validation/openshift"
