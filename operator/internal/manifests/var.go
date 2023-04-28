@@ -113,8 +113,9 @@ var (
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
 	podAntiAffinityComponents = map[string]struct{}{
-		LabelIngesterComponent: {},
-		LabelRulerComponent:    {},
+		LabelIngesterComponent:      {},
+		LabelRulerComponent:         {},
+		LabelQueryFrontendComponent: {},
 	}
 )
 
