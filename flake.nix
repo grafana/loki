@@ -16,6 +16,8 @@
       overlays = {
         golangci-lint = import ./nix/overlays/golangci-lint.nix;
         helm-docs = import ./nix/overlays/helm-docs.nix;
+        faillint = import ./nix/overlays/faillint.nix;
+        chart-releaser = import ./nix/overlays/chart-releaser.nix;
         default = nix.overlay;
       };
     } //
@@ -27,6 +29,8 @@
           overlays = [
             (import ./nix/overlays/golangci-lint.nix)
             (import ./nix/overlays/helm-docs.nix)
+            (import ./nix/overlays/faillint.nix)
+            (import ./nix/overlays/chart-releaser.nix)
             nix.overlay
           ];
           config = { allowUnfree = true; };
@@ -40,9 +44,12 @@
 
         packages = with pkgs; {
           inherit
+            logcli
             loki
+            loki-canary
             loki-helm-test
-            loki-helm-test-docker;
+            loki-helm-test-docker
+            promtail;
         };
 
         apps = {
@@ -62,15 +69,15 @@
           };
           promtail = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
+            program = with pkgs; "${promtail.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
           };
           logcli = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
+            program = with pkgs; "${logcli.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
           };
           loki-canary = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
+            program = with pkgs; "${loki-canary.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
           };
           loki-helm-test = {
             type = "app";

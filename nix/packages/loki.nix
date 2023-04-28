@@ -4,7 +4,7 @@ pkgs.stdenv.mkDerivation {
 
   pname = "loki";
 
-  src = ./..;
+  src = ./../..;
 
   buildInputs = with pkgs; [
     bash
@@ -17,9 +17,7 @@ pkgs.stdenv.mkDerivation {
     nettools
 
     golangci-lint
-    (import ./faillint.nix {
-      inherit (pkgs) lib buildGoModule fetchFromGitHub;
-    })
+    faillint
   ];
 
   configurePhase = with pkgs; ''
@@ -37,7 +35,8 @@ pkgs.stdenv.mkDerivation {
 
   buildPhase = ''
     export GOCACHE=$TMPDIR/go-cache
-    make clean loki logcli loki-canary promtail
+    # make clean loki logcli loki-canary promtail
+    make clean loki
   '';
 
   doCheck = true;
@@ -50,8 +49,5 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     mkdir -p $out/bin
     install -m755 cmd/loki/loki $out/bin/loki
-    install -m755 cmd/logcli/logcli $out/bin/logcli
-    install -m755 cmd/loki-canary/loki-canary $out/bin/loki-canary
-    install -m755 clients/cmd/promtail/promtail $out/bin/promtail
   '';
 }
