@@ -8,6 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -49,6 +50,7 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		deployment,
 		NewDistributorGRPCService(opts),
 		NewDistributorHTTPService(opts),
+		newDistributorPodDisruptionBudget(opts),
 	}, nil
 }
 
@@ -224,4 +226,28 @@ func configureDistributorHTTPServicePKI(deployment *appsv1.Deployment, opts Opti
 func configureDistributorGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
 	serviceName := serviceNameDistributorGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
+}
+
+// newDistributorPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// Distributor pods.
+func newDistributorPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelDistributorComponent, opts.Name)
+	mu := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      DistributorName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &mu,
+		},
+	}
 }

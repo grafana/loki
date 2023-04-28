@@ -1,10 +1,12 @@
 package manifests_test
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -76,6 +78,34 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 		require.Contains(t, l, key)
 		require.Equal(t, l[key], value)
 	}
+}
+
+func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
+	opts := manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
+	}
+	objs, err := manifests.BuildDistributor(opts)
+	require.NoError(t, err)
+	require.Len(t, objs, 4)
+
+	pdb := objs[3].(*policyv1.PodDisruptionBudget)
+	require.NotNil(t, pdb)
+	require.Equal(t, "abcd-distributor", pdb.Name)
+	require.Equal(t, "efgh", pdb.Namespace)
+	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelDistributorComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {

@@ -31,6 +31,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -38,7 +39,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -52,7 +52,7 @@ const (
 
 var (
 	maxLabelCacheSize = 100000
-	rfStats           = usagestats.NewInt("distributor_replication_factor")
+	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
 
 // Config for a Distributor.
@@ -479,10 +479,15 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		streamCount = streamCount(totalShards, stream)
 	)
 
+	if totalShards <= 0 {
+		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		return derivedKeys, derivedStreams
+	}
+
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
-		shard := d.createShard(streamLabels, streamPattern, shardNum)
+		shard := d.createShard(streamLabels, streamPattern, shardNum, len(stream.Entries)/totalShards)
 
 		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
@@ -521,7 +526,7 @@ func labelTemplate(lbls string) labels.Labels {
 	return streamLabels
 }
 
-func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber int) logproto.Stream {
+func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
 	shardLabel := strconv.Itoa(shardNumber)
 	for i := 0; i < len(lbls); i++ {
 		if lbls[i].Name == ingester.ShardLbName {
@@ -533,7 +538,7 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	return logproto.Stream{
 		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
 		Hash:    lbls.Hash(),
-		Entries: make([]logproto.Entry, 0, 1024),
+		Entries: make([]logproto.Entry, 0, numOfEntries),
 	}
 }
 
