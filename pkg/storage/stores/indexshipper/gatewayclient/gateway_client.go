@@ -149,7 +149,6 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 		// Replication factor plus additional room for JOINING/LEAVING instances
 		// See also ring.GetBufferSize
 		bufSize := cfg.Ring.ReplicationFactor() * 3 / 2
-
 		sgClient.stringBufPool = &sync.Pool{
 			New: func() any {
 				return make([]string, 0, bufSize)
@@ -341,11 +340,11 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 	}
 
 	bufDescs := s.instanceBufPool.Get().([]ring.InstanceDesc)
-	defer s.instanceBufPool.Put(bufDescs)
+	defer s.instanceBufPool.Put(bufDescs) //nolint:staticcheck
 	bufHosts := s.stringBufPool.Get().([]string)
-	defer s.stringBufPool.Put(bufHosts)
+	defer s.stringBufPool.Put(bufHosts) //nolint:staticcheck
 	bufZones := s.stringBufPool.Get().([]string)
-	defer s.stringBufPool.Put(bufZones)
+	defer s.stringBufPool.Put(bufZones) //nolint:staticcheck
 
 	key := util.TokenFor(userID, "" /* labels */)
 	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs[:0], bufHosts[:0], bufZones[:0])
