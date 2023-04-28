@@ -2418,6 +2418,12 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 		nMarkers int
 		marker   chunkPageMarker
 		prevMaxT int64
+		// whether we should force the first decoded chunk's mint to
+		// the relevant page's mint. important because chunks are delta-encoded
+		// against the previous chunk and the maxt for a page may not be
+		// the maxt of the page's last chunk
+		// since chunks are ordered by mint, not maxt
+		forceMinTime bool
 	)
 
 	startMarkers := d.Len()
@@ -2430,6 +2436,7 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 
 	for i := 0; i < nMarkers; i++ {
 		marker.decode(d)
+		forceMinTime = true
 
 		if overlap(from, through, marker.MinTime, marker.MaxTime) {
 			d.Skip(markersLn - (startMarkers - d.Len())) // skip the rest of markers
@@ -2449,7 +2456,13 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 iterate:
 	for i := 0; i < chunksRemaining; i++ {
 		chunkMeta := &ChunkMeta{}
-		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
+		var err error
+		if i == 0 && forceMinTime {
+			err = readChunkMetaWithForcedMintime(d, marker.MinTime, chunkMeta, true)
+		} else {
+			err = readChunkMeta(d, prevMaxT, chunkMeta)
+		}
+		if err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
 		}
 		prevMaxT = chunkMeta.MaxTime
