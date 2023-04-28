@@ -97,11 +97,11 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			},
 			Values: [][]string{
 				{
-					strconv.FormatInt(now.Add(-46*time.Hour).UnixNano(), 10),
+					strconv.FormatInt(now.Add(-48*time.Hour).UnixNano(), 10),
 					"lineA",
 				},
 				{
-					strconv.FormatInt(now.Add(-46*time.Hour).UnixNano(), 10),
+					strconv.FormatInt(now.Add(-48*time.Hour).UnixNano(), 10),
 					"lineB",
 				},
 				{
