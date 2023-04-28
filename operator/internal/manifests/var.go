@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
+
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 const (
@@ -99,13 +101,20 @@ const (
 	// caFile is the file name of the certificate authority file
 	caFile = "service-ca.crt"
 
-	kubernetesNodeOSLabel = "kubernetes.io/os"
-	kubernetesNodeOSLinux = "linux"
+	kubernetesNodeOSLabel       = "kubernetes.io/os"
+	kubernetesNodeOSLinux       = "linux"
+	kubernetesNodeHostnameLabel = "kubernetes.io/hostname"
+	kubernetesCompomentLabel    = "app.kubernetes.io/component"
+	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
 )
 
 var (
-	defaultConfigMapMode = int32(420)
-	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
+	defaultConfigMapMode      = int32(420)
+	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
+	podAntiAffinityComponents = map[string]struct{}{
+		LabelIngesterComponent: {},
+		LabelRulerComponent:    {},
+	}
 )
 
 func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
@@ -118,7 +127,7 @@ func commonAnnotations(configHash, rotationRequiredAt string) map[string]string 
 func commonLabels(stackName string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "lokistack",
-		"app.kubernetes.io/instance":   stackName,
+		kubernetesInstanceLabel:        stackName,
 		"app.kubernetes.io/managed-by": "lokistack-controller",
 		"app.kubernetes.io/created-by": "lokistack-controller",
 	}
@@ -135,7 +144,7 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		"app.kubernetes.io/component": component,
+		kubernetesCompomentLabel: component,
 	})
 }
 
@@ -455,26 +464,72 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 	}
 }
 
-func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+// configureAffinity returns an Affinity struture that can be used directly
+// in a Deployment/StatefulSet. Parameters will affected configuration of the
+// different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
+func configureAffinity(labels labels.Set, enableNodeAffinity bool) *corev1.Affinity {
+	affinity := &corev1.Affinity{
+		NodeAffinity:    defaultNodeAffinity(enableNodeAffinity),
+		PodAntiAffinity: defaultPodAntiAffinity(labels),
+	}
+
+	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
+		return nil
+	}
+	return affinity
+}
+
+// defaultNodeAffinity if enabled will require pods to run on Linux nodes
+func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 	if !enableNodeAffinity {
 		return nil
 	}
 
-	return &corev1.Affinity{
-		NodeAffinity: &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-				NodeSelectorTerms: []corev1.NodeSelectorTerm{
-					{
-						MatchExpressions: []corev1.NodeSelectorRequirement{
-							{
-								Key:      kubernetesNodeOSLabel,
-								Operator: corev1.NodeSelectorOpIn,
-								Values: []string{
-									kubernetesNodeOSLinux,
-								},
+	return &corev1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{
+				{
+					MatchExpressions: []corev1.NodeSelectorRequirement{
+						{
+							Key:      kubernetesNodeOSLabel,
+							Operator: corev1.NodeSelectorOpIn,
+							Values: []string{
+								kubernetesNodeOSLinux,
 							},
 						},
 					},
+				},
+			},
+		},
+	}
+}
+
+// defaultPodAntiAffinity for components in podAntiAffinityComponents will
+// configure pods, of a LokiStack, to preferably not run on the same node
+func defaultPodAntiAffinity(labels labels.Set) *corev1.PodAntiAffinity {
+	// This code assumes that this function will never be called with a set of labels
+	// that don't have the "component" and "instance" labels since we enforce those on
+	// all the components of the LokiStack
+	componentLabel := labels[kubernetesCompomentLabel]
+	stackName := labels[kubernetesInstanceLabel]
+
+	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
+	if !enablePodAntiAffinity {
+		return nil
+	}
+
+	return &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			{
+				Weight: 100,
+				PodAffinityTerm: corev1.PodAffinityTerm{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": componentLabel,
+							"app.kubernetes.io/instance":  stackName,
+						},
+					},
+					TopologyKey: kubernetesNodeHostnameLabel,
 				},
 			},
 		},

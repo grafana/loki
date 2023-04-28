@@ -7,7 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 	policyv1 "k8s.io/api/policy/v1"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	v1 "github.com/grafana/loki/operator/apis/config/v1"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
@@ -132,4 +136,37 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 			require.EqualValues(t, manifests.ComponentLabels(manifests.LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 		})
 	}
+}
+
+func TestIngesterPodAntiAffinity(t *testing.T) {
+	sts := manifests.NewIngesterStatefulSet(manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+	expectedPodAntiAffinity := &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			{
+				Weight: 100,
+				PodAffinityTerm: corev1.PodAffinityTerm{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": manifests.LabelIngesterComponent,
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+					TopologyKey: "kubernetes.io/hostname",
+				},
+			},
+		},
+	}
+	require.NotNil(t, sts.Spec.Template.Spec.Affinity)
+	require.Equal(t, expectedPodAntiAffinity, sts.Spec.Template.Spec.Affinity.PodAntiAffinity)
 }

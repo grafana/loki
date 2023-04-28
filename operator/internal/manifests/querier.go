@@ -62,8 +62,10 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 
 // NewQuerierDeployment creates a deployment object for a querier
 func NewQuerierDeployment(opts Options) *appsv1.Deployment {
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -130,9 +132,6 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 		podSpec.Tolerations = opts.Stack.Template.Querier.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
 	}
-
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{

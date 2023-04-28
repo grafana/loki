@@ -909,19 +909,19 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 
 func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
 	tt := []struct {
-		desc         string
-		nodeAffinity bool
-		wantAffinity *corev1.Affinity
+		desc             string
+		nodeAffinity     bool
+		wantNodeAffinity *corev1.NodeAffinity
 	}{
 		{
-			desc:         "disabled",
-			nodeAffinity: false,
-			wantAffinity: nil,
+			desc:             "disabled",
+			nodeAffinity:     false,
+			wantNodeAffinity: nil,
 		},
 		{
-			desc:         "enabled",
-			nodeAffinity: true,
-			wantAffinity: defaultAffinity(true),
+			desc:             "enabled",
+			nodeAffinity:     true,
+			wantNodeAffinity: defaultNodeAffinity(true),
 		},
 	}
 
@@ -956,7 +956,12 @@ func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
 					continue
 				}
 
-				require.Equal(t, tc.wantAffinity, gotAffinity,
+				var gotNodeAffinity *corev1.NodeAffinity
+				if gotAffinity != nil {
+					gotNodeAffinity = gotAffinity.NodeAffinity
+				}
+
+				require.Equal(t, tc.wantNodeAffinity, gotNodeAffinity,
 					"kind", raw.GetObjectKind().GroupVersionKind(),
 					"name", raw.GetName())
 			}
