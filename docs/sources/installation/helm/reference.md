@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.7.0"
+"v1.7.1"
 </pre>
 </td>
 		</tr>
