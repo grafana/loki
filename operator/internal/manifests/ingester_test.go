@@ -159,8 +159,7 @@ func TestIngesterPodAntiAffinity(t *testing.T) {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app.kubernetes.io/component": manifests.LabelIngesterComponent,
-							"app.kubernetes.io/instance": "abcd",
-							
+							"app.kubernetes.io/instance":  "abcd",
 						},
 					},
 					TopologyKey: "kubernetes.io/hostname",
