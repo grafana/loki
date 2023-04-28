@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -197,4 +198,37 @@ func TestBuildRuler_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
 	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelRulerComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
+}
+
+func TestRulerPodAntiAffinity(t *testing.T) {
+	sts := manifests.NewRulerStatefulSet(manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+	expectedPodAntiAffinity := &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			{
+				Weight: 100,
+				PodAffinityTerm: corev1.PodAffinityTerm{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": manifests.LabelRulerComponent,
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+					TopologyKey: "kubernetes.io/hostname",
+				},
+			},
+		},
+	}
+	require.NotNil(t, sts.Spec.Template.Spec.Affinity)
+	require.Equal(t, expectedPodAntiAffinity, sts.Spec.Template.Spec.Affinity.PodAntiAffinity)
 }
