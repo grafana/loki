@@ -360,6 +360,13 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
 		},
+		{
+			`{app="foo"} | logfmt | distinct id`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"id=foo", true}, {"id=foo", false}, {"id=bar", true}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
