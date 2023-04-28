@@ -48,6 +48,7 @@ featureGates:
   # OpenShift feature gates
   #
   openshift:
+    enabled: true
     servingCertsService: true
     gatewayRoute: true
     ruleExtendedValidation: true

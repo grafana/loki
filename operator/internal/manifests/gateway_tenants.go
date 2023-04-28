@@ -83,6 +83,25 @@ func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType)
 }
 
 func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Object {
+	if opts.Gates.OpenShift.Enabled {
+		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
+
+		var cObjs []client.Object
+		for _, o := range objs {
+			switch o.(type) {
+			// Drop Ingress in favor of Route in OpenShift.
+			// Ingress is not supported as OAuthRedirectReference
+			// in ServiceAccounts used as OAuthClient in OpenShift.
+			case *networkingv1.Ingress:
+				continue
+			}
+
+			cObjs = append(cObjs, o)
+		}
+
+		objs = append(cObjs, openShiftObjs...)
+	}
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
@@ -101,22 +120,8 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 			}
 		}
 
-		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
-
-		var cObjs []client.Object
-		for _, o := range objs {
-			switch o.(type) {
-			// Drop Ingress in favor of Route in OpenShift.
-			// Ingress is not supported as OAuthRedirectReference
-			// in ServiceAccounts used as OAuthClient in OpenShift.
-			case *networkingv1.Ingress:
-				continue
-			}
-
-			cObjs = append(cObjs, o)
-		}
-
-		objs = append(cObjs, openShiftObjs...)
+		openShiftObjs := openshift.BuildGatewayTenantModeObjects(opts.OpenShiftOptions)
+		objs = append(objs, openShiftObjs...)
 	}
 
 	return objs
