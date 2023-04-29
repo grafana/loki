@@ -42,6 +42,9 @@ const (
 	// DockerTargetType is a Docker target
 	DockerTargetType = TargetType("Docker")
 
+	// KubernetesTargetType is a Docker target
+	KubernetesTargetType = TargetType("Kubernetes")
+
 	// HerokuDrainTargetType is a Heroku Logs target
 	HerokuDrainTargetType = TargetType("HerokuDrain")
 )

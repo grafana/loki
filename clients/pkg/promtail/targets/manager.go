@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/kubernetes"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
@@ -41,6 +42,7 @@ const (
 	DockerSDConfigs             = "dockerSDConfigs"
 	HerokuDrainConfigs          = "herokuDrainConfigs"
 	AzureEventHubsScrapeConfigs = "azureeventhubsScrapeConfigs"
+	KubernetesSDConfigs         = "kubernetesSDConfigs"
 )
 
 var (
@@ -52,6 +54,7 @@ var (
 	dockerMetrics      *docker.Metrics
 	journalMetrics     *journal.Metrics
 	herokuDrainMetrics *heroku.Metrics
+	kubernetesMetrics  *kubernetes.Metrics
 )
 
 type targetManager interface {
@@ -94,6 +97,8 @@ func NewTargetManagers(
 		switch {
 		case cfg.HasServiceDiscoveryConfig():
 			targetScrapeConfigs[FileScrapeConfigs] = append(targetScrapeConfigs[FileScrapeConfigs], cfg)
+		case cfg.KubernetesSDConfigs != nil:
+			targetScrapeConfigs[KubernetesSDConfigs] = append(targetScrapeConfigs[KubernetesSDConfigs], cfg)
 		case cfg.JournalConfig != nil:
 			targetScrapeConfigs[JournalScrapeConfigs] = append(targetScrapeConfigs[JournalScrapeConfigs], cfg)
 		case cfg.SyslogConfig != nil:
@@ -158,6 +163,9 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[HerokuDrainConfigs]) > 0 && herokuDrainMetrics == nil {
 		herokuDrainMetrics = heroku.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[KubernetesSDConfigs]) > 0 && kubernetesMetrics == nil {
+		kubernetesMetrics = kubernetes.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -289,6 +297,16 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Docker service discovery target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
+		case KubernetesSDConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
+			kubernetesTargetManager, err := kubernetes.NewTargetManager(kubernetesMetrics, logger, pos, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Kubernetes service discovery target manager")
+			}
+			targetManagers = append(targetManagers, kubernetesTargetManager)
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
