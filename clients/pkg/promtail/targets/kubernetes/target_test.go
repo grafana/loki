@@ -14,12 +14,13 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/positions"
 
 	restFake "k8s.io/client-go/rest/fake"
 )
