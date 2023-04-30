@@ -3,14 +3,15 @@ package kubernetes
 import (
 	"bytes"
 	"io"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"net/http"
 	"os"
 	"sort"
 	"testing"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"

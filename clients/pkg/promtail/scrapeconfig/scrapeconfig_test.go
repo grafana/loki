@@ -1,9 +1,10 @@
 package scrapeconfig
 
 import (
+	"testing"
+
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
-	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
