@@ -2,8 +2,9 @@ package kubernetes
 
 import (
 	"fmt"
-	"k8s.io/client-go/kubernetes"
 	"sync"
+
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
