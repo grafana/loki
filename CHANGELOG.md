@@ -47,6 +47,7 @@
 * [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
 * [8994](https://github.com/grafana/loki/pull/8994) **DylanGuedes**: Promtail: Add new `decompression` configuration to customize the decompressor behavior.
 * [8874](https://github.com/grafana/loki/pull/8874) **rfratto**: Promtail: Support expoential backoff when polling unchanged files for logs.
+* [9352](https://github.com/grafana/loki/pull/9352) **Zlepper**: Promtail: BREAKING: Pull Kubernetes logs directly from API, rather than requiring host mounted volumes.
 
 ##### Fixes
 

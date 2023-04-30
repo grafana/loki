@@ -43,19 +43,19 @@ helm upgrade --install promtail grafana/promtail
 
 ## Kubernetes
 
-### DaemonSet (recommended)
+### Deployment (recommended)
 
-A `DaemonSet` will deploy Promtail on every node within a Kubernetes cluster.
+A `Deployment` will deploy Promtail in such a away that it can scrape all pods.
 
-The DaemonSet deployment works well at collecting the logs of all containers within a
+The Deployment works well at collecting the logs of all containers within a
 cluster. It's the best solution for a single-tenant model. Replace `{YOUR_LOKI_ENDPOINT}` with your Loki endpoint.
 
 ```yaml
---- # Daemonset.yaml
+--- # Deployment.yaml
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: promtail-daemonset
+  name: promtail-deployment
 spec:
   selector:
     matchLabels:
@@ -65,32 +65,16 @@ spec:
       labels:
         name: promtail
     spec:
-      serviceAccount: promtail-serviceaccount
+      serviceAccountName: promtail-serviceaccount
       containers:
       - name: promtail-container
         image: grafana/promtail
         args:
         - -config.file=/etc/promtail/promtail.yaml
-        env: 
-        - name: 'HOSTNAME' # needed when using kubernetes_sd_configs
-          valueFrom:
-            fieldRef:
-              fieldPath: 'spec.nodeName'
         volumeMounts:
-        - name: logs
-          mountPath: /var/log
         - name: promtail-config
           mountPath: /etc/promtail
-        - mountPath: /var/lib/docker/containers
-          name: varlibdockercontainers
-          readOnly: true
       volumes:
-      - name: logs
-        hostPath:
-          path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
       - name: promtail-config
         configMap:
           name: promtail-config
@@ -116,12 +100,7 @@ data:
     - job_name: pod-logs
       kubernetes_sd_configs:
         - role: pod
-      pipeline_stages:
-        - docker: {}
       relabel_configs:
-        - source_labels:
-            - __meta_kubernetes_pod_node_name
-          target_label: __host__
         - action: labelmap
           regex: __meta_kubernetes_pod_label_(.+)
         - action: replace
@@ -143,12 +122,6 @@ data:
           source_labels:
             - __meta_kubernetes_pod_container_name
           target_label: container
-        - replacement: /var/log/pods/*$1/*.log
-          separator: /
-          source_labels:
-            - __meta_kubernetes_pod_uid
-            - __meta_kubernetes_pod_container_name
-          target_label: __path__
 
 --- # Clusterrole.yaml
 apiVersion: rbac.authorization.k8s.io/v1

@@ -66,6 +66,40 @@ A new config option `-boltdb.shipper.compactor.delete-request-store` decides whe
 
 In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
 
+### Promtail
+
+#### Kubernetes service discovery pulls logs directly from Kubernetes api, rather than host mounted volume:
+In previous releases, the Kubernetes service discovery would require mounting the Kubernetes logs volume on the 
+host and read logs from there. Now Promtail will pull logs directly from the Kubernetes API, which means that 
+the Kubernetes service discovery no longer requires host access to the Kubernetes logs volume. This also means
+that Promtail no longer needs to run as a DaemonSet, and can be run as a Deployment instead.
+
+##### Kubernetes: Changes to `relabel_configs`:
+
+As part of this change, the `relabel_configs` will require some smaller changes. First and foremost this config:
+```yaml
+- source_labels:
+    - __meta_kubernetes_pod_node_name
+  target_label: __host__
+```
+Can be removed, as all hosts are scraped directly from the Kubernetes API, so no reason to scope Promtail to a 
+specific node.
+
+Secondly this config:
+```yaml
+- replacement: /var/log/pods/*$1/*.log
+  separator: /
+  source_labels:
+    - __meta_kubernetes_pod_uid
+    - __meta_kubernetes_pod_container_name
+  target_label: __path__
+```
+should be removed entirely as the `__path__` label is no longer used.
+
+##### Kubernetes: Changes to `pipeline_stages`:
+If you are using either `docker` or `cri` as the first stage in your `pipeline_stages`, those can now be removed
+as the log output is exactly the same as what you get from `kubectl logs`. Thus you can process it as a normal 
+log line. 
 
 ## 2.8.0
 
