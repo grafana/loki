@@ -65,8 +65,8 @@ func (tg *targetGroup) sync(groups []*targetgroup.Group) {
 
 // addTarget checks whether the container with given id is already known. If not it's added to the this group
 func (tg *targetGroup) addTarget(namespace, podName, containerName string, discoveredLabels model.LabelSet) error {
-	targetId := fmt.Sprintf("%s/%s/%s", namespace, podName, containerName)
-	if t, ok := tg.targets[targetId]; ok {
+	targetID := fmt.Sprintf("%s/%s/%s", namespace, podName, containerName)
+	if t, ok := tg.targets[targetID]; ok {
 		level.Debug(tg.logger).Log("msg", "container target already exists", "namespace", namespace, "pod", podName, "container", containerName)
 		t.startIfNotRunning()
 		return nil
@@ -74,7 +74,7 @@ func (tg *targetGroup) addTarget(namespace, podName, containerName string, disco
 
 	t, err := NewTarget(
 		tg.metrics,
-		log.With(tg.logger, "target", fmt.Sprintf("kubernetes/%s", targetId)),
+		log.With(tg.logger, "target", fmt.Sprintf("kubernetes/%s", targetID)),
 		tg.entryHandler,
 		tg.positions,
 		namespace,
@@ -87,7 +87,7 @@ func (tg *targetGroup) addTarget(namespace, podName, containerName string, disco
 	if err != nil {
 		return err
 	}
-	tg.targets[targetId] = t
+	tg.targets[targetID] = t
 	level.Info(tg.logger).Log("msg", "added Kubernetes target", "namespace", namespace, "pod", podName, "container", containerName)
 	return nil
 }
