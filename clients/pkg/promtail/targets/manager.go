@@ -97,7 +97,7 @@ func NewTargetManagers(
 		switch {
 		case cfg.HasServiceDiscoveryConfig():
 			targetScrapeConfigs[FileScrapeConfigs] = append(targetScrapeConfigs[FileScrapeConfigs], cfg)
-		case cfg.KubernetesSDConfigs != nil:
+		case cfg.KubernetesSDApiScrapingConfigs != nil:
 			targetScrapeConfigs[KubernetesSDConfigs] = append(targetScrapeConfigs[KubernetesSDConfigs], cfg)
 		case cfg.JournalConfig != nil:
 			targetScrapeConfigs[JournalScrapeConfigs] = append(targetScrapeConfigs[JournalScrapeConfigs], cfg)

@@ -66,11 +66,24 @@ There are different types of labels present in Promtail:
 
 ### Kubernetes Discovery
 
-Promtail can use the Kubernetes API to discover targets and scrape their logs automatically. This works
-across nodes in the cluster and even with pods that are scheduled on more essoteric Kubelets, like Virtual Kubelets,
-as long as the Kubelet implementation correctly implements the Kubernetes Logs API.
+While Promtail can use the Kubernetes API to discover pods as
+targets, it can only read log files from pods that are running on the same node
+as the one Promtail is running on. Promtail looks for a `__host__` label on
+each target and validates that it is set to the same hostname as Promtail's
+(using either `$HOSTNAME` or the hostname reported by the kernel if the
+environment variable is not set).
 
-For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration]({{< relref "configuration#kubernetes_sd_config" >}}).
+This means that any time Kubernetes service discovery is used, there must be a
+`relabel_config` that creates the intermediate label `__host__` from
+`__meta_kubernetes_pod_node_name`:
+
+```yaml
+relabel_configs:
+  - source_labels: ['__meta_kubernetes_pod_node_name']
+    target_label: '__host__'
+```
+
+See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration]({{< relref "configuration#kubernetes_sd_config" >}}).
 
 ## Journal Scraping (Linux Only)
 

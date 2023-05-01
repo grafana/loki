@@ -10,7 +10,7 @@ positions:
   filename: ./positions.yaml
 scrape_configs:
   - job_name: kubernetes
-    kubernetes_sd_configs:
+    kubernetes_sd_api_scraping_configs:
       - role: pod
         kubeconfig_file: "${HOME}/.kube/config"
         namespaces:

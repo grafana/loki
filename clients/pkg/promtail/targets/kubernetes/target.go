@@ -119,7 +119,7 @@ func (t *Target) processLoop(ctx context.Context) {
 	}
 
 	t.wg.Add(1)
-	go t.process(logs)
+	go t.process(ctx, logs)
 
 	// Wait until done
 	<-ctx.Done()
@@ -157,25 +157,29 @@ func readLine(r *bufio.Reader) (string, error) {
 	return string(ln), err
 }
 
-func (t *Target) process(r io.Reader) {
+func (t *Target) process(ctx context.Context, r io.Reader) {
 	defer func() {
 		t.wg.Done()
 	}()
 
 	reader := bufio.NewReader(r)
 	for {
+		if ctx.Err() != nil {
+			break
+		}
 		line, err := readLine(reader)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			level.Error(t.logger).Log("msg", "error reading kubernetes log line, skipping line", "err", err)
+			level.Debug(t.logger).Log("msg", "error reading kubernetes log line, skipping line", "err", err)
 			t.metrics.kubernetesErrors.Inc()
+			continue
 		}
 
 		ts, line, err := extractTs(line)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "could not extract timestamp, skipping line", "err", err)
+			level.Debug(t.logger).Log("msg", "could not extract timestamp, skipping line", "err", err)
 			t.metrics.kubernetesErrors.Inc()
 			continue
 		}

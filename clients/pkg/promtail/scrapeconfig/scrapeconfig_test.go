@@ -4,9 +4,8 @@ import (
 	"testing"
 
 	promConfig "github.com/prometheus/common/config"
-	"github.com/prometheus/prometheus/discovery/kubernetes"
-
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -103,14 +102,13 @@ func TestLoadSmallConfig(t *testing.T) {
 	expected := Config{
 		JobName:        "kubernetes-pods-name",
 		PipelineStages: DefaultScrapeConfig.PipelineStages,
-		KubernetesSDConfigs: []*kubernetes.SDConfig{
-			{
-				Role:             "pod",
-				HTTPClientConfig: promConfig.DefaultHTTPClientConfig,
-			},
-		},
 		ServiceDiscoveryConfig: ServiceDiscoveryConfig{
-
+			KubernetesSDConfigs: []*kubernetes.SDConfig{
+				{
+					Role:             "pod",
+					HTTPClientConfig: promConfig.DefaultHTTPClientConfig,
+				},
+			},
 			StaticConfigs: []*targetgroup.Group{
 				{
 					Targets: []model.LabelSet{{"__address__": "localhost"}},

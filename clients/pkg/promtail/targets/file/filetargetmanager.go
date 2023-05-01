@@ -108,6 +108,15 @@ func NewFileTargetManager(
 			}
 		}
 
+		// Add an additional api-level node filtering, so we only fetch pod metadata for
+		// all the pods from the current node. Without this filtering we will have to
+		// download metadata for all pods running on a cluster, which may be a long operation.
+		for _, kube := range cfg.ServiceDiscoveryConfig.KubernetesSDConfigs {
+			if kube.Role == kubernetes.RolePod {
+				kube.Selectors = tm.fulfillKubePodSelector(kube.Selectors, hostname)
+			}
+		}
+
 		s := &targetSyncer{
 			metrics:           metrics,
 			log:               logger,

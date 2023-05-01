@@ -60,7 +60,7 @@ func NewTargetManager(
 	}
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
-		if cfg.KubernetesSDConfigs != nil {
+		if cfg.KubernetesSDApiScrapingConfigs != nil {
 			pipeline, err := stages.NewPipeline(
 				log.With(logger, "component", "kubernetes_pipeline"),
 				cfg.PipelineStages,
@@ -71,7 +71,7 @@ func NewTargetManager(
 				return nil, err
 			}
 
-			for _, sdConfig := range cfg.KubernetesSDConfigs {
+			for _, sdConfig := range cfg.KubernetesSDApiScrapingConfigs {
 
 				syncerKey := fmt.Sprintf("%s/%s", cfg.JobName, sdConfig.Name())
 				_, ok := tm.groups[syncerKey]

@@ -49,10 +49,10 @@ type Config struct {
 	// List of Docker service discovery configurations.
 	DockerSDConfigs []*moby.DockerSDConfig `mapstructure:"docker_sd_configs,omitempty" yaml:"docker_sd_configs,omitempty"`
 	// List of Kubernetes service discovery configurations.
-	KubernetesSDConfigs    []*kubernetes.SDConfig `mapstructure:"kubernetes_sd_configs,omitempty" yaml:"kubernetes_sd_configs,omitempty"`
-	ServiceDiscoveryConfig ServiceDiscoveryConfig `mapstructure:",squash" yaml:",inline"`
-	Encoding               string                 `mapstructure:"encoding,omitempty" yaml:"encoding,omitempty"`
-	DecompressionCfg       *DecompressionConfig   `yaml:"decompression,omitempty"`
+	KubernetesSDApiScrapingConfigs []*kubernetes.SDConfig `mapstructure:"kubernetes_sd_api_scraping_configs,omitempty" yaml:"kubernetes_sd_api_scraping_configs,omitempty"`
+	ServiceDiscoveryConfig         ServiceDiscoveryConfig `mapstructure:",squash" yaml:",inline"`
+	Encoding                       string                 `mapstructure:"encoding,omitempty" yaml:"encoding,omitempty"`
+	DecompressionCfg               *DecompressionConfig   `yaml:"decompression,omitempty"`
 }
 
 type DecompressionConfig struct {
@@ -82,6 +82,8 @@ type ServiceDiscoveryConfig struct {
 	NerveSDConfigs []*zookeeper.NerveSDConfig `mapstructure:"nerve_sd_configs,omitempty" yaml:"nerve_sd_configs,omitempty"`
 	// MarathonSDConfigs is a list of Marathon service discovery configurations.
 	MarathonSDConfigs []*marathon.SDConfig `mapstructure:"marathon_sd_configs,omitempty" yaml:"marathon_sd_configs,omitempty"`
+	// List of Kubernetes service discovery configurations.
+	KubernetesSDConfigs []*kubernetes.SDConfig `mapstructure:"kubernetes_sd_configs,omitempty" yaml:"kubernetes_sd_configs,omitempty"`
 	// List of GCE service discovery configurations.
 	GCESDConfigs []*gce.SDConfig `mapstructure:"gce_sd_configs,omitempty" yaml:"gce_sd_configs,omitempty"`
 	// List of EC2 service discovery configurations.
@@ -123,6 +125,9 @@ func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
 		res = append(res, x)
 	}
 	for _, x := range cfg.MarathonSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.KubernetesSDConfigs {
 		res = append(res, x)
 	}
 	for _, x := range cfg.GCESDConfigs {
