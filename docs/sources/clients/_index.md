@@ -79,3 +79,5 @@ when using or writing a third-party client.
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)
+- [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
+- [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)
