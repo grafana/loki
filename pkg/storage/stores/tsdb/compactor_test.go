@@ -132,7 +132,7 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 		}
 	}
 
-	dst := newPrefixedIdentifier(
+	dst := NewPrefixedIdentifier(
 		MultitenantTSDBIdentifier{
 			nodeName: "test",
 			ts:       ts,
@@ -174,7 +174,7 @@ func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time
 				Through:  through,
 				Checksum: checksum,
 			}
-			return newPrefixedIdentifier(id, destDir, "")
+			return NewPrefixedIdentifier(id, destDir, "")
 		},
 	)
 

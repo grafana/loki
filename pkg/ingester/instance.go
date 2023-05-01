@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
@@ -30,7 +31,6 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -70,7 +70,7 @@ var (
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
 
-	streamsCountStats = usagestats.NewInt("ingester_streams_count")
+	streamsCountStats = analytics.NewInt("ingester_streams_count")
 )
 
 type instance struct {

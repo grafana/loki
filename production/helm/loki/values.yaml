@@ -233,6 +233,7 @@ loki:
       region: null
       secretAccessKey: null
       accessKeyId: null
+      signatureVersion: null
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
@@ -294,7 +295,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.7.0
+  version: v1.7.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null

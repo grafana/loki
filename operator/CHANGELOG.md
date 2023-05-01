@@ -1,6 +1,14 @@
 ## Main
+
+- [9339](https://github.com/grafana/loki/pull/9339) **JoaoBraveCoding**: Add default PodAntiAffinity to Ruler
+- [9329](https://github.com/grafana/loki/pull/9329) **JoaoBraveCoding**: Add default PodAntiAffinity to Ingester
+- [9262](https://github.com/grafana/loki/pull/9262) **btaani**: Add PodDisruptionBudget to the Ruler
+- [9260](https://github.com/grafana/loki/pull/9260) **JoaoBraveCoding**: Add PodDisruptionBudgets to the ingestion path
 - [9188](https://github.com/grafana/loki/pull/9188) **aminesnow**: Add PodDisruptionBudgets to the query path
 - [9162](https://github.com/grafana/loki/pull/9162) **aminesnow**: Add a PodDisruptionBudget to lokistack-gateway
+
+# 0.3.0 (2023-04-20)
+
 - [9049](https://github.com/grafana/loki/pull/9049) **alanconway**: Revert 1x.extra-small changes, add 1x.demo
 - [8661](https://github.com/grafana/loki/pull/8661) **xuanyunhui**: Add a new Object Storage Type for AlibabaCloud OSS
 - [9036](https://github.com/grafana/loki/pull/9036) **periklis**: Update Loki operand to v2.8.0
