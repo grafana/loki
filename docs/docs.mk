@@ -30,7 +30,7 @@ $(error "PROJECTS variable must be defined in variables.mk")
 endif
 
 # First project is considered the primary one used for doc-validator.
-PRIMARY_PROJECT := $(firstword $(subst /,-,$(PROJECTS)))
+PRIMARY_PROJECT := $(subst /,-,$(firstword $(subst :, ,$(firstword $(PROJECTS)))))
 
 # Name for the container.
 ifeq ($(origin DOCS_CONTAINER), undefined)
@@ -73,8 +73,10 @@ docs-pull: ## Pull documentation base image.
 
 make-docs: ## Fetch the latest make-docs script.
 make-docs:
-	curl -s -LO https://raw.githubusercontent.com/grafana/writers-toolkit/main/scripts/make-docs
-	chmod +x make-docs
+	if [[ ! -f "$(PWD)/make-docs" ]]; then
+		echo 'WARN: No make-docs script found in the working directory. Run `make update` to download it.' >&2
+		exit 1
+	fi
 
 .PHONY: docs
 docs: ## Serve documentation locally, which includes pulling the latest `DOCS_IMAGE` (default: `grafana/docs-base:latest`) container image. See also `docs-no-pull`.
@@ -93,13 +95,16 @@ docs-debug: make-docs
 
 .PHONY: doc-validator
 doc-validator: ## Run docs-validator on the entire docs folder.
+doc-validator: make-docs
 	DOCS_IMAGE=$(DOC_VALIDATOR_IMAGE) $(PWD)/make-docs $(PROJECTS)
 
 .PHONY: doc-validator/%
 doc-validator/%: ## Run doc-validator on a specific path. To lint the path /docs/sources/administration, run 'make doc-validator/administration'.
-doc-validator/%:
+doc-validator/%: make-docs
 	DOCS_IMAGE=$(DOC_VALIDATOR_IMAGE) DOC_VALIDATOR_INCLUDE=$(subst doc-validator/,,$@) $(PWD)/make-docs $(PROJECTS)
 
 .PHONY: update
-update: ## Fetch the latest version of this Makefile from Writers' Toolkit.
+update: ## Fetch the latest version of this Makefile and the `make-docs` script from Writers' Toolkit.
 	curl -s -LO https://raw.githubusercontent.com/grafana/writers-toolkit/main/docs/docs.mk
+	curl -s -LO https://raw.githubusercontent.com/grafana/writers-toolkit/main/docs/make-docs
+	chmod +x make-docs
