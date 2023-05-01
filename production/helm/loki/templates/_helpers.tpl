@@ -634,6 +634,10 @@ http {
       proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
+    location ~ /loki/api/v1/delete.* {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
     location ~ /distributor/.* {
       proxy_pass       {{ $writeUrl }}$request_uri;
     }
