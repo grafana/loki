@@ -34,18 +34,17 @@ These endpoints are exposed by the querier and the query frontend:
 - [`GET /loki/api/v1/series`](#list-series)
 - [`GET /loki/api/v1/index/stats`](#index-stats)
 - [`GET /loki/api/v1/tail`](#stream-log-messages)
-- [`GET /ready`](#identify-ready-loki-instance)
-- [`GET /metrics`](#return-exposed-prometheus-metrics)
 - **Deprecated** [`GET /api/prom/tail`](#get-apipromtail)
 - **Deprecated** [`GET /api/prom/query`](#get-apipromquery)
 - **Deprecated** [`GET /api/prom/label`](#get-apipromlabel)
 - **Deprecated** [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
-- **Deprecated** [`POST /api/prom/push`](#post-apiprompush)
+- **Deprecated** [`GET /api/prom/series`](#list-series)
 
 These endpoints are exposed by the distributor:
 
 - [`POST /loki/api/v1/push`](#push-log-entries-to-loki)
 - [`GET /distributor/ring`](#display-distributor-consistent-hash-ring-status)
+- **Deprecated** [`POST /api/prom/push`](#post-apiprompush)
 
 These endpoints are exposed by the ingester:
 
@@ -1346,7 +1345,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
 
 ### `GET /api/prom/label`
 
-> **WARNING**: `/api/prom/label` is DEPRECATED; use `/loki/api/v1/label`
+> **WARNING**: `/api/prom/label` is DEPRECATED; use `/loki/api/v1/labels`
 
 `/api/prom/label` retrieves the list of known labels within a given time span. It
 accepts the following query parameters in the URL:
