@@ -482,7 +482,7 @@ func (t *Loki) Run(opts RunOpts) error {
 	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 
-	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LogLevelHandler(&t.Cfg.Server.LogLevel))
+	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LevelHandler(&t.Cfg.Server.LogLevel))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 

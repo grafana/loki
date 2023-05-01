@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,20 +12,19 @@ import (
 	"github.com/weaveworks/common/logging"
 )
 
-func TestLogLevelHandler(t *testing.T) {
+func TestLevelHandler(t *testing.T) {
 	var lvl logging.Level
-	lvl.Set("info")
+	err := lvl.Set("info")
+	assert.NoError(t, err)
 	plogger = &prometheusLogger{
 		baseLogger: log.NewLogfmtLogger(io.Discard),
 	}
 
 	// Start test http server
-	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: LogLevelHandler(&lvl),
-	}
-	go srv.ListenAndServe()
-	defer srv.Shutdown(context.TODO())
+	go func() {
+		err := http.ListenAndServe(":8080", LevelHandler(&lvl))
+		assert.NoError(t, err)
+	}()
 
 	testCases := []struct {
 		testName           string

@@ -67,9 +67,9 @@ type prometheusLogger struct {
 	useSyncLogger     bool
 }
 
-// LogLevelHandler returns an http handler function that returns the current log level.
+// LevelHandler returns an http handler function that returns the current log level.
 // The optional query parameter 'log_level' can be passed to change the log level at runtime.
-func LogLevelHandler(currentLogLevel *logging.Level) http.HandlerFunc {
+func LevelHandler(currentLogLevel *logging.Level) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		type logResponse struct {
 			Status  string `json:"status,omitempty"`
