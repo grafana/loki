@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +23,6 @@ var _ admission.CustomValidator = &LokiStackValidator{}
 // LokiStackValidator implements a custom validator for LokiStack resources.
 type LokiStackValidator struct {
 	ExtendedValidator func(context.Context, *lokiv1.LokiStack) field.ErrorList
-	Client            client.Client
 }
 
 // SetupWebhookWithManager registers the LokiStackValidator as a validating webhook
@@ -72,11 +68,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 		allErrs = append(allErrs, errors...)
 	}
 
-	errors = v.validateReplicationSpec(ctx, stack.Spec)
-	if len(errors) != 0 {
-		allErrs = append(allErrs, errors...)
-	}
-
 	if v.ExtendedValidator != nil {
 		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
 	}
@@ -90,72 +81,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 		stack.Name,
 		allErrs,
 	)
-}
-
-func (v LokiStackValidator) validateReplicationSpec(ctx context.Context, stack lokiv1.LokiStackSpec) field.ErrorList {
-	if stack.Replication == nil {
-		return nil
-	}
-
-	var allErrs field.ErrorList
-	var nodes corev1.NodeList
-
-	// nolint:staticcheck
-	if stack.Replication != nil && stack.ReplicationFactor > 0 {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "replicationFactor"),
-			stack.ReplicationFactor,
-			lokiv1.ErrReplicationSpecConflict.Error(),
-		))
-
-		return allErrs
-	}
-
-	rs := stack.Replication
-	selector := make([]string, 0)
-	for _, z := range rs.Zones {
-		selector = append(selector, z.TopologyKey)
-	}
-
-	if err := v.Client.List(ctx, &nodes, client.HasLabels(selector)); err != nil {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "replication", "zones"),
-			rs.Zones,
-			lokiv1.ErrReplicationZonesNodes.Error(),
-		))
-	}
-
-	// Check if there are enough nodes to fit all the pods.
-	if len(nodes.Items) < int(rs.Factor) {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "replication", "factor"),
-			rs.Factor,
-			lokiv1.ErrReplicationFactorToZonesRatio.Error(),
-		))
-
-		return allErrs
-	}
-
-	// Check if there are enough regions to fit all the pods for each topology keys.
-	for _, tk := range selector {
-		m := make(map[string]struct{})
-		for _, node := range nodes.Items {
-			m[node.Labels[tk]] = struct{}{}
-		}
-
-		fmt.Printf("%+v\n", m)
-
-		if len(m) < int(rs.Factor) {
-			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("spec", "replication", "factor"),
-				rs.Factor,
-				lokiv1.ErrReplicationFactorToZonesRatio.Error(),
-			))
-			return allErrs
-		}
-	}
-
-	return nil
 }
 
 // ValidateSchemas ensures that the schemas are in a valid format
