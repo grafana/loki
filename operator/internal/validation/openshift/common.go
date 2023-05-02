@@ -34,7 +34,7 @@ func tenantIDValidationEnabled(annotations map[string]string) (bool, *field.Erro
 		return true, nil
 	}
 
-	withCustomTopology, err := strconv.ParseBool(v)
+	disableValidation, err := strconv.ParseBool(v)
 	if err != nil {
 		return false, field.Invalid(
 			field.NewPath("metadata").Child("annotations").Key(lokiv1.AnnotationDisableTenantValidation),
@@ -43,11 +43,7 @@ func tenantIDValidationEnabled(annotations map[string]string) (bool, *field.Erro
 		)
 	}
 
-	if withCustomTopology {
-		return false, nil
-	}
-
-	return true, nil
+	return !disableValidation, nil
 }
 
 func validateRuleExpression(namespace, tenantID, rawExpr string) error {
