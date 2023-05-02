@@ -78,6 +78,13 @@ type ReadRing interface {
 	CleanupShuffleShardCache(identifier string)
 }
 
+// DynamicReplicationReadRing extends the ReadRing with an additional function to get a
+// ReplicationSet based on a provided replication factor.
+type DynamicReplicationReadRing interface {
+	ReadRing
+	GetWithRF(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string, rf int) (ReplicationSet, error)
+}
+
 var (
 	// Write operation that also extends replica set, if instance state is not ACTIVE.
 	Write = NewOp([]InstanceState{ACTIVE}, func(s InstanceState) bool {
@@ -347,6 +354,19 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 
 // Get returns n (or more) instances which form the replicas for the given key.
 func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
+	return r.get(key, op, bufDescs, bufHosts, bufZones, r.cfg.ReplicationFactor)
+}
+
+// GetWithRF returns n (or more) instances which form the replicas for the
+// given key and given replication factor.
+// If you have zone-aware replication enabled the current GetWithRF()
+// implementation doesn't work with a RF > number of zones.
+func (r *Ring) GetWithRF(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string, rf int) (ReplicationSet, error) {
+	return r.get(key, op, bufDescs, bufHosts, bufZones, rf)
+}
+
+// get returns n (or more) instances which form the replicas for the given key.
+func (r *Ring) get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string, n int) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if r.ringDesc == nil || len(r.ringTokens) == 0 {
@@ -354,7 +374,6 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 	}
 
 	var (
-		n            = r.cfg.ReplicationFactor
 		instances    = bufDescs[:0]
 		start        = searchToken(r.ringTokens, key)
 		iterations   = 0
