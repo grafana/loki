@@ -80,7 +80,7 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	}
 }
 
-func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
+func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	opts := manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",

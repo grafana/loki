@@ -344,8 +344,8 @@ spec:
                     minimum: 1
                     type: integer
                   zones:
-                    description: Zone is the key that defines a topology in the Nodes'
-                      labels.
+                    description: Zones defines an array of ZoneSpec that the scheduler
+                      will try to satisfy.
                     items:
                       description: ZoneSpec defines the spec to support zone-aware
                         component deployments.
@@ -364,8 +364,6 @@ spec:
                       - topologyKey
                       type: object
                     type: array
-                required:
-                - zones
                 type: object
               replicationFactor:
                 description: 'Deprecated: Please use replication.factor instead. This

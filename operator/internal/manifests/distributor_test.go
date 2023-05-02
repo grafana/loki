@@ -74,7 +74,7 @@ func TestNewDistributorDeployment_HasTemplateCertRotationRequiredAtAnnotation(t 
 	require.Equal(t, annotations[expected], "deadbeef")
 }
 
-func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
+func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
 		PDBMinAvailable      int

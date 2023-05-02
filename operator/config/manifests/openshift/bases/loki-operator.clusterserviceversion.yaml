@@ -371,7 +371,8 @@ spec:
         path: replication.factor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Zone is the key that defines a topology in the Nodes' labels.
+      - description: Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy.
         displayName: Zones Spec
         path: replication.zones
       - description: MaxSkew describes the maximum degree to which Pods can be unevenly
