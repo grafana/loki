@@ -8,10 +8,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 
-	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
 func TestNewDistributorDeployment_SelectorMatchesLabels(t *testing.T) {
@@ -75,56 +73,31 @@ func TestNewDistributorDeployment_HasTemplateCertRotationRequiredAtAnnotation(t 
 }
 
 func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
-	for _, tc := range []struct {
-		Name                 string
-		PDBMinAvailable      int
-		ExpectedMinAvailable int
-	}{
-		{
-			Name:                 "Small stack",
-			PDBMinAvailable:      1,
-			ExpectedMinAvailable: 1,
-		},
-		{
-			Name:                 "Medium stack",
-			PDBMinAvailable:      2,
-			ExpectedMinAvailable: 2,
-		},
-	} {
-		t.Run(tc.Name, func(t *testing.T) {
-			opts := manifests.Options{
-				Name:      "abcd",
-				Namespace: "efgh",
-				Gates:     v1.FeatureGates{},
-				ResourceRequirements: internal.ComponentResources{
-					Ingester: internal.ResourceRequirements{
-						PDBMinAvailable: tc.PDBMinAvailable,
-					},
+	opts := manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
-				Stack: lokiv1.LokiStackSpec{
-					Template: &lokiv1.LokiTemplateSpec{
-						Ingester: &lokiv1.LokiComponentSpec{
-							Replicas: rand.Int31(),
-						},
-					},
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-				},
-			}
-			objs, err := manifests.BuildIngester(opts)
-			require.NoError(t, err)
-			require.Len(t, objs, 4)
-
-			pdb := objs[3].(*policyv1.PodDisruptionBudget)
-			require.NotNil(t, pdb)
-			require.Equal(t, "abcd-ingester", pdb.Name)
-			require.Equal(t, "efgh", pdb.Namespace)
-			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
-			require.EqualValues(t, manifests.ComponentLabels(manifests.LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
-		})
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
 	}
+	objs, err := manifests.BuildDistributor(opts)
+	require.NoError(t, err)
+	require.Len(t, objs, 4)
+
+	pdb := objs[3].(*policyv1.PodDisruptionBudget)
+	require.NotNil(t, pdb)
+	require.Equal(t, "abcd-distributor", pdb.Name)
+	require.Equal(t, "efgh", pdb.Namespace)
+	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelDistributorComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
 func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
