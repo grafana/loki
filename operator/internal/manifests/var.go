@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
@@ -139,6 +140,22 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 		annotations[openshift.ServingCertKey] = serviceName
 	}
 	return annotations
+}
+
+func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpreadConstraint {
+	var tsc []corev1.TopologySpreadConstraint
+	if len(spec.Zones) > 0 {
+		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
+		for i, z := range spec.Zones {
+			tsc[i] = corev1.TopologySpreadConstraint{
+				MaxSkew:           int32(z.MaxSkew),
+				TopologyKey:       z.TopologyKey,
+				WhenUnsatisfiable: corev1.DoNotSchedule,
+			}
+		}
+	}
+
+	return tsc
 }
 
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label

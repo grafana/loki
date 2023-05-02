@@ -1602,7 +1602,15 @@ are degraded or the cluster cannot connect to object storage.</p>
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;1x.extra-small&#34;</p></td>
+<tbody><tr><td><p>&#34;1x.demo&#34;</p></td>
+<td><p>SizeOneXDemo defines the size of a single Loki deployment
+with tiny resource requirements and without HA support.
+This size is intended to run in single-node clusters on laptops,
+it is only useful for very light testing, demonstrations, or prototypes.
+There are no ingestion/query performance guarantees.
+DO NOT USE THIS IN PRODUCTION!</p>
+</td>
+</tr><tr><td><p>&#34;1x.extra-small&#34;</p></td>
 <td><p>SizeOneXExtraSmall defines the size of a single Loki deployment
 with extra small resources/limits requirements and without HA support.
 This size is ultimately dedicated for development and demo purposes.
@@ -1729,7 +1737,22 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>ReplicationFactor defines the policy for log stream replication.</p>
+<p>Deprecated: Please use replication.factor instead. This field will be removed in future versions of this CRD.
+ReplicationFactor defines the policy for log stream replication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>replication</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ReplicationSpec">
+ReplicationSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Replication defines the configuration for Loki data replication.</p>
 </td>
 </tr>
 <tr>
@@ -1743,7 +1766,7 @@ RulesSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>Rules defines the spec for the ruler component</p>
+<p>Rules defines the spec for the ruler component.</p>
 </td>
 </tr>
 <tr>
@@ -1771,7 +1794,7 @@ LokiTemplateSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>Template defines the resource/limits/tolerations/nodeselectors per component</p>
+<p>Template defines the resource/limits/tolerations/nodeselectors per component.</p>
 </td>
 </tr>
 <tr>
@@ -2346,7 +2369,10 @@ string
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;azure&#34;</p></td>
+<tbody><tr><td><p>&#34;alibabacloud&#34;</p></td>
+<td><p>ObjectStorageSecretAlibabaCloud when using AlibabaCloud OSS for Loki storage</p>
+</td>
+</tr><tr><td><p>&#34;azure&#34;</p></td>
 <td><p>ObjectStorageSecretAzure when using Azure for Loki storage</p>
 </td>
 </tr><tr><td><p>&#34;gcs&#34;</p></td>
@@ -3266,6 +3292,49 @@ RemoteWriteClientQueueSpec
 </tbody>
 </table>
 
+## ReplicationSpec { #loki-grafana-com-v1-ReplicationSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>factor</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Factor defines the policy for log stream replication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>zones</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ZoneSpec">
+[]ZoneSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Zones defines an array of ZoneSpec that the scheduler will try to satisfy.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## RetentionLimitSpec { #loki-grafana-com-v1-RetentionLimitSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
@@ -3893,6 +3962,46 @@ AuthorizationSpec
 <td>
 <em>(Optional)</em>
 <p>Authorization defines the lokistack-gateway component authorization configuration spec per tenant.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ZoneSpec { #loki-grafana-com-v1-ZoneSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ReplicationSpec">ReplicationSpec</a>)
+</p>
+<div>
+<p>ZoneSpec defines the spec to support zone-aware component deployments.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>maxSkew</code><br/>
+<em>
+int
+</em>
+</td>
+<td>
+<p>MaxSkew describes the maximum degree to which Pods can be unevenly distributed.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>topologyKey</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>TopologyKey is the key that defines a topology in the Nodes&rsquo; labels.</p>
 </td>
 </tr>
 </tbody>

@@ -133,6 +133,10 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
 	}
 
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+	}
+
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
