@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	AnnotationCustomTopology = "loki.grafana.com/custom-tenant-topology"
+	AnnotationDisableTenantValidation = "loki.grafana.com/disable-tenant-validation"
 )
 
 var (

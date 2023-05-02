@@ -75,7 +75,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 					Name:      "recording-rule",
 					Namespace: "openshift-example",
 					Annotations: map[string]string{
-						lokiv1.AnnotationCustomTopology: "true",
+						lokiv1.AnnotationDisableTenantValidation: "true",
 					},
 				},
 				Spec: lokiv1.RecordingRuleSpec{
@@ -99,7 +99,7 @@ func TestRecordingRuleValidator(t *testing.T) {
 					Name:      "recording-rule",
 					Namespace: "openshift-example",
 					Annotations: map[string]string{
-						lokiv1.AnnotationCustomTopology: "not-valid",
+						lokiv1.AnnotationDisableTenantValidation: "not-valid",
 					},
 				},
 				Spec: lokiv1.RecordingRuleSpec{
@@ -118,9 +118,9 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: []*field.Error{
 				{
 					Type:  field.ErrorTypeInvalid,
-					Field: `metadata.annotations[loki.grafana.com/custom-tenant-topology]`,
+					Field: `metadata.annotations[loki.grafana.com/disable-tenant-validation]`,
 					BadValue: map[string]string{
-						lokiv1.AnnotationCustomTopology: "not-valid",
+						lokiv1.AnnotationDisableTenantValidation: "not-valid",
 					},
 					Detail: `strconv.ParseBool: parsing "not-valid": invalid syntax`,
 				},

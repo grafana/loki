@@ -29,7 +29,7 @@ const (
 var severityRe = regexp.MustCompile("^critical|warning|info$")
 
 func tenantIDValidationEnabled(annotations map[string]string) (bool, *field.Error) {
-	v, ok := annotations[lokiv1.AnnotationCustomTopology]
+	v, ok := annotations[lokiv1.AnnotationDisableTenantValidation]
 	if !ok {
 		return true, nil
 	}
@@ -37,7 +37,7 @@ func tenantIDValidationEnabled(annotations map[string]string) (bool, *field.Erro
 	withCustomTopology, err := strconv.ParseBool(v)
 	if err != nil {
 		return false, field.Invalid(
-			field.NewPath("metadata").Child("annotations").Key(lokiv1.AnnotationCustomTopology),
+			field.NewPath("metadata").Child("annotations").Key(lokiv1.AnnotationDisableTenantValidation),
 			annotations,
 			err.Error(),
 		)

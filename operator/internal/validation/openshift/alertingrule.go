@@ -14,14 +14,14 @@ import (
 func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1.AlertingRule) field.ErrorList {
 	var allErrs field.ErrorList
 
-	enabled, fieldErr := tenantIDValidationEnabled(alertingRule.Annotations)
+	validateTenantIDs, fieldErr := tenantIDValidationEnabled(alertingRule.Annotations)
 	if fieldErr != nil {
 		return field.ErrorList{fieldErr}
 	}
 
 	// Check tenant matches expected value
 	tenantID := alertingRule.Spec.TenantID
-	if enabled {
+	if validateTenantIDs {
 		wantTenant := tenantForNamespace(alertingRule.Namespace)
 		if !slices.Contains(wantTenant, tenantID) {
 			allErrs = append(allErrs, field.Invalid(
@@ -33,7 +33,7 @@ func AlertingRuleValidator(_ context.Context, alertingRule *lokiv1.AlertingRule)
 
 	for i, g := range alertingRule.Spec.Groups {
 		for j, rule := range g.Rules {
-			if enabled {
+			if validateTenantIDs {
 				if err := validateRuleExpression(alertingRule.Namespace, tenantID, rule.Expr); err != nil {
 					allErrs = append(allErrs, field.Invalid(
 						field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),

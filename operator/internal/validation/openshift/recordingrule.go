@@ -14,12 +14,12 @@ import (
 func RecordingRuleValidator(_ context.Context, recordingRule *lokiv1.RecordingRule) field.ErrorList {
 	var allErrs field.ErrorList
 
-	enabled, fieldErr := tenantIDValidationEnabled(recordingRule.Annotations)
+	validateTenantIDs, fieldErr := tenantIDValidationEnabled(recordingRule.Annotations)
 	if fieldErr != nil {
 		return field.ErrorList{fieldErr}
 	}
 
-	if !enabled {
+	if !validateTenantIDs {
 		return allErrs
 	}
 
