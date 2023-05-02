@@ -122,7 +122,7 @@
   compactor_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   distributor_deployment+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   index_gateway_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
-  ingester_statefulset+: if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled then {} else
+  ingester_statefulset: if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled then {} else
     (super.ingester_statefulset + if !$._config.memberlist_ring_enabled then {} else gossipLabel),
   ingester_zone_a_statefulset+:
     if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
