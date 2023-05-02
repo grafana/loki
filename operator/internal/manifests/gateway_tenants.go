@@ -25,10 +25,24 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		return nil
 	}
 
+	var defaults openshift.Options
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // continue using user input
-
+		if opts.Gates.OpenShift.Enabled {
+			defaults = openshift.NewOptions(
+				opts.Stack.Tenants.Mode,
+				opts.Name,
+				opts.Namespace,
+				GatewayName(opts.Name),
+				opts.GatewayBaseDomain,
+				serviceNameGatewayHTTP(opts.Name),
+				gatewayHTTPPortName,
+				ComponentLabels(LabelGatewayComponent, opts.Name),
+				nil,
+				RulerName(opts.Name),
+			)
+		}
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
@@ -37,7 +51,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			}
 		}
 
-		defaults := openshift.NewOptions(
+		defaults = openshift.NewOptions(
 			opts.Stack.Tenants.Mode,
 			opts.Name,
 			opts.Namespace,
@@ -49,11 +63,10 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			tenantData,
 			RulerName(opts.Name),
 		)
+	}
 
-		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
-			return kverrors.Wrap(err, "failed to merge defaults for mode openshift")
-		}
-
+	if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge defaults for mode openshift")
 	}
 
 	return nil

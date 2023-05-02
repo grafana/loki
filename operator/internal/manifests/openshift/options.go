@@ -61,9 +61,11 @@ func NewOptions(
 	tenantConfigMap map[string]TenantData,
 	rulerName string,
 ) Options {
-	host := ingressHost(stackName, stackNamespace, gwBaseDomain)
-
-	var authn []AuthenticationSpec
+	var (
+		authn []AuthenticationSpec
+		authz AuthorizationSpec
+		host  string = ingressHost(stackName, stackNamespace, gwBaseDomain)
+	)
 
 	tenants := GetTenants(mode)
 	for _, name := range tenants {
@@ -81,6 +83,12 @@ func NewOptions(
 		})
 	}
 
+	if len(tenants) > 0 {
+		authz = AuthorizationSpec{
+			OPAUrl: fmt.Sprintf("http://localhost:%d/v1/data/%s/allow", GatewayOPAHTTPPort, opaDefaultPackage),
+		}
+	}
+
 	return Options{
 		BuildOpts: BuildOptions{
 			LokiStackName:        stackName,
@@ -92,9 +100,7 @@ func NewOptions(
 			RulerName:            rulerName,
 		},
 		Authentication: authn,
-		Authorization: AuthorizationSpec{
-			OPAUrl: fmt.Sprintf("http://localhost:%d/v1/data/%s/allow", GatewayOPAHTTPPort, opaDefaultPackage),
-		},
+		Authorization:  authz,
 	}
 }
 
