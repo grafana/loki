@@ -153,6 +153,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -182,6 +187,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -248,6 +258,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
@@ -267,6 +282,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,

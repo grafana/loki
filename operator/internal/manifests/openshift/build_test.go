@@ -11,9 +11,10 @@ import (
 )
 
 func TestBuildGatewayTenantModeObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc").
+		WithTenantsForMode(lokiv1.OpenshiftLogging, "example.com", map[string]TenantData{})
 
-	objs := BuildGatewayTenantModeObjects(opts)
+	objs := BuildGatewayTenantModeObjects(*opts)
 	cr := objs[0].(*rbacv1.ClusterRole)
 	rb := objs[1].(*rbacv1.ClusterRoleBinding)
 
@@ -22,9 +23,9 @@ func TestBuildGatewayTenantModeObjects_ClusterRoleRefMatches(t *testing.T) {
 }
 
 func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc")
 
-	objs := BuildGatewayObjects(opts)
+	objs := BuildGatewayObjects(*opts)
 	cr := objs[2].(*rbacv1.Role)
 	rb := objs[3].(*rbacv1.RoleBinding)
 
@@ -33,9 +34,9 @@ func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
 }
 
 func TestBuildRulerObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc")
 
-	objs := BuildRulerObjects(opts)
+	objs := BuildRulerObjects(*opts)
 	sa := objs[1].(*corev1.ServiceAccount)
 	cr := objs[2].(*rbacv1.ClusterRole)
 	rb := objs[3].(*rbacv1.ClusterRoleBinding)

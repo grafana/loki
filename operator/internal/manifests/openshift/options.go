@@ -54,17 +54,29 @@ type TenantData struct {
 
 // NewOptions returns an openshift options struct.
 func NewOptions(
-	mode lokiv1.ModeType,
 	stackName, stackNamespace string,
-	gwName, gwBaseDomain, gwSvcName, gwPortName string,
+	gwName, gwSvcName, gwPortName string,
 	gwLabels map[string]string,
-	tenantConfigMap map[string]TenantData,
 	rulerName string,
-) Options {
+) *Options {
+	return &Options{
+		BuildOpts: BuildOptions{
+			LokiStackName:        stackName,
+			LokiStackNamespace:   stackNamespace,
+			GatewayName:          gwName,
+			GatewaySvcName:       gwSvcName,
+			GatewaySvcTargetPort: gwPortName,
+			Labels:               gwLabels,
+			RulerName:            rulerName,
+		},
+	}
+}
+
+func (o *Options) WithTenantsForMode(mode lokiv1.ModeType, gwBaseDomain string, tenantConfigMap map[string]TenantData) *Options {
 	var (
 		authn []AuthenticationSpec
 		authz AuthorizationSpec
-		host  string = ingressHost(stackName, stackNamespace, gwBaseDomain)
+		host  string = ingressHost(o.BuildOpts.LokiStackName, o.BuildOpts.LokiStackNamespace, gwBaseDomain)
 	)
 
 	tenants := GetTenants(mode)
@@ -77,7 +89,7 @@ func NewOptions(
 		authn = append(authn, AuthenticationSpec{
 			TenantName:     name,
 			TenantID:       name,
-			ServiceAccount: gwName,
+			ServiceAccount: o.BuildOpts.GatewayName,
 			RedirectURL:    fmt.Sprintf("https://%s/openshift/%s/callback", host, name),
 			CookieSecret:   cookieSecret,
 		})
@@ -89,19 +101,10 @@ func NewOptions(
 		}
 	}
 
-	return Options{
-		BuildOpts: BuildOptions{
-			LokiStackName:        stackName,
-			LokiStackNamespace:   stackNamespace,
-			GatewayName:          gwName,
-			GatewaySvcName:       gwSvcName,
-			GatewaySvcTargetPort: gwPortName,
-			Labels:               gwLabels,
-			RulerName:            rulerName,
-		},
-		Authentication: authn,
-		Authorization:  authz,
-	}
+	o.Authentication = authn
+	o.Authorization = authz
+
+	return o
 }
 
 func newCookieSecret() string {
