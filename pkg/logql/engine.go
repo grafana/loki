@@ -214,8 +214,17 @@ func (q *query) resultLength(res promql_parser.Value) int {
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
+	spLogger := spanlogger.FromContext(ctx)
+	defer spLogger.Finish()
+
+	sp.LogKV(
+		"type", GetRangeType(q.params),
+		"query", q.params.Query(),
+		"start", q.params.Start(),
+		"end", q.params.End(),
+		"step", q.params.Step(),
+		"length", q.params.End().Sub(q.params.Start()),
+	)
 
 	if q.logExecQuery {
 		queryHash := HashedQuery(q.params.Query())
@@ -240,7 +249,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	statResult.Log(level.Debug(log))
+	statResult.Log(level.Debug(spLogger))
 
 	status := "200"
 	if err != nil {

@@ -139,6 +139,10 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
 	}
 
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+	}
+
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
