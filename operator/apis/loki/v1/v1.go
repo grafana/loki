@@ -28,6 +28,10 @@ const (
 	StorageSchemaUpdateBuffer = time.Hour * 2
 )
 
+const (
+	AnnotationCustomTopology = "loki.grafana.com/custom-tenant-topology"
+)
+
 var (
 	// ErrGroupNamesNotUnique is the error type when loki groups have not unique names.
 	ErrGroupNamesNotUnique = errors.New("Group names are not unique")
