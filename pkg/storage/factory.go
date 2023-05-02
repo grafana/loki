@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -61,6 +62,7 @@ func ResetBoltDBIndexClientsWithShipper() {
 type StoreLimits interface {
 	downloads.Limits
 	stores.StoreLimits
+	indexgateway.Limits
 	CardinalityLimit(string) int
 }
 
@@ -256,7 +258,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer, logger log.Logger) (index.Client, error) {
+func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer, overrides indexgateway.Limits, logger log.Logger) (index.Client, error) {
 	switch periodCfg.IndexType {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
@@ -289,7 +291,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return indexGatewayClient, nil
 			}
 
-			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, logger)
+			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, overrides, logger)
 			if err != nil {
 				return nil, err
 			}

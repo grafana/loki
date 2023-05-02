@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -116,7 +117,8 @@ func TestGatewayClient(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 
-	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
+	overrides, _ := validation.NewOverrides(validation.Limits{}, nil)
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, util_log.Logger)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
@@ -296,16 +298,17 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 
 func TestDoubleRegistration(t *testing.T) {
 	r := prometheus.NewRegistry()
+	o, _ := validation.NewOverrides(validation.Limits{}, nil)
 
 	clientCfg := IndexGatewayClientConfig{
 		Address: "my-store-address:1234",
 	}
 
-	client, err := NewGatewayClient(clientCfg, r, util_log.Logger)
+	client, err := NewGatewayClient(clientCfg, r, o, util_log.Logger)
 	require.NoError(t, err)
 	defer client.Stop()
 
-	client, err = NewGatewayClient(clientCfg, r, util_log.Logger)
+	client, err = NewGatewayClient(clientCfg, r, o, util_log.Logger)
 	require.NoError(t, err)
 	defer client.Stop()
 }

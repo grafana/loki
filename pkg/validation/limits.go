@@ -172,6 +172,9 @@ type Limits struct {
 
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
+
+	// Experimental
+	GatewayShardingFactor float64 `yaml:"gateway_sharding_factor" json:"gateway_sharding_factor"`
 }
 
 type StreamRetention struct {
@@ -269,6 +272,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
+	// Experimental
+	f.Float64Var(&l.GatewayShardingFactor, "index-gateway.sharding-factor", 0.0, "Experimental. The sharding factor defines how many index gateways should be used for querying. A factor of 0.0 means that replication factor amount of servers are used, a factor of 1.0 means all instances of the index gateway ring are used.")
+
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 }
@@ -311,6 +317,10 @@ func (l *Limits) Validate() error {
 
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
 		return err
+	}
+
+	if l.GatewayShardingFactor < 0 || l.GatewayShardingFactor > 1 {
+		return fmt.Errorf("index gateway sharding factor must be between 0.0 and 1.0")
 	}
 
 	if l.CompactorDeletionEnabled {
@@ -721,6 +731,10 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+func (o *Overrides) GatewayShardingFactor(userID string) float64 {
+	return o.getOverridesForUser(userID).GatewayShardingFactor
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

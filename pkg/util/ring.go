@@ -2,11 +2,9 @@ package util
 
 import (
 	"hash/fnv"
+	"math"
 
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // TokenFor generates a token used for finding ingesters from ring
@@ -25,25 +23,28 @@ func IsInReplicationSet(r ring.ReadRing, ringKey uint32, address string) (bool, 
 	if err != nil {
 		return false, err
 	}
-
-	addrs := rs.GetAddresses()
-	for _, a := range addrs {
-		if a == address {
-			return true, nil
-		}
-	}
-	return false, nil
+	return StringsContain(rs.GetAddresses(), address), nil
 }
 
-// IsAssignedKey replies wether the given instance address is in the ReplicationSet responsible for the given key or not, based on the tokens.
-//
-// The result will be defined based on the tokens assigned to each ring component, queried through the ring client.
-func IsAssignedKey(ringClient ring.ReadRing, instanceAddress string, key string) bool {
-	token := TokenFor(key, "" /* labels */)
-	inSet, err := IsInReplicationSet(ringClient, token, instanceAddress)
+// IsInReplicationSetWithFactor will query the provided ring for the provided key
+// and see if the provided address is in the resulting ReplicationSet.
+// Same as IsInReplicationSet, but you can additionally provide a replication factor.
+func IsInReplicationSetWithFactor(r ring.DynamicReplicationReadRing, ringKey uint32, address string, rf int) (bool, error) {
+	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
+	rs, err := r.GetWithRF(ringKey, ring.Write, bufDescs, bufHosts, bufZones, rf)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error checking if key is in replicationset", "error", err, "key", key)
-		return false
+		return false, err
 	}
-	return inSet
+	return StringsContain(rs.GetAddresses(), address), nil
+}
+
+// DynamicReplicatioFactor returns a RF between ring.ReplicationFactor and ring.InstanceCount
+// where a factor f=0 is mapped to the lower bound and f=1 is mapped to the upper bound.
+func DynamicReplicationFactor(r ring.ReadRing, f float64) int {
+	rf := r.ReplicationFactor()
+	if f > 0 {
+		f = math.Min(f, 1)
+		rf = rf + int(float64(r.InstancesCount()-rf)*f)
+	}
+	return rf
 }

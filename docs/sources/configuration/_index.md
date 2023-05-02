@@ -2589,6 +2589,13 @@ shard_streams:
 
 # Minimum number of label matchers a query should contain.
 [minimum_labels_number: <int>]
+
+# Experimental. The sharding factor defines how many index gateways should be
+# used for querying. A factor of 0.0 means that replication factor amount of
+# servers are used, a factor of 1.0 means all instances of the index gateway
+# ring are used.
+# CLI flag: -index-gateway.sharding-factor
+[gateway_sharding_factor: <float> | default = 0]
 ```
 
 ### frontend_worker

@@ -1160,7 +1160,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 
 		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant,
-			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
+			prometheus.DefaultRegisterer, t.Overrides, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
 		)
 		if err != nil {
 			return nil, err
@@ -1201,7 +1201,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	if t.Cfg.isModuleEnabled(IndexGateway) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
 		managerMode = indexgateway.ServerMode
 	}
-	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")

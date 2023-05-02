@@ -53,7 +53,7 @@ type IndexGatewayClientConfig struct {
 	// this client should talk to.
 	//
 	// Only relevant for the ring mode.
-	Ring ring.ReadRing `yaml:"-"`
+	Ring ring.DynamicReplicationReadRing `yaml:"-"`
 
 	// GRPCClientConfig configures the gRPC connection between the Index Gateway client and the server.
 	//
@@ -97,17 +97,19 @@ type GatewayClient struct {
 
 	pool *ring_client.Pool
 
-	ring ring.ReadRing
+	ring ring.DynamicReplicationReadRing
 
 	stringBufPool   *sync.Pool
 	instanceBufPool *sync.Pool
+
+	overrides indexgateway.Limits
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, overrides indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "index_gateway_request_duration_seconds",
@@ -129,6 +131,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
 		ring:                              cfg.Ring,
+		overrides:                         overrides,
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -346,8 +349,10 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 	bufZones := s.stringBufPool.Get().([]string)
 	defer s.stringBufPool.Put(bufZones) //nolint:staticcheck
 
-	key := util.TokenFor(userID, "" /* labels */)
-	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs[:0], bufHosts[:0], bufZones[:0])
+	f := s.overrides.GatewayShardingFactor(userID)
+	rf := util.DynamicReplicationFactor(s.ring, f)
+	key := util.TokenFor(userID, "")
+	rs, err := s.ring.GetWithRF(key, ring.WriteNoExtend, bufDescs[:0], bufHosts[:0], bufZones[:0], rf)
 	if err != nil {
 		return errors.Wrap(err, "index gateway get ring")
 	}

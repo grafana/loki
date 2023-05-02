@@ -28,6 +28,10 @@ const (
 	maxIndexEntriesPerResponse = 1000
 )
 
+type Limits interface {
+	GatewayShardingFactor(tenantID string) float64
+}
+
 type IndexQuerier interface {
 	stores.ChunkFetcher
 	index.BaseReader
@@ -52,15 +56,13 @@ type Gateway struct {
 
 	cfg Config
 	log log.Logger
-
-	shipper IndexQuerier
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
@@ -73,7 +75,7 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
 	})
 
-	g.Service = services.NewIdleService(nil, func(failureCase error) error {
+	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
 		for _, indexClient := range g.indexClients {
 			indexClient.Stop()
@@ -136,11 +138,7 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 				return server.Send(response)
 			})
 
-			if innerErr != nil {
-				return false
-			}
-
-			return true
+			return innerErr == nil
 		})
 
 		if innerErr != nil {

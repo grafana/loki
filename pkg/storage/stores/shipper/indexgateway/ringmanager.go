@@ -60,7 +60,8 @@ type RingManager struct {
 	Ring           *ring.Ring
 	managerMode    ManagerMode
 
-	cfg Config
+	cfg       Config
+	overrides Limits
 
 	log log.Logger
 }
@@ -68,9 +69,9 @@ type RingManager struct {
 // NewRingManager is the recommended way of instantiating a RingManager.
 //
 // The other functions will assume the RingManager was instantiated through this function.
-func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
+func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registerer prometheus.Registerer, overrides Limits) (*RingManager, error) {
 	rm := &RingManager{
-		cfg: cfg, log: log, managerMode: managerMode,
+		cfg: cfg, log: log, managerMode: managerMode, overrides: overrides,
 	}
 
 	if cfg.Mode != RingMode {
@@ -242,7 +243,21 @@ func (rm *RingManager) IndexGatewayOwnsTenant(tenant string) bool {
 		return true
 	}
 
-	return loki_util.IsAssignedKey(rm.Ring, rm.RingLifecycler.GetInstanceAddr(), tenant)
+	return rm.isAssigned(rm.RingLifecycler.GetInstanceAddr(), tenant)
+}
+
+// isAssigned replies wether the given instance address is in the ReplicationSet responsible for the given tenant or not.
+// The result will be defined based on the tokens assigned to each ring component, queried through the ring client.
+func (rm *RingManager) isAssigned(instanceAddress, tenant string) bool {
+	f := rm.overrides.GatewayShardingFactor(tenant)
+	rf := loki_util.DynamicReplicationFactor(rm.Ring, f)
+	token := loki_util.TokenFor(tenant, "" /* labels */)
+	inSet, err := loki_util.IsInReplicationSetWithFactor(rm.Ring, token, instanceAddress, rf)
+	if err != nil {
+		level.Error(rm.log).Log("msg", "error checking if tenant is in replicationset", "error", err, "tenant", tenant, "token", token)
+		return false
+	}
+	return inSet
 }
 
 // ServeHTTP serves the HTTP route /indexgateway/ring.
