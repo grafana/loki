@@ -217,7 +217,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	spLogger := spanlogger.FromContext(ctx)
 	defer spLogger.Finish()
 
-	level.Debug(spLogger).Log(
+	sp.LogKV(
 		"type", GetRangeType(q.params),
 		"query", q.params.Query(),
 		"start", q.params.Start(),
