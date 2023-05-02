@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
@@ -40,6 +41,10 @@ func NewDocker(logger log.Logger, registerer prometheus.Registerer) (Stage, erro
 			},
 		}}
 	return NewPipeline(logger, stages, nil, registerer)
+}
+
+type CRIConfig struct {
+	DisableMultiline bool `mapstructure:"disable_multiline"`
 }
 
 type cri struct {
@@ -101,8 +106,22 @@ func (c *cri) Run(entry chan Entry) chan Entry {
 	return in
 }
 
+func parseCRIConfig(config interface{}) (*CRIConfig, error) {
+	cfg := &CRIConfig{}
+	err := mapstructure.Decode(config, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // NewCRI creates a CRI format specific pipeline stage
-func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
+func NewCRI(logger log.Logger, registerer prometheus.Registerer, config interface{}) (Stage, error) {
+	cfg, err := parseCRIConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
 	base := PipelineStages{
 		PipelineStage{
 			StageTypeRegex: RegexConfig{
@@ -135,6 +154,11 @@ func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) 
 	p, err := NewPipeline(logger, base, nil, registerer)
 	if err != nil {
 		return nil, err
+	}
+
+	// Do not concatenate partial lines
+	if cfg.DisableMultiline {
+		return p, nil
 	}
 
 	c := cri{
