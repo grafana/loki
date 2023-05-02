@@ -117,12 +117,10 @@ func TestRecordingRuleValidator(t *testing.T) {
 			},
 			wantErrors: []*field.Error{
 				{
-					Type:  field.ErrorTypeInvalid,
-					Field: `metadata.annotations[loki.grafana.com/disable-tenant-validation]`,
-					BadValue: map[string]string{
-						lokiv1.AnnotationDisableTenantValidation: "not-valid",
-					},
-					Detail: `strconv.ParseBool: parsing "not-valid": invalid syntax`,
+					Type:     field.ErrorTypeInvalid,
+					Field:    `metadata.annotations[loki.grafana.com/disable-tenant-validation]`,
+					BadValue: "not-valid",
+					Detail:   `strconv.ParseBool: parsing "not-valid": invalid syntax`,
 				},
 			},
 		},

@@ -38,7 +38,7 @@ func tenantIDValidationEnabled(annotations map[string]string) (bool, *field.Erro
 	if err != nil {
 		return false, field.Invalid(
 			field.NewPath("metadata").Child("annotations").Key(lokiv1.AnnotationDisableTenantValidation),
-			annotations,
+			v,
 			err.Error(),
 		)
 	}

@@ -29,6 +29,7 @@ const (
 )
 
 const (
+	// The AnnotationDisableTenantValidation annotation can contain a boolean value that, if true, disables the tenant-ID validation.
 	AnnotationDisableTenantValidation = "loki.grafana.com/disable-tenant-validation"
 )
 
