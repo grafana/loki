@@ -2612,6 +2612,10 @@ shard_streams:
 
 # Minimum number of label matchers a query should contain.
 [minimum_labels_number: <int>]
+
+# The shard size defines how many index gateways should be used for querying.
+# CLI flag: -index-gateway.shard-size
+[gateway_shard_size: <int> | default = 1]
 ```
 
 ### frontend_worker

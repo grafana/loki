@@ -1163,6 +1163,15 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	var shardingStrategy indexgateway.ShardingStrategy
+	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode || t.indexGatewayRingManager.Mode == indexgateway.ClientMode {
+		shardingStrategy = indexgateway.NewMatchAllStrategy()
+	} else {
+		instanceAddr := t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr()
+		instanceID := t.indexGatewayRingManager.RingLifecycler.GetInstanceID()
+		shardingStrategy = indexgateway.NewShuffleShardingStrategy(t.indexGatewayRingManager.Ring, t.Overrides, instanceAddr, instanceID)
+	}
+
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
 		if period.IndexType != config.BoltDBShipperType {
@@ -1175,7 +1184,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 
-		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant,
+		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, shardingStrategy,
 			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
 		)
 		if err != nil {

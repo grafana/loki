@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -25,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -99,15 +97,14 @@ type GatewayClient struct {
 
 	ring ring.ReadRing
 
-	stringBufPool   *sync.Pool
-	instanceBufPool *sync.Pool
+	limits indexgateway.Limits
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "index_gateway_request_duration_seconds",
@@ -129,6 +126,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
 		ring:                              cfg.Ring,
+		limits:                            limits,
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -144,20 +142,6 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 			}
 
 			return igPool, nil
-		}
-
-		// Replication factor plus additional room for JOINING/LEAVING instances
-		// See also ring.GetBufferSize
-		bufSize := cfg.Ring.ReplicationFactor() * 3 / 2
-		sgClient.stringBufPool = &sync.Pool{
-			New: func() any {
-				return make([]string, 0, bufSize)
-			},
-		}
-		sgClient.instanceBufPool = &sync.Pool{
-			New: func() any {
-				return make([]ring.InstanceDesc, 0, bufSize)
-			},
 		}
 
 		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, sgClient.ring, factory, logger)
@@ -354,15 +338,8 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 		return errors.Wrap(err, "index gateway client get tenant ID")
 	}
 
-	bufDescs := s.instanceBufPool.Get().([]ring.InstanceDesc)
-	defer s.instanceBufPool.Put(bufDescs) //nolint:staticcheck
-	bufHosts := s.stringBufPool.Get().([]string)
-	defer s.stringBufPool.Put(bufHosts) //nolint:staticcheck
-	bufZones := s.stringBufPool.Get().([]string)
-	defer s.stringBufPool.Put(bufZones) //nolint:staticcheck
-
-	key := util.TokenFor(userID, "" /* labels */)
-	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs[:0], bufHosts[:0], bufZones[:0])
+	r := indexgateway.GetShuffleShardingSubring(s.ring, userID, s.limits)
+	rs, err := r.GetReplicationSetForOperation(indexgateway.IndexesRead)
 	if err != nil {
 		return errors.Wrap(err, "index gateway get ring")
 	}
