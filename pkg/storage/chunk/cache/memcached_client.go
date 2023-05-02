@@ -104,6 +104,18 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 
 	client := memcache.NewFromSelector(selector)
+	client.InstrumentRequestDuration(r, []float64{
+		(50 * time.Microsecond).Seconds(),
+		(500 * time.Microsecond).Seconds(),
+		(time.Millisecond).Seconds(),
+		(5 * time.Millisecond).Seconds(),
+		(10 * time.Millisecond).Seconds(),
+		(50 * time.Millisecond).Seconds(),
+		(100 * time.Millisecond).Seconds(),
+		(250 * time.Millisecond).Seconds(),
+		(500 * time.Millisecond).Seconds(),
+		(time.Second).Seconds(),
+	})
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
 

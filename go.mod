@@ -51,7 +51,7 @@ require (
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 	github.com/grafana/dskit v0.0.0-20230417151531-1725bcc1e9a1
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
+	github.com/grafana/gomemcache v0.0.0-20230502121921-851158f87111
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 	github.com/grafana/tail v0.0.0-20230321215411-205c7713cbcd
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -82,7 +82,7 @@ require (
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.17
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.14.0
+	github.com/prometheus/client_golang v1.15.0
 	github.com/prometheus/client_model v0.3.0
 	github.com/prometheus/common v0.42.0
 	github.com/prometheus/prometheus v0.43.1-0.20230419161410-69155c6ba1e9
@@ -302,7 +302,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4 // indirect
-	google.golang.org/protobuf v1.29.1 // indirect
+	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

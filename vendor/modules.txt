@@ -840,7 +840,7 @@ github.com/grafana/dskit/tenant
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
+# github.com/grafana/gomemcache v0.0.0-20230502121921-851158f87111
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 => ./pkg/push
@@ -1149,7 +1149,7 @@ github.com/pmezard/go-difflib/difflib
 ## explicit; go 1.18
 github.com/prometheus/alertmanager/api/v2/models
 github.com/prometheus/alertmanager/pkg/modtimevfs
-# github.com/prometheus/client_golang v1.14.0
+# github.com/prometheus/client_golang v1.15.0
 ## explicit; go 1.17
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
@@ -1764,7 +1764,7 @@ google.golang.org/grpc/xds/internal/xdsclient/load
 google.golang.org/grpc/xds/internal/xdsclient/pubsub
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
-# google.golang.org/protobuf v1.29.1
+# google.golang.org/protobuf v1.30.0
 ## explicit; go 1.11
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext

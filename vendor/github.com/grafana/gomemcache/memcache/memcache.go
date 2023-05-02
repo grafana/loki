@@ -29,6 +29,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // Similar to:
@@ -135,7 +138,10 @@ func New(server ...string) *Client {
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
-	c := &Client{selector: ss, closed: make(chan struct{})}
+	c := &Client{
+		selector: ss,
+		closed:   make(chan struct{}),
+	}
 
 	go c.releaseIdleConnectionsUntilClosed()
 
@@ -188,6 +194,8 @@ type Client struct {
 
 	lk       sync.Mutex
 	freeconn map[string][]*conn
+
+	requestDuration *prometheus.HistogramVec
 }
 
 // Item is an item to be got or stored in a memcached server.
@@ -418,7 +426,7 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 	return cn, nil
 }
 
-func (c *Client) onItem(item *Item, fn func(*Client, *bufio.ReadWriter, *Item) error) error {
+func (c *Client) onItem(item *Item, operation string, fn func(*Client, *bufio.ReadWriter, *Item) error) error {
 	addr, err := c.selector.PickServer(item.Key)
 	if err != nil {
 		return err
@@ -428,6 +436,18 @@ func (c *Client) onItem(item *Item, fn func(*Client, *bufio.ReadWriter, *Item) e
 		return err
 	}
 	defer cn.condRelease(&err)
+
+	if c.requestDuration != nil {
+		start := time.Now()
+		defer func() {
+			status := "success"
+			if err != nil {
+				status = "failed"
+			}
+			c.requestDuration.WithLabelValues(operation, status, addr.String()).Observe(float64(time.Since(start).Seconds()))
+		}()
+	}
+
 	if err = fn(c, cn.rw, item); err != nil {
 		return err
 	}
@@ -442,7 +462,7 @@ func (c *Client) FlushAll() error {
 // memcache cache miss. The key must be at most 250 bytes in length.
 func (c *Client) Get(key string, opts ...Option) (item *Item, err error) {
 	options := newOptions(opts...)
-	err = c.withKeyAddr(key, func(addr net.Addr) error {
+	err = c.withKeyAddr(key, "get", func(addr net.Addr) error {
 		return c.getFromAddr(addr, []string{key}, options, func(it *Item) { item = it })
 	})
 	if err == nil && item == nil {
@@ -457,12 +477,12 @@ func (c *Client) Get(key string, opts ...Option) (item *Item, err error) {
 // no expiration time. ErrCacheMiss is returned if the key is not in the cache.
 // The key must be at most 250 bytes in length.
 func (c *Client) Touch(key string, seconds int32) (err error) {
-	return c.withKeyAddr(key, func(addr net.Addr) error {
+	return c.withKeyAddr(key, "touch", func(addr net.Addr) error {
 		return c.touchFromAddr(addr, []string{key}, seconds)
 	})
 }
 
-func (c *Client) withKeyAddr(key string, fn func(net.Addr) error) (err error) {
+func (c *Client) withKeyAddr(key, operation string, fn func(net.Addr) error) (err error) {
 	if !legalKey(key) {
 		return ErrMalformedKey
 	}
@@ -470,6 +490,18 @@ func (c *Client) withKeyAddr(key string, fn func(net.Addr) error) (err error) {
 	if err != nil {
 		return err
 	}
+
+	if c.requestDuration != nil {
+		start := time.Now()
+		defer func() {
+			status := "success"
+			if err != nil {
+				status = "failed"
+			}
+			c.requestDuration.WithLabelValues(operation, status, addr.String()).Observe(float64(time.Since(start).Seconds()))
+		}()
+	}
+
 	return fn(addr)
 }
 
@@ -482,8 +514,8 @@ func (c *Client) withAddrRw(addr net.Addr, fn func(*bufio.ReadWriter) error) (er
 	return fn(cn.rw)
 }
 
-func (c *Client) withKeyRw(key string, fn func(*bufio.ReadWriter) error) error {
-	return c.withKeyAddr(key, func(addr net.Addr) error {
+func (c *Client) withKeyRw(key, operation string, fn func(*bufio.ReadWriter) error) error {
+	return c.withKeyAddr(key, operation, func(addr net.Addr) error {
 		return c.withAddrRw(addr, fn)
 	})
 }
@@ -606,7 +638,18 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 	ch := make(chan error, buffered)
 	for addr, keys := range keyMap {
 		go func(addr net.Addr, keys []string) {
-			ch <- c.getFromAddr(addr, keys, options, addItemToMap)
+			start := time.Now()
+			err := c.getFromAddr(addr, keys, options, addItemToMap)
+
+			if c.requestDuration != nil {
+				status := "success"
+				if err != nil {
+					status = "failed"
+				}
+				c.requestDuration.WithLabelValues("get", status, addr.String()).Observe(float64(time.Since(start).Seconds()))
+			}
+
+			ch <- err
 		}(addr, keys)
 	}
 
@@ -702,7 +745,7 @@ func cut(s string, sep byte) (before, after string, found bool) {
 
 // Set writes the given item, unconditionally.
 func (c *Client) Set(item *Item) error {
-	return c.onItem(item, (*Client).set)
+	return c.onItem(item, "set", (*Client).set)
 }
 
 func (c *Client) set(rw *bufio.ReadWriter, item *Item) error {
@@ -712,7 +755,7 @@ func (c *Client) set(rw *bufio.ReadWriter, item *Item) error {
 // Add writes the given item, if no value already exists for its
 // key. ErrNotStored is returned if that condition is not met.
 func (c *Client) Add(item *Item) error {
-	return c.onItem(item, (*Client).add)
+	return c.onItem(item, "add", (*Client).add)
 }
 
 func (c *Client) add(rw *bufio.ReadWriter, item *Item) error {
@@ -722,7 +765,7 @@ func (c *Client) add(rw *bufio.ReadWriter, item *Item) error {
 // Replace writes the given item, but only if the server *does*
 // already hold data for this key
 func (c *Client) Replace(item *Item) error {
-	return c.onItem(item, (*Client).replace)
+	return c.onItem(item, "replace", (*Client).replace)
 }
 
 func (c *Client) replace(rw *bufio.ReadWriter, item *Item) error {
@@ -737,7 +780,7 @@ func (c *Client) replace(rw *bufio.ReadWriter, item *Item) error {
 // calls. ErrNotStored is returned if the value was evicted in between
 // the calls.
 func (c *Client) CompareAndSwap(item *Item) error {
-	return c.onItem(item, (*Client).cas)
+	return c.onItem(item, "cas", (*Client).cas)
 }
 
 func (c *Client) cas(rw *bufio.ReadWriter, item *Item) error {
@@ -820,14 +863,14 @@ func writeExpectf(rw *bufio.ReadWriter, expect []byte, format string, args ...in
 // Delete deletes the item with the provided key. The error ErrCacheMiss is
 // returned if the item didn't already exist in the cache.
 func (c *Client) Delete(key string) error {
-	return c.withKeyRw(key, func(rw *bufio.ReadWriter) error {
+	return c.withKeyRw(key, "delete", func(rw *bufio.ReadWriter) error {
 		return writeExpectf(rw, resultDeleted, "delete %s\r\n", key)
 	})
 }
 
 // DeleteAll deletes all items in the cache.
 func (c *Client) DeleteAll() error {
-	return c.withKeyRw("", func(rw *bufio.ReadWriter) error {
+	return c.withKeyRw("", "flush_all", func(rw *bufio.ReadWriter) error {
 		return writeExpectf(rw, resultDeleted, "flush_all\r\n")
 	})
 }
@@ -859,7 +902,7 @@ func (c *Client) Decrement(key string, delta uint64) (newValue uint64, err error
 
 func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
 	var val uint64
-	err := c.withKeyRw(key, func(rw *bufio.ReadWriter) error {
+	err := c.withKeyRw(key, verb, func(rw *bufio.ReadWriter) error {
 		line, err := writeReadLine(rw, "%s %s %d\r\n", verb, key, delta)
 		if err != nil {
 			return err
@@ -878,4 +921,17 @@ func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
 		return nil
 	})
 	return val, err
+}
+
+func (c *Client) InstrumentRequestDuration(r prometheus.Registerer, buckets []float64) {
+	if buckets == nil {
+		// 16us to 1s
+		buckets = prometheus.ExponentialBuckets(0.000016, 4, 8)
+	}
+
+	c.requestDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "gomemcache_request_duration_seconds",
+		Help:    "Total time spent in seconds doing cache requests.",
+		Buckets: buckets,
+	}, []string{"method", "status", "address"})
 }
