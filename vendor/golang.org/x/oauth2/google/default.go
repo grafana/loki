@@ -62,10 +62,6 @@ type CredentialsParams struct {
 
 	// PKCE is used to support PKCE flow. Optional for 3LO flow.
 	PKCE *authhandler.PKCEParams
-
-	// The OAuth2 TokenURL default override. This value overrides the default TokenURL,
-	// unless explicitly specified by the credentials config file. Optional.
-	TokenURL string
 }
 
 func (params CredentialsParams) deepCopy() CredentialsParams {
@@ -141,7 +137,7 @@ func FindDefaultCredentialsWithParams(ctx context.Context, params CredentialsPar
 	// use those credentials. App Engine standard second generation runtimes (>= Go 1.11)
 	// and App Engine flexible use ComputeTokenSource and the metadata server.
 	if appengineTokenFunc != nil {
-		return &Credentials{
+		return &DefaultCredentials{
 			ProjectID:   appengineAppIDFunc(ctx),
 			TokenSource: AppEngineTokenSource(ctx, params.Scopes...),
 		}, nil
@@ -151,7 +147,7 @@ func FindDefaultCredentialsWithParams(ctx context.Context, params CredentialsPar
 	// or App Engine flexible, use the metadata server.
 	if metadata.OnGCE() {
 		id, _ := metadata.ProjectID()
-		return &Credentials{
+		return &DefaultCredentials{
 			ProjectID:   id,
 			TokenSource: ComputeTokenSource("", params.Scopes...),
 		}, nil
@@ -198,7 +194,7 @@ func CredentialsFromJSONWithParams(ctx context.Context, jsonData []byte, params 
 		return nil, err
 	}
 	ts = newErrWrappingTokenSource(ts)
-	return &Credentials{
+	return &DefaultCredentials{
 		ProjectID:   f.ProjectID,
 		TokenSource: ts,
 		JSON:        jsonData,
@@ -220,7 +216,7 @@ func wellKnownFile() string {
 	return filepath.Join(guessUnixHomeDir(), ".config", "gcloud", f)
 }
 
-func readCredentialsFile(ctx context.Context, filename string, params CredentialsParams) (*Credentials, error) {
+func readCredentialsFile(ctx context.Context, filename string, params CredentialsParams) (*DefaultCredentials, error) {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err

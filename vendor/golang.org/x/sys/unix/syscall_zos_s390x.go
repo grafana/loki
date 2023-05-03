@@ -139,7 +139,8 @@ func anyToSockaddr(_ int, rsa *RawSockaddrAny) (Sockaddr, error) {
 		for n < int(pp.Len) && pp.Path[n] != 0 {
 			n++
 		}
-		sa.Name = string(unsafe.Slice((*byte)(unsafe.Pointer(&pp.Path[0])), n))
+		bytes := (*[len(pp.Path)]byte)(unsafe.Pointer(&pp.Path[0]))[0:n]
+		sa.Name = string(bytes)
 		return sa, nil
 
 	case AF_INET:
@@ -213,7 +214,6 @@ func (cmsg *Cmsghdr) SetLen(length int) {
 //sys   mmap(addr uintptr, length uintptr, prot int, flag int, fd int, pos int64) (ret uintptr, err error) = SYS_MMAP
 //sys   munmap(addr uintptr, length uintptr) (err error) = SYS_MUNMAP
 //sys   ioctl(fd int, req uint, arg uintptr) (err error) = SYS_IOCTL
-//sys   ioctlPtr(fd int, req uint, arg unsafe.Pointer) (err error) = SYS_IOCTL
 
 //sys   Access(path string, mode uint32) (err error) = SYS___ACCESS_A
 //sys   Chdir(path string) (err error) = SYS___CHDIR_A

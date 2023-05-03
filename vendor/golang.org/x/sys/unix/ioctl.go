@@ -8,6 +8,7 @@
 package unix
 
 import (
+	"runtime"
 	"unsafe"
 )
 
@@ -26,7 +27,7 @@ func IoctlSetInt(fd int, req uint, value int) error {
 // passing the integer value directly.
 func IoctlSetPointerInt(fd int, req uint, value int) error {
 	v := int32(value)
-	return ioctlPtr(fd, req, unsafe.Pointer(&v))
+	return ioctl(fd, req, uintptr(unsafe.Pointer(&v)))
 }
 
 // IoctlSetWinsize performs an ioctl on fd with a *Winsize argument.
@@ -35,7 +36,9 @@ func IoctlSetPointerInt(fd int, req uint, value int) error {
 func IoctlSetWinsize(fd int, req uint, value *Winsize) error {
 	// TODO: if we get the chance, remove the req parameter and
 	// hardcode TIOCSWINSZ.
-	return ioctlPtr(fd, req, unsafe.Pointer(value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(value)))
+	runtime.KeepAlive(value)
+	return err
 }
 
 // IoctlSetTermios performs an ioctl on fd with a *Termios.
@@ -43,7 +46,9 @@ func IoctlSetWinsize(fd int, req uint, value *Winsize) error {
 // The req value will usually be TCSETA or TIOCSETA.
 func IoctlSetTermios(fd int, req uint, value *Termios) error {
 	// TODO: if we get the chance, remove the req parameter.
-	return ioctlPtr(fd, req, unsafe.Pointer(value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(value)))
+	runtime.KeepAlive(value)
+	return err
 }
 
 // IoctlGetInt performs an ioctl operation which gets an integer value
@@ -53,18 +58,18 @@ func IoctlSetTermios(fd int, req uint, value *Termios) error {
 // for those, IoctlRetInt should be used instead of this function.
 func IoctlGetInt(fd int, req uint) (int, error) {
 	var value int
-	err := ioctlPtr(fd, req, unsafe.Pointer(&value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(&value)))
 	return value, err
 }
 
 func IoctlGetWinsize(fd int, req uint) (*Winsize, error) {
 	var value Winsize
-	err := ioctlPtr(fd, req, unsafe.Pointer(&value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(&value)))
 	return &value, err
 }
 
 func IoctlGetTermios(fd int, req uint) (*Termios, error) {
 	var value Termios
-	err := ioctlPtr(fd, req, unsafe.Pointer(&value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(&value)))
 	return &value, err
 }

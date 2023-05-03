@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -355,8 +356,12 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	grpcOptions := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(grpcMiddleware...),
-		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			grpcMiddleware...,
+		)),
+		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+			grpcStreamMiddleware...,
+		)),
 		grpc.KeepaliveParams(grpcKeepAliveOptions),
 		grpc.KeepaliveEnforcementPolicy(grpcKeepAliveEnforcementPolicy),
 		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),

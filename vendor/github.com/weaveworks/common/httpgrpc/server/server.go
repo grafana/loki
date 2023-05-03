@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sercand/kuberesolver"
@@ -135,10 +136,10 @@ func NewClient(address string) (*Client, error) {
 	dialOptions := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(grpcServiceConfig),
 		grpc.WithInsecure(),
-		grpc.WithChainUnaryInterceptor(
+		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
-		),
+		)),
 	}
 
 	conn, err := grpc.Dial(address, dialOptions...)

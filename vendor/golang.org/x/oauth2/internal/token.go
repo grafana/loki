@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/context/ctxhttp"
 )
 
 // Token represents the credentials used to authorize
@@ -227,7 +229,7 @@ func RetrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string,
 }
 
 func doTokenRoundTrip(ctx context.Context, req *http.Request) (*Token, error) {
-	r, err := ContextClient(ctx).Do(req.WithContext(ctx))
+	r, err := ctxhttp.Do(ctx, ContextClient(ctx), req)
 	if err != nil {
 		return nil, err
 	}
