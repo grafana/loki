@@ -4,6 +4,10 @@
 
 #### Loki
 
+##### Security
+
+* [9370](https://github.com/grafana/loki/pull/9370) **dannykopping**: upgrade to go1.20.4
+
 ##### Enhancements
 
 * [8067](https://github.com/grafana/loki/pull/8067) **DylanGuedes**: Distributor: Add auto-forget unhealthy members support.
