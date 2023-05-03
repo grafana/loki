@@ -295,6 +295,10 @@ func (c *Context) AddDuplicates(i int64) {
 	atomic.AddInt64(&c.store.Chunk.TotalDuplicates, i)
 }
 
+func (c *Context) AddDuplicateBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.DuplicateBytes, i)
+}
+
 func (c *Context) AddChunksDownloadTime(i time.Duration) {
 	atomic.AddInt64(&c.store.ChunksDownloadTime, int64(i))
 }

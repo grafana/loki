@@ -2,6 +2,7 @@ package iter
 
 import (
 	"context"
+	"encoding/binary"
 	"io"
 	"math"
 	"sync"
@@ -144,6 +145,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 		for _, t := range previous {
 			if t.Entry.Line == entry.Line {
 				i.stats.AddDuplicates(1)
+				i.stats.AddDuplicateBytes(int64(len(entry.Line)) + 2*binary.MaxVarintLen64)
 				dupe = true
 				break
 			}
