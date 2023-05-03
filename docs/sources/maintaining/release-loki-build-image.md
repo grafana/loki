@@ -17,6 +17,7 @@ if there were made any changes in the folder `./loki-build-image/`.
 1. create a branch with the desired changes to the Dockerfile
 2. update the version tag of the `loki-build-image` pipeline defined in `.drone/drone.jsonnet` (search for `pipeline('loki-build-image')`) to a new version number (try follow semver)
 3. run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone` and commit the changes to the same branch
+   1. the `<token>` is your personal drone token, which can be found by navigating to https://drone.grafana.net/account.
 4. create a PR
 5. once approved and merged to `main`, the image with the new version is built and published
    - **hint:** keep an eye on https://drone.grafana.net/grafana/loki for the build after merging ([example](https://drone.grafana.net/grafana/loki/17760/1/2))
