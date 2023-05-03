@@ -22,7 +22,6 @@ func WithDefaultResolver(r Resolver) {
 // supplied or user.ErrTooManyOrgIDs if there are multiple tenant IDs present.
 //
 // ignore stutter warning
-//
 //nolint:revive
 func TenantID(ctx context.Context) (string, error) {
 	return defaultResolver.TenantID(ctx)
@@ -33,7 +32,6 @@ func TenantID(ctx context.Context) (string, error) {
 // NormalizeTenantIDs).
 //
 // ignore stutter warning
-//
 //nolint:revive
 func TenantIDs(ctx context.Context) ([]string, error) {
 	return defaultResolver.TenantIDs(ctx)

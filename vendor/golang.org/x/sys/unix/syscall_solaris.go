@@ -408,7 +408,8 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 		for n < len(pp.Path) && pp.Path[n] != 0 {
 			n++
 		}
-		sa.Name = string(unsafe.Slice((*byte)(unsafe.Pointer(&pp.Path[0])), n))
+		bytes := (*[len(pp.Path)]byte)(unsafe.Pointer(&pp.Path[0]))[0:n]
+		sa.Name = string(bytes)
 		return sa, nil
 
 	case AF_INET:
@@ -546,25 +547,21 @@ func Minor(dev uint64) uint32 {
  */
 
 //sys	ioctlRet(fd int, req uint, arg uintptr) (ret int, err error) = libc.ioctl
-//sys	ioctlPtrRet(fd int, req uint, arg unsafe.Pointer) (ret int, err error) = libc.ioctl
 
 func ioctl(fd int, req uint, arg uintptr) (err error) {
 	_, err = ioctlRet(fd, req, arg)
 	return err
 }
 
-func ioctlPtr(fd int, req uint, arg unsafe.Pointer) (err error) {
-	_, err = ioctlPtrRet(fd, req, arg)
-	return err
-}
-
 func IoctlSetTermio(fd int, req uint, value *Termio) error {
-	return ioctlPtr(fd, req, unsafe.Pointer(value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(value)))
+	runtime.KeepAlive(value)
+	return err
 }
 
 func IoctlGetTermio(fd int, req uint) (*Termio, error) {
 	var value Termio
-	err := ioctlPtr(fd, req, unsafe.Pointer(&value))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(&value)))
 	return &value, err
 }
 
@@ -1087,7 +1084,7 @@ func IoctlSetIntRetInt(fd int, req uint, arg int) (int, error) {
 func IoctlSetString(fd int, req uint, val string) error {
 	bs := make([]byte, len(val)+1)
 	copy(bs[:len(bs)-1], val)
-	err := ioctlPtr(fd, req, unsafe.Pointer(&bs[0]))
+	err := ioctl(fd, req, uintptr(unsafe.Pointer(&bs[0])))
 	runtime.KeepAlive(&bs[0])
 	return err
 }
@@ -1121,7 +1118,7 @@ func (l *Lifreq) GetLifruUint() uint {
 }
 
 func IoctlLifreq(fd int, req uint, l *Lifreq) error {
-	return ioctlPtr(fd, req, unsafe.Pointer(l))
+	return ioctl(fd, req, uintptr(unsafe.Pointer(l)))
 }
 
 // Strioctl Helpers
@@ -1132,5 +1129,5 @@ func (s *Strioctl) SetInt(i int) {
 }
 
 func IoctlSetStrioctlRetInt(fd int, req uint, s *Strioctl) (int, error) {
-	return ioctlPtrRet(fd, req, unsafe.Pointer(s))
+	return ioctlRet(fd, req, uintptr(unsafe.Pointer(s)))
 }
