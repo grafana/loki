@@ -1,5 +1,6 @@
 ## Main
 
+- [9378](https://github.com/grafana/loki/pull/9378) **aminesnow**: Add zone aware API spec validation
 - [9315](https://github.com/grafana/loki/pull/9315) **aminesnow**: Add zone awareness spec to LokiStack
 - [9339](https://github.com/grafana/loki/pull/9339) **JoaoBraveCoding**: Add default PodAntiAffinity to Ruler
 - [9329](https://github.com/grafana/loki/pull/9329) **JoaoBraveCoding**: Add default PodAntiAffinity to Ingester
