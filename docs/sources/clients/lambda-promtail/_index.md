@@ -48,7 +48,7 @@ provider "aws" {
 }
 ```
 
-To keep the log group label add `-var "keep_stream=true"`.
+To keep the log stream label add `-var "keep_stream=true"`.
 
 To add extra labels add `-var 'extra_labels="name1,value1,name2,value2"'`.
 
