@@ -660,7 +660,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
-    trigger: onTagOrMain,
+    trigger+: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
