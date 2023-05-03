@@ -1164,7 +1164,7 @@ name: manifest
 steps:
 - depends_on:
   - clone
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-promtail
   settings:
     ignore_missing: false
@@ -1177,7 +1177,7 @@ steps:
 - depends_on:
   - clone
   - manifest-promtail
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki
   settings:
     ignore_missing: false
@@ -1190,7 +1190,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-canary
   settings:
     ignore_missing: false
@@ -1203,7 +1203,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki-canary
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-operator
   settings:
     ignore_missing: false
@@ -1682,7 +1682,7 @@ steps:
 - depends_on:
   - clone
   - ecr-login
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-lambda-promtail
   settings:
     ignore_missing: true
@@ -1764,6 +1764,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: ad2917515a4e42b876443346b4965a89c3983a14867cdb09ef8f41e83f224856
+hmac: e55dd10435cadfde79f6f334a0d9ad45fc78e6568159c6d58673fcdd3e92d44e
 
 ...
