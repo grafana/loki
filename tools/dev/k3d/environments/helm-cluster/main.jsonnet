@@ -133,8 +133,8 @@ local tenant = 'loki';
 
   local dashboardsPrefix = if enterprise then 'enterprise-logs' else 'loki',
   local grafanaImage = if enterprise then
-    grafana.withImage('grafana/grafana-enterprise:8.2.5') else
-    grafana.withImage('grafana/grafana:8.2.5'),
+    grafana.withImage('grafana/grafana-enterprise:9.5.1') else
+    grafana.withImage('grafana/grafana:9.5.1'),
   grafana+: grafana
             + grafana.withAnonymous()
             + grafanaImage
