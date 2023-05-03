@@ -621,7 +621,7 @@ POST /log_level
 
 Params:
 
-- `log_level`: A valid log level that can be passed as URL param (`?log_level=<level>`) or as form value in case of `POST`. Valid levels: [debug, info, warn, error]
+- `log_level`: A valid log level that can be passed as a URL param (`?log_level=<level>`) or as a form value in case of `POST`. Valid levels: [debug, info, warn, error]
 
 In microservices mode, the `/log_level` endpoint is exposed by all components.
 
