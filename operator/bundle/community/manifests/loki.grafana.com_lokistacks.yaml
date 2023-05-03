@@ -5,11 +5,11 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.2.0
+    app.kubernetes.io/instance: loki-operator-v0.3.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.2.0
+    app.kubernetes.io/version: 0.3.0
   name: lokistacks.loki.grafana.com
 spec:
   conversion:
@@ -344,8 +344,8 @@ spec:
                     minimum: 1
                     type: integer
                   zones:
-                    description: Zone is the key that defines a topology in the Nodes'
-                      labels.
+                    description: Zones defines an array of ZoneSpec that the scheduler
+                      will try to satisfy.
                     items:
                       description: ZoneSpec defines the spec to support zone-aware
                         component deployments.
@@ -364,8 +364,6 @@ spec:
                       - topologyKey
                       type: object
                     type: array
-                required:
-                - zones
                 type: object
               replicationFactor:
                 description: 'Deprecated: Please use replication.factor instead. This

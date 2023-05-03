@@ -104,6 +104,7 @@ func ConfigOptions(opt Options) config.Options {
 	}
 
 	// nolint:staticcheck
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
 	if (opt.Stack.Replication == nil || opt.Stack.Replication.Factor == 0) && opt.Stack.ReplicationFactor > 0 {
 		if opt.Stack.Replication == nil {
 			opt.Stack.Replication = &lokiv1.ReplicationSpec{}

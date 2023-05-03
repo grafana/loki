@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.28.2
+    - 0.28.3
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.28.2
+    - 0.28.3
     username:
       from_secret: docker_username
   when:
@@ -1174,7 +1174,7 @@ name: manifest
 steps:
 - depends_on:
   - clone
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-promtail
   settings:
     ignore_missing: false
@@ -1187,7 +1187,7 @@ steps:
 - depends_on:
   - clone
   - manifest-promtail
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki
   settings:
     ignore_missing: false
@@ -1200,7 +1200,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-canary
   settings:
     ignore_missing: false
@@ -1213,7 +1213,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki-canary
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-operator
   settings:
     ignore_missing: false
@@ -1690,7 +1690,7 @@ steps:
 - depends_on:
   - clone
   - ecr-login
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-lambda-promtail
   settings:
     ignore_missing: true
@@ -1772,6 +1772,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 59c2b7df0660f1b6855eac6b71b4cf8ad62727d6b10314baf48a2ab85bf27463
+hmac: 81941d0775a351bf94e90c6d4845e78c72de1d63f0b46f767b7deb147e2c7905
 
 ...

@@ -3328,7 +3328,8 @@ int32
 </em>
 </td>
 <td>
-<p>Zone is the key that defines a topology in the Nodes&rsquo; labels.</p>
+<em>(Optional)</em>
+<p>Zones defines an array of ZoneSpec that the scheduler will try to satisfy.</p>
 </td>
 </tr>
 </tbody>

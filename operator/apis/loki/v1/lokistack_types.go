@@ -820,12 +820,12 @@ type ReplicationSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	Factor int32 `json:"factor,omitempty"`
 
-	// Zone is the key that defines a topology in the Nodes' labels.
+	// Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Zones Spec"
-	Zones []ZoneSpec `json:"zones"`
+	Zones []ZoneSpec `json:"zones,omitempty"`
 }
 
 // ZoneSpec defines the spec to support zone-aware component deployments.
