@@ -28,5 +28,5 @@ if any changes were made in the folder `./loki-build-image/`.
 2. update the `BUILD_IMAGE_VERSION` variable in the `Makefile`
 3. run `loki-build-image/version-updater.sh <new-version>` to update all the references
 4. run `DRONE_SERVER=https://drone.grafana.net/ DRONE_TOKEN=<token> make drone` to update the Drone config to use the new build image
-5. push the changes to the branch you created in step 1 and create a new PR
+5. create a new PR
 
