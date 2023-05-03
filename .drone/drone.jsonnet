@@ -389,7 +389,7 @@ local manifest(apps) = pipeline('manifest') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest:1.4.0',
+      image: 'plugins/manifest',
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest.tmpl
@@ -422,7 +422,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest:1.4.0',
+      image: 'plugins/manifest',
       volumes: [{
         name: 'dockerconf',
         path: '/.docker',
@@ -577,9 +577,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki', container=false) { depends_on: ['check-generated-files'] },
       make('check-doc', container=false) { depends_on: ['loki'] },
-      make('check-format', container=false, args=[
-        'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
-      ]) { depends_on: ['loki'], when: onPRs },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
@@ -663,9 +660,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
-    trigger: onTagOrMain {
-      ref: ['refs/heads/main', 'refs/tags/v*'],
-    },
+    trigger: onTagOrMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [

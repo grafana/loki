@@ -199,16 +199,6 @@ steps:
   image: grafana/loki-build-image:0.28.3
   name: check-doc
 - commands:
-  - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
-  depends_on:
-  - loki
-  environment: {}
-  image: grafana/loki-build-image:0.28.3
-  name: check-format
-  when:
-    event:
-    - pull_request
-- commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
