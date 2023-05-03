@@ -617,7 +617,7 @@ GET /log_level
 POST /log_level
 ```
 
-`/log_level` a `GET` returns the current log level and a `POST` lets you change the log level of a Loki process at runtime. This can be useful for accessing debugging information during an incident. Caution should be used when running  at the `debug` log level, as this produces a large volume of data.
+`/log_level` a `GET` returns the current log level and a `POST` lets you change the log level of a Loki process at runtime. This can be useful for accessing debugging information during an incident. Caution should be used when running at the `debug` log level, as this produces a large volume of data.
 
 Params:
 
