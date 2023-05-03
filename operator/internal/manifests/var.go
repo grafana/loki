@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
@@ -57,7 +58,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.8.0"
+	DefaultContainerImage = "docker.io/grafana/loki:2.8.2"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -112,8 +113,9 @@ var (
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
 	podAntiAffinityComponents = map[string]struct{}{
-		LabelIngesterComponent: {},
-		LabelRulerComponent:    {},
+		LabelIngesterComponent:      {},
+		LabelRulerComponent:         {},
+		LabelQueryFrontendComponent: {},
 	}
 )
 
@@ -139,6 +141,22 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 		annotations[openshift.ServingCertKey] = serviceName
 	}
 	return annotations
+}
+
+func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpreadConstraint {
+	var tsc []corev1.TopologySpreadConstraint
+	if len(spec.Zones) > 0 {
+		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
+		for i, z := range spec.Zones {
+			tsc[i] = corev1.TopologySpreadConstraint{
+				MaxSkew:           int32(z.MaxSkew),
+				TopologyKey:       z.TopologyKey,
+				WhenUnsatisfiable: corev1.DoNotSchedule,
+			}
+		}
+	}
+
+	return tsc
 }
 
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label

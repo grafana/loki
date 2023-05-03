@@ -69,6 +69,63 @@ func TestRecordingRuleValidator(t *testing.T) {
 			},
 		},
 		{
+			desc: "custom tenant topology enabled",
+			spec: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "recording-rule",
+					Namespace: "openshift-example",
+					Annotations: map[string]string{
+						lokiv1.AnnotationDisableTenantValidation: "true",
+					},
+				},
+				Spec: lokiv1.RecordingRuleSpec{
+					TenantID: "foobar",
+					Groups: []*lokiv1.RecordingRuleGroup{
+						{
+							Rules: []*lokiv1.RecordingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="openshift-example", level="error"}[5m])) by (job) > 0.1`,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "wrong tenant topology",
+			spec: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "recording-rule",
+					Namespace: "openshift-example",
+					Annotations: map[string]string{
+						lokiv1.AnnotationDisableTenantValidation: "not-valid",
+					},
+				},
+				Spec: lokiv1.RecordingRuleSpec{
+					TenantID: "foobar",
+					Groups: []*lokiv1.RecordingRuleGroup{
+						{
+							Rules: []*lokiv1.RecordingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="openshift-example", level="error"}[5m])) by (job) > 0.1`,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:     field.ErrorTypeInvalid,
+					Field:    `metadata.annotations[loki.grafana.com/disable-tenant-validation]`,
+					BadValue: "not-valid",
+					Detail:   `strconv.ParseBool: parsing "not-valid": invalid syntax`,
+				},
+			},
+		},
+
+		{
 			desc: "expression does not parse",
 			spec: &lokiv1.RecordingRule{
 				ObjectMeta: metav1.ObjectMeta{

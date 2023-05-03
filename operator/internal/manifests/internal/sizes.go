@@ -227,8 +227,10 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 // StackSizeTable defines the default configurations for each size
 var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 	lokiv1.SizeOneXDemo: {
-		Size:              lokiv1.SizeOneXDemo,
-		ReplicationFactor: 1,
+		Size: lokiv1.SizeOneXDemo,
+		Replication: &lokiv1.ReplicationSpec{
+			Factor: 1,
+		},
 		Limits: &lokiv1.LimitsSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -277,8 +279,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 		},
 	},
 	lokiv1.SizeOneXExtraSmall: {
-		Size:              lokiv1.SizeOneXExtraSmall,
-		ReplicationFactor: 1,
+		Size: lokiv1.SizeOneXExtraSmall,
+		Replication: &lokiv1.ReplicationSpec{
+			Factor: 1,
+		},
 		Limits: &lokiv1.LimitsSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -328,8 +332,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 	},
 
 	lokiv1.SizeOneXSmall: {
-		Size:              lokiv1.SizeOneXSmall,
-		ReplicationFactor: 2,
+		Size: lokiv1.SizeOneXSmall,
+		Replication: &lokiv1.ReplicationSpec{
+			Factor: 2,
+		},
 		Limits: &lokiv1.LimitsSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -381,8 +387,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 	},
 
 	lokiv1.SizeOneXMedium: {
-		Size:              lokiv1.SizeOneXMedium,
-		ReplicationFactor: 3,
+		Size: lokiv1.SizeOneXMedium,
+		Replication: &lokiv1.ReplicationSpec{
+			Factor: 3,
+		},
 		Limits: &lokiv1.LimitsSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
