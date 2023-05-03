@@ -1136,10 +1136,8 @@ gateway:
       {{ if .Values.loki.tenants }}
 
 
-
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
 
 
         {{- end }}
