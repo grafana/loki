@@ -4,10 +4,6 @@
 
 #### Loki
 
-##### Security
-
-* [9370](https://github.com/grafana/loki/pull/9370) **dannykopping**: upgrade to go1.20.4
-
 ##### Enhancements
 
 * [8067](https://github.com/grafana/loki/pull/8067) **DylanGuedes**: Distributor: Add auto-forget unhealthy members support.
@@ -30,7 +26,6 @@
 * [8909](https://github.com/grafana/loki/pull/8909) **salvacorts** Requests to `/loki/api/v1/index/stats` are split in 24h intervals.
 * [8732](https://github.com/grafana/loki/pull/8732) **abaguas**: azure: respect retry config before cancelling the context
 * [9206](https://github.com/grafana/loki/pull/9206) **dannykopping**: Ruler: log rule evaluation detail.
-* [9184](https://github.com/grafana/loki/pull/9184) **periklis**: Bump dskit to introduce IPv6 support for memberlist
 
 ##### Fixes
 
@@ -79,6 +74,18 @@
 
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
+
+## 2.8.2 (2023-05-03)
+
+#### Loki
+
+##### Security
+
+* [9370](https://github.com/grafana/loki/pull/9370) **dannykopping**: upgrade to go1.20.4
+
+##### Enhancements
+
+* [9184](https://github.com/grafana/loki/pull/9184) **periklis**: Bump dskit to introduce IPv6 support for memberlist
 
 ## 2.8.1 (2023-04-24)
 
