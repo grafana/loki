@@ -41,7 +41,7 @@
           values: [
             this[name].spec.selector.name
             for name in std.objectFields(this)
-            if std.isObject(this[name]) && std.objectHas(this[name], 'kind') && this[name].kind == 'Service'
+            if std.isObject(this[name]) && std.objectHas(this[name], 'kind') && this[name].kind == 'Service' && std.objectHasAll(this[name].spec.selector, 'name')
           ],
         }],
       },
