@@ -28,6 +28,11 @@ const (
 	StorageSchemaUpdateBuffer = time.Hour * 2
 )
 
+const (
+	// The AnnotationDisableTenantValidation annotation can contain a boolean value that, if true, disables the tenant-ID validation.
+	AnnotationDisableTenantValidation = "loki.grafana.com/disable-tenant-validation"
+)
+
 var (
 	// ErrGroupNamesNotUnique is the error type when loki groups have not unique names.
 	ErrGroupNamesNotUnique = errors.New("Group names are not unique")
