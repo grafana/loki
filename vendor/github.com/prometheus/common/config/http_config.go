@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/mwitkow/go-conntrack"
+	"golang.org/x/net/http/httpproxy"
 	"golang.org/x/net/http2"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -80,12 +81,9 @@ func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return fmt.Errorf("unknown TLS version: %s", s)
 }
 
-func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
-	if tv == nil || *tv == 0 {
-		return []byte("null"), nil
-	}
+func (tv TLSVersion) MarshalYAML() (interface{}, error) {
 	for s, v := range TLSVersions {
-		if *tv == v {
+		if tv == v {
 			return s, nil
 		}
 	}
@@ -106,13 +104,10 @@ func (tv *TLSVersion) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface for TLSVersion.
-func (tv *TLSVersion) MarshalJSON() ([]byte, error) {
-	if tv == nil || *tv == 0 {
-		return []byte("null"), nil
-	}
+func (tv TLSVersion) MarshalJSON() ([]byte, error) {
 	for s, v := range TLSVersions {
-		if *tv == v {
-			return []byte(s), nil
+		if tv == v {
+			return json.Marshal(s)
 		}
 	}
 	return nil, fmt.Errorf("unknown TLS version: %d", tv)
@@ -233,11 +228,26 @@ type OAuth2 struct {
 	Scopes           []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
 	TokenURL         string            `yaml:"token_url" json:"token_url"`
 	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+	TLSConfig        TLSConfig         `yaml:"tls_config,omitempty"`
+	ProxyConfig      `yaml:",inline"`
+}
 
-	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
-	// TLSConfig is used to connect to the token URL.
-	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
+// UnmarshalYAML implements the yaml.Unmarshaler interface
+func (o *OAuth2) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain OAuth2
+	if err := unmarshal((*plain)(o)); err != nil {
+		return err
+	}
+	return o.ProxyConfig.Validate()
+}
+
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (o *OAuth2) UnmarshalJSON(data []byte) error {
+	type plain OAuth2
+	if err := json.Unmarshal(data, (*plain)(o)); err != nil {
+		return err
+	}
+	return o.ProxyConfig.Validate()
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -287,13 +297,6 @@ type HTTPClientConfig struct {
 	// The bearer token file for the targets. Deprecated in favour of
 	// Authorization.CredentialsFile.
 	BearerTokenFile string `yaml:"bearer_token_file,omitempty" json:"bearer_token_file,omitempty"`
-	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
-	// ProxyConnectHeader optionally specifies headers to send to
-	// proxies during CONNECT requests. Assume that at least _some_ of
-	// these headers are going to contain secrets and use Secret as the
-	// value type instead of string.
-	ProxyConnectHeader Header `yaml:"proxy_connect_header,omitempty" json:"proxy_connect_header,omitempty"`
 	// TLSConfig to use to connect to the targets.
 	TLSConfig TLSConfig `yaml:"tls_config,omitempty" json:"tls_config,omitempty"`
 	// FollowRedirects specifies whether the client should follow HTTP 3xx redirects.
@@ -304,6 +307,8 @@ type HTTPClientConfig struct {
 	// The omitempty flag is not set, because it would be hidden from the
 	// marshalled configuration when set to false.
 	EnableHTTP2 bool `yaml:"enable_http2" json:"enable_http2"`
+	// Proxy configuration.
+	ProxyConfig `yaml:",inline"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -378,8 +383,8 @@ func (c *HTTPClientConfig) Validate() error {
 			return fmt.Errorf("at most one of oauth2 client_secret & client_secret_file must be configured")
 		}
 	}
-	if len(c.ProxyConnectHeader) > 0 && (c.ProxyURL.URL == nil || c.ProxyURL.String() == "") {
-		return fmt.Errorf("if proxy_connect_header is configured proxy_url must also be configured")
+	if err := c.ProxyConfig.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -508,8 +513,8 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		// The only timeout we care about is the configured scrape timeout.
 		// It is applied on request. So we leave out any timings here.
 		var rt http.RoundTripper = &http.Transport{
-			Proxy:                 http.ProxyURL(cfg.ProxyURL.URL),
-			ProxyConnectHeader:    cfg.ProxyConnectHeader.HTTPHeader(),
+			Proxy:                 cfg.ProxyConfig.Proxy(),
+			ProxyConnectHeader:    cfg.ProxyConfig.GetProxyConnectHeader(),
 			MaxIdleConns:          20000,
 			MaxIdleConnsPerHost:   1000, // see https://github.com/golang/go/issues/13801
 			DisableKeepAlives:     !opts.keepAlivesEnabled,
@@ -730,7 +735,8 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		tlsTransport := func(tlsConfig *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{
 				TLSClientConfig:       tlsConfig,
-				Proxy:                 http.ProxyURL(rt.config.ProxyURL.URL),
+				Proxy:                 rt.config.ProxyConfig.Proxy(),
+				ProxyConnectHeader:    rt.config.ProxyConfig.GetProxyConnectHeader(),
 				DisableKeepAlives:     !rt.opts.keepAlivesEnabled,
 				MaxIdleConns:          20,
 				MaxIdleConnsPerHost:   1, // see https://github.com/golang/go/issues/13801
@@ -1077,4 +1083,79 @@ func (c HTTPClientConfig) String() string {
 		return fmt.Sprintf("<error creating http client config string: %s>", err)
 	}
 	return string(b)
+}
+
+type ProxyConfig struct {
+	// HTTP proxy server to use to connect to the targets.
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
+	// NoProxy contains addresses that should not use a proxy.
+	NoProxy string `yaml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	// ProxyFromEnvironment makes use of net/http ProxyFromEnvironment function
+	// to determine proxies.
+	ProxyFromEnvironment bool `yaml:"proxy_from_environment,omitempty" json:"proxy_from_environment,omitempty"`
+	// ProxyConnectHeader optionally specifies headers to send to
+	// proxies during CONNECT requests. Assume that at least _some_ of
+	// these headers are going to contain secrets and use Secret as the
+	// value type instead of string.
+	ProxyConnectHeader Header `yaml:"proxy_connect_header,omitempty" json:"proxy_connect_header,omitempty"`
+
+	proxyFunc func(*http.Request) (*url.URL, error)
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *ProxyConfig) Validate() error {
+	if len(c.ProxyConnectHeader) > 0 && (!c.ProxyFromEnvironment && (c.ProxyURL.URL == nil || c.ProxyURL.String() == "")) {
+		return fmt.Errorf("if proxy_connect_header is configured, proxy_url or proxy_from_environment must also be configured")
+	}
+	if c.ProxyFromEnvironment && c.ProxyURL.URL != nil && c.ProxyURL.String() != "" {
+		return fmt.Errorf("if proxy_from_environment is configured, proxy_url must not be configured")
+	}
+	if c.ProxyFromEnvironment && c.NoProxy != "" {
+		return fmt.Errorf("if proxy_from_environment is configured, no_proxy must not be configured")
+	}
+	if c.ProxyURL.URL == nil && c.NoProxy != "" {
+		return fmt.Errorf("if no_proxy is configured, proxy_url must also be configured")
+	}
+	return nil
+}
+
+// Proxy returns the Proxy URL for a request.
+func (c *ProxyConfig) Proxy() (fn func(*http.Request) (*url.URL, error)) {
+	if c == nil {
+		return nil
+	}
+	defer func() {
+		fn = c.proxyFunc
+	}()
+	if c.proxyFunc != nil {
+		return
+	}
+	if c.ProxyFromEnvironment {
+		proxyFn := httpproxy.FromEnvironment().ProxyFunc()
+		c.proxyFunc = func(req *http.Request) (*url.URL, error) {
+			return proxyFn(req.URL)
+		}
+		return
+	}
+	if c.ProxyURL.URL != nil && c.ProxyURL.URL.String() != "" {
+		if c.NoProxy == "" {
+			c.proxyFunc = http.ProxyURL(c.ProxyURL.URL)
+			return
+		}
+		proxy := &httpproxy.Config{
+			HTTPProxy:  c.ProxyURL.String(),
+			HTTPSProxy: c.ProxyURL.String(),
+			NoProxy:    c.NoProxy,
+		}
+		proxyFn := proxy.ProxyFunc()
+		c.proxyFunc = func(req *http.Request) (*url.URL, error) {
+			return proxyFn(req.URL)
+		}
+	}
+	return
+}
+
+// ProxyConnectHeader() return the Proxy Connext Headers.
+func (c *ProxyConfig) GetProxyConnectHeader() http.Header {
+	return c.ProxyConnectHeader.HTTPHeader()
 }

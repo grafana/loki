@@ -31,7 +31,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.2
+BUILD_IMAGE_VERSION := 0.28.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -131,6 +131,7 @@ check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/u
 ##########
 .PHONY: cmd/logcli/logcli
 logcli: cmd/logcli/logcli
+logcli-debug: cmd/logcli/logcli-debug
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
@@ -138,6 +139,8 @@ logcli-image:
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
 
+cmd/logcli/logcli-debug:
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o ./cmd/logcli/logcli-debug ./cmd/logcli
 ########
 # Loki #
 ########
@@ -270,7 +273,7 @@ dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -623,7 +626,7 @@ loki-operator-push: loki-operator-image-cross
 documentation-helm-reference-check:
 	@echo "Checking diff"
 	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
 
 ########
 # Misc #

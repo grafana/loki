@@ -103,6 +103,16 @@ func ConfigOptions(opt Options) config.Options {
 		protocol = "https"
 	}
 
+	// nolint:staticcheck
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opt.Stack.Replication == nil || opt.Stack.Replication.Factor == 0) && opt.Stack.ReplicationFactor > 0 {
+		if opt.Stack.Replication == nil {
+			opt.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+
+		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
+	}
+
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
@@ -321,6 +331,7 @@ func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.Remot
 }
 
 var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXDemo:       10,
 	lokiv1.SizeOneXExtraSmall: 10,
 	lokiv1.SizeOneXSmall:      150,
 	lokiv1.SizeOneXMedium:     150,

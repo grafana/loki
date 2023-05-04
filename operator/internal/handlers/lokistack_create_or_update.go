@@ -367,6 +367,7 @@ func CreateOrUpdateLokiStack(
 
 		depAnnotations, err := dependentAnnotations(ctx, k, obj)
 		if err != nil {
+			l.Error(err, "failed to set dependent annotations")
 			return err
 		}
 
@@ -395,7 +396,7 @@ func CreateOrUpdateLokiStack(
 
 	// 1x.extra-small is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall {
+	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 

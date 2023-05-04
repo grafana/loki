@@ -63,6 +63,7 @@ type Config struct {
 	Poll        bool      // Poll for file changes instead of using inotify
 	Pipe        bool      // Is a named pipe (mkfifo)
 	RateLimiter *ratelimiter.LeakyBucket
+	PollOptions watch.PollingFileWatcherOptions
 
 	// Generic IO
 	Follow      bool // Continue looking for new lines (tail -f)
@@ -118,7 +119,11 @@ func TailFile(filename string, config Config) (*Tail, error) {
 	}
 
 	if t.Poll {
-		t.watcher = watch.NewPollingFileWatcher(filename)
+		watcher, err := watch.NewPollingFileWatcher(filename, config.PollOptions)
+		if err != nil {
+			return nil, err
+		}
+		t.watcher = watcher
 	} else {
 		t.watcher = watch.NewInotifyFileWatcher(filename)
 	}
@@ -257,8 +262,9 @@ func (tail *Tail) reopen(truncated bool) error {
 			if retries <= 0 {
 				return errors.New("gave up trying to reopen log file with a different handle")
 			}
+
 			select {
-			case <-time.After(watch.POLL_DURATION):
+			case <-time.After(watch.DefaultPollingFileWatcherOptions.MaxPollFrequency):
 				tail.closeFile()
 				continue
 			case <-tail.Tomb.Dying():

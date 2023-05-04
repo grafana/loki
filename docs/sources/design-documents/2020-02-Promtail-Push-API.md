@@ -18,12 +18,12 @@ has to bypass Promtail and push directly to Loki. This can lead users to
 reimplement functionality Promtail already provides, including its error retries
 and batching code.
 
-This document proposed a Push API for Promtail. The preferred implementation is
+This document proposes a Push API for Promtail. The preferred implementation is
 by copying the existing Loki Push API and implementing it for Promtail. By
 being compatible with the Loki Push API, the Promtail Push API can allow batches
-of logs to be processed at once for optimizing performance. Matching the
+of logs to be processed at once for optimize performance. Matching the
 Promtail API also allows users to transparently switch their push URLs from
-their existing tooling. Finally, a series of alternative solutions will be detailed.
+their existing tooling. Finally, a series of alternative solutions are detailed.
 
 ## Configuration
 
@@ -58,7 +58,7 @@ rejected pushes. Users are recommended to do one of the following:
 
 1. Have a dedicated Promtail instance for receiving pushes. This also applies to
    using the syslog target.
-1. Have a separated k8s service that always resolves to the same Promtail pod,
+1. Have a separatee k8s service that always resolves to the same Promtail pod,
    bypassing the load balancing issue.
 
 ## Implementation
@@ -93,11 +93,11 @@ The
 [logproto.Pusher](https://github.com/grafana/loki/blob/f7ee1c753c76ef63338d53cfba782188a165144d/pkg/logproto/logproto.proto#L8-L10)
 service could be exposed through Promtail. This would enable clients stubs to be
 generated for languages that have gRPC support, and, for HTTP1 support, a
-[gRPC Gateway](https://github.com/grpc-ecosystem/grpc-gateway) would be embedded
+[gRPC gateway](https://github.com/grpc-ecosystem/grpc-gateway) would be embedded
 in Promtail itself.
 
 This implementation option is similar to the original proposed solution, but
-uses the gRPC gateway to handle HTTP1 traffic instead of the HTTP1 shim that
+uses the gRPC gateway to handle HTTP/1 traffic instead of the HTTP1 shim that
 Loki uses. There are some concerns with this approach:
 
 1. The gRPC Gateway reverse proxy will need to play nice with the existing HTTP

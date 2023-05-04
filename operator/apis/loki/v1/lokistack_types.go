@@ -29,15 +29,20 @@ const (
 type LokiStackSizeType string
 
 const (
-	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with minimal resource requirements and without HA support.
-	//
-	// This is ONLY for development, testing, or demos on limited single-node clusters.
-	// There are NO performance guarantees.
-	// LokiStack will use whatever resources are available,
-	// and WILL NOT FUNCTION CORRECTLY if there is not enough memory or CPU.
-	//
+	// SizeOneXDemo defines the size of a single Loki deployment
+	// with tiny resource requirements and without HA support.
+	// This size is intended to run in single-node clusters on laptops,
+	// it is only useful for very light testing, demonstrations, or prototypes.
+	// There are no ingestion/query performance guarantees.
 	// DO NOT USE THIS IN PRODUCTION!
+	SizeOneXDemo LokiStackSizeType = "1x.demo"
+
+	// SizeOneXExtraSmall defines the size of a single Loki deployment
+	// with extra small resources/limits requirements and without HA support.
+	// This size is ultimately dedicated for development and demo purposes.
+	// DO NOT USE THIS IN PRODUCTION!
+	//
+	// FIXME: Add clear description of ingestion/query performance expectations.
 	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
 
 	// SizeOneXSmall defines the size of a single Loki deployment
@@ -422,7 +427,7 @@ type ObjectStorageTLSSpec struct {
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
 //
-// +kubebuilder:validation:Enum=azure;gcs;s3;swift
+// +kubebuilder:validation:Enum=azure;gcs;s3;swift;alibabacloud;
 type ObjectStorageSecretType string
 
 const (
@@ -437,6 +442,9 @@ const (
 
 	// ObjectStorageSecretSwift when using Swift for Loki storage
 	ObjectStorageSecretSwift ObjectStorageSecretType = "swift"
+
+	// ObjectStorageSecretAlibabaCloud when using AlibabaCloud OSS for Loki storage
+	ObjectStorageSecretAlibabaCloud ObjectStorageSecretType = "alibabacloud"
 )
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -445,7 +453,7 @@ type ObjectStorageSecretSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift"},displayName="Object Storage Secret Type"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:azure","urn:alm:descriptor:com.tectonic.ui:select:gcs","urn:alm:descriptor:com.tectonic.ui:select:s3","urn:alm:descriptor:com.tectonic.ui:select:swift","urn:alm:descriptor:com.tectonic.ui:select:alibabacloud"},displayName="Object Storage Secret Type"
 	Type ObjectStorageSecretType `json:"type"`
 
 	// Name of a secret in the namespace configured for object storage secrets.
@@ -758,6 +766,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
 	Proxy *ClusterProxy `json:"proxy,omitempty"`
 
+	// Deprecated: Please use replication.factor instead. This field will be removed in future versions of this CRD.
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +optional
@@ -766,7 +775,14 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
 
-	// Rules defines the spec for the ruler component
+	// Replication defines the configuration for Loki data replication.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Replication Spec"
+	Replication *ReplicationSpec `json:"replication,omitempty"`
+
+	// Rules defines the spec for the ruler component.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -780,7 +796,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rate Limiting"
 	Limits *LimitsSpec `json:"limits,omitempty"`
 
-	// Template defines the resource/limits/tolerations/nodeselectors per component
+	// Template defines the resource/limits/tolerations/nodeselectors per component.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -793,6 +809,40 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+}
+
+type ReplicationSpec struct {
+	// Factor defines the policy for log stream replication.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
+	Factor int32 `json:"factor,omitempty"`
+
+	// Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Zones Spec"
+	Zones []ZoneSpec `json:"zones,omitempty"`
+}
+
+// ZoneSpec defines the spec to support zone-aware component deployments.
+type ZoneSpec struct {
+	// MaxSkew describes the maximum degree to which Pods can be unevenly distributed.
+	//
+	// +required
+	// +kubebuilder:default:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Skew"
+	MaxSkew int `json:"maxSkew"`
+
+	// TopologyKey is the key that defines a topology in the Nodes' labels.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Topology Key"
+	TopologyKey string `json:"topologyKey"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.

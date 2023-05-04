@@ -45,6 +45,13 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{- end }}
+    {{- with .ObjectStorage.AlibabaCloud}}
+    alibabacloud:
+      bucket: {{ .Bucket }}
+      endpoint: {{ .Endpoint }}
+      access_key_id: {{ .AccessKeyID }}
+      secret_access_key: {{ .SecretAccessKey }}
+    {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
   ring:
@@ -106,7 +113,7 @@ ingester:
     join_after: 30s
     num_tokens: 512
     ring:
-      replication_factor: {{ .Stack.ReplicationFactor }}
+      replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
   wal:
     enabled: true

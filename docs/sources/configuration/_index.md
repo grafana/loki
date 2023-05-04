@@ -192,7 +192,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for tracing.
 [tracing: <tracing>]
 
-# Configuration for usage report.
+# Configuration for analytics.
 [analytics: <analytics>]
 
 # Common configuration to be shared between multiple modules. If a more specific
@@ -627,6 +627,10 @@ scheduler_ring:
   # zone-awareness is enabled.
   # CLI flag: -query-scheduler.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -query-scheduler.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 ```
 
 ### frontend
@@ -739,6 +743,10 @@ results_cache:
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
 
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
@@ -759,9 +767,13 @@ results_cache:
 The `ruler` block configures the Loki ruler.
 
 ```yaml
-# URL of alerts return path.
+# Base URL of the Grafana instance.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
+
+# Datasource UID for the dashboard.
+# CLI flag: -ruler.datasource-uid
+[datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
@@ -856,18 +868,18 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # Path to the key file for the client certificate. Also requires the client
+  # Path to the key for the client certificate. Also requires the client
   # certificate to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
   # CLI flag: -ruler.alertmanager-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
 
@@ -1129,18 +1141,18 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
-    # Path to the client certificate file, which will be used for authenticating
-    # with the server. Also requires the key path to be configured.
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
     [tls_cert_path: <string> | default = ""]
 
-    # Path to the key file for the client certificate. Also requires the client
+    # Path to the key for the client certificate. Also requires the client
     # certificate to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
     [tls_key_path: <string> | default = ""]
 
-    # Path to the CA certificates file to validate server certificate against.
-    # If not set, the host's root CA certificates are used.
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
     # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
     [tls_ca_path: <string> | default = ""]
 
@@ -1318,6 +1330,11 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.interface
   [interface_names: <list of strings> | default = [<private network interfaces>]]
 
+  # Enable IPv6 support. Required to make use of IP addresses from IPv6
+  # interfaces.
+  # CLI flag: -ingester.enable-inet6
+  [enable_inet6: <boolean> | default = false]
+
   # Duration to sleep for before exiting, to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
   [final_sleep: <duration> | default = 0s]
@@ -1476,6 +1493,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# Path where the shutdown marker file is stored. If not set and
+# common.path_prefix is set then common.path_prefix will be used.
+# CLI flag: -ingester.shutdown-marker-path
+[shutdown_marker_path: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -1571,6 +1593,10 @@ ring:
   # zone-awareness is enabled.
   # CLI flag: -index-gateway.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -index-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
   # How many index gateway instances are assigned to each tenant.
   # CLI flag: -replication-factor
@@ -1988,7 +2014,9 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos, cos.
+# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
+# to operate on all the object stores that contain either boltdb-shipper or tsdb
+# index.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -2024,6 +2052,11 @@ The `compactor` block configures the compactor component, which compacts index s
 # given table in the index.
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
+
+# Store used for managing delete requests. Defaults to
+# -boltdb.shipper.compactor.shared-store.
+# CLI flag: -boltdb.shipper.compactor.delete-request-store
+[delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
@@ -2134,6 +2167,10 @@ compactor_ring:
   # zone-awareness is enabled.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
@@ -2925,7 +2962,7 @@ Configuration for `tracing`.
 
 ### analytics
 
-Configuration for usage report.
+Configuration for `analytics`.
 
 ```yaml
 # Enable anonymous usage reporting.
@@ -3082,6 +3119,10 @@ ring:
   # CLI flag: -common.storage.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
+  # Enable using a IPv6 instance address.
+  # CLI flag: -common.storage.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
 [instance_interface_names: <list of strings>]
 
 [instance_addr: <string> | default = ""]
@@ -3169,18 +3210,18 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3299,18 +3340,18 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3366,18 +3407,18 @@ backoff_config:
 The TLS configuration.
 
 ```yaml
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -frontend.tail-tls-config.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3806,6 +3847,10 @@ dynamodb:
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -4080,6 +4125,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -<prefix>.storage.s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]

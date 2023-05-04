@@ -266,9 +266,18 @@ func (m *LbEndpoint) validate(all bool) error {
 
 	}
 
-	switch m.HostIdentifier.(type) {
-
+	switch v := m.HostIdentifier.(type) {
 	case *LbEndpoint_Endpoint:
+		if v == nil {
+			err := LbEndpointValidationError{
+				field:  "HostIdentifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetEndpoint()).(type) {
@@ -300,8 +309,19 @@ func (m *LbEndpoint) validate(all bool) error {
 		}
 
 	case *LbEndpoint_EndpointName:
+		if v == nil {
+			err := LbEndpointValidationError{
+				field:  "HostIdentifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 		// no validation rules for EndpointName
-
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
