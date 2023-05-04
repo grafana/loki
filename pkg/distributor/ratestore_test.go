@@ -23,7 +23,7 @@ import (
 )
 
 func TestRateStore(t *testing.T) {
-	t.Run("it reports rates from all of the ingesters", func(t *testing.T) {
+	t.Run("it reports rates and pushes per second from all of the ingesters", func(t *testing.T) {
 		tc := setup(true)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
@@ -36,20 +36,20 @@ func TestRateStore(t *testing.T) {
 
 		tc.clientPool.clients = map[string]client.PoolClient{
 			"ingester0": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 15},
-				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 15},
+				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 15, Pushes: 10},
+				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 15, Pushes: 10},
 			}),
 			"ingester1": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 1, Rate: 25},
-				{Tenant: "tenant 2", StreamHash: 1, StreamHashNoShard: 1, Rate: 25},
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 1, Rate: 25, Pushes: 20},
+				{Tenant: "tenant 2", StreamHash: 1, StreamHashNoShard: 1, Rate: 25, Pushes: 20},
 			}),
 			"ingester2": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 2, Rate: 35},
-				{Tenant: "tenant 2", StreamHash: 2, StreamHashNoShard: 2, Rate: 35},
+				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 2, Rate: 35, Pushes: 30},
+				{Tenant: "tenant 2", StreamHash: 2, StreamHashNoShard: 2, Rate: 35, Pushes: 30},
 			}),
 			"ingester3": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 3, Rate: 45},
-				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 3, Rate: 45},
+				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 3, Rate: 45, Pushes: 40},
+				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 3, Rate: 45, Pushes: 40},
 			}),
 		}
 
@@ -57,19 +57,21 @@ func TestRateStore(t *testing.T) {
 		defer tc.rateStore.StopAsync()
 
 		require.Eventually(t, func() bool { // There will be data
-			return tc.rateStore.RateFor("tenant 1", 0) != 0 &&
-				tc.rateStore.RateFor("tenant 2", 0) != 0
+			t1Rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+			t2Rate, _ := tc.rateStore.RateFor("tenant 2", 0)
+
+			return t1Rate != 0 && t2Rate != 0
 		}, time.Second, time.Millisecond)
 
-		require.Equal(t, int64(15), tc.rateStore.RateFor("tenant 1", 0))
-		require.Equal(t, int64(25), tc.rateStore.RateFor("tenant 1", 1))
-		require.Equal(t, int64(35), tc.rateStore.RateFor("tenant 1", 2))
-		require.Equal(t, int64(45), tc.rateStore.RateFor("tenant 1", 3))
+		requireRatesAndPushesEqual(t, 15, 10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 25, 20, tc.rateStore, "tenant 1", 1)
+		requireRatesAndPushesEqual(t, 35, 30, tc.rateStore, "tenant 1", 2)
+		requireRatesAndPushesEqual(t, 45, 40, tc.rateStore, "tenant 1", 3)
 
-		require.Equal(t, int64(15), tc.rateStore.RateFor("tenant 2", 0))
-		require.Equal(t, int64(25), tc.rateStore.RateFor("tenant 2", 1))
-		require.Equal(t, int64(35), tc.rateStore.RateFor("tenant 2", 2))
-		require.Equal(t, int64(45), tc.rateStore.RateFor("tenant 2", 3))
+		requireRatesAndPushesEqual(t, 15, 10, tc.rateStore, "tenant 2", 0)
+		requireRatesAndPushesEqual(t, 25, 20, tc.rateStore, "tenant 2", 1)
+		requireRatesAndPushesEqual(t, 35, 30, tc.rateStore, "tenant 2", 2)
+		requireRatesAndPushesEqual(t, 45, 40, tc.rateStore, "tenant 2", 3)
 	})
 
 	t.Run("it reports the highest rate from replicas", func(t *testing.T) {
@@ -84,16 +86,16 @@ func TestRateStore(t *testing.T) {
 
 		tc.clientPool.clients = map[string]client.PoolClient{
 			"ingester0": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 25},
-				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 25},
+				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 25, Pushes: 35},
+				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 25, Pushes: 35},
 			}),
 			"ingester1": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 35},
-				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 35},
+				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 35, Pushes: 10},
+				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 35, Pushes: 10},
 			}),
 			"ingester2": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 15},
-				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 15},
+				{Tenant: "tenant 1", StreamHash: 0, StreamHashNoShard: 0, Rate: 15, Pushes: 25},
+				{Tenant: "tenant 2", StreamHash: 0, StreamHashNoShard: 0, Rate: 15, Pushes: 25},
 			}),
 		}
 
@@ -101,15 +103,17 @@ func TestRateStore(t *testing.T) {
 		defer tc.rateStore.StopAsync()
 
 		require.Eventually(t, func() bool { // There will be data
-			return tc.rateStore.RateFor("tenant 1", 0) != 0 &&
-				tc.rateStore.RateFor("tenant 2", 0) != 0
+			t1Rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+			t2Rate, _ := tc.rateStore.RateFor("tenant 2", 0)
+
+			return t1Rate != 0 && t2Rate != 0
 		}, time.Second, time.Millisecond)
 
-		require.Equal(t, int64(35), tc.rateStore.RateFor("tenant 1", 0))
-		require.Equal(t, int64(35), tc.rateStore.RateFor("tenant 2", 0))
+		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
 	})
 
-	t.Run("it aggregates rates over shards", func(t *testing.T) {
+	t.Run("it aggregates rates and pushes over shards", func(t *testing.T) {
 		tc := setup(true)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
@@ -119,24 +123,26 @@ func TestRateStore(t *testing.T) {
 
 		tc.clientPool.clients = map[string]client.PoolClient{
 			"ingester0": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25},
-				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 0, Rate: 35},
-				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 0, Rate: 15},
-				{Tenant: "tenant 2", StreamHash: 1, StreamHashNoShard: 0, Rate: 25},
-				{Tenant: "tenant 2", StreamHash: 2, StreamHashNoShard: 0, Rate: 35},
-				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 0, Rate: 15},
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25, Pushes: 10},
+				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 0, Rate: 35, Pushes: 10},
+				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 10},
+				{Tenant: "tenant 2", StreamHash: 1, StreamHashNoShard: 0, Rate: 25, Pushes: 10},
+				{Tenant: "tenant 2", StreamHash: 2, StreamHashNoShard: 0, Rate: 35, Pushes: 10},
+				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 10},
 			}),
 		}
 		_ = tc.rateStore.StartAsync(context.Background())
 		defer tc.rateStore.StopAsync()
 
 		require.Eventually(t, func() bool { // There will be data
-			return tc.rateStore.RateFor("tenant 1", 0) != 0 &&
-				tc.rateStore.RateFor("tenant 2", 0) != 0
+			t1Rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+			t2Rate, _ := tc.rateStore.RateFor("tenant 2", 0)
+
+			return t1Rate != 0 && t2Rate != 0
 		}, time.Second, time.Millisecond)
 
-		require.Equal(t, int64(75), tc.rateStore.RateFor("tenant 1", 0))
-		require.Equal(t, int64(75), tc.rateStore.RateFor("tenant 2", 0))
+		requireRatesAndPushesEqual(t, 75, 30, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 75, 30, tc.rateStore, "tenant 2", 0)
 	})
 
 	t.Run("it does nothing if no one has enabled sharding", func(t *testing.T) {
@@ -156,7 +162,7 @@ func TestRateStore(t *testing.T) {
 		defer tc.rateStore.StopAsync()
 
 		time.Sleep(time.Second)
-		require.Equal(t, int64(0), tc.rateStore.RateFor("tenant 1", 0))
+		requireRatesAndPushesEqual(t, 0, 1, tc.rateStore, "tenant 1", 0)
 	})
 
 	t.Run("it clears the rate after an interval", func(t *testing.T) {
@@ -178,11 +184,13 @@ func TestRateStore(t *testing.T) {
 		defer tc.rateStore.StopAsync()
 
 		require.Eventually(t, func() bool {
-			return 25 == tc.rateStore.RateFor("tenant 1", 0)
+			rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+			return rate == 25
 		}, time.Second, 100*time.Millisecond)
 
 		require.Eventually(t, func() bool {
-			return 0 == tc.rateStore.RateFor("tenant 1", 0)
+			rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+			return rate == 0
 		}, 3*time.Second, 250*time.Millisecond)
 	})
 }
@@ -210,6 +218,12 @@ func BenchmarkRateStore(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		benchErr = tc.rateStore.updateAllRates(context.Background())
 	}
+}
+
+func requireRatesAndPushesEqual(t *testing.T, expectedRate int64, expectedPushes uint32, r *rateStore, tenant string, streamhash uint64) {
+	actualRate, actualPushes := r.RateFor(tenant, streamhash)
+	require.Equal(t, expectedRate, actualRate)
+	require.Equal(t, expectedPushes, actualPushes)
 }
 
 func BenchmarkAggregateByShard(b *testing.B) {

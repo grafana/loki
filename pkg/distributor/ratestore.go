@@ -46,6 +46,7 @@ type expiringRate struct {
 	createdAt time.Time
 	rate      int64
 	shards    int64
+	pushes    uint32
 }
 
 type rateStore struct {
@@ -206,6 +207,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
+			rate.pushes += streamRate.Pushes
 			rate.shards++
 			rate.createdAt = now
 
@@ -326,12 +328,13 @@ func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
+func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, uint32) {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
 	if t, ok := s.rates[tenant]; ok {
-		return t[streamHash].rate
+		rate := t[streamHash]
+		return rate.rate, rate.pushes
 	}
-	return 0
+	return 0, 1
 }
