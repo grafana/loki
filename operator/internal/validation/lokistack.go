@@ -25,8 +25,8 @@ var _ admission.CustomValidator = &LokiStackValidator{}
 
 // LokiStackValidator implements a custom validator for LokiStack resources.
 type LokiStackValidator struct {
-	ExtendedValidator func(context.Context, *lokiv1.LokiStack) field.ErrorList
 	Client            client.Client
+	ExtendedValidator func(context.Context, *lokiv1.LokiStack) field.ErrorList
 }
 
 // SetupWebhookWithManager registers the LokiStackValidator as a validating webhook
