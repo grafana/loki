@@ -3052,6 +3052,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.namespaced</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
@@ -3444,6 +3453,186 @@ true
 			<td>The name of the ServiceAccount to use. If not set and create is true, a name is generated using the fullname template</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.enableUniqueFilenames</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.repository</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"kiwigrid/k8s-sidecar"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.sha</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.tag</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"1.23.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.imagePullPolicy</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.livenessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.readinessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.resources</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.enabled</td>
+			<td>bool</td>
+			<td>Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.folder</td>
+			<td>string</td>
+			<td>Folder in which the rules will be placed in</td>
+			<td><pre lang="json">
+"/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.label</td>
+			<td>string</td>
+			<td>Label that the configmaps/secrets with rules are marked with</td>
+			<td><pre lang="json">
+"loki_rule"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.labelValue</td>
+			<td>string</td>
+			<td>Value of label that the configmaps/secrets with rules are set to</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.logLevel</td>
+			<td>string</td>
+			<td>Log level of the sidecar container</td>
+			<td><pre lang="json">
+"INFO"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.resource</td>
+			<td>string</td>
+			<td>Search in configmap, secret or both</td>
+			<td><pre lang="json">
+"both"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.script</td>
+			<td>string</td>
+			<td>Absolute path to shell script to execute after a configmap or secret got reloaded</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.searchNamespace</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.watchClientTimeout</td>
+			<td>int</td>
+			<td>WatchClientTimeout: is a client-side timeout, configuring your local socket. If you have a network outage dropping all packets with no RST/FIN, this is how long your client waits before realizing & dropping the connection. defaults to 66sec (sic!)</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.watchMethod</td>
+			<td>string</td>
+			<td>Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH requests, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.</td>
+			<td><pre lang="json">
+"WATCH"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.watchServerTimeout</td>
+			<td>int</td>
+			<td>WatchServerTimeout: request to the server, asking it to cleanly close the connection after that. defaults to 60sec; much higher values like 3600 seconds (1h) are feasible for non-Azure K8S</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.securityContext</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

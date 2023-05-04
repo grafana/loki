@@ -504,6 +504,7 @@ rbac:
   # seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
   # seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'
   # apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
+  namespaced: false
 # -- Section for configuring optional Helm test
 test:
   enabled: true
@@ -1487,3 +1488,53 @@ extraObjects: []
 #               category: logs
 #             annotations:
 #               message: "loki has encountered errors"
+
+sidecar:
+  image:
+    repository: kiwigrid/k8s-sidecar
+    tag: 1.23.3
+    sha: ""
+  imagePullPolicy: IfNotPresent
+  resources: {}
+#   limits:
+#     cpu: 100m
+#     memory: 100Mi
+#   requests:
+#     cpu: 50m
+#     memory: 50Mi
+  securityContext: {}
+  # skipTlsVerify Set to true to skip tls verification for kube api calls
+  # skipTlsVerify: true
+  enableUniqueFilenames: false
+  readinessProbe: {}
+  livenessProbe: {}
+  rules:
+    # -- Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets
+    enabled: true
+    # -- Label that the configmaps/secrets with rules are marked with
+    label: loki_rule
+    # -- Value of label that the configmaps/secrets with rules are set to
+    labelValue: ""
+    # -- Folder in which the rules will be placed in
+    folder: /rules
+    # Namespaces list. If specified, the sidecar will search for config-maps/secrets inside these namespaces.
+    # Otherwise the namespace in which the sidecar is running will be used.
+    # It's also possible to specify ALL to search in all namespaces.
+    searchNamespace: null
+    # -- Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH requests, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.
+    watchMethod: WATCH
+    # -- Search in configmap, secret or both
+    resource: both
+    # -- Absolute path to shell script to execute after a configmap or secret got reloaded
+    script: null
+    # -- WatchServerTimeout: request to the server, asking it to cleanly close the connection after that.
+    # defaults to 60sec; much higher values like 3600 seconds (1h) are feasible for non-Azure K8S
+    watchServerTimeout: 60
+    #
+    # -- WatchClientTimeout: is a client-side timeout, configuring your local socket.
+    # If you have a network outage dropping all packets with no RST/FIN,
+    # this is how long your client waits before realizing & dropping the connection.
+    # defaults to 66sec (sic!)
+    watchClientTimeout: 60
+    # -- Log level of the sidecar container
+    logLevel: INFO
