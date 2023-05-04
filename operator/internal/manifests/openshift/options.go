@@ -76,7 +76,7 @@ func (o *Options) WithTenantsForMode(mode lokiv1.ModeType, gwBaseDomain string, 
 	var (
 		authn []AuthenticationSpec
 		authz AuthorizationSpec
-		host  string = ingressHost(o.BuildOpts.LokiStackName, o.BuildOpts.LokiStackNamespace, gwBaseDomain)
+		host  = ingressHost(o.BuildOpts.LokiStackName, o.BuildOpts.LokiStackNamespace, gwBaseDomain)
 	)
 
 	tenants := GetTenants(mode)

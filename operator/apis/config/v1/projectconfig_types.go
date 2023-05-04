@@ -30,6 +30,7 @@ type BuiltInCertManagement struct {
 type OpenShiftFeatureGates struct {
 	// Enabled defines the flag to enable that these feature gates are used against OpenShift Container Platform releases.
 	Enabled bool `json:"enabled,omitempty"`
+
 	// ServingCertsService enables OpenShift service-ca annotations on the lokistack-gateway service only
 	// to use the in-platform CA and generate a TLS cert/key pair per service for
 	// in-cluster data-in-transit encryption.
