@@ -27,6 +27,7 @@
 * [8732](https://github.com/grafana/loki/pull/8732) **abaguas**: azure: respect retry config before cancelling the context
 * [9206](https://github.com/grafana/loki/pull/9206) **dannykopping**: Ruler: log rule evaluation detail.
 * [9184](https://github.com/grafana/loki/pull/9184) **periklis**: Bump dskit to introduce IPv6 support for memberlist
+* [9396](https://github.com/grafana/loki/pull/9396) **dannykopping**: Per-memcached server latency metrics.
 
 ##### Fixes
 
