@@ -24,7 +24,7 @@ func (cfg *testCfg) Clone() flagext.Registerer {
 
 func TestConfigFileLoaderDoesNotMutate(t *testing.T) {
 	cfg := &testCfg{}
-	err := ConfigFileLoader(nil, "something", true)(cfg)
+	err := ConfigFileLoader(nil, "something", true, false)(cfg)
 	require.Nil(t, err)
 	require.Equal(t, 0, cfg.v)
 
