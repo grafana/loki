@@ -143,7 +143,7 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
-func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpreadConstraint {
+func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
 	var tsc []corev1.TopologySpreadConstraint
 	if len(spec.Zones) > 0 {
 		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
@@ -152,6 +152,12 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpr
 				MaxSkew:           int32(z.MaxSkew),
 				TopologyKey:       z.TopologyKey,
 				WhenUnsatisfiable: corev1.DoNotSchedule,
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						kubernetesCompomentLabel: component,
+						kubernetesInstanceLabel:  stackName,
+					},
+				},
 			}
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -131,11 +132,23 @@ func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
 			MaxSkew:           3,
 			TopologyKey:       "zone",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "distributor",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 		{
 			MaxSkew:           2,
 			TopologyKey:       "region",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "distributor",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
 }
