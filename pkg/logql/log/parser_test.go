@@ -2,9 +2,10 @@ package log
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"sort"
 	"testing"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
