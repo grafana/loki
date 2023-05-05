@@ -2,10 +2,9 @@ package log
 
 import (
 	"fmt"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"sort"
 	"testing"
-
-	"github.com/grafana/loki/pkg/logqlmodel"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -529,6 +528,19 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
+			},
+			noParserHints,
+		},
+		{
+			"nested escaped object",
+			[]byte(`{"app":"{ \"key\": \"value\", \"key2\":\"value2\"}"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.Labels{{Name: "foo", Value: "bar"}},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "app", Value: `{ "key": "value", "key2":"value2"}`},
 			},
 			noParserHints,
 		},
