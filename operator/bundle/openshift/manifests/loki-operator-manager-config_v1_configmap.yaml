@@ -56,7 +56,6 @@ data:
       openshift:
         enabled: true
         servingCertsService: true
-        gatewayRoute: true
         ruleExtendedValidation: true
         clusterTLSPolicy: true
         clusterProxy: true

@@ -37,11 +37,6 @@ type OpenShiftFeatureGates struct {
 	// More details: https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html
 	ServingCertsService bool `json:"servingCertsService,omitempty"`
 
-	// GatewayRoute enables creating an OpenShift Route for the LokiStack
-	// gateway to expose the service to public internet access.
-	// More details: https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html
-	GatewayRoute bool `json:"gatewayRoute,omitempty"`
-
 	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
 	// to enforce tenancy in an OpenShift context.
 	ExtendedRuleValidation bool `json:"ruleExtendedValidation,omitempty"`
