@@ -2,6 +2,11 @@ package openshift
 
 import (
 	"fmt"
+	"time"
+)
+
+const (
+	annotationGatewayRouteTimeout = "haproxy.router.openshift.io/timeout"
 )
 
 var (
@@ -14,6 +19,8 @@ var (
 	GatewayOPAHTTPPortName = "public"
 	// GatewayOPAInternalPortName is the HTTP container metrics port name of the OpenPolicyAgent sidecar.
 	GatewayOPAInternalPortName = "opa-metrics"
+
+	defaultGatewayRouteWiggleRoom = 2 * time.Minute
 
 	cookieSecretLength = 32
 	allowedRunes       = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
