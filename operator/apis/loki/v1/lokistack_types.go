@@ -269,6 +269,13 @@ type LokiComponentSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+	// of a component.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	PodAntiAffinity *corev1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
 }
 
 // LokiTemplateSpec defines the template of all requirements to configure

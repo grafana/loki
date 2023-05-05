@@ -7,7 +7,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
@@ -147,34 +149,20 @@ func TestNewQueryFrontendDeployment_TopologySpreadConstraints(t *testing.T) {
 	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
 }
 
-func TestQueryFrontendPodAntiAffinity(t *testing.T) {
-	sts := NewQueryFrontendDeployment(Options{
-		Name:      "abcd",
-		Namespace: "efgh",
-		Stack: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				QueryFrontend: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+func TestNewQuerierFrontendDeployment_Affinity(t *testing.T) {
+	TestAffinity(t, LabelQueryFrontendComponent, func(cSpec *lokiv1.LokiComponentSpec, nAffinity bool) client.Object {
+		return NewQueryFrontendDeployment(Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				StorageClassName: "standard",
+				Template: &lokiv1.LokiTemplateSpec{
+					QueryFrontend: cSpec,
 				},
 			},
-		},
+			Gates: v1.FeatureGates{
+				DefaultNodeAffinity: nAffinity,
+			},
+		})
 	})
-	expectedPodAntiAffinity := &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": LabelQueryFrontendComponent,
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
-					TopologyKey: "kubernetes.io/hostname",
-				},
-			},
-		},
-	}
-	require.NotNil(t, sts.Spec.Template.Spec.Affinity)
-	require.Equal(t, expectedPodAntiAffinity, sts.Spec.Template.Spec.Affinity.PodAntiAffinity)
 }

@@ -3,9 +3,11 @@ package manifests_test
 import (
 	"testing"
 
+	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestNewCompactorStatefulSet_SelectorMatchesLabels(t *testing.T) {
@@ -73,4 +75,22 @@ func TestNewCompactorStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, expected)
 	require.Equal(t, annotations[expected], "deadbeef")
+}
+
+func TestNewCompactorStatefulSet_Affinity(t *testing.T) {
+	manifests.TestAffinity(t, manifests.LabelCompactorComponent, func(cSpec *lokiv1.LokiComponentSpec, nAffinity bool) client.Object {
+		return manifests.NewCompactorStatefulSet(manifests.Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				StorageClassName: "standard",
+				Template: &lokiv1.LokiTemplateSpec{
+					Compactor: cSpec,
+				},
+			},
+			Gates: v1.FeatureGates{
+				DefaultNodeAffinity: nAffinity,
+			},
+		})
+	})
 }

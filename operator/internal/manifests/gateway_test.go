@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -971,5 +973,23 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 			},
 			WhenUnsatisfiable: corev1.ScheduleAnyway,
 		},
+	})
+}
+
+func TestNewGatewayDeployment_Affinity(t *testing.T) {
+	TestAffinity(t, LabelGatewayComponent, func(cSpec *lokiv1.LokiComponentSpec, nAffinity bool) client.Object {
+		return NewGatewayDeployment(Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				StorageClassName: "standard",
+				Template: &lokiv1.LokiTemplateSpec{
+					Gateway: cSpec,
+				},
+			},
+			Gates: v1.FeatureGates{
+				DefaultNodeAffinity: nAffinity,
+			},
+		}, "")
 	})
 }
