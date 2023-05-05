@@ -328,13 +328,20 @@ func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, uint32) {
+func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, float64) {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
 	if t, ok := s.rates[tenant]; ok {
 		rate := t[streamHash]
-		return rate.rate, rate.pushes
+		return rate.rate, pushRate(rate.pushes) //rate pushes needs to be a float
 	}
-	return 0, 1
+	return 0, 1.0
+}
+
+func pushRate(numPushes uint32) float64 {
+	if numPushes == 0 {
+		return 1
+	}
+	return 1 / float64(numPushes)
 }

@@ -74,7 +74,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
-	RateFor(tenantID string, streamHash uint64) (int64, uint32)
+	RateFor(tenantID string, streamHash uint64) (int64, float64)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -667,7 +667,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 	}
 
 	rate, pushRate := d.rateStore.RateFor(tenantID, stream.Hash)
-	shards := calculateShards(rate, pushSize/int(pushRate), streamShardcfg.DesiredRate.Val())
+	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
 	if shards == 0 {
 		// 1 shard is enough for the given stream.
 		return 1

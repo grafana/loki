@@ -806,7 +806,7 @@ func TestShardCountFor(t *testing.T) {
 		name        string
 		stream      *logproto.Stream
 		rate        int64
-		pushRate    uint32
+		pushRate    float64
 		desiredRate loki_flagext.ByteSize
 
 		pushSize   int // used for sanity check.
@@ -875,10 +875,10 @@ func TestShardCountFor(t *testing.T) {
 		{
 			name:        "take push rate into account. Only generate two shards even though this push is quite large",
 			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
-			rate:        24,  // in bytes
-			pushRate:    6,   // pushes per second in general
-			desiredRate: 40,  // in bytes
-			pushSize:    200, // in bytes
+			rate:        24,        // in bytes
+			pushRate:    1.0 / 6.0, // 6 pushes per second
+			desiredRate: 40,        // in bytes
+			pushSize:    200,       // in bytes
 			wantShards:  2,
 			wantErr:     false,
 		},
@@ -1161,10 +1161,10 @@ func (i *mockIngester) Close() error {
 
 type fakeRateStore struct {
 	rate     int64
-	pushRate uint32
+	pushRate float64
 }
 
-func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, uint32) {
+func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
 	if s.pushRate == 0 {
 		return s.rate, 1
 	}

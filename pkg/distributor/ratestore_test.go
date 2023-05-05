@@ -63,15 +63,15 @@ func TestRateStore(t *testing.T) {
 			return t1Rate != 0 && t2Rate != 0
 		}, time.Second, time.Millisecond)
 
-		requireRatesAndPushesEqual(t, 15, 10, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 25, 20, tc.rateStore, "tenant 1", 1)
-		requireRatesAndPushesEqual(t, 35, 30, tc.rateStore, "tenant 1", 2)
-		requireRatesAndPushesEqual(t, 45, 40, tc.rateStore, "tenant 1", 3)
+		requireRatesAndPushesEqual(t, 15, 1.0/10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 25, 1.0/20, tc.rateStore, "tenant 1", 1)
+		requireRatesAndPushesEqual(t, 35, 1.0/30, tc.rateStore, "tenant 1", 2)
+		requireRatesAndPushesEqual(t, 45, 1.0/40, tc.rateStore, "tenant 1", 3)
 
-		requireRatesAndPushesEqual(t, 15, 10, tc.rateStore, "tenant 2", 0)
-		requireRatesAndPushesEqual(t, 25, 20, tc.rateStore, "tenant 2", 1)
-		requireRatesAndPushesEqual(t, 35, 30, tc.rateStore, "tenant 2", 2)
-		requireRatesAndPushesEqual(t, 45, 40, tc.rateStore, "tenant 2", 3)
+		requireRatesAndPushesEqual(t, 15, 1.0/10, tc.rateStore, "tenant 2", 0)
+		requireRatesAndPushesEqual(t, 25, 1.0/20, tc.rateStore, "tenant 2", 1)
+		requireRatesAndPushesEqual(t, 35, 1.0/30, tc.rateStore, "tenant 2", 2)
+		requireRatesAndPushesEqual(t, 45, 1.0/40, tc.rateStore, "tenant 2", 3)
 	})
 
 	t.Run("it reports the highest rate from replicas", func(t *testing.T) {
@@ -109,8 +109,8 @@ func TestRateStore(t *testing.T) {
 			return t1Rate != 0 && t2Rate != 0
 		}, time.Second, time.Millisecond)
 
-		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 35, 1.0/10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 35, 1.0/10, tc.rateStore, "tenant 1", 0)
 	})
 
 	t.Run("it aggregates rates but gets the max number of pushes over shards", func(t *testing.T) {
@@ -141,8 +141,8 @@ func TestRateStore(t *testing.T) {
 			return t1Rate != 0 && t2Rate != 0
 		}, time.Second, time.Millisecond)
 
-		requireRatesAndPushesEqual(t, 75, 30, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 75, 30, tc.rateStore, "tenant 2", 0)
+		requireRatesAndPushesEqual(t, 75, 1.0/30, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 75, 1.0/30, tc.rateStore, "tenant 2", 0)
 	})
 
 	t.Run("it does nothing if no one has enabled sharding", func(t *testing.T) {
@@ -220,7 +220,7 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 }
 
-func requireRatesAndPushesEqual(t *testing.T, expectedRate int64, expectedPushes uint32, r *rateStore, tenant string, streamhash uint64) {
+func requireRatesAndPushesEqual(t *testing.T, expectedRate int64, expectedPushes float64, r *rateStore, tenant string, streamhash uint64) {
 	actualRate, actualPushes := r.RateFor(tenant, streamhash)
 	require.Equal(t, expectedRate, actualRate)
 	require.Equal(t, expectedPushes, actualPushes)
