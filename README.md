@@ -1,4 +1,4 @@
-666666
+
 
 
 <p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
@@ -45,7 +45,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [Latest release](https://grafana.com/docs/loki/latest/)
 * [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch
 
-Commonly used sections:
+Commonly used sections in Loki:
 
 - [API documentation](https://grafana.com/docs/loki/latest/api/) for getting logs into Loki.
 - [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
