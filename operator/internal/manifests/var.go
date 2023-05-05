@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -107,6 +108,17 @@ const (
 	kubernetesNodeHostnameLabel = "kubernetes.io/hostname"
 	kubernetesCompomentLabel    = "app.kubernetes.io/component"
 	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
+)
+
+var (
+	lokiDefaultHTTPIdleTimeout  = 5 * time.Second
+	lokiDefaultHTTPReadTimeout  = 5 * time.Second
+	lokiDefaultHTTPWriteTimeout = 10 * time.Minute
+
+	gatewayReadWiggleRoom      = 1 * time.Second
+	gatewayWriteWiggleRoom     = 2 * time.Minute
+	gatewayDefaultReadTimeout  = lokiDefaultHTTPReadTimeout + gatewayReadWiggleRoom
+	gatewayDefaultWriteTimeout = lokiDefaultHTTPWriteTimeout + gatewayWriteWiggleRoom
 )
 
 var (

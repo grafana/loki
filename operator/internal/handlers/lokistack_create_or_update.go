@@ -269,6 +269,11 @@ func CreateOrUpdateLokiStack(
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
 	}
 
+	serverCfg, err := manifests.NewServerConfig(stack.Spec.Limits)
+	if err != nil {
+		ll.Error(err, "failed to parser server limits")
+	}
+
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
@@ -286,6 +291,7 @@ func CreateOrUpdateLokiStack(
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
 		},
+		Server: serverCfg,
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,

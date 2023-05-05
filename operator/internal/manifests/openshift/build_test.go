@@ -1,7 +1,9 @@
 package openshift
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -11,7 +13,7 @@ import (
 )
 
 func TestBuildGatewayObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", 1*time.Minute, map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildGatewayObjects(opts)
 	cr := objs[2].(*rbacv1.ClusterRole)
@@ -22,7 +24,7 @@ func TestBuildGatewayObjects_ClusterRoleRefMatches(t *testing.T) {
 }
 
 func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", 1*time.Minute, map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildGatewayObjects(opts)
 	cr := objs[4].(*rbacv1.Role)
@@ -32,8 +34,23 @@ func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
+func TestBuildGatewayObjets_RouteWithTimeoutAnnotation(t *testing.T) {
+	gwWriteTimeout := 1 * time.Minute
+	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", gwWriteTimeout, map[string]string{}, map[string]TenantData{}, "abc")
+
+	objs := BuildGatewayObjects(opts)
+	a := objs[0].GetAnnotations()
+
+	got, ok := a[annotationGatewayRouteTimeout]
+	require.True(t, ok)
+
+	routeTimeout := gwWriteTimeout + defaultGatewayRouteWiggleRoom
+	want := fmt.Sprintf("%.fs", routeTimeout.Seconds())
+	require.Equal(t, want, got)
+}
+
 func TestBuildRulerObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", 1*time.Minute, map[string]string{}, map[string]TenantData{}, "abc")
 
 	objs := BuildRulerObjects(opts)
 	sa := objs[1].(*corev1.ServiceAccount)

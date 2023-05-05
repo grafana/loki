@@ -2,12 +2,14 @@ package manifests
 
 import (
 	"strings"
+	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+	"github.com/imdario/mergo"
 )
 
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
@@ -34,9 +36,26 @@ type Options struct {
 
 	OpenShiftOptions openshift.Options
 
+	Server ServerConfig
+
 	Tenants Tenants
 
 	TLSProfile TLSProfileSpec
+}
+
+// HTTPConfig contains the http server configuration options for all Loki components.
+type HTTPConfig struct {
+	IdleTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+
+	GatewayReadTimeout  time.Duration
+	GatewayWriteTimeout time.Duration
+}
+
+// ServerConfig contains the server configuration options for all Loki components
+type ServerConfig struct {
+	HTTP *HTTPConfig
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -104,4 +123,71 @@ type TLSProfileSpec struct {
 // to a string of elements joined with a comma.
 func (o Options) TLSCipherSuites() string {
 	return strings.Join(o.TLSProfile.Ciphers, ",")
+}
+
+// NewServerConfig transforms the Loki LimitsSpec.Server options
+// to a NewServerConfig by applying defaults and parsing durations.
+func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
+	defaults := ServerConfig{
+		HTTP: &HTTPConfig{
+			IdleTimeout:         lokiDefaultHTTPIdleTimeout,
+			ReadTimeout:         lokiDefaultHTTPReadTimeout,
+			WriteTimeout:        lokiDefaultHTTPWriteTimeout,
+			GatewayReadTimeout:  gatewayDefaultReadTimeout,
+			GatewayWriteTimeout: gatewayDefaultWriteTimeout,
+		},
+	}
+
+	if s == nil || s.Server == nil || s.Server.HTTP == nil {
+		return defaults, nil
+	}
+
+	customCfg := ServerConfig{}
+
+	if s.Server.HTTP.IdleTimeout != "" {
+		idleTimeout, err := time.ParseDuration(s.Server.HTTP.IdleTimeout)
+		if err != nil {
+			return defaults, err
+		}
+
+		if customCfg.HTTP == nil {
+			customCfg.HTTP = &HTTPConfig{}
+		}
+
+		customCfg.HTTP.IdleTimeout = idleTimeout
+	}
+
+	if s.Server.HTTP.ReadTimeout != "" {
+		readTimeout, err := time.ParseDuration(s.Server.HTTP.ReadTimeout)
+		if err != nil {
+			return defaults, err
+		}
+
+		if customCfg.HTTP == nil {
+			customCfg.HTTP = &HTTPConfig{}
+		}
+
+		customCfg.HTTP.ReadTimeout = readTimeout
+		customCfg.HTTP.GatewayReadTimeout = readTimeout + gatewayReadWiggleRoom
+	}
+
+	if s.Server.HTTP.WriteTimeout != "" {
+		writeTimeout, err := time.ParseDuration(s.Server.HTTP.WriteTimeout)
+		if err != nil {
+			return defaults, err
+		}
+
+		if customCfg.HTTP == nil {
+			customCfg.HTTP = &HTTPConfig{}
+		}
+
+		customCfg.HTTP.WriteTimeout = writeTimeout
+		customCfg.HTTP.GatewayWriteTimeout = writeTimeout + gatewayWriteWiggleRoom
+	}
+
+	if err := mergo.Merge(&defaults, &customCfg, mergo.WithOverride); err != nil {
+		return defaults, err
+	}
+
+	return defaults, nil
 }

@@ -3,6 +3,7 @@ package manifests
 import (
 	"path"
 	"testing"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
@@ -70,6 +71,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Server: ServerConfig{
+					HTTP: &HTTPConfig{
+						GatewayWriteTimeout: 1 * time.Minute,
+					},
+				},
 				Tenants: Tenants{
 					Configs: map[string]TenantConfig{
 						"application": {
@@ -99,6 +105,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Server: ServerConfig{
+					HTTP: &HTTPConfig{
+						GatewayWriteTimeout: 1 * time.Minute,
+					},
+				},
 				Tenants: Tenants{
 					Configs: map[string]TenantConfig{
 						"application": {
@@ -125,6 +136,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  3 * time.Minute,
 						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
@@ -165,6 +177,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
+				Server: ServerConfig{
+					HTTP: &HTTPConfig{
+						GatewayWriteTimeout: 1 * time.Minute,
+					},
+				},
 				Tenants: Tenants{
 					Configs: map[string]TenantConfig{
 						"network": {
@@ -184,6 +201,11 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
+				Server: ServerConfig{
+					HTTP: &HTTPConfig{
+						GatewayWriteTimeout: 1 * time.Minute,
+					},
+				},
 				Tenants: Tenants{
 					Configs: map[string]TenantConfig{
 						"network": {
@@ -200,6 +222,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  3 * time.Minute,
 						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},

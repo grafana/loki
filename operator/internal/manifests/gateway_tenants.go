@@ -45,6 +45,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			opts.GatewayBaseDomain,
 			serviceNameGatewayHTTP(opts.Name),
 			gatewayHTTPPortName,
+			opts.Server.HTTP.GatewayWriteTimeout,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			tenantData,
 			RulerName(opts.Name),
