@@ -264,6 +264,9 @@ spec:
           of a query request.
         displayName: Query Timeout
         path: limits.global.queries.queryTimeout
+      - description: Server defines the limits applied on all Loki server-side components.
+        displayName: Server Limits
+        path: limits.server
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants

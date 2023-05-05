@@ -676,6 +676,36 @@ type LimitsTemplateSpec struct {
 	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
+// HttpServerLimitsSpec defines for Loki's http server timeouts for all components.
+type HttpServerLimitsSpec struct {
+	// IdleTimeout defines the HTTP server-side idle timeout.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	IdleTimeout string `json:"idleTimeout,omitempty"`
+
+	// ReadTimeout covers the time from when the connection is accepted to when the request body is fully read
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	ReadTimeout string `json:"readTimeout,omitempty"`
+
+	// WriteTimeout covers the time from the end of the request header read to the end of the response write
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	WriteTimeout string `json:"writeTimeout,omitempty"`
+}
+
+// ServerLimitsSpec defines the Loki server-side limits for all components.
+type ServerLimitsSpec struct {
+	// HTTP defines the HTTP server limits.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	HTTP *HttpServerLimitsSpec `json:"http,omitempty"`
+}
+
 // LimitsSpec defines the spec for limits applied at ingestion or query
 // path across the cluster or per tenant.
 type LimitsSpec struct {
@@ -692,6 +722,13 @@ type LimitsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Limits per Tenant"
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
+
+	// Server defines the limits applied on all Loki server-side components.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Server Limits"
+	Server *ServerLimitsSpec `json:"server,omitempty"`
 }
 
 // RulesSpec defines the spec for the ruler component.

@@ -194,6 +194,29 @@ spec:
                         - days
                         type: object
                     type: object
+                  server:
+                    description: Server defines the limits applied on all Loki server-side
+                      components.
+                    properties:
+                      http:
+                        description: HTTP defines the HTTP server limits.
+                        properties:
+                          idleTimeout:
+                            description: IdleTimeout defines the HTTP server-side
+                              idle timeout.
+                            type: string
+                          readTimeout:
+                            description: ReadTimeout covers the time from when the
+                              connection is accepted to when the request body is fully
+                              read
+                            type: string
+                          writeTimeout:
+                            description: WriteTimeout covers the time from the end
+                              of the request header read to the end of the response
+                              write
+                            type: string
+                        type: object
+                    type: object
                   tenants:
                     additionalProperties:
                       description: LimitsTemplateSpec defines the limits  applied

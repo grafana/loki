@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-04-26T13:24:42Z"
+    createdAt: "2023-05-05T08:10:51Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -351,6 +351,9 @@ spec:
           of a query request.
         displayName: Query Timeout
         path: limits.global.queries.queryTimeout
+      - description: Server defines the limits applied on all Loki server-side components.
+        displayName: Server Limits
+        path: limits.server
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
