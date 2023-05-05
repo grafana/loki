@@ -1,3 +1,6 @@
+666666
+
+
 <p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
 
 <a href="https://drone.grafana.net/grafana/loki"><img src="https://drone.grafana.net/api/badges/grafana/loki/status.svg" alt="Drone CI" /></a>
