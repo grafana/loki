@@ -1,3 +1,39 @@
+## Main/Unreleased
+
+### All Changes
+
+#### Loki
+
+##### Enhancements
+
+##### Fixes
+
+##### Changes
+
+#### Promtail
+
+##### Enhancements
+
+##### Fixes
+
+* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
+
+#### LogCLI
+
+##### Fixes
+
+#### Mixins
+
+#### Enhancements
+
+#### Fixes
+
+#### FluentD
+
+##### Enhancements
+
+#### Jsonnet
+
 ## 2.8.2
 
 #### Loki
@@ -40,14 +76,6 @@
 * [9095](https://github.com/grafana/loki/pull/9095) **JordanRushing** Fix journald support in amd64 binary build.
 
 ## 2.8.0 (2023-04-04)
-
-* [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
-
-##### Fixes
-
-* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
-
-## 2.8.0 (2023-03-??)
 
 #### Loki
 
