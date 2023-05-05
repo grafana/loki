@@ -28,7 +28,7 @@ const (
 	// The factor used to weight the moving average. Must be in the range [0, 1.0].
 	// A larger factor weights recent samples more heavily while a smaller
 	// factor weights historic samples more heavily.
-	smoothingFactor = .3
+	smoothingFactor = .4
 )
 
 type RateStoreConfig struct {

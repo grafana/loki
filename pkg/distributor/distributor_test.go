@@ -882,6 +882,26 @@ func TestShardCountFor(t *testing.T) {
 			wantShards:  2,
 			wantErr:     false,
 		},
+		{
+			name:        "If the push rate is 0, use the payload size",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        24, // in bytes
+			pushRate:    0,
+			desiredRate: 40,  // in bytes
+			pushSize:    200, // in bytes
+			wantShards:  6,
+			wantErr:     false,
+		},
+		{
+			name:        "If the push rate is greater than 1, use the payload size",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        24, // in bytes
+			pushRate:    3,
+			desiredRate: 40,  // in bytes
+			pushSize:    200, // in bytes
+			wantShards:  6,
+			wantErr:     false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			limits := &validation.Limits{}
@@ -1165,8 +1185,5 @@ type fakeRateStore struct {
 }
 
 func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
-	if s.pushRate == 0 {
-		return s.rate, 1
-	}
 	return s.rate, s.pushRate
 }
