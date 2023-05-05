@@ -55,15 +55,15 @@ func TestRateStore(t *testing.T) {
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
-		requireRatesAndPushesEqual(t, 15, 1.0/10, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 25, 1.0/20, tc.rateStore, "tenant 1", 1)
-		requireRatesAndPushesEqual(t, 35, 1.0/30, tc.rateStore, "tenant 1", 2)
-		requireRatesAndPushesEqual(t, 45, 1.0/40, tc.rateStore, "tenant 1", 3)
+		requireRatesAndPushesEqual(t, 15, 10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 25, 20, tc.rateStore, "tenant 1", 1)
+		requireRatesAndPushesEqual(t, 35, 30, tc.rateStore, "tenant 1", 2)
+		requireRatesAndPushesEqual(t, 45, 40, tc.rateStore, "tenant 1", 3)
 
-		requireRatesAndPushesEqual(t, 15, 1.0/10, tc.rateStore, "tenant 2", 0)
-		requireRatesAndPushesEqual(t, 25, 1.0/20, tc.rateStore, "tenant 2", 1)
-		requireRatesAndPushesEqual(t, 35, 1.0/30, tc.rateStore, "tenant 2", 2)
-		requireRatesAndPushesEqual(t, 45, 1.0/40, tc.rateStore, "tenant 2", 3)
+		requireRatesAndPushesEqual(t, 15, 10, tc.rateStore, "tenant 2", 0)
+		requireRatesAndPushesEqual(t, 25, 20, tc.rateStore, "tenant 2", 1)
+		requireRatesAndPushesEqual(t, 35, 30, tc.rateStore, "tenant 2", 2)
+		requireRatesAndPushesEqual(t, 45, 40, tc.rateStore, "tenant 2", 3)
 	})
 
 	t.Run("it reports the highest rate from replicas", func(t *testing.T) {
@@ -93,8 +93,8 @@ func TestRateStore(t *testing.T) {
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
-		requireRatesAndPushesEqual(t, 35, 1.0/10, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 35, 1.0/10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
 	})
 
 	t.Run("it aggregates rates but gets the max number of pushes over shards", func(t *testing.T) {
@@ -118,8 +118,8 @@ func TestRateStore(t *testing.T) {
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
-		requireRatesAndPushesEqual(t, 75, 1.0/30, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 75, 1.0/30, tc.rateStore, "tenant 2", 0)
+		requireRatesAndPushesEqual(t, 75, 30, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 75, 30, tc.rateStore, "tenant 2", 0)
 	})
 
 	t.Run("it does nothing if no one has enabled sharding", func(t *testing.T) {
@@ -137,7 +137,7 @@ func TestRateStore(t *testing.T) {
 		}
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
-		requireRatesAndPushesEqual(t, 0, 1, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 0, 0, tc.rateStore, "tenant 1", 0)
 	})
 
 	t.Run("it clears the rate after an interval", func(t *testing.T) {
@@ -183,24 +183,52 @@ func TestRateStore(t *testing.T) {
 		}
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
-		rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		rate, pushRate := tc.rateStore.RateFor("tenant 1", 0)
 		require.EqualValues(t, 25, rate)
+		require.EqualValues(t, 25, pushRate)
 
 		tc.clientPool.clients = map[string]client.PoolClient{
 			"ingester0": newRateClient([]*logproto.StreamRate{
-				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 50, Pushes: 35},
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 50, Pushes: 50},
 			}, 1),
 		}
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
-		afterNewRate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		afterNewRate, afterNewPushRate := tc.rateStore.RateFor("tenant 1", 0)
 		require.EqualValues(t, weightedMovingAverage(50, 25), afterNewRate)
+		require.EqualValues(t, weightedMovingAverageF(50, 25), afterNewPushRate)
 
 		tc.ring.replicationSet = ring.ReplicationSet{} // No more data from ingesters
 
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
-		afterNoUpdate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		afterNoUpdate, afterNoUpdatePushRate := tc.rateStore.RateFor("tenant 1", 0)
 		require.EqualValues(t, weightedMovingAverage(0, afterNewRate), afterNoUpdate)
+		require.EqualValues(t, weightedMovingAverageF(0, afterNewPushRate), afterNoUpdatePushRate)
+	})
+
+	t.Run("the push rate can be less that 1", func(t *testing.T) {
+		tc := setup(true)
+		tc.ring.replicationSet = ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Addr: "ingester0"},
+			},
+		}
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient([]*logproto.StreamRate{
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25, Pushes: 1},
+			}, 1),
+		}
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		_, pushRate := tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, 1, pushRate)
+
+		tc.ring.replicationSet = ring.ReplicationSet{} // No more data from ingesters
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		_, afterNewPushRate := tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, weightedMovingAverageF(0, 1), afterNewPushRate)
 	})
 }
 

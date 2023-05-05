@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"math"
 	"sync"
 	"time"
 
@@ -53,7 +54,7 @@ type expiringRate struct {
 	createdAt time.Time
 	rate      int64
 	shards    int64
-	pushes    uint32
+	pushes    float64
 }
 
 type rateStore struct {
@@ -140,18 +141,16 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
 
-	// just pass updated to clean expired. If it exists as we iterate through don't update, otherwise update with 0
-
 	for tenantID, tenant := range updated {
 		if _, ok := s.rates[tenantID]; !ok {
 			s.rates[tenantID] = map[uint64]expiringRate{}
 		}
 
-		// TODO: Update pushes with weighted average
 		for stream, rate := range tenant {
 			streamCnt++
 			if oldRate, ok := s.rates[tenantID][stream]; ok {
 				rate.rate = weightedMovingAverage(rate.rate, oldRate.rate)
+				rate.pushes = weightedMovingAverageF(rate.pushes, oldRate.pushes)
 			}
 			s.rates[tenantID][stream] = rate
 
@@ -162,10 +161,12 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 }
 
 func weightedMovingAverage(n, l int64) int64 {
-	next, last := float64(n), float64(l)
+	return int64(weightedMovingAverageF(float64(n), float64(l)))
+}
 
+func weightedMovingAverageF(next, last float64) float64 {
 	// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
-	return int64((smoothingFactor * next) + ((1 - smoothingFactor) * last))
+	return (smoothingFactor * next) + ((1 - smoothingFactor) * last)
 }
 
 func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
@@ -185,6 +186,7 @@ func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) r
 
 			if !s.wasUpdated(tID, stream, updated) {
 				rate.rate = weightedMovingAverage(0, rate.rate)
+				rate.pushes = weightedMovingAverageF(0, rate.pushes)
 				s.rates[tID][stream] = rate
 			}
 
@@ -245,7 +247,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
-			rate.pushes = uint32(max(int64(streamRate.Pushes), int64(rate.pushes)))
+			rate.pushes = math.Max(float64(streamRate.Pushes), rate.pushes)
 			rate.shards++
 			rate.createdAt = now
 
@@ -372,14 +374,8 @@ func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, float64) {
 
 	if t, ok := s.rates[tenant]; ok {
 		rate := t[streamHash]
-		return rate.rate, pushRate(rate.pushes) //rate pushes needs to be a float
+		return rate.rate, rate.pushes //rate pushes needs to be a float
 	}
-	return 0, 1.0
-}
 
-func pushRate(numPushes uint32) float64 {
-	if numPushes == 0 {
-		return 1
-	}
-	return 1 / float64(numPushes)
+	return 0, 0
 }
