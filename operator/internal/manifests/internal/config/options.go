@@ -31,6 +31,8 @@ type Options struct {
 
 	ObjectStorage storage.Options
 
+	Server ServerConfig
+
 	Retention RetentionOptions
 
 	Overrides map[string]LokiOverrides
@@ -65,6 +67,18 @@ type GossipRing struct {
 	BindPort int
 	// MembersDiscoveryAddr is required
 	MembersDiscoveryAddr string
+}
+
+// HTTPServerConfig defines the HTTP server config options.
+type HTTPServerConfig struct {
+	IdleTimeout  string
+	ReadTimeout  string
+	WriteTimeout string
+}
+
+// ServerConfig defines the server config options.
+type ServerConfig struct {
+	HTTP HTTPServerConfig
 }
 
 // Ruler configuration
