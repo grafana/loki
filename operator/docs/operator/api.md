@@ -1007,6 +1007,60 @@ MemberListSpec
 </tr></tbody>
 </table>
 
+## HttpServerLimitsSpec { #loki-grafana-com-v1-HttpServerLimitsSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ServerLimitsSpec">ServerLimitsSpec</a>)
+</p>
+<div>
+<p>HttpServerLimitsSpec defines for Loki&rsquo;s http server timeouts for all components.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>idleTimeout</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IdleTimeout defines the HTTP server-side idle timeout.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>readTimeout</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ReadTimeout covers the time from when the connection is accepted to when the request body is fully read</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>writeTimeout</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>WriteTimeout covers the time from the end of the request header read to the end of the response write</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
@@ -1181,6 +1235,20 @@ map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
 <td>
 <em>(Optional)</em>
 <p>Tenants defines the limits applied per tenant.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>server</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ServerLimitsSpec">
+ServerLimitsSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Server defines the limits applied on all Loki server-side components.</p>
 </td>
 </tr>
 </tbody>
@@ -3799,6 +3867,38 @@ Kubernetes meta/v1.LabelSelector
 <em>(Optional)</em>
 <p>Namespaces to be selected for PrometheusRules discovery. If unspecified, only
 the same namespace as the LokiStack object is in is used.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ServerLimitsSpec { #loki-grafana-com-v1-ServerLimitsSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
+</p>
+<div>
+<p>ServerLimitsSpec defines the Loki server-side limits for all components.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>http</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-HttpServerLimitsSpec">
+HttpServerLimitsSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>HTTP defines the HTTP server limits.</p>
 </td>
 </tr>
 </tbody>
