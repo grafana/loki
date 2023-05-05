@@ -1,3 +1,39 @@
+## Main/Unreleased
+
+### All Changes
+
+#### Loki
+
+##### Enhancements
+
+##### Fixes
+
+##### Changes
+
+#### Promtail
+
+##### Enhancements
+
+##### Fixes
+
+* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
+
+#### LogCLI
+
+##### Fixes
+
+#### Mixins
+
+#### Enhancements
+
+#### Fixes
+
+#### FluentD
+
+##### Enhancements
+
+#### Jsonnet
+
 ## 2.8.2
 
 #### Loki
