@@ -3,7 +3,6 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"encoding/binary"
 	"io"
 	"sync"
 
@@ -257,7 +256,7 @@ Outer:
 		for _, t := range previous {
 			if t.Sample.Hash == sample.Hash {
 				i.stats.AddDuplicates(1)
-				i.stats.AddDuplicateBytes(sample.Length + 2*binary.MaxVarintLen64)
+				i.stats.AddDuplicateBytes(sample.Length)
 				dupe = true
 				break
 			}
@@ -282,7 +281,7 @@ Outer:
 			for _, t := range previous {
 				if t.Hash == sample.Hash {
 					i.stats.AddDuplicates(1)
-					i.stats.AddDuplicateBytes(t.Length + 2*binary.MaxVarintLen64)
+					i.stats.AddDuplicateBytes(t.Length)
 					continue inner
 				}
 			}
