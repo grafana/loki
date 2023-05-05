@@ -167,6 +167,41 @@ func TestRateStore(t *testing.T) {
 		rate, _ = tc.rateStore.RateFor("tenant 1", 0)
 		require.EqualValues(t, 0, rate)
 	})
+
+	t.Run("it adjusts the rate and pushes according to a weighted average", func(t *testing.T) {
+		tc := setup(true)
+		tc.ring.replicationSet = ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Addr: "ingester0"},
+			},
+		}
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient([]*logproto.StreamRate{
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25, Pushes: 25},
+			}, 1),
+		}
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, 25, rate)
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient([]*logproto.StreamRate{
+				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 50, Pushes: 35},
+			}, 1),
+		}
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		afterNewRate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, weightedMovingAverage(50, 25), afterNewRate)
+
+		tc.ring.replicationSet = ring.ReplicationSet{} // No more data from ingesters
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		afterNoUpdate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, weightedMovingAverage(0, afterNewRate), afterNoUpdate)
+	})
 }
 
 var benchErr error

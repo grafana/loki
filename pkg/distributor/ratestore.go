@@ -23,6 +23,13 @@ type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
 }
 
+const (
+	// The factor used to weight the moving average. Must be in the range [0, 1.0].
+	// A larger factor weights recent samples more heavily while a smaller
+	// factor weights historic samples more heavily.
+	smoothingFactor = .3
+)
+
 type RateStoreConfig struct {
 	MaxParallelism           int           `yaml:"max_request_parallelism"`
 	StreamRateUpdateInterval time.Duration `yaml:"stream_rate_update_interval"`
@@ -133,21 +140,35 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 	s.rateLock.Lock()
 	defer s.rateLock.Unlock()
 
+	// just pass updated to clean expired. If it exists as we iterate through don't update, otherwise update with 0
+
 	for tenantID, tenant := range updated {
 		if _, ok := s.rates[tenantID]; !ok {
 			s.rates[tenantID] = map[uint64]expiringRate{}
 		}
 
+		// TODO: Update pushes with weighted average
 		for stream, rate := range tenant {
-			s.rates[tenantID][stream] = rate
 			streamCnt++
+			if oldRate, ok := s.rates[tenantID][stream]; ok {
+				rate.rate = weightedMovingAverage(rate.rate, oldRate.rate)
+			}
+			s.rates[tenantID][stream] = rate
+
 		}
 	}
 
-	return s.cleanupExpired()
+	return s.cleanupExpired(updated)
 }
 
-func (s *rateStore) cleanupExpired() rateStats {
+func weightedMovingAverage(n, l int64) int64 {
+	next, last := float64(n), float64(l)
+
+	// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+	return int64((smoothingFactor * next) + ((1 - smoothingFactor) * last))
+}
+
+func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
 	var rs rateStats
 
 	for tID, tenant := range s.rates {
@@ -162,6 +183,11 @@ func (s *rateStore) cleanupExpired() rateStats {
 				continue
 			}
 
+			if !s.wasUpdated(tID, stream, updated) {
+				rate.rate = weightedMovingAverage(0, rate.rate)
+				s.rates[tID][stream] = rate
+			}
+
 			rs.maxRate = max(rs.maxRate, rate.rate)
 			rs.maxShards = max(rs.maxShards, rate.shards)
 
@@ -171,6 +197,18 @@ func (s *rateStore) cleanupExpired() rateStats {
 	}
 
 	return rs
+}
+
+func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map[string]map[uint64]expiringRate) bool {
+	if _, ok := lastUpdated[tenantID]; !ok {
+		return false
+	}
+
+	if _, ok := lastUpdated[tenantID][streamID]; !ok {
+		return false
+	}
+
+	return true
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
