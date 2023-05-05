@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"os"
+	"path/filepath"
+
 	"time"
 
 	"github.com/grafana/dskit/services"
@@ -20,6 +23,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -28,7 +34,7 @@ import (
 var chunkBucket = []byte("chunks")
 
 const (
-	markersFolder = "markers"
+	MarkersFolder = "markers"
 
 	// sizeBasedRetentionEnforcementInterval sets the timer interval to check and clean up chunks if the
 	// disk space usage is too high on local filesystem stores
@@ -231,10 +237,11 @@ func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeou
 	if metrics == nil {
 		metrics = newMarkerMetrics(r)
 	}
+
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
-		markerMetrics:    metrics,
+		markerMetrics:    newMarkerMetrics(r),
 		chunkClient:      chunkClient,
 		markTimeout:      markTimeout,
 	}, nil
@@ -419,6 +426,7 @@ type Sweeper struct {
 
 func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
+
 	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
@@ -568,4 +576,50 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 	}
 
 	return wroteChunks, linesDeleted, nil
+}
+
+// CopyMarkers checks for markers in common markers dir and copies them to store specific markers dir.
+func CopyMarkers(workingDir string, store string) error {
+	markersDir := filepath.Join(workingDir, MarkersFolder)
+	info, err := os.Stat(markersDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// nothing to migrate
+			return nil
+		}
+
+		return err
+	}
+
+	if !info.IsDir() {
+		return nil
+	}
+
+	markers, err := os.ReadDir(markersDir)
+	if err != nil {
+		return fmt.Errorf("read markers dir: %w", err)
+	}
+
+	targetDir := filepath.Join(workingDir, store, MarkersFolder)
+	if err := chunk_util.EnsureDirectory(targetDir); err != nil {
+		return fmt.Errorf("ensure target markers dir: %w", err)
+	}
+
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to store specific dir: %s", targetDir))
+	for _, marker := range markers {
+		if marker.IsDir() {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(markersDir, marker.Name()))
+		if err != nil {
+			return fmt.Errorf("read marker file: %w", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0o666); err != nil {
+			return fmt.Errorf("write marker file: %w", err)
+		}
+	}
+
+	return nil
 }

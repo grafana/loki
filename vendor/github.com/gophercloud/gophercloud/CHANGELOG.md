@@ -1,3 +1,14 @@
+## v1.2.0 (2023-01-27)
+
+Starting with this version, Gophercloud sends its actual version in the
+user-agent string in the format `gophercloud/v1.2.0`. It no longer sends the
+hardcoded string `gophercloud/2.0.0`.
+
+* [GH-2542](https://github.com/gophercloud/gophercloud/pull/2542) Add field hidden in containerinfra/v1/clustertemplates
+* [GH-2537](https://github.com/gophercloud/gophercloud/pull/2537) Support value_specs for Ports
+* [GH-2530](https://github.com/gophercloud/gophercloud/pull/2530) keystone: add v3 OS-FEDERATION mappings create operation
+* [GH-2519](https://github.com/gophercloud/gophercloud/pull/2519) Modify user-agent header to ensure current gophercloud version is provided
+
 ## v1.1.1 (2022-12-07)
 
 The GOPROXY cache for v1.1.0 was corrupted with a tag pointing to the wrong commit. This release fixes the problem by exposing a new release with the same content.
@@ -174,7 +185,7 @@ IMPROVEMENTS
 NOTES / BREAKING CHANGES
 
 * `compute/v2/extensions/keypairs.List` now takes a `ListOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
-* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186) 
+* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
 * `compute/v2/extensions/keypairs.Delete` now takes a `DeleteOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
 * `compute/v2/extensions/hypervisors.List` now takes a `ListOptsBuilder` argument [GH-2187](https://github.com/gophercloud/gophercloud/pull/2187)
 
@@ -469,7 +480,7 @@ UPGRADE NOTES
 * The various `IDFromName` convenience functions have been moved to https://github.com/gophercloud/utils [GH-1897](https://github.com/gophercloud/gophercloud/pull/1897)
 * `sharedfilesystems/v2/shares.GetExportLocations` was renamed to `sharedfilesystems/v2/shares.ListExportLocations` [GH-1932](https://github.com/gophercloud/gophercloud/pull/1932)
 
-IMPROVEMENTS 
+IMPROVEMENTS
 
 * Added `blockstorage/extensions/volumeactions.SetBootable` [GH-1891](https://github.com/gophercloud/gophercloud/pull/1891)
 * Added `blockstorage/extensions/backups.Export` [GH-1894](https://github.com/gophercloud/gophercloud/pull/1894)
@@ -765,4 +776,4 @@ BUG FIXES
 
 ## 0.1.0 (May 27, 2019)
 
-Initial tagged release. 
+Initial tagged release.

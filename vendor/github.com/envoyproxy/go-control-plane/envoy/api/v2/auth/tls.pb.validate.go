@@ -348,9 +348,18 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 		}
 	}
 
-	switch m.SessionTicketKeysType.(type) {
-
+	switch v := m.SessionTicketKeysType.(type) {
 	case *DownstreamTlsContext_SessionTicketKeys:
+		if v == nil {
+			err := DownstreamTlsContextValidationError{
+				field:  "SessionTicketKeysType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetSessionTicketKeys()).(type) {
@@ -382,6 +391,16 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 		}
 
 	case *DownstreamTlsContext_SessionTicketKeysSdsSecretConfig:
+		if v == nil {
+			err := DownstreamTlsContextValidationError{
+				field:  "SessionTicketKeysType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetSessionTicketKeysSdsSecretConfig()).(type) {
@@ -413,8 +432,19 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 		}
 
 	case *DownstreamTlsContext_DisableStatelessSessionResumption:
+		if v == nil {
+			err := DownstreamTlsContextValidationError{
+				field:  "SessionTicketKeysType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 		// no validation rules for DisableStatelessSessionResumption
-
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -627,9 +657,18 @@ func (m *CommonTlsContext) validate(all bool) error {
 
 	}
 
-	switch m.ValidationContextType.(type) {
-
+	switch v := m.ValidationContextType.(type) {
 	case *CommonTlsContext_ValidationContext:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetValidationContext()).(type) {
@@ -661,6 +700,16 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 
 	case *CommonTlsContext_ValidationContextSdsSecretConfig:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetValidationContextSdsSecretConfig()).(type) {
@@ -692,6 +741,16 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 
 	case *CommonTlsContext_CombinedValidationContext:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetCombinedValidationContext()).(type) {
@@ -722,6 +781,8 @@ func (m *CommonTlsContext) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {

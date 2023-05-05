@@ -20,11 +20,12 @@ This is important, so you don't have to worry about spending CPU cycles on alrea
 * Concurrent stream compression
 * Faster decompression, even for Snappy compatible content
 * Concurrent Snappy/S2 stream decompression
-* Ability to quickly skip forward in compressed stream
+* Skip forward in compressed stream
 * Random seeking with indexes
 * Compatible with reading Snappy compressed content
 * Smaller block size overhead on incompressible blocks
 * Block concatenation
+* Block Dictionary support
 * Uncompressed stream mode
 * Automatic stream size padding
 * Snappy compatible block compression
@@ -594,6 +595,123 @@ Best...    10737418240 -> 4210602774 [39.21%]; 42.96s, 254.4MB/s
 
 Decompression speed should be around the same as using the 'better' compression mode. 
 
+## Dictionaries
+
+*Note: S2 dictionary compression is currently at an early implementation stage, with no assembly for
+neither encoding nor decoding. Performance improvements can be expected in the future.*
+
+Adding dictionaries allow providing a custom dictionary that will serve as lookup in the beginning of blocks.
+
+The same dictionary *must* be used for both encoding and decoding. 
+S2 does not keep track of whether the same dictionary is used,
+and using the wrong dictionary will most often not result in an error when decompressing.
+
+Blocks encoded *without* dictionaries can be decompressed seamlessly *with* a dictionary.
+This means it is possible to switch from an encoding without dictionaries to an encoding with dictionaries
+and treat the blocks similarly.
+
+Similar to [zStandard dictionaries](https://github.com/facebook/zstd#the-case-for-small-data-compression), 
+the same usage scenario applies to S2 dictionaries.  
+
+> Training works if there is some correlation in a family of small data samples. The more data-specific a dictionary is, the more efficient it is (there is no universal dictionary). Hence, deploying one dictionary per type of data will provide the greatest benefits. Dictionary gains are mostly effective in the first few KB. Then, the compression algorithm will gradually use previously decoded content to better compress the rest of the file.
+
+S2 further limits the dictionary to only be enabled on the first 64KB of a block.
+This will remove any negative (speed) impacts of the dictionaries on bigger blocks. 
+
+### Compression
+
+Using the [github_users_sample_set](https://github.com/facebook/zstd/releases/download/v1.1.3/github_users_sample_set.tar.zst) 
+and a 64KB dictionary trained with zStandard the following sizes can be achieved. 
+
+|                    | Default          | Better           | Best                  |
+|--------------------|------------------|------------------|-----------------------|
+| Without Dictionary | 3362023 (44.92%) | 3083163 (41.19%) | 3057944 (40.86%)      |
+| With Dictionary    | 921524 (12.31%)  | 873154 (11.67%)  | 785503 bytes (10.49%) |
+
+So for highly repetitive content, this case provides an almost 3x reduction in size.
+
+For less uniform data we will use the Go source code tree.
+Compressing First 64KB of all `.go` files in `go/src`, Go 1.19.5, 8912 files, 51253563 bytes input:
+
+|                    | Default           | Better            | Best              |
+|--------------------|-------------------|-------------------|-------------------|
+| Without Dictionary | 22955767 (44.79%) | 20189613 (39.39%  | 19482828 (38.01%) |
+| With Dictionary    | 19654568 (38.35%) | 16289357 (31.78%) | 15184589 (29.63%) |
+| Saving/file        | 362 bytes         | 428 bytes         | 472 bytes         |
+
+
+### Creating Dictionaries
+
+There are no tools to create dictionaries in S2. 
+However, there are multiple ways to create a useful dictionary:
+
+#### Using a Sample File
+
+If your input is very uniform, you can just use a sample file as the dictionary.
+
+For example in the `github_users_sample_set` above, the average compression only goes up from 
+10.49% to 11.48% by using the first file as dictionary compared to using a dedicated dictionary.
+
+```Go
+    // Read a sample
+    sample, err := os.ReadFile("sample.json")
+
+    // Create a dictionary.
+    dict := s2.MakeDict(sample, nil)
+	
+    // b := dict.Bytes() will provide a dictionary that can be saved
+    // and reloaded with s2.NewDict(b).
+	
+    // To encode:
+    encoded := dict.Encode(nil, file)
+
+    // To decode:
+    decoded, err := dict.Decode(nil, file)
+```
+
+#### Using Zstandard
+
+Zstandard dictionaries can easily be converted to S2 dictionaries.
+
+This can be helpful to generate dictionaries for files that don't have a fixed structure.
+
+
+Example, with training set files  placed in `./training-set`: 
+
+`λ zstd -r --train-fastcover training-set/* --maxdict=65536 -o name.dict`
+
+This will create a dictionary of 64KB, that can be converted to a dictionary like this:
+
+```Go
+    // Decode the Zstandard dictionary.
+    insp, err := zstd.InspectDictionary(zdict)
+    if err != nil {
+        panic(err)
+    }
+	
+    // We are only interested in the contents.
+    // Assume that files start with "// Copyright (c) 2023".
+    // Search for the longest match for that.
+    // This may save a few bytes.
+    dict := s2.MakeDict(insp.Content(), []byte("// Copyright (c) 2023"))
+
+    // b := dict.Bytes() will provide a dictionary that can be saved
+    // and reloaded with s2.NewDict(b).
+
+    // We can now encode using this dictionary
+    encodedWithDict := dict.Encode(nil, payload)
+
+    // To decode content:
+    decoded, err := dict.Decode(nil, encodedWithDict)
+```
+
+It is recommended to save the dictionary returned by ` b:= dict.Bytes()`, since that will contain only the S2 dictionary.
+
+This dictionary can later be loaded using `s2.NewDict(b)`. The dictionary then no longer requires `zstd` to be initialized.
+
+Also note how `s2.MakeDict` allows you to search for a common starting sequence of your files.
+This can be omitted, at the expense of a few bytes.
+
 # Snappy Compatibility
 
 S2 now offers full compatibility with Snappy.
@@ -928,6 +1046,72 @@ Lengths are stored as little endian values.
 The first copy of a block cannot be a repeat offset and the offset is reset on every block in streams.
 
 Default streaming block size is 1MB.
+
+# Dictionary Encoding
+
+Adding dictionaries allow providing a custom dictionary that will serve as lookup in the beginning of blocks.
+
+A dictionary provides an initial repeat value that can be used to point to a common header.
+
+Other than that the dictionary contains values that can be used as back-references.
+
+Often used data should be placed at the *end* of the dictionary since offsets < 2048 bytes will be smaller.
+
+## Format
+
+Dictionary *content* must at least 16 bytes and less or equal to 64KiB (65536 bytes).
+
+Encoding: `[repeat value (uvarint)][dictionary content...]`
+
+Before the dictionary content, an unsigned base-128 (uvarint) encoded value specifying the initial repeat offset.
+This value is an offset into the dictionary content and not a back-reference offset,
+so setting this to 0 will make the repeat value point to the first value of the dictionary.
+
+The value must be less than the dictionary length-8
+
+## Encoding
+
+From the decoder point of view the dictionary content is seen as preceding the encoded content.
+
+`[dictionary content][decoded output]`
+
+Backreferences to the dictionary are encoded as ordinary backreferences that have an offset before the start of the decoded block.
+
+Matches copying from the dictionary are **not** allowed to cross from the dictionary into the decoded data.
+However, if a copy ends at the end of the dictionary the next repeat will point to the start of the decoded buffer, which is allowed.
+
+The first match can be a repeat value, which will use the repeat offset stored in the dictionary.
+
+When 64KB (65536 bytes) has been en/decoded it is no longer allowed to reference the dictionary, 
+neither by a copy nor repeat operations. 
+If the boundary is crossed while copying from the dictionary, the operation should complete, 
+but the next instruction is not allowed to reference the dictionary.
+
+Valid blocks encoded *without* a dictionary can be decoded with any dictionary. 
+There are no checks whether the supplied dictionary is the correct for a block.
+Because of this there is no overhead by using a dictionary.
+
+## Example
+
+This is the dictionary content. Elements are separated by `[]`.
+
+Dictionary: `[0x0a][Yesterday 25 bananas were added to Benjamins brown bag]`.
+
+Initial repeat offset is set at 10, which is the letter `2`.
+
+Encoded `[LIT "10"][REPEAT len=10][LIT "hich"][MATCH off=50 len=6][MATCH off=31 len=6][MATCH off=61 len=10]`
+
+Decoded: `[10][ bananas w][hich][ were ][brown ][were added]`
+
+Output: `10 bananas which were brown were added`
+
+
+## Streams
+
+For streams each block can use the dictionary.
+
+The dictionary cannot not currently be provided on the stream.
+
 
 # LICENSE
 

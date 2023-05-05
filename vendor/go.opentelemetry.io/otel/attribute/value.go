@@ -68,7 +68,7 @@ func BoolValue(v bool) Value {
 
 // BoolSliceValue creates a BOOLSLICE Value.
 func BoolSliceValue(v []bool) Value {
-	return Value{vtype: BOOLSLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: BOOLSLICE, slice: attribute.BoolSliceValue(v)}
 }
 
 // IntValue creates an INT64 Value.
@@ -99,7 +99,7 @@ func Int64Value(v int64) Value {
 
 // Int64SliceValue creates an INT64SLICE Value.
 func Int64SliceValue(v []int64) Value {
-	return Value{vtype: INT64SLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: INT64SLICE, slice: attribute.Int64SliceValue(v)}
 }
 
 // Float64Value creates a FLOAT64 Value.
@@ -112,7 +112,7 @@ func Float64Value(v float64) Value {
 
 // Float64SliceValue creates a FLOAT64SLICE Value.
 func Float64SliceValue(v []float64) Value {
-	return Value{vtype: FLOAT64SLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: FLOAT64SLICE, slice: attribute.Float64SliceValue(v)}
 }
 
 // StringValue creates a STRING Value.
@@ -125,7 +125,7 @@ func StringValue(v string) Value {
 
 // StringSliceValue creates a STRINGSLICE Value.
 func StringSliceValue(v []string) Value {
-	return Value{vtype: STRINGSLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: STRINGSLICE, slice: attribute.StringSliceValue(v)}
 }
 
 // Type returns a type of the Value.
@@ -149,7 +149,7 @@ func (v Value) AsBoolSlice() []bool {
 }
 
 func (v Value) asBoolSlice() []bool {
-	return attribute.AsSlice[bool](v.slice)
+	return attribute.AsBoolSlice(v.slice)
 }
 
 // AsInt64 returns the int64 value. Make sure that the Value's type is
@@ -168,7 +168,7 @@ func (v Value) AsInt64Slice() []int64 {
 }
 
 func (v Value) asInt64Slice() []int64 {
-	return attribute.AsSlice[int64](v.slice)
+	return attribute.AsInt64Slice(v.slice)
 }
 
 // AsFloat64 returns the float64 value. Make sure that the Value's
@@ -187,7 +187,7 @@ func (v Value) AsFloat64Slice() []float64 {
 }
 
 func (v Value) asFloat64Slice() []float64 {
-	return attribute.AsSlice[float64](v.slice)
+	return attribute.AsFloat64Slice(v.slice)
 }
 
 // AsString returns the string value. Make sure that the Value's type
@@ -206,7 +206,7 @@ func (v Value) AsStringSlice() []string {
 }
 
 func (v Value) asStringSlice() []string {
-	return attribute.AsSlice[string](v.slice)
+	return attribute.AsStringSlice(v.slice)
 }
 
 type unknownValueType struct{}

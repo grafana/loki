@@ -57,9 +57,20 @@ func (m *EventServiceConfig) validate(all bool) error {
 
 	var errors []error
 
-	switch m.ConfigSourceSpecifier.(type) {
-
+	oneofConfigSourceSpecifierPresent := false
+	switch v := m.ConfigSourceSpecifier.(type) {
 	case *EventServiceConfig_GrpcService:
+		if v == nil {
+			err := EventServiceConfigValidationError{
+				field:  "ConfigSourceSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofConfigSourceSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGrpcService()).(type) {
@@ -91,6 +102,9 @@ func (m *EventServiceConfig) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofConfigSourceSpecifierPresent {
 		err := EventServiceConfigValidationError{
 			field:  "ConfigSourceSpecifier",
 			reason: "value is required",
@@ -99,7 +113,6 @@ func (m *EventServiceConfig) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

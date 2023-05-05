@@ -68,17 +68,17 @@ func TestSampleStreamToMatrix(t *testing.T) {
 			Metric: labels.FromMap(map[string]string{
 				"foo": "bar",
 			}),
-			Points: []promql.Point{
+			Floats: []promql.FPoint{
 				{
-					V: 0,
+					F: 0,
 					T: 0,
 				},
 				{
-					V: 1,
+					F: 1,
 					T: 1,
 				},
 				{
-					V: 2,
+					F: 2,
 					T: 2,
 				},
 			},
@@ -87,17 +87,17 @@ func TestSampleStreamToMatrix(t *testing.T) {
 			Metric: labels.FromMap(map[string]string{
 				"bazz": "buzz",
 			}),
-			Points: []promql.Point{
+			Floats: []promql.FPoint{
 				{
-					V: 4,
+					F: 4,
 					T: 4,
 				},
 				{
-					V: 5,
+					F: 5,
 					T: 5,
 				},
 				{
-					V: 6,
+					F: 6,
 					T: 6,
 				},
 			},

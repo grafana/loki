@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -48,17 +48,20 @@ type ingesterMetrics struct {
 	chunkEncodeTime               prometheus.Histogram
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
-	flushedChunksStats            *usagestats.Counter
-	flushedChunksBytesStats       *usagestats.Statistics
-	flushedChunksLinesStats       *usagestats.Statistics
-	flushedChunksAgeStats         *usagestats.Statistics
-	flushedChunksLifespanStats    *usagestats.Statistics
-	flushedChunksUtilizationStats *usagestats.Statistics
+	flushedChunksStats            *analytics.Counter
+	flushedChunksBytesStats       *analytics.Statistics
+	flushedChunksLinesStats       *analytics.Statistics
+	flushedChunksAgeStats         *analytics.Statistics
+	flushedChunksLifespanStats    *analytics.Statistics
+	flushedChunksUtilizationStats *analytics.Statistics
 
 	chunksCreatedTotal prometheus.Counter
 	samplesPerChunk    prometheus.Histogram
 	blocksPerChunk     prometheus.Histogram
-	chunkCreatedStats  *usagestats.Counter
+	chunkCreatedStats  *analytics.Counter
+
+	// Shutdown marker for ingester scale down
+	shutdownMarker prometheus.Gauge
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -238,12 +241,12 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			// 1h -> 8hr
 			Buckets: prometheus.LinearBuckets(1, 1, 8),
 		}),
-		flushedChunksStats:            usagestats.NewCounter("ingester_flushed_chunks"),
-		flushedChunksBytesStats:       usagestats.NewStatistics("ingester_flushed_chunks_bytes"),
-		flushedChunksLinesStats:       usagestats.NewStatistics("ingester_flushed_chunks_lines"),
-		flushedChunksAgeStats:         usagestats.NewStatistics("ingester_flushed_chunks_age_seconds"),
-		flushedChunksLifespanStats:    usagestats.NewStatistics("ingester_flushed_chunks_lifespan_seconds"),
-		flushedChunksUtilizationStats: usagestats.NewStatistics("ingester_flushed_chunks_utilization"),
+		flushedChunksStats:            analytics.NewCounter("ingester_flushed_chunks"),
+		flushedChunksBytesStats:       analytics.NewStatistics("ingester_flushed_chunks_bytes"),
+		flushedChunksLinesStats:       analytics.NewStatistics("ingester_flushed_chunks_lines"),
+		flushedChunksAgeStats:         analytics.NewStatistics("ingester_flushed_chunks_age_seconds"),
+		flushedChunksLifespanStats:    analytics.NewStatistics("ingester_flushed_chunks_lifespan_seconds"),
+		flushedChunksUtilizationStats: analytics.NewStatistics("ingester_flushed_chunks_utilization"),
 		chunksCreatedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "ingester_chunks_created_total",
@@ -266,6 +269,13 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Buckets: prometheus.ExponentialBuckets(5, 2, 6),
 		}),
 
-		chunkCreatedStats: usagestats.NewCounter("ingester_chunk_created"),
+		chunkCreatedStats: analytics.NewCounter("ingester_chunk_created"),
+
+		shutdownMarker: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Subsystem: "ingester",
+			Name:      "shutdown_marker",
+			Help:      "1 if prepare shutdown has been called, 0 otherwise",
+		}),
 	}
 }

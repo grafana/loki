@@ -1070,7 +1070,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 	if distributors[0].distributorsLifecycler != nil {
 		test.Poll(t, time.Second, numDistributors, func() interface{} {
-			return distributors[0].distributorsLifecycler.HealthyInstancesCount()
+			return distributors[0].HealthyInstancesCount()
 		})
 	}
 

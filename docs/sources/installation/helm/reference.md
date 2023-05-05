@@ -1,8 +1,8 @@
 ---
 title: Helm Chart Values
-menuTitle: Helm Chart Values
+menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 100
+weight: 200
 keywords: []
 ---
 
@@ -378,7 +378,7 @@ null
 		<tr>
 			<td>enterprise.license</td>
 			<td>object</td>
-			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
+			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`</td>
 			<td><pre lang="json">
 {
   "contents": "NOTAVALIDLICENSE"
@@ -706,7 +706,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.3"
+"v1.7.2"
 </pre>
 </td>
 		</tr>
@@ -1690,6 +1690,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.index_gateway</td>
+			<td>object</td>
+			<td>Optional index gateway configuration</td>
+			<td><pre lang="json">
+{
+  "mode": "ring"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
@@ -1881,6 +1892,7 @@ null
     "accountKey": null,
     "accountName": null,
     "requestTimeout": null,
+    "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
   },
@@ -1906,7 +1918,8 @@ null
     "region": null,
     "s3": null,
     "s3ForcePathStyle": false,
-    "secretAccessKey": null
+    "secretAccessKey": null,
+    "signatureVersion": null
   },
   "type": "s3"
 }
@@ -2798,7 +2811,7 @@ null
 			<td>bool</td>
 			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>

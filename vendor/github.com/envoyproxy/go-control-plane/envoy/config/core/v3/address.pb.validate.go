@@ -177,12 +177,27 @@ func (m *EnvoyInternalAddress) validate(all bool) error {
 
 	var errors []error
 
-	switch m.AddressNameSpecifier.(type) {
+	// no validation rules for EndpointId
 
+	oneofAddressNameSpecifierPresent := false
+	switch v := m.AddressNameSpecifier.(type) {
 	case *EnvoyInternalAddress_ServerListenerName:
+		if v == nil {
+			err := EnvoyInternalAddressValidationError{
+				field:  "AddressNameSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofAddressNameSpecifierPresent = true
 		// no validation rules for ServerListenerName
-
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofAddressNameSpecifierPresent {
 		err := EnvoyInternalAddressValidationError{
 			field:  "AddressNameSpecifier",
 			reason: "value is required",
@@ -191,7 +206,6 @@ func (m *EnvoyInternalAddress) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -322,9 +336,20 @@ func (m *SocketAddress) validate(all bool) error {
 
 	// no validation rules for Ipv4Compat
 
-	switch m.PortSpecifier.(type) {
-
+	oneofPortSpecifierPresent := false
+	switch v := m.PortSpecifier.(type) {
 	case *SocketAddress_PortValue:
+		if v == nil {
+			err := SocketAddressValidationError{
+				field:  "PortSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofPortSpecifierPresent = true
 
 		if m.GetPortValue() > 65535 {
 			err := SocketAddressValidationError{
@@ -338,9 +363,22 @@ func (m *SocketAddress) validate(all bool) error {
 		}
 
 	case *SocketAddress_NamedPort:
+		if v == nil {
+			err := SocketAddressValidationError{
+				field:  "PortSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofPortSpecifierPresent = true
 		// no validation rules for NamedPort
-
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofPortSpecifierPresent {
 		err := SocketAddressValidationError{
 			field:  "PortSpecifier",
 			reason: "value is required",
@@ -349,7 +387,6 @@ func (m *SocketAddress) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -616,6 +653,177 @@ var _ interface {
 	ErrorName() string
 } = TcpKeepaliveValidationError{}
 
+// Validate checks the field values on ExtraSourceAddress with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *ExtraSourceAddress) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ExtraSourceAddress with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ExtraSourceAddressMultiError, or nil if none found.
+func (m *ExtraSourceAddress) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ExtraSourceAddress) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if m.GetAddress() == nil {
+		err := ExtraSourceAddressValidationError{
+			field:  "Address",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetAddress()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ExtraSourceAddressValidationError{
+					field:  "Address",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ExtraSourceAddressValidationError{
+					field:  "Address",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAddress()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ExtraSourceAddressValidationError{
+				field:  "Address",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetSocketOptions()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ExtraSourceAddressValidationError{
+					field:  "SocketOptions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ExtraSourceAddressValidationError{
+					field:  "SocketOptions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetSocketOptions()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ExtraSourceAddressValidationError{
+				field:  "SocketOptions",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return ExtraSourceAddressMultiError(errors)
+	}
+
+	return nil
+}
+
+// ExtraSourceAddressMultiError is an error wrapping multiple validation errors
+// returned by ExtraSourceAddress.ValidateAll() if the designated constraints
+// aren't met.
+type ExtraSourceAddressMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ExtraSourceAddressMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ExtraSourceAddressMultiError) AllErrors() []error { return m }
+
+// ExtraSourceAddressValidationError is the validation error returned by
+// ExtraSourceAddress.Validate if the designated constraints aren't met.
+type ExtraSourceAddressValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ExtraSourceAddressValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ExtraSourceAddressValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ExtraSourceAddressValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ExtraSourceAddressValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ExtraSourceAddressValidationError) ErrorName() string {
+	return "ExtraSourceAddressValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ExtraSourceAddressValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sExtraSourceAddress.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ExtraSourceAddressValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ExtraSourceAddressValidationError{}
+
 // Validate checks the field values on BindConfig with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
@@ -637,17 +845,6 @@ func (m *BindConfig) validate(all bool) error {
 	}
 
 	var errors []error
-
-	if m.GetSourceAddress() == nil {
-		err := BindConfigValidationError{
-			field:  "SourceAddress",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
 
 	if all {
 		switch v := interface{}(m.GetSourceAddress()).(type) {
@@ -733,6 +930,74 @@ func (m *BindConfig) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return BindConfigValidationError{
 					field:  fmt.Sprintf("SocketOptions[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetExtraSourceAddresses() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, BindConfigValidationError{
+						field:  fmt.Sprintf("ExtraSourceAddresses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, BindConfigValidationError{
+						field:  fmt.Sprintf("ExtraSourceAddresses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return BindConfigValidationError{
+					field:  fmt.Sprintf("ExtraSourceAddresses[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetAdditionalSourceAddresses() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, BindConfigValidationError{
+						field:  fmt.Sprintf("AdditionalSourceAddresses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, BindConfigValidationError{
+						field:  fmt.Sprintf("AdditionalSourceAddresses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return BindConfigValidationError{
+					field:  fmt.Sprintf("AdditionalSourceAddresses[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -839,9 +1104,20 @@ func (m *Address) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Address.(type) {
-
+	oneofAddressPresent := false
+	switch v := m.Address.(type) {
 	case *Address_SocketAddress:
+		if v == nil {
+			err := AddressValidationError{
+				field:  "Address",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofAddressPresent = true
 
 		if all {
 			switch v := interface{}(m.GetSocketAddress()).(type) {
@@ -873,6 +1149,17 @@ func (m *Address) validate(all bool) error {
 		}
 
 	case *Address_Pipe:
+		if v == nil {
+			err := AddressValidationError{
+				field:  "Address",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofAddressPresent = true
 
 		if all {
 			switch v := interface{}(m.GetPipe()).(type) {
@@ -904,6 +1191,17 @@ func (m *Address) validate(all bool) error {
 		}
 
 	case *Address_EnvoyInternalAddress:
+		if v == nil {
+			err := AddressValidationError{
+				field:  "Address",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofAddressPresent = true
 
 		if all {
 			switch v := interface{}(m.GetEnvoyInternalAddress()).(type) {
@@ -935,6 +1233,9 @@ func (m *Address) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofAddressPresent {
 		err := AddressValidationError{
 			field:  "Address",
 			reason: "value is required",
@@ -943,7 +1244,6 @@ func (m *Address) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

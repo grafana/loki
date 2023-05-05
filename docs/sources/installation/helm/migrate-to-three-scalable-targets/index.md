@@ -1,10 +1,10 @@
 ---
-title: Migrate To Three Scalable Targets
-menuTitle: Migrate to Three Targets
+title: Migrate to three scalable targets
+menuTitle: Migrate to three targets
 description: Migration guide for moving from two scalable to three scalable targets
 aliases:
   - /docs/installation/helm/migrate-from-distributed
-weight: 100
+weight: 700
 keywords:
   - migrate
   - ssd
@@ -12,7 +12,7 @@ keywords:
   - simple
 ---
 
-# Migrate To Three Scalable Targets
+# Migrate to three scalable targets
 
 This guide will walk you through migrating from the old, two target, scalable configuration to the new, three target, scalable configuration. This new configuration introduces a `backend` component, and reduces the `read` component to running just a `Querier` and `QueryFrontend`, allowing it to be run as a kubernetes `Deployment` rather than a `StatefulSet`.
 
