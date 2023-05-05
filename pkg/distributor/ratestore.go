@@ -373,7 +373,7 @@ func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, float64) {
 
 	if t, ok := s.rates[tenant]; ok {
 		rate := t[streamHash]
-		return rate.rate, rate.pushes //rate pushes needs to be a float
+		return rate.rate, rate.pushes
 	}
 
 	return 0, 0
