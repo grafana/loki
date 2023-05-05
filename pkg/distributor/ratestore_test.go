@@ -53,15 +53,7 @@ func TestRateStore(t *testing.T) {
 			}),
 		}
 
-		_ = tc.rateStore.StartAsync(context.Background())
-		defer tc.rateStore.StopAsync()
-
-		require.Eventually(t, func() bool { // There will be data
-			t1Rate, _ := tc.rateStore.RateFor("tenant 1", 0)
-			t2Rate, _ := tc.rateStore.RateFor("tenant 2", 0)
-
-			return t1Rate != 0 && t2Rate != 0
-		}, time.Second, time.Millisecond)
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
 		requireRatesAndPushesEqual(t, 15, 1.0/10, tc.rateStore, "tenant 1", 0)
 		requireRatesAndPushesEqual(t, 25, 1.0/20, tc.rateStore, "tenant 1", 1)
@@ -99,15 +91,7 @@ func TestRateStore(t *testing.T) {
 			}),
 		}
 
-		_ = tc.rateStore.StartAsync(context.Background())
-		defer tc.rateStore.StopAsync()
-
-		require.Eventually(t, func() bool { // There will be data
-			t1Rate, _ := tc.rateStore.RateFor("tenant 1", 0)
-			t2Rate, _ := tc.rateStore.RateFor("tenant 2", 0)
-
-			return t1Rate != 0 && t2Rate != 0
-		}, time.Second, time.Millisecond)
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
 		requireRatesAndPushesEqual(t, 35, 1.0/10, tc.rateStore, "tenant 1", 0)
 		requireRatesAndPushesEqual(t, 35, 1.0/10, tc.rateStore, "tenant 1", 0)
@@ -131,15 +115,8 @@ func TestRateStore(t *testing.T) {
 				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 30},
 			}),
 		}
-		_ = tc.rateStore.StartAsync(context.Background())
-		defer tc.rateStore.StopAsync()
 
-		require.Eventually(t, func() bool { // There will be data
-			t1Rate, _ := tc.rateStore.RateFor("tenant 1", 0)
-			t2Rate, _ := tc.rateStore.RateFor("tenant 2", 0)
-
-			return t1Rate != 0 && t2Rate != 0
-		}, time.Second, time.Millisecond)
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
 		requireRatesAndPushesEqual(t, 75, 1.0/30, tc.rateStore, "tenant 1", 0)
 		requireRatesAndPushesEqual(t, 75, 1.0/30, tc.rateStore, "tenant 2", 0)
@@ -158,10 +135,8 @@ func TestRateStore(t *testing.T) {
 				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25},
 			}),
 		}
-		_ = tc.rateStore.StartAsync(context.Background())
-		defer tc.rateStore.StopAsync()
 
-		time.Sleep(time.Second)
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 		requireRatesAndPushesEqual(t, 0, 1, tc.rateStore, "tenant 1", 0)
 	})
 
@@ -179,19 +154,18 @@ func TestRateStore(t *testing.T) {
 			}, 1),
 		}
 
-		tc.rateStore.rateKeepAlive = 2 * time.Second
-		_ = tc.rateStore.StartAsync(context.Background())
-		defer tc.rateStore.StopAsync()
+		tc.rateStore.rateKeepAlive = 1 * time.Millisecond
 
-		require.Eventually(t, func() bool {
-			rate, _ := tc.rateStore.RateFor("tenant 1", 0)
-			return rate == 25
-		}, time.Second, 100*time.Millisecond)
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		rate, _ := tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, 25, rate)
 
-		require.Eventually(t, func() bool {
-			rate, _ := tc.rateStore.RateFor("tenant 1", 0)
-			return rate == 0
-		}, 3*time.Second, 250*time.Millisecond)
+		tc.ring.replicationSet = ring.ReplicationSet{}
+		time.Sleep(10 * time.Millisecond)
+
+		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
+		rate, _ = tc.rateStore.RateFor("tenant 1", 0)
+		require.EqualValues(t, 0, rate)
 	})
 }
 
