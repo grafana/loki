@@ -14,18 +14,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
 
 	got, err := NewServerConfig(s.Spec.Limits)
 	require.NoError(t, err)
-
-	want := ServerConfig{
-		HTTP: &HTTPConfig{
-			IdleTimeout:         lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:         lokiDefaultHTTPReadTimeout,
-			WriteTimeout:        lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:  gatewayDefaultReadTimeout,
-			GatewayWriteTimeout: gatewayDefaultWriteTimeout,
-		},
-	}
-
-	require.Equal(t, want, got)
+	require.Equal(t, defaultServerConfig(), got)
 }
 
 func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T) {
@@ -48,11 +37,12 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 
 	want := ServerConfig{
 		HTTP: &HTTPConfig{
-			IdleTimeout:         1 * time.Minute,
-			ReadTimeout:         10 * time.Minute,
-			WriteTimeout:        20 * time.Minute,
-			GatewayReadTimeout:  10*time.Minute + gatewayReadWiggleRoom,
-			GatewayWriteTimeout: 20*time.Minute + gatewayWriteWiggleRoom,
+			IdleTimeout:                 1 * time.Minute,
+			ReadTimeout:                 10 * time.Minute,
+			WriteTimeout:                20 * time.Minute,
+			GatewayReadTimeout:          10*time.Minute + gatewayReadWiggleRoom,
+			GatewayWriteTimeout:         20*time.Minute + gatewayWriteWiggleRoom,
+			GatewayUpstreamWriteTimeout: 20 * time.Minute,
 		},
 	}
 
@@ -76,18 +66,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenIdleTimeoutParseError(t *testing.T)
 
 	got, err := NewServerConfig(s.Spec.Limits)
 	require.Error(t, err)
-
-	want := ServerConfig{
-		HTTP: &HTTPConfig{
-			IdleTimeout:         lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:         lokiDefaultHTTPReadTimeout,
-			WriteTimeout:        lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:  gatewayDefaultReadTimeout,
-			GatewayWriteTimeout: gatewayDefaultWriteTimeout,
-		},
-	}
-
-	require.Equal(t, want, got)
+	require.Equal(t, defaultServerConfig(), got)
 }
 
 func TestNewServerConfig_ReturnsDefaults_WhenReadTimeoutParseError(t *testing.T) {
@@ -107,18 +86,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenReadTimeoutParseError(t *testing.T)
 
 	got, err := NewServerConfig(s.Spec.Limits)
 	require.Error(t, err)
-
-	want := ServerConfig{
-		HTTP: &HTTPConfig{
-			IdleTimeout:         lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:         lokiDefaultHTTPReadTimeout,
-			WriteTimeout:        lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:  gatewayDefaultReadTimeout,
-			GatewayWriteTimeout: gatewayDefaultWriteTimeout,
-		},
-	}
-
-	require.Equal(t, want, got)
+	require.Equal(t, defaultServerConfig(), got)
 }
 
 func TestNewServerConfig_ReturnsDefaults_WhenWriteTimeoutParseError(t *testing.T) {
@@ -138,16 +106,5 @@ func TestNewServerConfig_ReturnsDefaults_WhenWriteTimeoutParseError(t *testing.T
 
 	got, err := NewServerConfig(s.Spec.Limits)
 	require.Error(t, err)
-
-	want := ServerConfig{
-		HTTP: &HTTPConfig{
-			IdleTimeout:         lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:         lokiDefaultHTTPReadTimeout,
-			WriteTimeout:        lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:  gatewayDefaultReadTimeout,
-			GatewayWriteTimeout: gatewayDefaultWriteTimeout,
-		},
-	}
-
-	require.Equal(t, want, got)
+	require.Equal(t, defaultServerConfig(), got)
 }

@@ -47,6 +47,7 @@ func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 	}, sha1C)
 
 	expected := "loki.grafana.com/config-hash"
@@ -94,6 +95,7 @@ func TestNewGatewayDeployment_HasNodeSelector(t *testing.T) {
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 	}, "deadbeef")
 
 	require.Equal(t, dpl.Spec.Template.Spec.NodeSelector, selector)
@@ -128,6 +130,7 @@ func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 	}, sha1C)
 
 	expected := "loki.grafana.com/certRotationRequiredAt"
@@ -186,6 +189,7 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 		Tenants: Tenants{
 			Secrets: []*TenantSecrets{
 				{
@@ -220,6 +224,7 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	})
 
 	require.NoError(t, err)
@@ -253,6 +258,7 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	})
 
 	require.NoError(t, err)
@@ -285,6 +291,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	})
 
 	require.NoError(t, err)
@@ -322,6 +329,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	})
 
 	require.NoError(t, err)
@@ -357,6 +365,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	})
 
 	require.NoError(t, err)
@@ -422,6 +431,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 						},
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
@@ -452,6 +462,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
@@ -482,6 +493,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
@@ -553,6 +565,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						},
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			missingArgs: []string{
 				"--logs.rules.endpoint=http://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -602,6 +615,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						},
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=http://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -629,6 +643,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=http://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -660,6 +675,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -691,6 +707,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Server: defaultServerConfig(),
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -744,6 +761,7 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 				Authentication: []lokiv1.AuthenticationSpec{},
 			},
 		},
+		Server: defaultServerConfig(),
 	})
 
 	require.NoError(t, err)
@@ -763,8 +781,11 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		"--logs.read.endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
 		"--logs.tail.endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
 		"--logs.write.endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100",
+		"--logs.write-timeout=10m0s",
 		"--rbac.config=/etc/lokistack-gateway/rbac.yaml",
 		"--tenants.config=/etc/lokistack-gateway/tenants.yaml",
+		"--server.read-timeout=1m0s",
+		"--server.write-timeout=12m0s",
 		"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 		"--logs.rules.read-only=true",
 		"--tls.client-auth-type=NoClientCert",
@@ -913,6 +934,7 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	}
 	objs, err := BuildGateway(opts)
 	require.NoError(t, err)

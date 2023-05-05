@@ -49,8 +49,9 @@ type HTTPConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 
-	GatewayReadTimeout  time.Duration
-	GatewayWriteTimeout time.Duration
+	GatewayReadTimeout          time.Duration
+	GatewayWriteTimeout         time.Duration
+	GatewayUpstreamWriteTimeout time.Duration
 }
 
 // ServerConfig contains the server configuration options for all Loki components
@@ -130,11 +131,12 @@ func (o Options) TLSCipherSuites() string {
 func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 	defaults := ServerConfig{
 		HTTP: &HTTPConfig{
-			IdleTimeout:         lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:         lokiDefaultHTTPReadTimeout,
-			WriteTimeout:        lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:  gatewayDefaultReadTimeout,
-			GatewayWriteTimeout: gatewayDefaultWriteTimeout,
+			IdleTimeout:                 lokiDefaultHTTPIdleTimeout,
+			ReadTimeout:                 lokiDefaultHTTPReadTimeout,
+			WriteTimeout:                lokiDefaultHTTPWriteTimeout,
+			GatewayReadTimeout:          gatewayDefaultReadTimeout,
+			GatewayWriteTimeout:         gatewayDefaultWriteTimeout,
+			GatewayUpstreamWriteTimeout: lokiDefaultHTTPWriteTimeout,
 		},
 	}
 
@@ -183,6 +185,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 
 		customCfg.HTTP.WriteTimeout = writeTimeout
 		customCfg.HTTP.GatewayWriteTimeout = writeTimeout + gatewayWriteWiggleRoom
+		customCfg.HTTP.GatewayUpstreamWriteTimeout = writeTimeout
 	}
 
 	if err := mergo.Merge(&defaults, &customCfg, mergo.WithOverride); err != nil {

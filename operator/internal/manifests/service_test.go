@@ -54,6 +54,7 @@ func TestServicesMatchPorts(t *testing.T) {
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 	}
 	sha1C := "deadbef"
 
@@ -183,6 +184,7 @@ func TestServicesMatchLabels(t *testing.T) {
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 	}
 	sha1C := "deadbef"
 
@@ -305,6 +307,7 @@ func TestServices_WithEncryption(t *testing.T) {
 				},
 			},
 		},
+		Server: defaultServerConfig(),
 		TLSProfile: TLSProfileSpec{
 			MinTLSVersion: "VersionTLS12",
 			Ciphers:       []string{"cipher1", "cipher2"},
