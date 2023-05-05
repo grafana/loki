@@ -171,14 +171,18 @@ Alternatively, the `table-manager.retention-period` and
 provided retention period needs to be a duration represented as a string that
 can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
 
-> **WARNING**: The retention period must be a multiple of the index and chunks table
+{{% admonition type="warning" %}}
+The retention period must be a multiple of the index and chunks table
 `period`, configured in the [`period_config`]({{<relref "../../configuration#period_config">}})
 block. See the [Table Manager]({{<relref "table-manager#retention">}}) documentation for
 more information.
+{{% /admonition %}}
 
-> **NOTE**: To avoid querying of data beyond the retention period,
+{{% admonition type="note" %}}
+To avoid querying of data beyond the retention period,
 `max_look_back_period` config in [`chunk_store_config`]({{<relref "../../configuration#chunk_store_config">}}) must be set to a value less than or equal to
 what is set in `table_manager.retention_period`.
+{{% /admonition %}}
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
 policy set correctly. For more details check

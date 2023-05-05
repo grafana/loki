@@ -1237,8 +1237,9 @@ will be sent over the WebSocket multiple times.
 
 ### `GET /api/prom/query`
 
-> **WARNING**: `/api/prom/query` is DEPRECATED; use `/loki/api/v1/query_range`
-> instead.
+{{% admonition type="warning" %}}
+`/api/prom/query` is DEPRECATED; use `/loki/api/v1/query_range` instead.
+{{% /admonition %}}
 
 `/api/prom/query` supports doing general queries. The URL query parameters
 support the following values:
@@ -1307,7 +1308,9 @@ $ curl -G -s "http://localhost:3100/api/prom/query" --data-urlencode 'query={foo
 
 ### `GET /api/prom/label/<name>/values`
 
-> **WARNING**: `/api/prom/label/<name>/values` is DEPRECATED; use `/loki/api/v1/label/<name>/values`
+{{% admonition type="warning" %}}
+`/api/prom/label/<name>/values` is DEPRECATED; use `/loki/api/v1/label/<name>/values`
+{{% /admonition %}}
 
 `/api/prom/label/<name>/values` retrieves the list of known values for a given
 label within a given time span. It accepts the following query parameters in
@@ -1345,7 +1348,9 @@ $ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
 
 ### `GET /api/prom/label`
 
-> **WARNING**: `/api/prom/label` is DEPRECATED; use `/loki/api/v1/labels`
+{{% admonition type="warning" %}}
+`/api/prom/label` is DEPRECATED; use `/loki/api/v1/labels`
+{{% /admonition %}}
 
 `/api/prom/label` retrieves the list of known labels within a given time span. It
 accepts the following query parameters in the URL:
@@ -1382,8 +1387,9 @@ $ curl -G -s  "http://localhost:3100/api/prom/label" | jq
 
 ### `POST /api/prom/push`
 
-> **WARNING**: `/api/prom/push` is DEPRECATED; use `/loki/api/v1/push`
-> instead.
+{{% admonition type="warning" %}}
+`/api/prom/push` is DEPRECATED; use `/loki/api/v1/push` instead.
+{{% /admonition %}}
 
 `/api/prom/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
@@ -1421,8 +1427,9 @@ $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api
 
 ### `POST /ingester/flush_shutdown`
 
-> **WARNING**: `/ingester/flush_shutdown` is DEPRECATED; use `/ingester/shutdown?flush=true`
-> instead.
+{{% admonition type="warning" %}}
+`/ingester/flush_shutdown` is DEPRECATED; use `/ingester/shutdown?flush=true` instead.
+{{% /admonition %}}
 
 `/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
 This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,

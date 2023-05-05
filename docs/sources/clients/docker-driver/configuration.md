@@ -30,9 +30,11 @@ docker run --log-driver=loki \
     grafana/grafana
 ```
 
-> **Note**: The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working.
-> You can adjust file size and rotation using the respective log option `max-size` and `max-file`. Keep in mind that default values for these options are not taken from json-log configuration.
-> You can deactivate this behavior by setting the log option `no-file` to true.
+{{% admonition type="note" %}}
+The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working.
+You can adjust file size and rotation using the respective log option `max-size` and `max-file`. Keep in mind that default values for these options are not taken from json-log configuration.
+You can deactivate this behavior by setting the log option `no-file` to true.
+{{% /admonition %}}
 
 ## Change the default logging driver
 
@@ -61,9 +63,11 @@ Options for the logging driver can also be configured with `log-opts` in the
 }
 ```
 
-> **Note**: log-opt configuration options in daemon.json must be provided as
-> strings. Boolean and numeric values (such as the value for loki-batch-size in
-> the example above) must therefore be enclosed in quotes (`"`).
+{{% admonition type="note" %}}
+log-opt configuration options in daemon.json must be provided as
+strings. Boolean and numeric values (such as the value for loki-batch-size in
+the example above) must therefore be enclosed in quotes (`"`).
+{{% /admonition %}}
 
 After changing `daemon.json`, restart the Docker daemon for the changes to take
 effect. All **newly created** containers from that host will then send logs to Loki via the driver.
@@ -98,9 +102,11 @@ docker-compose -f docker-compose.yaml up
 
 Once deployed, the Grafana service will send its logs to Loki.
 
-> **Note**: stack name and service name for each swarm service and project name
-> and service name for each compose service are automatically discovered and
-> sent as Loki labels, this way you can filter by them in Grafana.
+{{% admonition type="note" %}}
+stack name and service name for each swarm service and project name
+and service name for each compose service are automatically discovered and
+sent as Loki labels, this way you can filter by them in Grafana.
+{{% /admonition %}}
 
 ## Labels
 

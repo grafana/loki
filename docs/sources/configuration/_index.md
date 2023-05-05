@@ -56,7 +56,9 @@ value is set to the specified default.
 
 ### Use environment variables in the configuration
 
-> **Note:** This feature is only available in Loki 2.1+.
+{{% admonition type="note" %}}
+This feature is only available in Loki 2.1+.
+{{% /admonition %}}
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
 To do this, pass `-config.expand-env=true` and use:
