@@ -147,13 +147,12 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 		}
 
 		for stream, rate := range tenant {
-			streamCnt++
 			if oldRate, ok := s.rates[tenantID][stream]; ok {
 				rate.rate = weightedMovingAverage(rate.rate, oldRate.rate)
 				rate.pushes = weightedMovingAverageF(rate.pushes, oldRate.pushes)
 			}
 			s.rates[tenantID][stream] = rate
-
+			streamCnt++
 		}
 	}
 
