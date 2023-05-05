@@ -113,7 +113,7 @@ func TestRateStore(t *testing.T) {
 		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
 	})
 
-	t.Run("it aggregates rates and pushes over shards", func(t *testing.T) {
+	t.Run("it aggregates rates but gets the max number of pushes over shards", func(t *testing.T) {
 		tc := setup(true)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
@@ -124,11 +124,11 @@ func TestRateStore(t *testing.T) {
 		tc.clientPool.clients = map[string]client.PoolClient{
 			"ingester0": newRateClient([]*logproto.StreamRate{
 				{Tenant: "tenant 1", StreamHash: 1, StreamHashNoShard: 0, Rate: 25, Pushes: 10},
-				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 0, Rate: 35, Pushes: 10},
-				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 10},
+				{Tenant: "tenant 1", StreamHash: 2, StreamHashNoShard: 0, Rate: 35, Pushes: 20},
+				{Tenant: "tenant 1", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 30},
 				{Tenant: "tenant 2", StreamHash: 1, StreamHashNoShard: 0, Rate: 25, Pushes: 10},
-				{Tenant: "tenant 2", StreamHash: 2, StreamHashNoShard: 0, Rate: 35, Pushes: 10},
-				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 10},
+				{Tenant: "tenant 2", StreamHash: 2, StreamHashNoShard: 0, Rate: 35, Pushes: 20},
+				{Tenant: "tenant 2", StreamHash: 3, StreamHashNoShard: 0, Rate: 15, Pushes: 30},
 			}),
 		}
 		_ = tc.rateStore.StartAsync(context.Background())

@@ -207,7 +207,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
-			rate.pushes += streamRate.Pushes
+			rate.pushes = uint32(max(int64(streamRate.Pushes), int64(rate.pushes)))
 			rate.shards++
 			rate.createdAt = now
 
