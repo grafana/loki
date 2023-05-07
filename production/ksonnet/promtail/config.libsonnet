@@ -1,6 +1,6 @@
 {
   _images+:: {
-    promtail: 'grafana/promtail:2.8.0',
+    promtail: 'grafana/promtail:2.8.1',
   },
 
   _config+:: {

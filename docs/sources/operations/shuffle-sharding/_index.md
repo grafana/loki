@@ -78,7 +78,7 @@ The per-tenant configuration parameter
 `max_query_parallelism` describes how many sub queries, after query splitting and query sharding, can be scheduled to run at the same time for each request of any tenant.
 
 Configuration parameter
-`querier.concurrency` controls the quanity of worker threads (goroutines) per single querier.
+`querier.concurrency` controls the quantity of worker threads (goroutines) per single querier.
 
 The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration by `max_queriers_per_tenant`.
 

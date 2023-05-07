@@ -89,9 +89,11 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: GatewayName(opts.Name),
-		Affinity:           defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity:           configureAffinity(l, opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -204,9 +206,6 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
 	}
-
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{

@@ -102,7 +102,7 @@ github.com/Azure/go-ansiterm/winterm
 # github.com/Azure/go-autorest v14.2.0+incompatible
 ## explicit
 github.com/Azure/go-autorest
-# github.com/Azure/go-autorest/autorest v0.11.28
+# github.com/Azure/go-autorest/autorest v0.11.29
 ## explicit; go 1.15
 github.com/Azure/go-autorest/autorest
 github.com/Azure/go-autorest/autorest/azure
@@ -155,7 +155,7 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 # github.com/IBM/go-sdk-core/v5 v5.13.1
 ## explicit; go 1.18
 github.com/IBM/go-sdk-core/v5/core
-# github.com/IBM/ibm-cos-sdk-go v1.9.4
+# github.com/IBM/ibm-cos-sdk-go v1.10.0
 ## explicit; go 1.11
 github.com/IBM/ibm-cos-sdk-go/aws
 github.com/IBM/ibm-cos-sdk-go/aws/arn
@@ -238,7 +238,7 @@ github.com/alicebob/miniredis/v2/geohash
 github.com/alicebob/miniredis/v2/hyperloglog
 github.com/alicebob/miniredis/v2/metro
 github.com/alicebob/miniredis/v2/server
-# github.com/aliyun/aliyun-oss-go-sdk v2.2.2+incompatible
+# github.com/aliyun/aliyun-oss-go-sdk v2.2.7+incompatible
 ## explicit
 github.com/aliyun/aliyun-oss-go-sdk/oss
 # github.com/armon/go-metrics v0.4.1
@@ -522,8 +522,8 @@ github.com/docker/go-units
 github.com/drone/envsubst
 github.com/drone/envsubst/parse
 github.com/drone/envsubst/path
-# github.com/dustin/go-humanize v1.0.0
-## explicit
+# github.com/dustin/go-humanize v1.0.1
+## explicit; go 1.16
 github.com/dustin/go-humanize
 # github.com/eapache/go-resiliency v1.3.0
 ## explicit; go 1.13
@@ -602,7 +602,7 @@ github.com/envoyproxy/protoc-gen-validate/validate
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 ## explicit
 github.com/facette/natsort
-# github.com/fatih/color v1.14.1
+# github.com/fatih/color v1.15.0
 ## explicit; go 1.17
 github.com/fatih/color
 # github.com/felixge/fgprof v0.9.3
@@ -805,7 +805,7 @@ github.com/gorilla/websocket
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2
+# github.com/grafana/dskit v0.0.0-20230417151531-1725bcc1e9a1
 ## explicit; go 1.18
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency
@@ -825,6 +825,7 @@ github.com/grafana/dskit/kv/consul
 github.com/grafana/dskit/kv/etcd
 github.com/grafana/dskit/kv/memberlist
 github.com/grafana/dskit/limiter
+github.com/grafana/dskit/loser
 github.com/grafana/dskit/modules
 github.com/grafana/dskit/multierror
 github.com/grafana/dskit/netutil
@@ -839,7 +840,7 @@ github.com/grafana/dskit/tenant
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20230105173749-11f792309e1f
+# github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 => ./pkg/push
@@ -993,8 +994,8 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.15.15
-## explicit; go 1.17
+# github.com/klauspost/compress v1.16.5
+## explicit; go 1.18
 github.com/klauspost/compress
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/fse
@@ -1005,7 +1006,7 @@ github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/s2
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/klauspost/cpuid/v2 v2.1.0
+# github.com/klauspost/cpuid/v2 v2.2.4
 ## explicit; go 1.15
 github.com/klauspost/cpuid/v2
 # github.com/klauspost/pgzip v1.2.5
@@ -1045,7 +1046,7 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.45
+# github.com/minio/minio-go/v7 v7.0.52
 ## explicit; go 1.17
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
@@ -1285,7 +1286,7 @@ github.com/sony/gobreaker
 # github.com/spaolacci/murmur3 v1.1.0
 ## explicit
 github.com/spaolacci/murmur3
-# github.com/spf13/afero v1.9.3
+# github.com/spf13/afero v1.9.5
 ## explicit; go 1.16
 github.com/spf13/afero
 github.com/spf13/afero/internal/common
@@ -1498,14 +1499,14 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20230307190834-24139beb5833
+# golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 ## explicit; go 1.18
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
 # golang.org/x/mod v0.9.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.8.0
+# golang.org/x/net v0.9.0
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1539,7 +1540,7 @@ golang.org/x/oauth2/jwt
 ## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.6.0
+# golang.org/x/sys v0.7.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -1549,10 +1550,10 @@ golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/sys/windows/svc/eventlog
-# golang.org/x/term v0.6.0
+# golang.org/x/term v0.7.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.8.0
+# golang.org/x/text v0.9.0
 ## explicit; go 1.17
 golang.org/x/text/cases
 golang.org/x/text/encoding

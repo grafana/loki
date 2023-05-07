@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -30,6 +31,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -37,7 +39,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -45,11 +46,13 @@ import (
 
 const (
 	ringKey = "distributor"
+
+	ringAutoForgetUnhealthyPeriods = 10
 )
 
 var (
 	maxLabelCacheSize = 100000
-	rfStats           = usagestats.NewInt("distributor_replication_factor")
+	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
 
 // Config for a Distributor.
@@ -91,7 +94,9 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
-	distributorsLifecycler *ring.Lifecycler
+	distributorsLifecycler *ring.BasicLifecycler
+	distributorsRing       *ring.Ring
+	healthyInstancesCount  *atomic.Uint32
 
 	rateLimitStrat string
 
@@ -136,45 +141,29 @@ func New(
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsLifecycler *ring.Lifecycler
-	rateLimitStrat := validation.LocalIngestionRateStrategy
+	var distributorsLifecycler *ring.BasicLifecycler
+	var distributorsRing *ring.Ring
 
 	var servs []services.Service
-	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		rateLimitStrat = validation.GlobalIngestionRateStrategy
-		if err != nil {
-			return nil, errors.Wrap(err, "create distributor KV store client")
-		}
 
-		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
-		if err != nil {
-			return nil, errors.Wrap(err, "create distributor lifecycler")
-		}
-
-		servs = append(servs, distributorsLifecycler)
-		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsLifecycler)
-	} else {
-		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
-	}
-
+	rateLimitStrat := validation.LocalIngestionRateStrategy
 	labelCache, err := lru.New(maxLabelCacheSize)
 	if err != nil {
 		return nil, err
 	}
 
-	d := Distributor{
-		cfg:                    cfg,
-		clientCfg:              clientCfg,
-		tenantConfigs:          configs,
-		tenantsRetention:       retention.NewTenantsRetention(overrides),
-		ingestersRing:          ingestersRing,
-		distributorsLifecycler: distributorsLifecycler,
-		validator:              validator,
-		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
-		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		labelCache:             labelCache,
-		shardTracker:           NewShardTracker(),
-		rateLimitStrat:         rateLimitStrat,
+	d := &Distributor{
+		cfg:                   cfg,
+		clientCfg:             clientCfg,
+		tenantConfigs:         configs,
+		tenantsRetention:      retention.NewTenantsRetention(overrides),
+		ingestersRing:         ingestersRing,
+		validator:             validator,
+		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		labelCache:            labelCache,
+		shardTracker:          NewShardTracker(),
+		healthyInstancesCount: atomic.NewUint32(0),
+		rateLimitStrat:        rateLimitStrat,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -196,6 +185,26 @@ func New(
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
 	}
+
+	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
+
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer)
+		if err != nil {
+			return nil, err
+		}
+
+		servs = append(servs, distributorsLifecycler, distributorsRing)
+
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, d)
+	} else {
+		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
+	}
+
+	d.ingestionRateLimiter = limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second)
+	d.distributorsRing = distributorsRing
+	d.distributorsLifecycler = distributorsLifecycler
+
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
@@ -222,7 +231,7 @@ func New(
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
-	return &d, nil
+	return d, nil
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
@@ -470,10 +479,15 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		streamCount = streamCount(totalShards, stream)
 	)
 
+	if totalShards <= 0 {
+		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		return derivedKeys, derivedStreams
+	}
+
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
-		shard := d.createShard(streamLabels, streamPattern, shardNum)
+		shard := d.createShard(streamLabels, streamPattern, shardNum, len(stream.Entries)/totalShards)
 
 		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
@@ -512,7 +526,7 @@ func labelTemplate(lbls string) labels.Labels {
 	return streamLabels
 }
 
-func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber int) logproto.Stream {
+func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
 	shardLabel := strconv.Itoa(shardNumber)
 	for i := 0; i < len(lbls); i++ {
 		if lbls[i].Name == ingester.ShardLbName {
@@ -524,7 +538,7 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	return logproto.Stream{
 		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
 		Hash:    lbls.Hash(),
-		Entries: make([]logproto.Entry, 0, 1024),
+		Entries: make([]logproto.Entry, 0, numOfEntries),
 	}
 }
 
@@ -667,4 +681,44 @@ func calculateShards(rate int64, streamSize, desiredRate int) int {
 		return 1
 	}
 	return int(math.Ceil(shards))
+}
+
+// newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
+func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer) (*ring.Ring, *ring.BasicLifecycler, error) {
+	kvStore, err := kv.NewClient(cfg.KVStore, ring.GetCodec(), kv.RegistererWithKVName(reg, "distributor-lifecycler"), logger)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize distributors' KV store")
+	}
+
+	lifecyclerCfg, err := cfg.ToBasicLifecyclerConfig(logger)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to build distributors' lifecycler config")
+	}
+
+	var delegate ring.BasicLifecyclerDelegate
+	delegate = ring.NewInstanceRegisterDelegate(ring.ACTIVE, 1)
+	delegate = newHealthyInstanceDelegate(instanceCount, cfg.HeartbeatTimeout, delegate)
+	delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
+	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.HeartbeatTimeout, delegate, logger)
+
+	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize distributors' lifecycler")
+	}
+
+	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize distributors' ring client")
+	}
+
+	return distributorsRing, distributorsLifecycler, nil
+}
+
+// HealthyInstancesCount implements the ReadLifecycler interface.
+//
+// We use a ring lifecycler delegate to count the number of members of the
+// ring. The count is then used to enforce rate limiting correctly for each
+// distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
+func (d *Distributor) HealthyInstancesCount() int {
+	return int(d.healthyInstancesCount.Load())
 }

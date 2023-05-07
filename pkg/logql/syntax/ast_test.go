@@ -42,6 +42,8 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
+		{`{foo="bar"} | distinct id`, true},
+		{`{foo="bar"} | distinct id,time`, true},
 	}
 
 	for _, tt := range tests {
@@ -352,11 +354,32 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"foobar", true}},
 		},
 		{
+			`{app="foo"} |~ "foo\\.bar\\.baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"foo.bar.baz", true}},
+		},
+		{
+			"{app=\"foo\"} | logfmt | field =~ `foo\\.bar`",
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"field=foo", false}, {"field=bar", false}, {"field=foo.bar", true}},
+		},
+		{
 			`{app="foo"} | logfmt | duration > 1s and total_bytes < 1GB`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
+		},
+		{
+			`{app="foo"} | logfmt | distinct id`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"id=foo", true}, {"id=foo", false}, {"id=bar", true}},
 		},
 	} {
 		tt := tt

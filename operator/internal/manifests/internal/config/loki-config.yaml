@@ -113,7 +113,7 @@ ingester:
     join_after: 30s
     num_tokens: 512
     ring:
-      replication_factor: {{ .Stack.ReplicationFactor }}
+      replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
   wal:
     enabled: true

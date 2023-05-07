@@ -15,6 +15,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Add clusterLabelOverride for alert label overrides.
 
+## 5.5.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2
+
+
+## 5.4.0
+
+- [CHANGE] Changed version of Loki to 2.8.2
+
+
+- [CHANGE] Change default GEL and Loki versions to 1.7.1 and 2.8.1 respectively
 - [BUGFIX] Fix dns port in network-policy
 
 ## 4.10.0
