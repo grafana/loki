@@ -987,7 +987,8 @@ var (
 					"decompressedLines": 3,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
-					"totalDuplicates": 8
+					"totalDuplicates": 8,
+					"duplicateBytes": 26
 				},
 				"chunksDownloadTime": 0,
 				"totalChunksRef": 0,
@@ -1006,7 +1007,8 @@ var (
 					"decompressedLines": 13,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
-					"totalDuplicates": 19
+					"totalDuplicates": 19,
+					"duplicateBytes": 27
 				},
 				"chunksDownloadTime": 16,
 				"totalChunksRef": 17,
@@ -1220,6 +1222,7 @@ var (
 					HeadChunkBytes:    14,
 					HeadChunkLines:    15,
 					TotalDuplicates:   19,
+					DuplicateBytes:    27,
 				},
 				ChunksDownloadTime:    16,
 				TotalChunksRef:        17,
@@ -1236,6 +1239,7 @@ var (
 					HeadChunkBytes:    4,
 					HeadChunkLines:    5,
 					TotalDuplicates:   8,
+					DuplicateBytes:    26,
 				},
 			},
 			TotalBatches:       6,
