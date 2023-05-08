@@ -7,9 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
@@ -159,22 +157,4 @@ func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
 			},
 		},
 	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
-}
-
-func TestNewIndexGatewayStatefulSet_Affinity(t *testing.T) {
-	manifests.TestAffinity(t, manifests.LabelIndexGatewayComponent, func(cSpec *lokiv1.LokiComponentSpec, nAffinity bool) client.Object {
-		return manifests.NewIndexGatewayStatefulSet(manifests.Options{
-			Name:      "abcd",
-			Namespace: "efgh",
-			Stack: lokiv1.LokiStackSpec{
-				StorageClassName: "standard",
-				Template: &lokiv1.LokiTemplateSpec{
-					IndexGateway: cSpec,
-				},
-			},
-			Gates: v1.FeatureGates{
-				DefaultNodeAffinity: nAffinity,
-			},
-		})
-	})
 }

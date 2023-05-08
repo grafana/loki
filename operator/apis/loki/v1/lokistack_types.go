@@ -275,6 +275,7 @@ type LokiComponentSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podAntiAffinity",displayName="PodAntiAffinity"
 	PodAntiAffinity *corev1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
 }
 

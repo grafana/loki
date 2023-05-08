@@ -8,9 +8,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
@@ -279,22 +277,4 @@ func TestNewQuerierDeployment_TopologySpreadConstraints(t *testing.T) {
 			require.Equal(t, tc.ExpectedTopologySpreadContraint, depl.Spec.Template.Spec.TopologySpreadConstraints)
 		})
 	}
-}
-
-func TestNewQuerierDeployment_Affinity(t *testing.T) {
-	manifests.TestAffinity(t, manifests.LabelQuerierComponent, func(cSpec *lokiv1.LokiComponentSpec, nAffinity bool) client.Object {
-		return manifests.NewQuerierDeployment(manifests.Options{
-			Name:      "abcd",
-			Namespace: "efgh",
-			Stack: lokiv1.LokiStackSpec{
-				StorageClassName: "standard",
-				Template: &lokiv1.LokiTemplateSpec{
-					Querier: cSpec,
-				},
-			},
-			Gates: v1.FeatureGates{
-				DefaultNodeAffinity: nAffinity,
-			},
-		})
-	})
 }

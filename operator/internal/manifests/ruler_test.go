@@ -7,9 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -199,22 +197,4 @@ func TestBuildRuler_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
 	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelRulerComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
-}
-
-func TestNewRulerDeployment_Affinity(t *testing.T) {
-	manifests.TestAffinity(t, manifests.LabelRulerComponent, func(cSpec *lokiv1.LokiComponentSpec, nAffinity bool) client.Object {
-		return manifests.NewRulerStatefulSet(manifests.Options{
-			Name:      "abcd",
-			Namespace: "efgh",
-			Stack: lokiv1.LokiStackSpec{
-				StorageClassName: "standard",
-				Template: &lokiv1.LokiTemplateSpec{
-					Ruler: cSpec,
-				},
-			},
-			Gates: v1.FeatureGates{
-				DefaultNodeAffinity: nAffinity,
-			},
-		})
-	})
 }

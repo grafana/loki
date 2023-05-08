@@ -1,10 +1,10 @@
 ## Main
 
+- [9408](https://github.com/grafana/loki/pull/9408) **JoaoBraveCoding**: Add PodAntiAffinity overwrites per component
 - [9429](https://github.com/grafana/loki/pull/9429) **aminesnow**: Add default TopologySpreadContraints to Gateway
 - [9418](https://github.com/grafana/loki/pull/9418) **JoaoBraveCoding**: Add default TopologySpreadContaints to Querier
 - [9383](https://github.com/grafana/loki/pull/9383) **JoaoBraveCoding**: Add default TopologySpreadContaints to Distributor
 - [9406](https://github.com/grafana/loki/pull/9406) **aminesnow**: Add label selector to zone awareness TopologySpreadConstraints
-- [9408](https://github.com/grafana/loki/pull/9408) **JoaoBraveCoding**: Add PodAntiAffinity overwrites per component
 - [9366](https://github.com/grafana/loki/pull/9366) **periklis**: Add support for custom tenant topology in rules
 - [9315](https://github.com/grafana/loki/pull/9315) **aminesnow**: Add zone awareness spec to LokiStack
 - [9343](https://github.com/grafana/loki/pull/9343) **JoaoBraveCoding**: Add default PodAntiAffinity to Query Frontend
