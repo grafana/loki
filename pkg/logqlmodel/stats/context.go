@@ -243,7 +243,7 @@ func (r Result) TotalDuplicates() int64 {
 	return r.Querier.Store.Chunk.TotalDuplicates + r.Ingester.Store.Chunk.TotalDuplicates
 }
 
-func (r Result) DuplicatesBytes() int64 {
+func (r Result) DuplicateBytes() int64 {
 	return r.Querier.Store.Chunk.DuplicateBytes + r.Ingester.Store.Chunk.DuplicateBytes
 }
 
