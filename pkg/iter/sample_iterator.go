@@ -256,6 +256,7 @@ Outer:
 		for _, t := range previous {
 			if t.Sample.Hash == sample.Hash {
 				i.stats.AddDuplicates(1)
+				i.stats.AddDuplicateBytes(sample.Length)
 				dupe = true
 				break
 			}
@@ -280,6 +281,7 @@ Outer:
 			for _, t := range previous {
 				if t.Hash == sample.Hash {
 					i.stats.AddDuplicates(1)
+					i.stats.AddDuplicateBytes(t.Length)
 					continue inner
 				}
 			}
@@ -472,7 +474,7 @@ type QuerySampleClient interface {
 	CloseSend() error
 }
 
-// NewQueryClientIterator returns an iterator over a QueryClient.
+// NewSampleQueryClientIterator returns an iterator over a QueryClient.
 func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
 		client: client,
@@ -706,7 +708,7 @@ func (i *timeRangedSampleIterator) Next() bool {
 	return ok
 }
 
-// ReadBatch reads a set of entries off an iterator.
+// ReadSampleBatch reads a set of entries off an iterator.
 func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
 	var (
 		series      = map[uint64]map[string]*logproto.Series{}

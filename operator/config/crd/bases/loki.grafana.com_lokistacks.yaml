@@ -318,13 +318,45 @@ spec:
                     description: NoProxy configures the NO_PROXY/no_proxy env variable.
                     type: string
                 type: object
+              replication:
+                description: Replication defines the configuration for Loki data replication.
+                properties:
+                  factor:
+                    description: Factor defines the policy for log stream replication.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  zones:
+                    description: Zones defines an array of ZoneSpec that the scheduler
+                      will try to satisfy.
+                    items:
+                      description: ZoneSpec defines the spec to support zone-aware
+                        component deployments.
+                      properties:
+                        maxSkew:
+                          default: 1
+                          description: MaxSkew describes the maximum degree to which
+                            Pods can be unevenly distributed.
+                          type: integer
+                        topologyKey:
+                          description: TopologyKey is the key that defines a topology
+                            in the Nodes' labels.
+                          type: string
+                      required:
+                      - maxSkew
+                      - topologyKey
+                      type: object
+                    type: array
+                type: object
               replicationFactor:
-                description: ReplicationFactor defines the policy for log stream replication.
+                description: 'Deprecated: Please use replication.factor instead. This
+                  field will be removed in future versions of this CRD. ReplicationFactor
+                  defines the policy for log stream replication.'
                 format: int32
                 minimum: 1
                 type: integer
               rules:
-                description: Rules defines the spec for the ruler component
+                description: Rules defines the spec for the ruler component.
                 properties:
                   enabled:
                     description: Enabled defines a flag to enable/disable the ruler
@@ -513,7 +545,7 @@ spec:
                 type: string
               template:
                 description: Template defines the resource/limits/tolerations/nodeselectors
-                  per component
+                  per component.
                 properties:
                   compactor:
                     description: Compactor defines the compaction component spec.

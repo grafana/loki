@@ -133,6 +133,10 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
 	}
 
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelQuerierComponent, opts.Name)
+	}
+
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",

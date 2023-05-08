@@ -191,6 +191,8 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		fs.Var(f.Value, f.Name, f.Usage)
 	})
+
+	c.Server.DisableRequestSuccessLog = true
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
