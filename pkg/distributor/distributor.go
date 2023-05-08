@@ -471,11 +471,10 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 
 func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
 	var (
-		streamLabels    = labelTemplate(stream.Labels)
-		streamPattern   = streamLabels.String()
-		derivedKeys     = make([]uint32, 0, totalShards)
-		derivedStreams  = make([]streamTracker, 0, totalShards)
-		entriesPerShard = int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
+		streamLabels   = labelTemplate(stream.Labels)
+		streamPattern  = streamLabels.String()
+		derivedKeys    = make([]uint32, 0, totalShards)
+		derivedStreams = make([]streamTracker, 0, totalShards)
 
 		streamCount = streamCount(totalShards, stream)
 	)
@@ -485,6 +484,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		return derivedKeys, derivedStreams
 	}
 
+	entriesPerShard := int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards

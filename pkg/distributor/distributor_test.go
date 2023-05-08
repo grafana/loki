@@ -862,7 +862,7 @@ func TestShardCountFor(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name: "a lot of shards, stream size (1mb) + ingested rate (300mb) > 3mb",
+			name: "a lot of shards, stream size (90b) + ingested rate (300mb) > 3mb",
 			stream: &logproto.Stream{Entries: []logproto.Entry{
 				{Line: "a"}, {Line: "b"}, {Line: "c"}, {Line: "d"}, {Line: "e"},
 			}},
@@ -876,12 +876,16 @@ func TestShardCountFor(t *testing.T) {
 			name:        "take push rate into account. Only generate two shards even though this push is quite large",
 			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
 			rate:        24,        // in bytes
-			pushRate:    1.0 / 6.0, // 6 pushes per second
+			pushRate:    1.0 / 6.0, // one push every 6 seconds
 			desiredRate: 40,        // in bytes
 			pushSize:    200,       // in bytes
 			wantShards:  2,
 			wantErr:     false,
 		},
+		// The two tests below cover the first push for a stream (pushRate = 0)
+		// or high throughput (pushRate >= 1/second). In either case, let stream
+		// sharding do its job and don't attempt to amortize the push size over
+		// the real rate
 		{
 			name:        "If the push rate is 0, use the payload size",
 			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
