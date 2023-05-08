@@ -167,11 +167,23 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 			MaxSkew:           2,
 			TopologyKey:       "zone",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "ingester",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 		{
 			MaxSkew:           1,
 			TopologyKey:       "region",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "ingester",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }

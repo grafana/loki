@@ -106,7 +106,7 @@ const (
 	kubernetesNodeOSLabel       = "kubernetes.io/os"
 	kubernetesNodeOSLinux       = "linux"
 	kubernetesNodeHostnameLabel = "kubernetes.io/hostname"
-	kubernetesCompomentLabel    = "app.kubernetes.io/component"
+	kubernetesComponentLabel    = "app.kubernetes.io/component"
 	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
 )
 
@@ -147,6 +147,13 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
+func componentInstaceLabels(component string, stackName string) map[string]string {
+	return map[string]string{
+		kubernetesInstanceLabel:  stackName,
+		kubernetesComponentLabel: component,
+	}
+}
+
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
@@ -155,7 +162,7 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
-func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpreadConstraint {
+func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
 	var tsc []corev1.TopologySpreadConstraint
 	if len(spec.Zones) > 0 {
 		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
@@ -164,6 +171,12 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpr
 				MaxSkew:           int32(z.MaxSkew),
 				TopologyKey:       z.TopologyKey,
 				WhenUnsatisfiable: corev1.DoNotSchedule,
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						kubernetesComponentLabel: component,
+						kubernetesInstanceLabel:  stackName,
+					},
+				},
 			}
 		}
 	}
@@ -174,7 +187,7 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpr
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		kubernetesCompomentLabel: component,
+		kubernetesComponentLabel: component,
 	})
 }
 
@@ -494,6 +507,19 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 	}
 }
 
+// defaultTopologySpreadConstraints returns a topology spread contraint that will
+// instruct the scheduler to try and schedule pods from the same component in different nodes
+func defaultTopologySpreadConstraints(labels labels.Set) []corev1.TopologySpreadConstraint {
+	return []corev1.TopologySpreadConstraint{{
+		MaxSkew:     1,
+		TopologyKey: kubernetesNodeHostnameLabel,
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: componentInstaceLabels(labels[kubernetesComponentLabel], labels[kubernetesInstanceLabel]),
+		},
+		WhenUnsatisfiable: corev1.ScheduleAnyway,
+	}}
+}
+
 // configureAffinity returns an Affinity struture that can be used directly
 // in a Deployment/StatefulSet. Parameters will affected configuration of the
 // different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
@@ -540,9 +566,7 @@ func defaultPodAntiAffinity(labels labels.Set) *corev1.PodAntiAffinity {
 	// This code assumes that this function will never be called with a set of labels
 	// that don't have the "component" and "instance" labels since we enforce those on
 	// all the components of the LokiStack
-	componentLabel := labels[kubernetesCompomentLabel]
-	stackName := labels[kubernetesInstanceLabel]
-
+	componentLabel := labels[kubernetesComponentLabel]
 	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
 	if !enablePodAntiAffinity {
 		return nil
@@ -554,10 +578,7 @@ func defaultPodAntiAffinity(labels labels.Set) *corev1.PodAntiAffinity {
 				Weight: 100,
 				PodAffinityTerm: corev1.PodAffinityTerm{
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": componentLabel,
-							"app.kubernetes.io/instance":  stackName,
-						},
+						MatchLabels: componentInstaceLabels(labels[kubernetesComponentLabel], labels[kubernetesInstanceLabel]),
 					},
 					TopologyKey: kubernetesNodeHostnameLabel,
 				},

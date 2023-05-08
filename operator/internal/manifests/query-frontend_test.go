@@ -126,11 +126,23 @@ func TestNewQueryFrontendDeployment_TopologySpreadConstraints(t *testing.T) {
 			MaxSkew:           1,
 			TopologyKey:       "zone",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "query-frontend",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 		{
 			MaxSkew:           2,
 			TopologyKey:       "region",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "query-frontend",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
 }
