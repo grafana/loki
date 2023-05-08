@@ -94,7 +94,7 @@ func TestRateStore(t *testing.T) {
 		require.NoError(t, tc.rateStore.instrumentedUpdateAllRates(context.Background()))
 
 		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
-		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 1", 0)
+		requireRatesAndPushesEqual(t, 35, 10, tc.rateStore, "tenant 2", 0)
 	})
 
 	t.Run("it aggregates rates but gets the max number of pushes over shards", func(t *testing.T) {
