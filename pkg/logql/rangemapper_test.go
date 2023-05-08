@@ -1765,4 +1765,9 @@ func Test_FailQuery(t *testing.T) {
 	// Empty parameter to json parser
 	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`)
 	require.NoError(t, err)
+	// This was failing before because the () was stripped out when calling String() on the expression
+	_, _, err = rvm.Parse(`count without () (rate({namespace="apps"}[15s]))`)
+	require.NoError(t, err)
+	_, _, err = rvm.Parse(`count by () (rate({namespace="apps"}[15s]))`)
+	require.NoError(t, err)
 }

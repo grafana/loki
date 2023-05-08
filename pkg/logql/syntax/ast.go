@@ -1113,6 +1113,10 @@ func (g Grouping) String() string {
 		sb.WriteString(")")
 	}
 
+	if g.Without && len(g.Groups) == 0 {
+		sb.WriteString("()")
+	}
+
 	return sb.String()
 }
 
