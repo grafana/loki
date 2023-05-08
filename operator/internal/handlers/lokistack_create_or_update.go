@@ -271,7 +271,7 @@ func CreateOrUpdateLokiStack(
 
 	serverCfg, err := manifests.NewServerConfig(stack.Spec.Limits)
 	if err != nil {
-		ll.Error(err, "failed to parser server limits")
+		ll.Error(err, "failed to parser server limits using fallback to defaults")
 	}
 
 	// Here we will translate the lokiv1.LokiStack options into manifest options
