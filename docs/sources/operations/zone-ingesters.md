@@ -1,8 +1,8 @@
- ---
+---
 title: Zone Aware Ingesters
 description: Migration guide and additional details
 weight: 10
- ---
+---
 
 # Zone Aware Ingesters
 Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra k8s config you could deploy them in separate zones.
