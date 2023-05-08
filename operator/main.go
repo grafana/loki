@@ -90,7 +90,7 @@ func main() {
 	if ctrlCfg.Gates.LokiStackGateway {
 		utilruntime.Must(configv1.AddToScheme(scheme))
 
-		if ctrlCfg.Gates.OpenShift.GatewayRoute {
+		if ctrlCfg.Gates.OpenShift.Enabled {
 			utilruntime.Must(routev1.AddToScheme(scheme))
 		}
 	}
