@@ -1188,8 +1188,9 @@ curl -u "Tenant1:$API_TOKEN" \
 
 ### `GET /api/prom/tail`
 
-> **DEPRECATED**: `/api/prom/tail` is deprecated. Use `/loki/api/v1/tail`
-> instead.
+{{% admonition type="warning" %}}
+`/api/prom/tail` is deprecated. Use `/loki/api/v1/tail` instead.
+{{% /admonition %}}
 
 `/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:

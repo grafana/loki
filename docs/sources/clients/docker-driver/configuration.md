@@ -150,7 +150,11 @@ services:
       - "3000:3000"
 ```
 
-> Note the `loki-pipeline-stages: |` allowing to keep the indentation correct.
+{{% admonition type="note" %}}
+
+The `loki-pipeline-stages: |` keeps the indentation correct.
+
+{{% /admonition %}}
 
 When using docker run you can also pass the value via a string parameter like such:
 
