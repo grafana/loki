@@ -669,6 +669,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 	rate, pushRate := d.rateStore.RateFor(tenantID, stream.Hash)
 	if pushRate == 0 {
 		// first push, don't shard until the rate is understood
+		return 1
 	}
 
 	if pushRate > 1 {

@@ -553,7 +553,7 @@ func TestStreamShard(t *testing.T) {
 			require.NoError(t, err)
 
 			d := Distributor{
-				rateStore:        &fakeRateStore{},
+				rateStore:        &fakeRateStore{pushRate: 1},
 				validator:        validator,
 				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 				shardTracker:     NewShardTracker(),
@@ -598,7 +598,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
 		d := Distributor{
-			rateStore:        &fakeRateStore{},
+			rateStore:        &fakeRateStore{pushRate: 1},
 			validator:        validator,
 			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 			shardTracker:     NewShardTracker(),
@@ -819,6 +819,7 @@ func TestShardCountFor(t *testing.T) {
 			rate:        0,
 			desiredRate: 0, // in bytes
 			pushSize:    2, // in bytes
+			pushRate:    1,
 			wantShards:  1,
 			wantErr:     false,
 		},
@@ -830,6 +831,7 @@ func TestShardCountFor(t *testing.T) {
 			rate:        0,
 			desiredRate: 3, // in bytes
 			pushSize:    2, // in bytes
+			pushRate:    1,
 			wantShards:  1,
 			wantErr:     true,
 		},
@@ -839,6 +841,7 @@ func TestShardCountFor(t *testing.T) {
 			rate:        0,
 			desiredRate: 20, // in bytes
 			pushSize:    18, // in bytes
+			pushRate:    1,
 			wantShards:  1,
 			wantErr:     false,
 		},
@@ -848,6 +851,7 @@ func TestShardCountFor(t *testing.T) {
 			rate:        24, // in bytes
 			desiredRate: 40, // in bytes
 			pushSize:    36, // in bytes
+			pushRate:    1,
 			wantShards:  2,
 			wantErr:     false,
 		},
@@ -858,6 +862,7 @@ func TestShardCountFor(t *testing.T) {
 			rate:        0,  // in bytes
 			desiredRate: 22, // in bytes
 			pushSize:    36, // in bytes
+			pushRate:    1,
 			wantShards:  2,
 			wantErr:     false,
 		},
@@ -869,6 +874,7 @@ func TestShardCountFor(t *testing.T) {
 			rate:        0,  // in bytes
 			desiredRate: 22, // in bytes
 			pushSize:    90, // in bytes
+			pushRate:    1,
 			wantShards:  5,
 			wantErr:     false,
 		},
