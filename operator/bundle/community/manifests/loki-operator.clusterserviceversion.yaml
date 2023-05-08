@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-05-05T08:10:48Z"
+    createdAt: "2023-05-08T11:08:51Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -354,6 +354,26 @@ spec:
       - description: Server defines the limits applied on all Loki server-side components.
         displayName: Server Limits
         path: limits.server
+      - description: HTTP defines the HTTP server limits.
+        displayName: HTTP Endpoints
+        path: limits.server.http
+      - description: IdleTimeout defines the HTTP server-side idle timeout.
+        displayName: Idle Timeout
+        path: limits.server.http.idleTimeout
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: ReadTimeout covers the time from when the connection is accepted
+          to when the request body is fully read
+        displayName: Read Timeout
+        path: limits.server.http.readTimeout
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: WriteTimeout covers the time from the end of the request header
+          read to the end of the response write
+        displayName: Write Timeout
+        path: limits.server.http.writeTimeout
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants

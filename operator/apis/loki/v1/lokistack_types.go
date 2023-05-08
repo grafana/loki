@@ -682,18 +682,21 @@ type HttpServerLimitsSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:text",displayName="Idle Timeout"
 	IdleTimeout string `json:"idleTimeout,omitempty"`
 
 	// ReadTimeout covers the time from when the connection is accepted to when the request body is fully read
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:text",displayName="Read Timeout"
 	ReadTimeout string `json:"readTimeout,omitempty"`
 
 	// WriteTimeout covers the time from the end of the request header read to the end of the response write
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:text",displayName="Write Timeout"
 	WriteTimeout string `json:"writeTimeout,omitempty"`
 }
 
@@ -703,6 +706,7 @@ type ServerLimitsSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="HTTP Endpoints"
 	HTTP *HttpServerLimitsSpec `json:"http,omitempty"`
 }
 
