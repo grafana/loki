@@ -113,7 +113,7 @@ func (c *StreamRateCalculator) Record(tenant string, streamHash, streamHashNoSha
 	streamRate.StreamHashNoShard = streamHashNoShard
 	streamRate.Tenant = tenant
 	streamRate.Rate += int64(bytes)
-	streamRate.Pushes += 1
+	streamRate.Pushes++
 	tenantMap[streamHash] = streamRate
 
 	c.samples[i][tenant] = tenantMap
