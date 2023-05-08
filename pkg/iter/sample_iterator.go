@@ -474,7 +474,7 @@ type QuerySampleClient interface {
 	CloseSend() error
 }
 
-// NewQueryClientIterator returns an iterator over a QueryClient.
+// NewSampleQueryClientIterator returns an iterator over a QueryClient.
 func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
 		client: client,
@@ -708,7 +708,7 @@ func (i *timeRangedSampleIterator) Next() bool {
 	return ok
 }
 
-// ReadBatch reads a set of entries off an iterator.
+// ReadSampleBatch reads a set of entries off an iterator.
 func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
 	var (
 		series      = map[uint64]map[string]*logproto.Series{}

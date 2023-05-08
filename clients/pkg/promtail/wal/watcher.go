@@ -249,7 +249,7 @@ func (w *Watcher) Stop() {
 	w.metrics.watchersRunning.WithLabelValues().Dec()
 }
 
-// firstAndList finds the first and last segment number for a WAL directory.
+// firstAndLast finds the first and last segment number for a WAL directory.
 func (w *Watcher) firstAndLast() (int, int, error) {
 	refs, err := readSegmentNumbers(w.walDir)
 	if err != nil {

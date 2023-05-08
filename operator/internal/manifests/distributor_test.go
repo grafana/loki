@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -100,16 +101,30 @@ func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
 	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelDistributorComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
-func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
-	depl := manifests.NewDistributorDeployment(manifests.Options{
-		Name:      "abcd",
-		Namespace: "efgh",
-		Stack: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Distributor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+func TestNewDistributoDeployment_TopologySpreadConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		Name                            string
+		Replication                     *lokiv1.ReplicationSpec
+		ExpectedTopologySpreadContraint []corev1.TopologySpreadConstraint
+	}{
+		{
+			Name: "default",
+			ExpectedTopologySpreadContraint: []corev1.TopologySpreadConstraint{
+				{
+					MaxSkew:     1,
+					TopologyKey: "kubernetes.io/hostname",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "distributor",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+					WhenUnsatisfiable: corev1.ScheduleAnyway,
 				},
 			},
+		},
+		{
+			Name: "replication_defined",
 			Replication: &lokiv1.ReplicationSpec{
 				Zones: []lokiv1.ZoneSpec{
 					{
@@ -123,19 +138,58 @@ func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
 				},
 				Factor: 1,
 			},
+			ExpectedTopologySpreadContraint: []corev1.TopologySpreadConstraint{
+				{
+					MaxSkew:     1,
+					TopologyKey: "kubernetes.io/hostname",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "distributor",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+					WhenUnsatisfiable: corev1.ScheduleAnyway,
+				},
+				{
+					MaxSkew:           3,
+					TopologyKey:       "zone",
+					WhenUnsatisfiable: "DoNotSchedule",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "distributor",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+				},
+				{
+					MaxSkew:           2,
+					TopologyKey:       "region",
+					WhenUnsatisfiable: "DoNotSchedule",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "distributor",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+				},
+			},
 		},
-	})
+	} {
+		t.Run(tc.Name, func(t *testing.T) {
+			depl := manifests.NewDistributorDeployment(manifests.Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Distributor: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+					Replication: tc.Replication,
+				},
+			})
 
-	require.Equal(t, []corev1.TopologySpreadConstraint{
-		{
-			MaxSkew:           3,
-			TopologyKey:       "zone",
-			WhenUnsatisfiable: "DoNotSchedule",
-		},
-		{
-			MaxSkew:           2,
-			TopologyKey:       "region",
-			WhenUnsatisfiable: "DoNotSchedule",
-		},
-	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
+			require.Equal(t, tc.ExpectedTopologySpreadContraint, depl.Spec.Template.Spec.TopologySpreadConstraints)
+		})
+	}
 }
