@@ -882,18 +882,14 @@ func TestShardCountFor(t *testing.T) {
 			wantShards:  2,
 			wantErr:     false,
 		},
-		// The two tests below cover the first push for a stream (pushRate = 0)
-		// or high throughput (pushRate >= 1/second). In either case, let stream
-		// sharding do its job and don't attempt to amortize the push size over
-		// the real rate
 		{
-			name:        "If the push rate is 0, use the payload size",
+			name:        "If the push rate is 0, it's the first push of this stream. Don't shard",
 			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
 			rate:        24, // in bytes
 			pushRate:    0,
 			desiredRate: 40,  // in bytes
 			pushSize:    200, // in bytes
-			wantShards:  6,
+			wantShards:  1,
 			wantErr:     false,
 		},
 		{

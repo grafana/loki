@@ -667,10 +667,14 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 	}
 
 	rate, pushRate := d.rateStore.RateFor(tenantID, stream.Hash)
-	if pushRate == 0 || pushRate > 1 {
-		// Either the first push or high throughput. In either case,
-		// let stream sharding do its job and don't attempt to amortize
-		// the push size over the real rate
+	if pushRate == 0 {
+		// first push, don't shard until the rate is understood
+	}
+
+	if pushRate > 1 {
+		// High throughput. Let stream sharding do its job and
+		// don't attempt to amortize the push size over the
+		// real rate
 		pushRate = 1
 	}
 
