@@ -174,6 +174,7 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.DecompressedLines += m.Chunk.DecompressedLines
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
+	s.Chunk.DuplicateBytes += m.Chunk.DuplicateBytes
 }
 
 func (s *Summary) Merge(m Summary) {
@@ -242,6 +243,10 @@ func (r Result) TotalDuplicates() int64 {
 	return r.Querier.Store.Chunk.TotalDuplicates + r.Ingester.Store.Chunk.TotalDuplicates
 }
 
+func (r Result) DuplicateBytes() int64 {
+	return r.Querier.Store.Chunk.DuplicateBytes + r.Ingester.Store.Chunk.DuplicateBytes
+}
+
 func (r Result) TotalChunksDownloaded() int64 {
 	return r.Querier.Store.TotalChunksDownloaded + r.Ingester.Store.TotalChunksDownloaded
 }
@@ -293,6 +298,10 @@ func (c *Context) AddDecompressedLines(i int64) {
 
 func (c *Context) AddDuplicates(i int64) {
 	atomic.AddInt64(&c.store.Chunk.TotalDuplicates, i)
+}
+
+func (c *Context) AddDuplicateBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.DuplicateBytes, i)
 }
 
 func (c *Context) AddChunksDownloadTime(i time.Duration) {
@@ -412,6 +421,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.DecompressedLines", r.Ingester.Store.Chunk.DecompressedLines,
 		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.CompressedBytes)),
 		"Ingester.TotalDuplicates", r.Ingester.Store.Chunk.TotalDuplicates,
+		"Ingester.DuplicateBytes", r.Ingester.Store.Chunk.DuplicateBytes,
 
 		"Querier.TotalChunksRef", r.Querier.Store.TotalChunksRef,
 		"Querier.TotalChunksDownloaded", r.Querier.Store.TotalChunksDownloaded,
@@ -422,6 +432,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.DecompressedLines", r.Querier.Store.Chunk.DecompressedLines,
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
+		"Querier.DuplicateBytes", r.Querier.Store.Chunk.DuplicateBytes,
 	)
 	r.Caches.Log(log)
 	r.Summary.Log(log)
