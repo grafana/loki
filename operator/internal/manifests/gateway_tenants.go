@@ -25,10 +25,23 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		return nil
 	}
 
+	if !opts.Gates.OpenShift.Enabled {
+		return nil
+	}
+
+	o := openshift.NewOptions(
+		opts.Name,
+		opts.Namespace,
+		GatewayName(opts.Name),
+		serviceNameGatewayHTTP(opts.Name),
+		gatewayHTTPPortName,
+		ComponentLabels(LabelGatewayComponent, opts.Name),
+		RulerName(opts.Name),
+	)
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // continue using user input
-
+		// Do nothing as per tenants provided by LokiStack CR
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
@@ -37,23 +50,11 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			}
 		}
 
-		defaults := openshift.NewOptions(
-			opts.Stack.Tenants.Mode,
-			opts.Name,
-			opts.Namespace,
-			GatewayName(opts.Name),
-			opts.GatewayBaseDomain,
-			serviceNameGatewayHTTP(opts.Name),
-			gatewayHTTPPortName,
-			ComponentLabels(LabelGatewayComponent, opts.Name),
-			tenantData,
-			RulerName(opts.Name),
-		)
+		o.WithTenantsForMode(opts.Stack.Tenants.Mode, opts.GatewayBaseDomain, tenantData)
+	}
 
-		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
-			return kverrors.Wrap(err, "failed to merge defaults for mode openshift")
-		}
-
+	if err := mergo.Merge(&opts.OpenShiftOptions, o, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge defaults for mode openshift")
 	}
 
 	return nil
@@ -83,6 +84,27 @@ func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType)
 }
 
 func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Object {
+	if !opts.Gates.OpenShift.Enabled {
+		return objs
+	}
+
+	openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
+
+	var cObjs []client.Object
+	for _, o := range objs {
+		switch o.(type) {
+		// Drop Ingress in favor of Route in OpenShift.
+		// Ingress is not supported as OAuthRedirectReference
+		// in ServiceAccounts used as OAuthClient in OpenShift.
+		case *networkingv1.Ingress:
+			continue
+		}
+
+		cObjs = append(cObjs, o)
+	}
+
+	objs = append(cObjs, openShiftObjs...)
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
@@ -101,22 +123,8 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 			}
 		}
 
-		openShiftObjs := openshift.BuildGatewayObjects(opts.OpenShiftOptions)
-
-		var cObjs []client.Object
-		for _, o := range objs {
-			switch o.(type) {
-			// Drop Ingress in favor of Route in OpenShift.
-			// Ingress is not supported as OAuthRedirectReference
-			// in ServiceAccounts used as OAuthClient in OpenShift.
-			case *networkingv1.Ingress:
-				continue
-			}
-
-			cObjs = append(cObjs, o)
-		}
-
-		objs = append(cObjs, openShiftObjs...)
+		openShiftObjs := openshift.BuildGatewayTenantModeObjects(opts.OpenShiftOptions)
+		objs = append(objs, openShiftObjs...)
 	}
 
 	return objs

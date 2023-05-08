@@ -118,7 +118,7 @@ type cachedSampleIterator struct {
 	iterErr  error
 }
 
-// newSampleCachedIterator creates an iterator that cache iteration result and can be iterated again
+// NewCachedSampleIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
 func NewCachedSampleIterator(it SampleIterator, cap int) CacheSampleIterator {
 	c := &cachedSampleIterator{
