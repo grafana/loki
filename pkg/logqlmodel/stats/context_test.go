@@ -19,7 +19,6 @@ func TestResult(t *testing.T) {
 	stats.AddDecompressedLines(20)
 	stats.AddCompressedBytes(30)
 	stats.AddDuplicates(10)
-	stats.AddDuplicateBytes(10 * 1024)
 	stats.AddChunksRef(50)
 	stats.AddChunksDownloaded(60)
 	stats.AddChunksDownloadTime(time.Second)
@@ -46,7 +45,6 @@ func TestResult(t *testing.T) {
 					DecompressedLines: 40,
 					CompressedBytes:   60,
 					TotalDuplicates:   2,
-					DuplicateBytes:    2 * 1024,
 				},
 			},
 		},
@@ -62,7 +60,6 @@ func TestResult(t *testing.T) {
 					DecompressedLines: 20,
 					CompressedBytes:   30,
 					TotalDuplicates:   10,
-					DuplicateBytes:    10 * 1024,
 				},
 			},
 		},
@@ -106,7 +103,6 @@ func TestSnapshot_JoinResults(t *testing.T) {
 					DecompressedLines: 40,
 					CompressedBytes:   60,
 					TotalDuplicates:   2,
-					DuplicateBytes:    2 * 1024,
 				},
 			},
 		},
@@ -122,7 +118,6 @@ func TestSnapshot_JoinResults(t *testing.T) {
 					DecompressedLines: 20,
 					CompressedBytes:   30,
 					TotalDuplicates:   10,
-					DuplicateBytes:    10 * 1024,
 				},
 			},
 		},
@@ -156,7 +151,6 @@ func fakeIngesterQuery(ctx context.Context) {
 				DecompressedLines: 20,
 				CompressedBytes:   30,
 				TotalDuplicates:   1,
-				DuplicateBytes:    1 * 1024,
 			},
 		},
 	})
@@ -182,7 +176,6 @@ func TestResult_Merge(t *testing.T) {
 					DecompressedLines: 40,
 					CompressedBytes:   60,
 					TotalDuplicates:   2,
-					DuplicateBytes:    2 * 1024,
 				},
 			},
 		},
@@ -198,7 +191,6 @@ func TestResult_Merge(t *testing.T) {
 					DecompressedLines: 20,
 					CompressedBytes:   30,
 					TotalDuplicates:   10,
-					DuplicateBytes:    10 * 1024,
 				},
 			},
 		},
@@ -244,7 +236,6 @@ func TestResult_Merge(t *testing.T) {
 					DecompressedLines: 2 * 40,
 					CompressedBytes:   2 * 60,
 					TotalDuplicates:   2 * 2,
-					DuplicateBytes:    2 * 2 * 1024,
 				},
 			},
 			TotalReached: 2 * 2,
@@ -261,7 +252,6 @@ func TestResult_Merge(t *testing.T) {
 					DecompressedLines: 2 * 20,
 					CompressedBytes:   2 * 30,
 					TotalDuplicates:   2 * 10,
-					DuplicateBytes:    2 * 10 * 1024,
 				},
 			},
 		},
@@ -306,7 +296,6 @@ func TestIngester(t *testing.T) {
 	fakeIngesterQuery(ctx)
 	statsCtx.AddCompressedBytes(100)
 	statsCtx.AddDuplicates(10)
-	statsCtx.AddDuplicateBytes(10 * 1024)
 	statsCtx.AddHeadChunkBytes(200)
 	require.Equal(t, Ingester{
 		TotalReached:       1,
@@ -318,7 +307,6 @@ func TestIngester(t *testing.T) {
 				HeadChunkBytes:  200,
 				CompressedBytes: 100,
 				TotalDuplicates: 10,
-				DuplicateBytes:  10 * 1024,
 			},
 		},
 	}, statsCtx.Ingester())
