@@ -203,7 +203,7 @@ func (w *Watcher) watch(segmentNum int) error {
 		case <-readTimer.C:
 			w.metrics.timerSegmentReads.WithLabelValues(w.id).Inc()
 			if debug {
-				level.Info(w.logger).Log("msg", "Segment read triggered by backup timer", "segment", segmentNum, "read", reader.Offset())
+				level.Info(w.logger).Log("msg", "Segment read triggered by backup timer", "segment", segmentNum)
 
 			}
 		case <-w.readNotify:
@@ -221,9 +221,6 @@ func (w *Watcher) watch(segmentNum int) error {
 		}
 
 		if ok {
-			// TODO: we'll be resetting the readTimer for each notification we get. Should we do this just if the readSegment
-			// was trigger by the timer?
-
 			// read ok, reset readTimer to minimum interval
 			readTimer.reset()
 			continue
@@ -317,10 +314,10 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 func (w *Watcher) NotifyWrite() {
 	select {
 	case w.readNotify <- struct{}{}:
-		// written notification to the channel, return
+		// written notification to the channel
 		return
 	default:
-		// drop wal written signal if the channel is not being listened, but increase metric
+		// drop wal written signal if the channel is not being listened
 		w.metrics.droppedWriteNotifications.WithLabelValues(w.id).Inc()
 	}
 }
