@@ -338,8 +338,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					// Traditional logic for Loki is that 2 lines with the same timestamp and
 					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line {
-						stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+					if stream.Entries[n-1].Line != entry.Line && entry.Timestamp == stream.Entries[n-1].Timestamp {
+						stream.Entries[n].Timestamp = entry.Timestamp.Add(1 * time.Nanosecond)
 					}
 				}
 
