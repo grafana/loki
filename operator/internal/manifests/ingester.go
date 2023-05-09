@@ -144,7 +144,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

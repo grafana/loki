@@ -140,7 +140,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
 	}
 
 	return &appsv1.Deployment{

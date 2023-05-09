@@ -11,8 +11,8 @@ The components of Loki are currently distributed in plain binary form and as Doc
 * https://hub.docker.com/r/grafana/loki
 * https://hub.docker.com/r/grafana/promtail
 ```bash
-$ docker pull "grafana/loki:${DRONE_TAG}"
-$ docker pull "grafana/promtail:${DRONE_TAG}"
+$ docker pull "grafana/loki:${DRONE_TAG_NO_V}"
+$ docker pull "grafana/promtail:${DRONE_TAG_NO_V}"
 ```
 
 #### Binary

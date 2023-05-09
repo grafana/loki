@@ -141,6 +141,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 					Timestamp: e.Timestamp.UnixNano(),
 					Value:     f,
 					Hash:      xxhash.Sum64([]byte(e.Line)),
+					Length:    int64(len(e.Line)),
 				})
 			}
 		}

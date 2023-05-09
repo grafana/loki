@@ -218,7 +218,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
 	}
 
-	if r.FeatureGates.OpenShift.GatewayRoute {
+	if r.FeatureGates.OpenShift.Enabled {
 		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
 	} else {
 		bld = bld.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)

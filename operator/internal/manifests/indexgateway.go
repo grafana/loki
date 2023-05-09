@@ -134,7 +134,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{
