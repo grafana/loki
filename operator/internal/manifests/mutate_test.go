@@ -1,9 +1,7 @@
-package manifests_test
+package manifests
 
 import (
 	"testing"
-
-	"github.com/grafana/loki/operator/internal/manifests"
 
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -41,7 +39,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	}
 
 	got := &corev1.ConfigMap{}
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -54,7 +52,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
 	got := &corev1.Endpoints{}
 	want := &corev1.Endpoints{}
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 
 	require.Error(t, f())
 }
@@ -70,7 +68,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 		BinaryData: map[string][]byte{"btest": []byte("btestss")},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -117,7 +115,7 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -232,7 +230,7 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tt.got, tt.want, nil)
+			f := MutateFuncFor(tt.got, tt.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -294,7 +292,7 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -359,7 +357,7 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -414,7 +412,7 @@ func TestGetMutateFunc_MutateRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -479,7 +477,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -598,7 +596,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
+			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -755,7 +753,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
+			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -791,12 +789,12 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
 									ServerName: "loki-test.some-ns.svc.cluster.local",
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -818,24 +816,24 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
 									ServerName: "loki-test.some-ns.svc.cluster.local",
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 						{
 							Port:            "loki-test",
 							Path:            "/some-new-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
 									ServerName: "loki-test.some-ns.svc.cluster.local",
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -862,12 +860,12 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
 									ServerName: "loki-test.some-ns.svc.cluster.local",
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -894,24 +892,24 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
 									ServerName: "loki-test.some-ns.svc.cluster.local",
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 						{
 							Port:            "loki-test",
 							Path:            "/some-new-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
 									ServerName: "loki-test.some-ns.svc.cluster.local",
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -932,7 +930,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
+			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -1004,7 +1002,7 @@ func TestGetMutateFunc_MutateIngress(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -1056,7 +1054,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 			},
 		},
 	}
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 
 	err := f()
 	require.NoError(t, err)
@@ -1096,7 +1094,7 @@ func TestGetMutateFunc_MutatePodDisruptionBudget(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 
 	require.NoError(t, err)
