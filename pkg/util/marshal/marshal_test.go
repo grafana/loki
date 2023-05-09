@@ -62,11 +62,9 @@ var queryTests = []struct {
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
-								"duplicateBytes":0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
-								"totalDuplicates": 0,
-                                "duplicateBytes":0
+								"totalDuplicates": 0
 							}
 						},
 						"totalBatches": 0,
@@ -85,8 +83,7 @@ var queryTests = []struct {
 								"decompressedLines": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
-								"totalDuplicates": 0,
-                                "duplicateBytes":0
+								"totalDuplicates": 0
 							}
 						}
 					},
@@ -204,8 +201,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
-							"totalDuplicates": 0,
-                            "duplicateBytes": 0
+							"totalDuplicates": 0
 						}
 					},
 					"totalBatches": 0,
@@ -224,8 +220,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
-							"totalDuplicates": 0,
-                            "duplicateBytes":0
+							"totalDuplicates": 0
 						}
 					}
 				},
@@ -364,8 +359,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
-							"totalDuplicates": 0,
-                            "duplicateBytes": 0
+							"totalDuplicates": 0
 						}
 					},
 					"totalBatches": 0,
@@ -384,8 +378,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
-							"totalDuplicates": 0,
-                            "duplicateBytes":0
+							"totalDuplicates": 0
 						}
 					}
 				},
