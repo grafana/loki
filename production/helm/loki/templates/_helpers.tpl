@@ -205,6 +205,9 @@ s3:
   {{- with .accessKeyId }}
   access_key_id: {{ . }}
   {{- end }}
+  {{- with .signatureVersion }}
+  signature_version: {{ . }}
+  {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
   {{- with .http_config}}
@@ -593,74 +596,119 @@ http {
     {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
     {{- end }}
 
+
+    # Distributor
     location = /api/prom/push {
       proxy_pass       {{ $writeUrl }}$request_uri;
     }
+    location = /loki/api/v1/push {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+    location = /distributor/ring {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
 
+    # Ingester
+    location = /flush {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+    location ^~ /ingester/ {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+    location = /ingester {
+      internal;        # to suppress 301
+    }
+
+    # Ring
+    location = /ring {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+
+    # MemberListKV
+    location = /memberlist {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+
+
+    # Ruler
+    location = /ruler/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /api/prom/rules {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location ^~ /api/prom/rules/ {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /loki/api/v1/rules {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location ^~ /loki/api/v1/rules/ {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /prometheus/api/v1/alerts {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /prometheus/api/v1/rules {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # Compactor
+    location = /compactor/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /loki/api/v1/delete {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /loki/api/v1/cache/generation_numbers {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # IndexGateway
+    location = /indexgateway/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # QueryScheduler
+    location = /scheduler/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
+    # Admin API
+    location ^~ /admin/api/ {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /admin/api {
+      internal;        # to suppress 301
+    }
+    {{- end }}
+
+
+    # QueryFrontend, Querier
     location = /api/prom/tail {
       proxy_pass       {{ $readUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
-
-    location ~ /api/prom/.* {
-      proxy_pass       {{ $readUrl }}$request_uri;
-    }
-
-    location ~ /prometheus/api/v1/alerts.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-    location ~ /prometheus/api/v1/rules.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-    location ~ /ruler/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location = /loki/api/v1/push {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
     location = /loki/api/v1/tail {
       proxy_pass       {{ $readUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
-
-    location ~ /compactor/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location ~ /distributor/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
-    location ~ /ring {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
-    location ~ /ingester/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
-    location ~ /store-gateway/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location ~ /query-scheduler/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-    location ~ /scheduler/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location ~ /loki/api/.* {
+    location ^~ /api/prom/ {
       proxy_pass       {{ $readUrl }}$request_uri;
     }
-
-    location ~ /admin/api/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
+    location = /api/prom {
+      internal;        # to suppress 301
     }
+    location ^~ /loki/api/v1/ {
+      proxy_pass       {{ $readUrl }}$request_uri;
+    }
+    location = /loki/api/v1 {
+      internal;        # to suppress 301
+    }
+
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}
     {{ . | nindent 4 }}

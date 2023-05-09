@@ -367,6 +367,7 @@ func CreateOrUpdateLokiStack(
 
 		depAnnotations, err := dependentAnnotations(ctx, k, obj)
 		if err != nil {
+			l.Error(err, "failed to set dependent annotations")
 			return err
 		}
 

@@ -8,7 +8,7 @@ weight: 1400
 
 ## Purpose
 
-Loki Improvement Documents (_LIDs_) are proposals for modifying Grafana Loki's feature-set and/or processes. These documents serve to promote engagement between with the community and maintainers _before_ making large changes to Grafana Loki. This ensures that we will only work on features that the maintainers and the community _actually want_, implemented in line with Loki's engineering and scalability considerations.
+Loki Improvement Documents (_LIDs_) are proposals for modifying Grafana Loki's feature-set and/or processes. These documents serve to promote engagement between the community and maintainers _before_ making large changes to Grafana Loki. This ensures that we will only work on features that the maintainers and the community _actually want_, implemented in line with Loki's engineering and scalability considerations.
 
 LIDs are **not** required for:
 
@@ -20,7 +20,7 @@ LIDs are **not** required for:
 
 Start by opening a PR against this repository, using [this template](https://github.com/grafana/loki/blob/main/docs/sources/lids/template.md).
 
-All LIDs require a "sponsor". A sponsor is a Grafana Loki maintainer who is willing to shepherd the improvement proposal through its lifecycle from draft through to completion. A sponsor can be found by starting a thread in our [mailing list](https://groups.google.com/forum/#!forum/lokiproject), which one or more maintainers will respond to and volunteer. If a LID is generated internally by a Grafana Labs employee who is also a maintainer, the sponsor will be the author. Thread topics should be prefixed with "LID: ".
+All LIDs require a "sponsor". A sponsor is a Grafana Loki maintainer who is willing to shepherd the improvement proposal throughout its development process from draft through to completion. A sponsor can be found by starting a thread in our [mailing list](https://groups.google.com/forum/#!forum/lokiproject), which one or more maintainers will respond to and volunteer. If a LID is generated internally by a Grafana Labs employee who is also a maintainer, the sponsor will be the author. Thread topics should be prefixed with "LID: ".
 
 LIDs should contain a high-level overview of the problem, the proposed solution, and other details specified in the template. LIDs can optionally have a _rough prototype_ implementation PR associated with it, but it is advised to not spend too much time on it because the proposal may be rejected.
 

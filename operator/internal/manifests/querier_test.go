@@ -3,12 +3,14 @@ package manifests_test
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -182,4 +184,56 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 			require.Equal(t, tc.want.Spec, pdb.Spec)
 		})
 	}
+}
+
+func TestNewQuerierDeployment_TopologySpreadConstraints(t *testing.T) {
+	depl := manifests.NewQuerierDeployment(manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     2,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     1,
+					},
+				},
+				Factor: 1,
+			},
+		},
+	})
+
+	require.Equal(t, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           2,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "querier",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "querier",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
 }

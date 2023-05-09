@@ -31,7 +31,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.2
+BUILD_IMAGE_VERSION := 0.28.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -626,7 +626,7 @@ loki-operator-push: loki-operator-image-cross
 documentation-helm-reference-check:
 	@echo "Checking diff"
 	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
 
 ########
 # Misc #

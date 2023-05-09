@@ -7,6 +7,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/stores/index"
@@ -14,19 +17,27 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// Store for chunks.
-type Store interface {
+type ChunkReader interface {
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+}
+
+type ChunkWriter interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
-	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
-	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
-	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+}
+
+type ChunkFetcher interface {
 	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+}
+
+type Store interface {
+	index.BaseReader
+	index.Filterable
+	ChunkWriter
+	ChunkFetcher
 	Stop()
 }
 
@@ -40,6 +51,9 @@ type CompositeStore struct {
 type compositeStore struct {
 	stores []compositeStoreEntry
 }
+
+// Ensure interface implementation of compositStore
+var _ Store = &compositeStore{}
 
 // NewCompositeStore creates a new Store which delegates to different stores depending
 // on time.

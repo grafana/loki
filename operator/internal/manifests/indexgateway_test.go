@@ -3,10 +3,13 @@ package manifests_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/stretchr/testify/require"
-	policyv1 "k8s.io/api/policy/v1"
 )
 
 func TestNewIndexGatewayStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -102,4 +105,56 @@ func TestBuildIndexGateway_PodDisruptionBudget(t *testing.T) {
 	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
 	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelIndexGatewayComponent, opts.Name),
 		pdb.Spec.Selector.MatchLabels)
+}
+
+func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
+	depl := manifests.NewIndexGatewayStatefulSet(manifests.Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     3,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     2,
+					},
+				},
+				Factor: 1,
+			},
+		},
+	})
+
+	require.Equal(t, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           3,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "index-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+		{
+			MaxSkew:           2,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "index-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
 }
