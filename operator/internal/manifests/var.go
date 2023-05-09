@@ -135,6 +135,26 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
+func componentInstaceLabels(component string, stackName string) map[string]string {
+	return map[string]string{
+		kubernetesInstanceLabel:  stackName,
+		kubernetesCompomentLabel: component,
+	}
+}
+
+// defaultTopologySpreadConstraints returns a topology spread contraint that will
+// instruct the scheduler to try and schedule pods from the same component in different nodes
+func defaultTopologySpreadConstraints(component string, stackName string) []corev1.TopologySpreadConstraint {
+	return []corev1.TopologySpreadConstraint{{
+		MaxSkew:     1,
+		TopologyKey: kubernetesNodeHostnameLabel,
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: componentInstaceLabels(component, stackName),
+		},
+		WhenUnsatisfiable: corev1.ScheduleAnyway,
+	}}
+}
+
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
@@ -485,10 +505,10 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 // configureAffinity returns an Affinity struture that can be used directly
 // in a Deployment/StatefulSet. Parameters will affected configuration of the
 // different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
-func configureAffinity(labels labels.Set, enableNodeAffinity bool) *corev1.Affinity {
+func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool) *corev1.Affinity {
 	affinity := &corev1.Affinity{
 		NodeAffinity:    defaultNodeAffinity(enableNodeAffinity),
-		PodAntiAffinity: defaultPodAntiAffinity(labels),
+		PodAntiAffinity: defaultPodAntiAffinity(componentLabel, stackName),
 	}
 
 	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
@@ -524,13 +544,7 @@ func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 
 // defaultPodAntiAffinity for components in podAntiAffinityComponents will
 // configure pods, of a LokiStack, to preferably not run on the same node
-func defaultPodAntiAffinity(labels labels.Set) *corev1.PodAntiAffinity {
-	// This code assumes that this function will never be called with a set of labels
-	// that don't have the "component" and "instance" labels since we enforce those on
-	// all the components of the LokiStack
-	componentLabel := labels[kubernetesCompomentLabel]
-	stackName := labels[kubernetesInstanceLabel]
-
+func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAffinity {
 	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
 	if !enablePodAntiAffinity {
 		return nil
