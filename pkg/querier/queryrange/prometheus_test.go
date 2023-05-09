@@ -24,8 +24,7 @@ var emptyStats = `"stats": {
 				"decompressedLines": 0,
 				"headChunkBytes": 0,
 				"headChunkLines": 0,
-				"totalDuplicates": 0,
-				"duplicateBytes": 0
+				"totalDuplicates": 0
 			}
 		},
 		"totalBatches": 0,
@@ -44,8 +43,7 @@ var emptyStats = `"stats": {
 				"decompressedLines": 0,
 				"headChunkBytes": 0,
 				"headChunkLines": 0,
-				"totalDuplicates": 0,
-				"duplicateBytes": 0
+				"totalDuplicates": 0
 			}
 		}
 	},

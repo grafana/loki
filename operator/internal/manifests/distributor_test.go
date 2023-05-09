@@ -101,7 +101,7 @@ func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
 	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelDistributorComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
-func TestNewDistributoDeployment_TopologySpreadConstraints(t *testing.T) {
+func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
 	for _, tc := range []struct {
 		Name                            string
 		Replication                     *lokiv1.ReplicationSpec
