@@ -2,9 +2,11 @@ package openshift
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,6 +27,24 @@ const (
 )
 
 var severityRe = regexp.MustCompile("^critical|warning|info$")
+
+func tenantIDValidationEnabled(annotations map[string]string) (bool, *field.Error) {
+	v, ok := annotations[lokiv1.AnnotationDisableTenantValidation]
+	if !ok {
+		return true, nil
+	}
+
+	disableValidation, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, field.Invalid(
+			field.NewPath("metadata").Child("annotations").Key(lokiv1.AnnotationDisableTenantValidation),
+			v,
+			err.Error(),
+		)
+	}
+
+	return !disableValidation, nil
+}
 
 func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	// Check if the LogQL parser can parse the rule expression

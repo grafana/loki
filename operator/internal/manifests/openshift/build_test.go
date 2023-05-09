@@ -10,32 +10,33 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-func TestBuildGatewayObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+func TestBuildGatewayTenantModeObjects_ClusterRoleRefMatches(t *testing.T) {
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc").
+		WithTenantsForMode(lokiv1.OpenshiftLogging, "example.com", map[string]TenantData{})
 
-	objs := BuildGatewayObjects(opts)
-	cr := objs[2].(*rbacv1.ClusterRole)
-	rb := objs[3].(*rbacv1.ClusterRoleBinding)
+	objs := BuildGatewayTenantModeObjects(*opts)
+	cr := objs[0].(*rbacv1.ClusterRole)
+	rb := objs[1].(*rbacv1.ClusterRoleBinding)
 
 	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
 func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc")
 
-	objs := BuildGatewayObjects(opts)
-	cr := objs[4].(*rbacv1.Role)
-	rb := objs[5].(*rbacv1.RoleBinding)
+	objs := BuildGatewayObjects(*opts)
+	cr := objs[2].(*rbacv1.Role)
+	rb := objs[3].(*rbacv1.RoleBinding)
 
 	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
 func TestBuildRulerObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc")
 
-	objs := BuildRulerObjects(opts)
+	objs := BuildRulerObjects(*opts)
 	sa := objs[1].(*corev1.ServiceAccount)
 	cr := objs[2].(*rbacv1.ClusterRole)
 	rb := objs[3].(*rbacv1.ClusterRoleBinding)

@@ -1,4 +1,4 @@
-package usagestats
+package analytics
 
 import (
 	"context"

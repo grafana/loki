@@ -231,11 +231,11 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 
 	for _, entryWithError := range limitedFailedEntries {
 		fmt.Fprintf(&buf,
-			"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+			"entry with timestamp %s ignored, reason: '%s',\n",
+			entryWithError.entry.Timestamp.String(), entryWithError.e.Error())
 	}
 
-	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d", s.tenant, len(failedEntriesWithError), totalEntries)
+	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d for stream: %s", s.tenant, len(failedEntriesWithError), totalEntries, streamName)
 
 	return httpgrpc.Errorf(statusCode, buf.String())
 }

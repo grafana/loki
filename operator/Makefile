@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= v0.2.0
+VERSION ?= v0.3.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
@@ -33,7 +33,7 @@ REGISTRY_BASE_OPENSHIFT = quay.io/openshift-logging
 REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 
 # TODO(@periklis): Replace this image tag with VERSION once we have GH tags
-MAIN_IMAGE_TAG = main-99acb9b
+MAIN_IMAGE_TAG = main-ac1c1fd
 
 # Customize for variants: community, community-openshift or openshift
 VARIANT ?= community
