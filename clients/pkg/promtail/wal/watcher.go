@@ -200,8 +200,13 @@ func (w *Watcher) watch(segmentNum int) error {
 
 		// the cases below will unlock the select block, and execute the block below
 		// https://github.com/golang/go/issues/23196#issuecomment-353169837
-		case <-w.readNotify:
 		case <-readTimer.C:
+			w.metrics.timerSegmentReads.WithLabelValues(w.id).Inc()
+			if debug {
+				level.Info(w.logger).Log("msg", "Segment read triggered by backup timer", "segment", segmentNum, "read", reader.Offset())
+
+			}
+		case <-w.readNotify:
 		}
 
 		// read from open segment routine
@@ -312,8 +317,11 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 func (w *Watcher) NotifyWrite() {
 	select {
 	case w.readNotify <- struct{}{}:
+		// written notification to the channel, return
+		return
 	default:
-		// drop wal written signal if the channel is not being listened
+		// drop wal written signal if the channel is not being listened, but increase metric
+		w.metrics.droppedWriteNotifications.WithLabelValues(w.id).Inc()
 	}
 }
 
