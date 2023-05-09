@@ -65,7 +65,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
