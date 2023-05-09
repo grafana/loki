@@ -51,3 +51,4 @@ pkg/loki/wal
 
 # nix
 result
+cmd/loki/loki-local-config.yaml
