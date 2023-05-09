@@ -1,9 +1,12 @@
 ## Main
 
 - [9378](https://github.com/grafana/loki/pull/9378) **aminesnow**: Add zone aware API spec validation
+- [9383](https://github.com/grafana/loki/pull/9383) **JoaoBraveCoding**: Add default TopologySpreadContaints to Distributor
+- [9406](https://github.com/grafana/loki/pull/9406) **aminesnow**: Add label selector to zone awareness TopologySpreadConstraints
 - [9366](https://github.com/grafana/loki/pull/9366) **periklis**: Add support for custom tenant topology in rules
 - [9315](https://github.com/grafana/loki/pull/9315) **aminesnow**: Add zone awareness spec to LokiStack
 - [9343](https://github.com/grafana/loki/pull/9343) **JoaoBraveCoding**: Add default PodAntiAffinity to Query Frontend
+- [9346](https://github.com/grafana/loki/pull/9346) **periklis**: Enable Route by default on OpenShift clusters
 - [9339](https://github.com/grafana/loki/pull/9339) **JoaoBraveCoding**: Add default PodAntiAffinity to Ruler
 - [9329](https://github.com/grafana/loki/pull/9329) **JoaoBraveCoding**: Add default PodAntiAffinity to Ingester
 - [9262](https://github.com/grafana/loki/pull/9262) **btaani**: Add PodDisruptionBudget to the Ruler

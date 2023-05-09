@@ -48,6 +48,7 @@ message StreamRate {
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
   string tenant = 4;
+  uint32 pushes = 5;
 }
 
 message QueryRequest {
@@ -130,6 +131,7 @@ message Sample {
   int64 timestamp = 1 [(gogoproto.jsontag) = "ts"];
   double value = 2 [(gogoproto.jsontag) = "value"];
   uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
+  int64 length = 4 [(gogoproto.jsontag) = "length"];
 }
 
 // LegacySample exists for backwards compatibility reasons and is deprecated. Do not use.

@@ -124,7 +124,7 @@ func parseInt(value string, def int) (int, error) {
 	return strconv.Atoi(value)
 }
 
-// parseUnixNano parses a ns unix timestamp from a string
+// parseTimestamp parses a ns unix timestamp from a string
 // if the value is empty it returns a default value passed as second parameter
 func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	if value == "" {

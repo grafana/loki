@@ -307,6 +307,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 				Timestamp: ts,
 				Value:     value,
 				Hash:      xxhash.Sum64(unsafeGetBytes(line)),
+				Length:    int64(len(unsafeGetBytes(line))),
 			})
 			return nil
 		},
