@@ -2048,7 +2048,6 @@ spec:
 
     In addition it enables the following OpenShift-only related feature gates:
     * `servingCertsService`: Enables OpenShift ServiceCA annotations on the lokistack-gateway service only.
-    * `gatewayRoute`: Enables creating an OpenShift Route for the LokiStack.
     * `ruleExtendedValidation`: Enables extended validation of AlertingRule and RecordingRule to enforce tenancy in an OpenShift context.
     * `clusterTLSPolicy`: Enables usage of TLS policies set in the API Server.
     * `clusterProxy`: Enables usage of the proxy variables set in the proxy resource.
