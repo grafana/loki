@@ -7,7 +7,10 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/facette/natsort"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/gomemcache/memcache"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // MemcachedJumpHashSelector implements the memcache.ServerSelector
@@ -85,22 +88,34 @@ func (s *MemcachedJumpHashSelector) SetServers(servers ...string) error {
 		if strings.Contains(server, "/") {
 			addr, err := s.resolveUnixAddr("unix", server)
 			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "could not resolve UNIX address of server", "server", server, "err", err)
 				return err
 			}
 			naddrs[i] = newStaticAddr(addr)
 		} else {
 			tcpAddr, err := s.resolveTCPAddr("tcp", server)
 			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "could not resolve TCP address of server", "server", server, "err", err)
 				return err
 			}
 			naddrs[i] = newStaticAddr(tcpAddr)
 		}
 	}
 
+	level.Debug(util_log.Logger).Log("msg", "updating memcached servers", "servers", strings.Join(addresses(naddrs), ","), "count", len(naddrs))
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.addrs = naddrs
 	return nil
+}
+
+func addresses(addrs []net.Addr) []string {
+	servers := make([]string, len(addrs))
+	for i, addr := range addrs {
+		servers[i] = addr.String()
+	}
+	return servers
 }
 
 // jumpHash consistently chooses a hash bucket number in the range [0, numBuckets) for the given key.
