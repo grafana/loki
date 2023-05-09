@@ -59,7 +59,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.QueryFrontend),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,

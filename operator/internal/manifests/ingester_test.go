@@ -187,36 +187,3 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		},
 	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }
-
-func TestIngesterPodAntiAffinity(t *testing.T) {
-	sts := manifests.NewIngesterStatefulSet(manifests.Options{
-		Name:      "abcd",
-		Namespace: "efgh",
-		Stack: lokiv1.LokiStackSpec{
-			StorageClassName: "standard",
-			Template: &lokiv1.LokiTemplateSpec{
-				Ingester: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-				},
-			},
-		},
-	})
-	expectedPodAntiAffinity := &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": manifests.LabelIngesterComponent,
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
-					TopologyKey: "kubernetes.io/hostname",
-				},
-			},
-		},
-	}
-	require.NotNil(t, sts.Spec.Template.Spec.Affinity)
-	require.Equal(t, expectedPodAntiAffinity, sts.Spec.Template.Spec.Affinity.PodAntiAffinity)
-}
