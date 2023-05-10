@@ -201,9 +201,9 @@ func (w *Watcher) watch(segmentNum int) error {
 		// the cases below will unlock the select block, and execute the block below
 		// https://github.com/golang/go/issues/23196#issuecomment-353169837
 		case <-readTimer.C:
-			w.metrics.timerSegmentReads.WithLabelValues(w.id).Inc()
+			w.metrics.segmentRead.WithLabelValues(w.id, "timer").Inc()
 			if debug {
-				level.Info(w.logger).Log("msg", "Segment read triggered by backup timer", "segment", segmentNum)
+				level.Debug(w.logger).Log("msg", "Segment read triggered by backup timer", "segment", segmentNum)
 
 			}
 		case <-w.readNotify:

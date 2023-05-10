@@ -6,7 +6,7 @@ type WatcherMetrics struct {
 	recordsRead               *prometheus.CounterVec
 	recordDecodeFails         *prometheus.CounterVec
 	droppedWriteNotifications *prometheus.CounterVec
-	timerSegmentReads         *prometheus.CounterVec
+	segmentRead               *prometheus.CounterVec
 	currentSegment            *prometheus.GaugeVec
 	watchersRunning           *prometheus.GaugeVec
 }
@@ -35,19 +35,19 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 			prometheus.CounterOpts{
 				Namespace: "loki",
 				Subsystem: "wal_watcher",
-				Name:      "dropped_write_notifications",
+				Name:      "dropped_write_notifications_total",
 				Help:      "Number of dropped write notifications due to having one already buffered.",
 			},
 			[]string{"id"},
 		),
-		timerSegmentReads: prometheus.NewCounterVec(
+		segmentRead: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: "loki",
 				Subsystem: "wal_watcher",
-				Name:      "read_segment_by_timer",
+				Name:      "segment_read_total",
 				Help:      "Number of segment reads triggered by the backup timer firing.",
 			},
-			[]string{"id"},
+			[]string{"id", "reason"},
 		),
 		currentSegment: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -73,7 +73,7 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 		reg.MustRegister(m.recordsRead)
 		reg.MustRegister(m.recordDecodeFails)
 		reg.MustRegister(m.droppedWriteNotifications)
-		reg.MustRegister(m.timerSegmentReads)
+		reg.MustRegister(m.segmentRead)
 		reg.MustRegister(m.currentSegment)
 		reg.MustRegister(m.watchersRunning)
 	}
