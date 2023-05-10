@@ -17,7 +17,8 @@ if [[ ! -d "${LOCAL_REPOSITORIES_PATH}/${UPSTREAM_REPOSITORY}" ]]; then
 fi
 
 SOURCE_DIR=$(pwd)
-VERSION=$(grep "VERSION ?= " Makefile | awk -F= '{print $3}' | xargs)
+VERSION=$(grep "VERSION ?= " Makefile | awk -F= '{print $2}' | xargs)
+INT_VERSION="${VERSION#v}"
 
 for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
     (
@@ -33,17 +34,21 @@ for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
         git checkout -q main
         git rebase -q upstream/main
 
-        mkdir -p "operators/loki-operator/${VERSION}"
-        cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${VERSION}/"
-        rm "operators/loki-operator/${VERSION}/bundle.Dockerfile"
+        mkdir -p "operators/loki-operator/${INT_VERSION}"
+        if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
+            cp -r "${SOURCE_DIR}/bundle/community-openshift"/* "operators/loki-operator/${INT_VERSION}/"
+        else
+            cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${INT_VERSION}/"
+        fi
+        rm "operators/loki-operator/${INT_VERSION}/bundle.Dockerfile"
 
         if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
             python3 - << END
 import os, yaml
-with open("./operators/loki-operator/${VERSION}/metadata/annotations.yaml", 'r') as f:
+with open("./operators/loki-operator/${INT_VERSION}/metadata/annotations.yaml", 'r') as f:
     y=yaml.safe_load(f) or {}
     y['annotations']['com.redhat.openshift.versions'] = os.getenv('SUPPORTED_OCP_VERSIONS')
-with open("./operators/loki-operator/${VERSION}/metadata/annotations.yaml", 'w') as f:
+with open("./operators/loki-operator/${INT_VERSION}/metadata/annotations.yaml", 'w') as f:
     yaml.dump(y, f)
 END
         fi
@@ -55,7 +60,7 @@ END
         fi
 
         git add .
-        git commit -sqm "Update loki-operator to v${VERSION}"
+        git commit -sqm "Update loki-operator to ${VERSION}"
 
         if ! command -v gh > /dev/null;
         then
@@ -64,7 +69,7 @@ END
         fi
 
         echo "Submitting PR on your behalf via 'gh'"
-        gh pr create --title  "Update loki-operator to v${VERSION}" --body-file "${SOURCE_DIR}/hack/.checked-pr-template.md"
+        gh pr create --title  "Update loki-operator to ${VERSION}" --body-file "${SOURCE_DIR}/hack/.checked-pr-template.md"
     )
 done
 

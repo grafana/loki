@@ -28,7 +28,7 @@ func setupFakesNoError(t *testing.T, stack *lokiv1.LokiStack) (*k8sfakes.FakeCli
 	}
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
 		actual := obj.(*lokiv1.LokiStack)
 		require.NotEmpty(t, actual.Status.Conditions)
 		require.Equal(t, metav1.ConditionTrue, actual.Status.Conditions[0].Status)

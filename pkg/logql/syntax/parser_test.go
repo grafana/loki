@@ -349,7 +349,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in:  `rate({ foo = "bar" }[5minutes])`,
-			err: logqlmodel.NewParseError(`not a valid duration string: "5minutes"`, 0, 21),
+			err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 		},
 		{
 			in:  `label_replace(rate({ foo = "bar" }[5m]),"")`,
@@ -1851,6 +1851,17 @@ func TestParse(t *testing.T) {
 					5*time.Minute,
 					newUnwrapExpr("bar", ""),
 					newOffsetExpr(5*time.Minute)),
+				OpRangeTypeMax, &Grouping{Without: true, Groups: []string{"foo", "bar"}}, nil,
+			),
+		},
+		{
+			in: `max_over_time({app="foo"} | unwrap bar [5m] offset -5m) without (foo,bar)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", ""),
+					newOffsetExpr(-5*time.Minute)),
 				OpRangeTypeMax, &Grouping{Without: true, Groups: []string{"foo", "bar"}}, nil,
 			),
 		},
@@ -3408,4 +3419,15 @@ func TestParseLabels(t *testing.T) {
 			require.Equal(t, tc.output, got)
 		})
 	}
+}
+
+func TestNoOpLabelToString(t *testing.T) {
+	logExpr := `{container_name="app"} | foo=~".*"`
+	l, err := ParseLogSelector(logExpr, false)
+	require.NoError(t, err)
+	require.Equal(t, `{container_name="app"} | foo=~"(?-s:.)*?"`, l.String())
+
+	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	require.NoError(t, err)
+	require.Len(t, stages, 0)
 }

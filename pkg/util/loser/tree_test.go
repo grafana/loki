@@ -55,62 +55,85 @@ func checkIterablesEqual[E any, S1 loser.Sequence, S2 loser.Sequence](t *testing
 	}
 }
 
+var testCases = []struct {
+	name string
+	args []*List
+	want *List
+}{
+	{
+		name: "empty input",
+		want: NewList(),
+	},
+	{
+		name: "one list",
+		args: []*List{NewList(1, 2, 3, 4)},
+		want: NewList(1, 2, 3, 4),
+	},
+	{
+		name: "two lists",
+		args: []*List{NewList(3, 4, 5), NewList(1, 2)},
+		want: NewList(1, 2, 3, 4, 5),
+	},
+	{
+		name: "two lists, first empty",
+		args: []*List{NewList(), NewList(1, 2)},
+		want: NewList(1, 2),
+	},
+	{
+		name: "two lists, second empty",
+		args: []*List{NewList(1, 2), NewList()},
+		want: NewList(1, 2),
+	},
+	{
+		name: "two lists b",
+		args: []*List{NewList(1, 2), NewList(3, 4, 5)},
+		want: NewList(1, 2, 3, 4, 5),
+	},
+	{
+		name: "two lists c",
+		args: []*List{NewList(1, 3), NewList(2, 4, 5)},
+		want: NewList(1, 2, 3, 4, 5),
+	},
+	{
+		name: "three lists",
+		args: []*List{NewList(1, 3), NewList(2, 4), NewList(5)},
+		want: NewList(1, 2, 3, 4, 5),
+	},
+}
+
 func TestMerge(t *testing.T) {
-	tests := []struct {
-		name string
-		args []*List
-		want *List
-	}{
-		{
-			name: "empty input",
-			want: NewList(),
-		},
-		{
-			name: "one list",
-			args: []*List{NewList(1, 2, 3, 4)},
-			want: NewList(1, 2, 3, 4),
-		},
-		{
-			name: "two lists",
-			args: []*List{NewList(3, 4, 5), NewList(1, 2)},
-			want: NewList(1, 2, 3, 4, 5),
-		},
-		{
-			name: "two lists, first empty",
-			args: []*List{NewList(), NewList(1, 2)},
-			want: NewList(1, 2),
-		},
-		{
-			name: "two lists, second empty",
-			args: []*List{NewList(1, 2), NewList()},
-			want: NewList(1, 2),
-		},
-		{
-			name: "two lists b",
-			args: []*List{NewList(1, 2), NewList(3, 4, 5)},
-			want: NewList(1, 2, 3, 4, 5),
-		},
-		{
-			name: "two lists c",
-			args: []*List{NewList(1, 3), NewList(2, 4, 5)},
-			want: NewList(1, 2, 3, 4, 5),
-		},
-		{
-			name: "three lists",
-			args: []*List{NewList(1, 3), NewList(2, 4), NewList(5)},
-			want: NewList(1, 2, 3, 4, 5),
-		},
-	}
-	for _, tt := range tests {
+	at := func(s *List) uint64 { return s.At() }
+	less := func(a, b uint64) bool { return a < b }
+	at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
+	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			at := func(s *List) uint64 { return s.At() }
-			less := func(a, b uint64) bool { return a < b }
 			numCloses := 0
 			close := func(s *List) {
 				numCloses++
 			}
 			lt := loser.New(tt.args, math.MaxUint64, at, less, close)
-			at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
+			checkIterablesEqual(t, tt.want, lt, at, at2, less)
+			if numCloses != len(tt.args) {
+				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)
+			}
+		})
+	}
+}
+
+func TestPush(t *testing.T) {
+	at := func(s *List) uint64 { return s.At() }
+	less := func(a, b uint64) bool { return a < b }
+	at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			numCloses := 0
+			close := func(s *List) {
+				numCloses++
+			}
+			lt := loser.New(nil, math.MaxUint64, at, less, close)
+			for _, s := range tt.args {
+				lt.Push(s)
+			}
 			checkIterablesEqual(t, tt.want, lt, at, at2, less)
 			if numCloses != len(tt.args) {
 				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)

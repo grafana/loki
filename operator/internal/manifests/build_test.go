@@ -19,6 +19,7 @@ import (
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -43,6 +44,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		require.Equal(t, defs.Size, opt.Stack.Size)
 		require.Equal(t, defs.Limits, opt.Stack.Limits)
 		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor)
+		require.Equal(t, defs.Replication, opt.Stack.Replication)
 		require.Equal(t, defs.ManagementState, opt.Stack.ManagementState)
 		require.Equal(t, defs.Template.Ingester, opt.Stack.Template.Ingester)
 		require.Equal(t, defs.Template.Querier, opt.Stack.Template.Querier)
@@ -59,6 +61,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 
 func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -904,63 +907,6 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
-	tt := []struct {
-		desc         string
-		nodeAffinity bool
-		wantAffinity *corev1.Affinity
-	}{
-		{
-			desc:         "disabled",
-			nodeAffinity: false,
-			wantAffinity: nil,
-		},
-		{
-			desc:         "enabled",
-			nodeAffinity: true,
-			wantAffinity: defaultAffinity(true),
-		},
-	}
-
-	for _, tc := range tt {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-
-			opts := &Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1.LokiStackSpec{
-					Size: lokiv1.SizeOneXSmall,
-				},
-				Gates: configv1.FeatureGates{
-					DefaultNodeAffinity: tc.nodeAffinity,
-				},
-			}
-
-			err := ApplyDefaultSettings(opts)
-			require.NoError(t, err)
-
-			objects, err := BuildAll(*opts)
-			require.NoError(t, err)
-
-			for _, raw := range objects {
-				gotAffinity, skip, err := extractAffinity(raw)
-				require.NoError(t, err)
-
-				if skip {
-					// Object with no affinity
-					continue
-				}
-
-				require.Equal(t, tc.wantAffinity, gotAffinity,
-					"kind", raw.GetObjectKind().GroupVersionKind(),
-					"name", raw.GetName())
-			}
-		})
-	}
-}
-
 func serviceMonitorCount(objects []client.Object) int {
 	monitors := 0
 	for _, obj := range objects {
@@ -979,18 +925,4 @@ func checkGatewayDeployed(objects []client.Object, stackName string) bool {
 		}
 	}
 	return false
-}
-
-func extractAffinity(raw client.Object) (*corev1.Affinity, bool, error) {
-	switch obj := raw.(type) {
-	case *appsv1.Deployment:
-		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *appsv1.StatefulSet:
-		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *corev1.ConfigMap, *corev1.Service:
-		return nil, true, nil
-	default:
-	}
-
-	return nil, false, fmt.Errorf("unknown kind: %s", raw.GetObjectKind().GroupVersionKind())
 }

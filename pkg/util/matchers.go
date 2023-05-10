@@ -14,6 +14,10 @@ func SplitFiltersAndMatchers(allMatchers []*labels.Matcher) (filters, matchers [
 		// the index, we should ignore this matcher to fetch all possible chunks
 		// and then filter on the matcher after the chunks have been fetched.
 		if matcher.Matches("") {
+			// Always skip matches that match everything
+			if matcher.Type == labels.MatchRegexp && matcher.Value == ".*" {
+				continue
+			}
 			filters = append(filters, matcher)
 		} else {
 			matchers = append(matchers, matcher)

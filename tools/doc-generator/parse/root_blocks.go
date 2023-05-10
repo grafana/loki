@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/weaveworks/common/server"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -29,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
@@ -36,7 +38,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -143,8 +144,8 @@ var (
 		},
 		{
 			Name:       "analytics",
-			StructType: reflect.TypeOf(usagestats.Config{}),
-			Desc:       "Configuration for usage report.",
+			StructType: reflect.TypeOf(analytics.Config{}),
+			Desc:       "Configuration for analytics.",
 		},
 
 		{
@@ -225,6 +226,11 @@ var (
 			Name:       "swift_storage_config",
 			StructType: reflect.TypeOf(openstack.SwiftConfig{}),
 			Desc:       "The swift_storage_config block configures the connection to OpenStack Object Storage (Swift) object storage backend.",
+		},
+		{
+			Name:       "cos_storage_config",
+			StructType: reflect.TypeOf(ibmcloud.COSConfig{}),
+			Desc:       "The cos_storage_config block configures the connection to IBM Cloud Object Storage (COS) backend.",
 		},
 		{
 			Name:       "local_storage_config",

@@ -22,10 +22,10 @@ The configuration acquired with these installation instructions run Loki as a si
 Copy and paste the commands below into your command line.
 
 ```bash
-wget https://raw.githubusercontent.com/grafana/loki/v2.7.3/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.6.1 -config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.7.3/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
-docker run --name promtail -d -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.6.1 -config.file=/mnt/config/promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.8.2/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.8.2 -config.file=/mnt/config/loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.8.2/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+docker run --name promtail -d -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.8.2 -config.file=/mnt/config/promtail-config.yaml
 ```
 
 When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
@@ -40,10 +40,10 @@ Copy and paste the commands below into your terminal. Note that you will need to
 
 ```bash
 cd "<local-path>"
-wget https://raw.githubusercontent.com/grafana/loki/v2.7.3/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.6.1 --config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.7.3/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
-docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.6.1 --config.file=/mnt/config/promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.8.2/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.8.2 --config.file=/mnt/config/loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.8.2/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.8.2 --config.file=/mnt/config/promtail-config.yaml
 ```
 
 When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
@@ -55,6 +55,6 @@ Navigate to http://localhost:3100/metrics to view the output.
 Run the following commands in your command line. They work for Windows or Linux systems.
 
 ```bash
-wget https://raw.githubusercontent.com/grafana/loki/v2.7.3/production/docker-compose.yaml -O docker-compose.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.8.2/production/docker-compose.yaml -O docker-compose.yaml
 docker-compose -f docker-compose.yaml up
 ```

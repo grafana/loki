@@ -8,10 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
@@ -77,17 +81,71 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 
 func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	c := make([]log.Stage, 0, len(m))
-	for _, e := range m {
+	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
 		}
-		if p == log.NoopStage || p == log.NoopLabelFilter {
+		if p == log.NoopStage {
 			continue
 		}
 		c = append(c, p)
 	}
 	return c, nil
+}
+
+// reorderStages reorders m such that LineFilters
+// are as close to the front of the filter as possible.
+func (m MultiStageExpr) reorderStages() []StageExpr {
+	var (
+		result  = make([]StageExpr, 0, len(m))
+		filters = make([]*LineFilterExpr, 0, len(m))
+		rest    = make([]StageExpr, 0, len(m))
+	)
+
+	for _, s := range m {
+		switch f := s.(type) {
+		case *LineFilterExpr:
+			filters = append(filters, f)
+		case *LineFmtExpr:
+			// line_format modifies the contents of the line so any line filter
+			// originally after a line_format must still be after the same
+			// line_format.
+
+			rest = append(rest, f)
+
+			if len(filters) > 0 {
+				result = append(result, combineFilters(filters))
+			}
+			result = append(result, rest...)
+
+			filters = filters[:0]
+			rest = rest[:0]
+		default:
+			rest = append(rest, f)
+		}
+	}
+
+	if len(filters) > 0 {
+		result = append(result, combineFilters(filters))
+	}
+	return append(result, rest...)
+}
+
+func combineFilters(in []*LineFilterExpr) StageExpr {
+	result := in[len(in)-1]
+	for i := len(in) - 2; i >= 0; i-- {
+		leafNode(result).Left = in[i]
+	}
+
+	return result
+}
+
+func leafNode(in *LineFilterExpr) *LineFilterExpr {
+	current := in
+	for ; current.Left != nil; current = current.Left {
+	}
+	return current
 }
 
 func (m MultiStageExpr) String() string {
@@ -202,7 +260,7 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
 		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		case *LineFilterExpr, *LabelFilterExpr, *DistinctFilterExpr:
 			return true
 		default:
 			continue
@@ -410,6 +468,8 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
 		return ip, ip.PatternError()
+	case *log.NoopLabelFilter:
+		return log.NoopStage, nil
 	}
 	return e.LabelFilterer, nil
 }
@@ -571,6 +631,37 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
+type DistinctFilterExpr struct {
+	labels []string
+	implicit
+}
+
+func newDistinctFilterExpr(labels []string) *DistinctFilterExpr {
+	return &DistinctFilterExpr{
+		labels: labels,
+	}
+}
+
+func (e *DistinctFilterExpr) Shardable() bool { return false }
+
+func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
+
+func (e *DistinctFilterExpr) Stage() (log.Stage, error) {
+	return log.NewDistinctFilter(e.labels)
+}
+
+func (e *DistinctFilterExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFilterDistinct))
+	for i, label := range e.labels {
+		sb.WriteString(label)
+		if i+1 != len(e.labels) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 type internedStringSet map[string]struct {
 	s  string
 	ok bool
@@ -614,11 +705,47 @@ func (l *LogfmtExpressionParser) String() string {
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
+	if t == labels.MatchRegexp || t == labels.MatchNotRegexp {
+		return simplifyRegexMatcher(t, n, v)
+	}
+
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
 	return m
+}
+
+func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matcher {
+	reg, err := syntax.Parse(value, syntax.Perl)
+	if err != nil {
+		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+	}
+	reg = reg.Simplify()
+
+	m, ok := simplify(typ, name, reg)
+	if !ok {
+		util.AllNonGreedy(reg)
+		return labels.MustNewMatcher(typ, name, reg.String())
+	}
+
+	return m
+}
+
+// simplify will return an equals matcher if there is a regex matching a literal
+func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
+	switch reg.Op {
+	case syntax.OpLiteral:
+		if !util.IsCaseInsensitive(reg) {
+			t := labels.MatchEqual
+			if typ == labels.MatchNotRegexp {
+				t = labels.MatchNotEqual
+			}
+			return labels.MustNewMatcher(t, name, string(reg.Rune)), true
+		}
+		return nil, false
+	}
+	return nil, false
 }
 
 func mustNewFloat(s string) float64 {
@@ -807,6 +934,8 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
+
+	OpFilterDistinct = "distinct"
 
 	// drop labels
 	OpDrop = "drop"
@@ -1310,15 +1439,15 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 func reduceBinOp(op string, left, right float64) *LiteralExpr {
 	merged, err := MergeBinOp(
 		op,
-		&promql.Sample{Point: promql.Point{V: left}},
-		&promql.Sample{Point: promql.Point{V: right}},
+		&promql.Sample{F: left},
+		&promql.Sample{F: right},
 		false,
 		false,
 	)
 	if err != nil {
 		return &LiteralExpr{err: err}
 	}
-	return &LiteralExpr{Val: merged.V}
+	return &LiteralExpr{Val: merged.F}
 }
 
 func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) (*promql.Sample, error) {
@@ -1330,11 +1459,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V += right.Point.V
+			res := *left
+			res.F += right.F
 			return &res
 		}
 
@@ -1343,11 +1469,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V -= right.Point.V
+			res := *left
+			res.F -= right.F
 			return &res
 		}
 
@@ -1356,11 +1479,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V *= right.Point.V
+			res := *left
+			res.F *= right.F
 			return &res
 		}
 
@@ -1369,16 +1489,12 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			// guard against divide by zero
-			if right.Point.V == 0 {
-				res.Point.V = math.NaN()
+			if right.F == 0 {
+				res.F = math.NaN()
 			} else {
-				res.Point.V /= right.Point.V
+				res.F /= right.F
 			}
 			return &res
 		}
@@ -1388,15 +1504,12 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
+			res := *left
 			// guard against divide by zero
-			if right.Point.V == 0 {
-				res.Point.V = math.NaN()
+			if right.F == 0 {
+				res.F = math.NaN()
 			} else {
-				res.Point.V = math.Mod(res.Point.V, right.Point.V)
+				res.F = math.Mod(res.F, right.F)
 			}
 			return &res
 		}
@@ -1407,11 +1520,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V = math.Pow(left.Point.V, right.Point.V)
+			res := *left
+			res.F = math.Pow(left.F, right.F)
 			return &res
 		}
 
@@ -1421,19 +1531,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
+			res := *left
 
 			val := 0.
-			if left.Point.V == right.Point.V {
+			if left.F == right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeNEQ:
@@ -1442,19 +1549,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V != right.Point.V {
+			if left.F != right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeGT:
@@ -1463,19 +1566,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V > right.Point.V {
+			if left.F > right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeGTE:
@@ -1484,19 +1583,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V >= right.Point.V {
+			if left.F >= right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeLT:
@@ -1505,19 +1600,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V < right.Point.V {
+			if left.F < right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeLTE:
@@ -1526,19 +1617,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V <= right.Point.V {
+			if left.F <= right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	default:

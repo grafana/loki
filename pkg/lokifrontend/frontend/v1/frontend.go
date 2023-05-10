@@ -61,11 +61,12 @@ type Frontend struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	// Metrics.
-	queueLength       *prometheus.GaugeVec
-	discardedRequests *prometheus.CounterVec
-	numClients        prometheus.GaugeFunc
-	queueDuration     prometheus.Histogram
+	// qeueue metrics
+	queueMetrics *queue.Metrics
+
+	// frontend metrics
+	numClients    prometheus.GaugeFunc
+	queueDuration prometheus.Histogram
 }
 
 type request struct {
@@ -80,18 +81,12 @@ type request struct {
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+	queueMetrics := queue.NewMetrics("query_frontend", registerer)
 	f := &Frontend{
-		cfg:    cfg,
-		log:    log,
-		limits: limits,
-		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_query_frontend_queue_length",
-			Help: "Number of queries in the queue.",
-		}, []string{"user"}),
-		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_frontend_discarded_requests_total",
-			Help: "Total number of query requests discarded.",
-		}, []string{"user"}),
+		cfg:          cfg,
+		log:          log,
+		limits:       limits,
+		queueMetrics: queueMetrics,
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -99,12 +94,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	metrics := &queue.Metrics{
-		QueueLength:       f.queueLength,
-		DiscardedRequests: f.discardedRequests,
-	}
-
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, metrics)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	var err error
@@ -150,8 +140,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
-	f.queueLength.DeleteLabelValues(user)
-	f.discardedRequests.DeleteLabelValues(user)
+	f.queueMetrics.Cleanup(user)
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
@@ -327,7 +316,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)
 
-	err = f.requestQueue.Enqueue(joinedTenantID, req, maxQueriers, nil)
+	err = f.requestQueue.Enqueue(joinedTenantID, nil, req, maxQueriers, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}

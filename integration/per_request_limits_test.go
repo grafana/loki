@@ -15,7 +15,7 @@ import (
 )
 
 func TestPerRequestLimits(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -39,6 +39,9 @@ func TestPerRequestLimits(t *testing.T) {
 
 	// check that per-rquest-limits are enforced
 	_, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)
+	require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
+
+	_, err = cliTenant.LabelNames(context.Background())
 	require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
 
 	// check without policy header

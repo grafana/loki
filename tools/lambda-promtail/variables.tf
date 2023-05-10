@@ -1,3 +1,9 @@
+variable "name" {
+  type        = string
+  description = "Name used for created AWS resources."
+  default     = "lambda_promtail"
+}
+
 variable "write_address" {
   type        = string
   description = "This is the Loki Write API compatible endpoint that you want to write logs to, either promtail or Loki."

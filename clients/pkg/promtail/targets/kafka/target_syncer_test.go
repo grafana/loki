@@ -7,19 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-
-	"github.com/grafana/dskit/flagext"
-	"github.com/prometheus/common/config"
-
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
@@ -51,14 +49,6 @@ func Test_TopicDiscovery(t *testing.T) {
 				return nil, nil
 			}),
 		},
-		cfg: scrapeconfig.Config{
-			JobName:        "foo",
-			RelabelConfigs: []*relabel.Config{},
-			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-				UseIncomingTimestamp: true,
-				Topics:               []string{"topic1", "topic2"},
-			},
-		},
 	}
 
 	ts.loop()
@@ -87,8 +77,8 @@ func Test_NewTarget(t *testing.T) {
 		logger: log.NewNopLogger(),
 		reg:    prometheus.DefaultRegisterer,
 		client: fake.New(func() {}),
-		cfg: scrapeconfig.Config{
-			JobName: "foo",
+		cfg: &TargetSyncerConfig{
+			GroupID: "group_1",
 			RelabelConfigs: []*relabel.Config{
 				{
 					SourceLabels: model.LabelNames{"__meta_kafka_topic"},
@@ -98,15 +88,11 @@ func Test_NewTarget(t *testing.T) {
 					Regex:        relabel.MustNewRegexp("(.*)"),
 				},
 			},
-			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-				UseIncomingTimestamp: true,
-				GroupID:              "group_1",
-				Topics:               []string{"topic1", "topic2"},
-				Labels:               model.LabelSet{"static": "static1"},
-			},
+			Labels: model.LabelSet{"static": "static1"},
 		},
 	}
-	pipeline, err := stages.NewPipeline(ts.logger, ts.cfg.PipelineStages, &ts.cfg.JobName, ts.reg)
+	jobName := "foo"
+	pipeline, err := stages.NewPipeline(ts.logger, nil, &jobName, ts.reg)
 	require.NoError(t, err)
 	ts.pipeline = pipeline
 	tg, err := ts.NewTarget(&testSession{}, newTestClaim("foo", 10, 1))
@@ -127,13 +113,8 @@ func Test_NewDroppedTarget(t *testing.T) {
 	ts := &TargetSyncer{
 		logger: log.NewNopLogger(),
 		reg:    prometheus.DefaultRegisterer,
-		cfg: scrapeconfig.Config{
-			JobName: "foo",
-			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-				UseIncomingTimestamp: true,
-				GroupID:              "group1",
-				Topics:               []string{"topic1", "topic2"},
-			},
+		cfg: &TargetSyncerConfig{
+			GroupID: "group1",
 		},
 	}
 	tg, err := ts.NewTarget(&testSession{}, newTestClaim("foo", 10, 1))

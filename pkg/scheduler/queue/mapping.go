@@ -1,17 +1,16 @@
 package queue
 
-type Mapable interface {
-	*tenantQueue | *LeafQueue
-	// https://github.com/golang/go/issues/48522#issuecomment-924348755
-	Pos() QueueIndex
-	SetPos(index QueueIndex)
-}
+import (
+	"github.com/pkg/errors"
+)
+
+var ErrOutOfBounds = errors.New("queue index out of bounds")
 
 var empty = string([]byte{byte(0)})
 
 // Mapping is a map-like data structure that allows accessing its items not
 // only by key but also by index.
-// When an item is removed, the iinternal key array is not resized, but the
+// When an item is removed, the internal key array is not resized, but the
 // removed place is marked as empty. This allows to remove keys without
 // changing the index of the remaining items after the removed key.
 // Mapping uses *tenantQueue as concrete value and keys of type string.
@@ -54,28 +53,22 @@ func (m *Mapping[v]) Get(idx QueueIndex) v {
 	return m.GetByKey(k)
 }
 
-func (m *Mapping[v]) GetNext(idx QueueIndex) v {
-	if len(m.keys) == 0 {
-		return nil
+func (m *Mapping[v]) GetNext(idx QueueIndex) (v, error) {
+	if m.Len() == 0 {
+		return nil, ErrOutOfBounds
 	}
 
-	// convert to int
 	i := int(idx)
-	// proceed to the next index
-	i = i + 1
-	// start from beginning if next index exceeds slice length
-	if i >= len(m.keys) {
-		i = 0
-	}
+	i++
 
 	for i < len(m.keys) {
 		k := m.keys[i]
 		if k != empty {
-			return m.GetByKey(k)
+			return m.GetByKey(k), nil
 		}
 		i++
 	}
-	return nil
+	return nil, ErrOutOfBounds
 }
 
 func (m *Mapping[v]) GetByKey(key string) v {

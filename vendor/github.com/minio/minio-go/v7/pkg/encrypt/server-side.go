@@ -28,27 +28,27 @@ import (
 )
 
 const (
-	// sseGenericHeader is the AWS SSE header used for SSE-S3 and SSE-KMS.
-	sseGenericHeader = "X-Amz-Server-Side-Encryption"
+	// SseGenericHeader is the AWS SSE header used for SSE-S3 and SSE-KMS.
+	SseGenericHeader = "X-Amz-Server-Side-Encryption"
 
-	// sseKmsKeyID is the AWS SSE-KMS key id.
-	sseKmsKeyID = sseGenericHeader + "-Aws-Kms-Key-Id"
-	// sseEncryptionContext is the AWS SSE-KMS Encryption Context data.
-	sseEncryptionContext = sseGenericHeader + "-Context"
+	// SseKmsKeyID is the AWS SSE-KMS key id.
+	SseKmsKeyID = SseGenericHeader + "-Aws-Kms-Key-Id"
+	// SseEncryptionContext is the AWS SSE-KMS Encryption Context data.
+	SseEncryptionContext = SseGenericHeader + "-Context"
 
-	// sseCustomerAlgorithm is the AWS SSE-C algorithm HTTP header key.
-	sseCustomerAlgorithm = sseGenericHeader + "-Customer-Algorithm"
-	// sseCustomerKey is the AWS SSE-C encryption key HTTP header key.
-	sseCustomerKey = sseGenericHeader + "-Customer-Key"
-	// sseCustomerKeyMD5 is the AWS SSE-C encryption key MD5 HTTP header key.
-	sseCustomerKeyMD5 = sseGenericHeader + "-Customer-Key-MD5"
+	// SseCustomerAlgorithm is the AWS SSE-C algorithm HTTP header key.
+	SseCustomerAlgorithm = SseGenericHeader + "-Customer-Algorithm"
+	// SseCustomerKey is the AWS SSE-C encryption key HTTP header key.
+	SseCustomerKey = SseGenericHeader + "-Customer-Key"
+	// SseCustomerKeyMD5 is the AWS SSE-C encryption key MD5 HTTP header key.
+	SseCustomerKeyMD5 = SseGenericHeader + "-Customer-Key-MD5"
 
-	// sseCopyCustomerAlgorithm is the AWS SSE-C algorithm HTTP header key for CopyObject API.
-	sseCopyCustomerAlgorithm = "X-Amz-Copy-Source-Server-Side-Encryption-Customer-Algorithm"
-	// sseCopyCustomerKey is the AWS SSE-C encryption key HTTP header key for CopyObject API.
-	sseCopyCustomerKey = "X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key"
-	// sseCopyCustomerKeyMD5 is the AWS SSE-C encryption key MD5 HTTP header key for CopyObject API.
-	sseCopyCustomerKeyMD5 = "X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key-MD5"
+	// SseCopyCustomerAlgorithm is the AWS SSE-C algorithm HTTP header key for CopyObject API.
+	SseCopyCustomerAlgorithm = "X-Amz-Copy-Source-Server-Side-Encryption-Customer-Algorithm"
+	// SseCopyCustomerKey is the AWS SSE-C encryption key HTTP header key for CopyObject API.
+	SseCopyCustomerKey = "X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key"
+	// SseCopyCustomerKeyMD5 is the AWS SSE-C encryption key MD5 HTTP header key for CopyObject API.
+	SseCopyCustomerKeyMD5 = "X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key-MD5"
 )
 
 // PBKDF creates a SSE-C key from the provided password and salt.
@@ -157,9 +157,9 @@ func (s ssec) Type() Type { return SSEC }
 
 func (s ssec) Marshal(h http.Header) {
 	keyMD5 := md5.Sum(s[:])
-	h.Set(sseCustomerAlgorithm, "AES256")
-	h.Set(sseCustomerKey, base64.StdEncoding.EncodeToString(s[:]))
-	h.Set(sseCustomerKeyMD5, base64.StdEncoding.EncodeToString(keyMD5[:]))
+	h.Set(SseCustomerAlgorithm, "AES256")
+	h.Set(SseCustomerKey, base64.StdEncoding.EncodeToString(s[:]))
+	h.Set(SseCustomerKeyMD5, base64.StdEncoding.EncodeToString(keyMD5[:]))
 }
 
 type ssecCopy [32]byte
@@ -168,16 +168,16 @@ func (s ssecCopy) Type() Type { return SSEC }
 
 func (s ssecCopy) Marshal(h http.Header) {
 	keyMD5 := md5.Sum(s[:])
-	h.Set(sseCopyCustomerAlgorithm, "AES256")
-	h.Set(sseCopyCustomerKey, base64.StdEncoding.EncodeToString(s[:]))
-	h.Set(sseCopyCustomerKeyMD5, base64.StdEncoding.EncodeToString(keyMD5[:]))
+	h.Set(SseCopyCustomerAlgorithm, "AES256")
+	h.Set(SseCopyCustomerKey, base64.StdEncoding.EncodeToString(s[:]))
+	h.Set(SseCopyCustomerKeyMD5, base64.StdEncoding.EncodeToString(keyMD5[:]))
 }
 
 type s3 struct{}
 
 func (s s3) Type() Type { return S3 }
 
-func (s s3) Marshal(h http.Header) { h.Set(sseGenericHeader, "AES256") }
+func (s s3) Marshal(h http.Header) { h.Set(SseGenericHeader, "AES256") }
 
 type kms struct {
 	key        string
@@ -188,11 +188,11 @@ type kms struct {
 func (s kms) Type() Type { return KMS }
 
 func (s kms) Marshal(h http.Header) {
-	h.Set(sseGenericHeader, "aws:kms")
+	h.Set(SseGenericHeader, "aws:kms")
 	if s.key != "" {
-		h.Set(sseKmsKeyID, s.key)
+		h.Set(SseKmsKeyID, s.key)
 	}
 	if s.hasContext {
-		h.Set(sseEncryptionContext, base64.StdEncoding.EncodeToString(s.context))
+		h.Set(SseEncryptionContext, base64.StdEncoding.EncodeToString(s.context))
 	}
 }

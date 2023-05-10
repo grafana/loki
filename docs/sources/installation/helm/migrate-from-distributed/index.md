@@ -1,17 +1,17 @@
 ---
-title: Migrate from `loki-distributed` Helm Chart
+title: Migrate from `loki-distributed` Helm chart
 menuTitle: Migrate from `loki-distributed`
 description: Migration guide for moving from `loki-distributed` to `loki`
 aliases:
   - /docs/installation/helm/migrate-from-distributed
-weight: 100
+weight: 600
 keywords:
   - migrate
   - loki-distributed
   - distributed
 ---
 
-# Migrate from `loki-distributed` Helm Chart
+# Migrate from `loki-distributed` Helm chart
 
 This guide will walk you through migrating to the `loki` Helm Chart, v3.0 or higher, from the `loki-distributed` Helm Chart (v0.63.2 at time of writing). The process consists of deploying the new `loki` Helm Chart alongside the existing `loki-distributed` installation. By joining the new cluster to the exsiting cluster's ring, you will create one large cluster. This will allow you to manually bring down the `loki-distributed` components in a safe way to avoid any data loss.
 
@@ -19,7 +19,7 @@ This guide will walk you through migrating to the `loki` Helm Chart, v3.0 or hig
 
 We recommend having a Grafana instance available to monitor both the existing and new clusters, to make sure there is no data loss during the migration process. The `loki` chart ships with self-monitoring features, including dashboards. These are useful for monitoring the health of the new cluster as it spins up.
 
-Start by updating your existing Grafana Agent or Promtail config (whatever is scraping logs from your environment) to _exclude_ the new deployment. The new `loki` chart ships with it's own self-monitoring mechanisms, and we want to make sure it's not scraped twice, which would produce duplicate logs. The best way to do this is via a relabel config that will drop logs from the new deployment, for example something like:
+Start by updating your existing Grafana Agent or Promtail config (whatever is scraping logs from your environment) to _exclude_ the new deployment. The new `loki` chart ships with its own self-monitoring mechanisms, and we want to make sure it's not scraped twice, which would produce duplicate logs. The best way to do this is via a relabel config that will drop logs from the new deployment, for example something like:
 
 ```yaml
 - source_labels:
@@ -45,7 +45,7 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
 
    The value of `memberlistService` must be the kubernetes service created for the purpose of Memberlist DNS in the `loki-distributed` deployment. It should match the value of `memberlist.join_members` in the config of the `loki-distributed` deployment. This is what will make the new cluster join the existing clusters ring. It is important to join all existing rings, if you are using different memberlist DNS for different rings, you must manually set the value of each applicable `join_members` configuration for each ring. If using the same memberlist DNS for all rings, as is the default in the `loki-distributed` chart, setting `migrate.memberlistService` should be enough.
 
-   One the new cluster is up, add the appropriate data source in Grafana for the new cluster. Check that the following queries return results:
+   Once the new cluster is up, add the appropriate data source in Grafana for the new cluster. Check that the following queries return results:
 
    - Confirm new and old logs are in the new deployment. Using the new deployment's Loki data source in Grafana, look for:
      - Logs with a job that is unqiue to your existing Promtail or Grafana Agent, the one we adjusted above to exclude logs from the new deployment which is not yet pushing logs to the new deployment. If you can query those via the new deployment in shows we have not lost historical logs.

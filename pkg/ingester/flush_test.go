@@ -316,7 +316,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		if chunk.Metric.Has("__name__") {
 			labelsBuilder := labels.NewBuilder(chunk.Metric)
 			labelsBuilder.Del("__name__")
-			chunks[ix].Metric = labelsBuilder.Labels(nil)
+			chunks[ix].Metric = labelsBuilder.Labels()
 		}
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
