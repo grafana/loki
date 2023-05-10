@@ -8,7 +8,7 @@ weight: 100
 keywords: []
 ---
 
-<link rel="stylesheet" href="../../logql/analyzer/style.css">
+<link rel="stylesheet" href="../../query/analyzer/style.css">
 
 # Size the cluster
 <!-- vale Grafana.Quotes = NO -->
