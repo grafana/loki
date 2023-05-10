@@ -63,7 +63,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelCompactorComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelCompactorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Compactor),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
