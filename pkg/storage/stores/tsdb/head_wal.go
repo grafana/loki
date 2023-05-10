@@ -5,6 +5,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
@@ -39,6 +41,13 @@ const (
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
 	WalRecordSeriesWithFingerprint
+	// In an attempt to mitigate replay failures missing series
+	// (seen a few times, unsure of cause), we record the series
+	// and chunks in the same record. This is more expensive, but
+	// should be more resilient to failures and still not a performance
+	// bottleneck as we flush chunks orders of magnitude less than individual
+	// log lines.
+	WalRecordSeriesAndChunks
 )
 
 type WALRecord struct {
@@ -55,6 +64,7 @@ type ChunkMetasRecord struct {
 
 // NB(owen-d): unused since we started recording the fingerprint
 // with the series, but left here for future understanding
+// and testware
 func (r *WALRecord) encodeSeries(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WalRecordSeries))
@@ -69,25 +79,14 @@ func (r *WALRecord) encodeSeries(b []byte) []byte {
 	return encoded
 }
 
-func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
-	buf := encoding.EncWith(b)
-	buf.PutByte(byte(WalRecordSeriesWithFingerprint))
-	buf.PutUvarintStr(r.UserID)
+func (r *WALRecord) encodeSeriesWithFingerprint(buf *encoding.Encbuf) {
 	buf.PutBE64(r.Fingerprint)
-
 	var enc record.Encoder
-	// The 'encoded' already has the type header and userID here, hence re-using
-	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
-	encoded := buf.Get()
-	encoded = append(encoded, enc.Series([]record.RefSeries{r.Series}, encoded[len(encoded):])...)
-
-	return encoded
+	series := enc.Series([]record.RefSeries{r.Series}, []byte{})
+	buf.PutBytes(series)
 }
 
-func (r *WALRecord) encodeChunks(b []byte) []byte {
-	buf := encoding.EncWith(b)
-	buf.PutByte(byte(WalRecordChunks))
-	buf.PutUvarintStr(r.UserID)
+func (r *WALRecord) encodeChunks(buf *encoding.Encbuf) {
 	buf.PutBE64(r.Chks.Ref)
 	buf.PutUvarint(len(r.Chks.Chks))
 
@@ -98,18 +97,43 @@ func (r *WALRecord) encodeChunks(b []byte) []byte {
 		buf.PutBE32(chk.KB)
 		buf.PutBE32(chk.Entries)
 	}
-
-	return buf.Get()
 }
 
-func decodeChunks(b []byte, rec *WALRecord) error {
-	if len(b) == 0 {
-		return nil
+func (r *WALRecord) encodeSeriesAndChunks(buf *encoding.Encbuf) {
+	r.encodeSeriesWithFingerprint(buf)
+	r.encodeChunks(buf)
+}
+
+func (r *WALRecord) decodeSeries(dec *encoding.Decbuf, fp bool) error {
+	var d record.Decoder
+
+	// decode fingerprint first if required
+	if fp {
+		r.Fingerprint = dec.Be64()
 	}
 
-	dec := encoding.DecWith(b)
+	// copied from prometheus tsdb/record
+	if record.Type(dec.Byte()) != record.Series {
+		return errors.New("invalid record type")
+	}
 
-	rec.Chks.Ref = dec.Be64()
+	// we only ever write one series at a time
+	ref := storage.SeriesRef(dec.Be64())
+	lset := d.DecodeLabels(&dec.Decbuf)
+	r.Series = record.RefSeries{
+		Ref:    chunks.HeadSeriesRef(ref),
+		Labels: lset,
+	}
+
+	if err := dec.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *WALRecord) decodeChunks(dec *encoding.Decbuf) error {
+	r.Chks.Ref = dec.Be64()
 	if err := dec.Err(); err != nil {
 		return errors.Wrap(err, "decoding series ref")
 	}
@@ -119,10 +143,10 @@ func decodeChunks(b []byte, rec *WALRecord) error {
 		return errors.Wrap(err, "decoding number of chunks")
 	}
 	// allocate space for the required number of chunks
-	rec.Chks.Chks = make(index.ChunkMetas, 0, ln)
+	r.Chks.Chks = make(index.ChunkMetas, 0, ln)
 
 	for len(dec.B) > 0 && dec.Err() == nil {
-		rec.Chks.Chks = append(rec.Chks.Chks, index.ChunkMeta{
+		r.Chks.Chks = append(r.Chks.Chks, index.ChunkMeta{
 			MinTime:  dec.Be64int64(),
 			MaxTime:  dec.Be64int64(),
 			Checksum: dec.Be32(),
@@ -140,44 +164,30 @@ func decodeChunks(b []byte, rec *WALRecord) error {
 
 func decodeWALRecord(b []byte, walRec *WALRecord) error {
 	var (
-		userID string
-		dec    record.Decoder
-
 		decbuf = encoding.DecWith(b)
-		t      = RecordType(decbuf.Byte())
+		// read the record type and userID first
+		t = RecordType(decbuf.Byte())
 	)
+	walRec.UserID = decbuf.UvarintStr()
 
 	switch t {
+	case WalRecordSeriesAndChunks:
+		if err := walRec.decodeSeries(&decbuf, true); err != nil {
+			return err
+		}
+		if err := walRec.decodeChunks(&decbuf); err != nil {
+			return err
+		}
 	case WalRecordSeries:
-		userID = decbuf.UvarintStr()
-		rSeries, err := dec.Series(decbuf.B, nil)
-		if err != nil {
-			return errors.Wrap(err, "decoding head series")
-		}
-		// unlike tsdb, we only add one series per record.
-		if len(rSeries) > 1 {
-			return errors.New("more than one series detected in tsdb head wal record")
-		}
-		if len(rSeries) == 1 {
-			walRec.Series = rSeries[0]
+		if err := walRec.decodeSeries(&decbuf, false); err != nil {
+			return err
 		}
 	case WalRecordSeriesWithFingerprint:
-		userID = decbuf.UvarintStr()
-		walRec.Fingerprint = decbuf.Be64()
-		rSeries, err := dec.Series(decbuf.B, nil)
-		if err != nil {
-			return errors.Wrap(err, "decoding head series")
-		}
-		// unlike tsdb, we only add one series per record.
-		if len(rSeries) > 1 {
-			return errors.New("more than one series detected in tsdb head wal record")
-		}
-		if len(rSeries) == 1 {
-			walRec.Series = rSeries[0]
+		if err := walRec.decodeSeries(&decbuf, true); err != nil {
+			return err
 		}
 	case WalRecordChunks:
-		userID = decbuf.UvarintStr()
-		if err := decodeChunks(decbuf.B, walRec); err != nil {
+		if err := walRec.decodeChunks(&decbuf); err != nil {
 			return err
 		}
 	default:
@@ -188,7 +198,6 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		return decbuf.Err()
 	}
 
-	walRec.UserID = userID
 	return nil
 }
 
@@ -220,26 +229,35 @@ func (w *headWAL) Stop() error {
 	return w.wal.Close()
 }
 
+func (r *WALRecord) encode() []byte {
+	buf := encoding.EncWith([]byte{})
+	// We always write the record type and userID first
+	switch {
+	// Prefer writing entire records with both labels & chunks since it simplifies replay logic
+	// and the space amplification is not significant
+	case len(r.Series.Labels) > 0 && len(r.Chks.Chks) > 0:
+		buf.PutByte(byte(WalRecordSeriesAndChunks))
+		buf.PutUvarintStr(r.UserID)
+		r.encodeSeriesAndChunks(&buf)
+	case len(r.Series.Labels) > 0:
+		buf.PutByte(byte(WalRecordSeriesWithFingerprint))
+		buf.PutUvarintStr(r.UserID)
+		r.encodeSeriesWithFingerprint(&buf)
+	case len(r.Chks.Chks) > 0:
+		buf.PutByte(byte(WalRecordChunks))
+		buf.PutUvarintStr(r.UserID)
+		r.encodeChunks(&buf)
+	}
+	return buf.Get()
+}
+
 func (w *headWAL) Log(record *WALRecord) error {
 	if record == nil {
 		return nil
 	}
 
-	var buf []byte
-
-	// Always write series before chunks
-	if len(record.Series.Labels) > 0 {
-		buf = record.encodeSeriesWithFingerprint(buf[:0])
-		if err := w.wal.Log(buf); err != nil {
-			return err
-		}
-	}
-
-	if len(record.Chks.Chks) > 0 {
-		buf = record.encodeChunks(buf[:0])
-		if err := w.wal.Log(buf); err != nil {
-			return err
-		}
+	if err := w.wal.Log(record.encode()); err != nil {
+		return err
 	}
 
 	return nil

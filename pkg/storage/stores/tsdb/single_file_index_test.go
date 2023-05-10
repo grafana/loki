@@ -75,7 +75,7 @@ func TestSingleIdx(t *testing.T) {
 			fn: func() Index {
 				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
 				for _, x := range cases {
-					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
+					_ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
 				}
 				reader := head.Index()
 				return NewTSDBIndex(reader)
