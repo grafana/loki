@@ -111,9 +111,7 @@ func main() {
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.LokiStackWebhook {
-		v := &validation.LokiStackValidator{
-			Client: mgr.GetClient(),
-		}
+		v := &validation.LokiStackValidator{}
 		if err = v.SetupWebhookWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create webhook", "webhook", "lokistack")
 			os.Exit(1)

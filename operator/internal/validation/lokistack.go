@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -25,7 +22,6 @@ var _ admission.CustomValidator = &LokiStackValidator{}
 
 // LokiStackValidator implements a custom validator for LokiStack resources.
 type LokiStackValidator struct {
-	Client            client.Client
 	ExtendedValidator func(context.Context, *lokiv1.LokiStack) field.ErrorList
 }
 
@@ -98,7 +94,6 @@ func (v LokiStackValidator) validateReplicationSpec(ctx context.Context, stack l
 	}
 
 	var allErrs field.ErrorList
-	var nodes corev1.NodeList
 
 	// nolint:staticcheck
 	if stack.Replication != nil && stack.ReplicationFactor > 0 {
@@ -109,50 +104,6 @@ func (v LokiStackValidator) validateReplicationSpec(ctx context.Context, stack l
 		))
 
 		return allErrs
-	}
-
-	rs := stack.Replication
-	selector := make([]string, 0)
-	for _, z := range rs.Zones {
-		selector = append(selector, z.TopologyKey)
-	}
-
-	if err := v.Client.List(ctx, &nodes, client.HasLabels(selector)); err != nil {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "replication", "zones"),
-			rs.Zones,
-			lokiv1.ErrReplicationZonesNodes.Error(),
-		))
-	}
-
-	// Check if there are enough nodes to fit all the pods.
-	if len(nodes.Items) < int(rs.Factor) {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "replication", "factor"),
-			rs.Factor,
-			lokiv1.ErrReplicationFactorToZonesRatio.Error(),
-		))
-
-		return allErrs
-	}
-
-	// Check if there are enough regions to fit all the pods for each topology keys.
-	for _, tk := range selector {
-		m := make(map[string]struct{})
-		for _, node := range nodes.Items {
-			m[node.Labels[tk]] = struct{}{}
-		}
-
-		fmt.Printf("%+v\n", m)
-
-		if len(m) < int(rs.Factor) {
-			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("spec", "replication", "factor"),
-				rs.Factor,
-				lokiv1.ErrReplicationFactorToZonesRatio.Error(),
-			))
-			return allErrs
-		}
 	}
 
 	return nil
