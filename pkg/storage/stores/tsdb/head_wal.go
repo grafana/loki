@@ -14,6 +14,11 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
+const (
+	// Disable this to begin writing chunks and series in the same record.
+	WALWriteChunksAndSeriesSeparately = false
+)
+
 type WAL interface {
 	Start(time.Time) error
 	Log(*WALRecord) error
@@ -256,8 +261,35 @@ func (w *headWAL) Log(record *WALRecord) error {
 		return nil
 	}
 
-	if err := w.wal.Log(record.encode()); err != nil {
-		return err
+	if WALWriteChunksAndSeriesSeparately {
+		// Always write series before chunks
+		// hack to be reverted later which allows us to write the series
+		// and chunks separately
+		if len(record.Series.Labels) > 0 {
+			r := &WALRecord{
+				UserID:      record.UserID,
+				Series:      record.Series,
+				Fingerprint: record.Fingerprint,
+			}
+			if err := w.wal.Log(r.encode()); err != nil {
+				return err
+			}
+		}
+
+		if len(record.Chks.Chks) > 0 {
+			r := &WALRecord{
+				UserID: record.UserID,
+				Chks:   record.Chks,
+			}
+			if err := w.wal.Log(r.encode()); err != nil {
+				return err
+			}
+		}
+
+	} else {
+		if err := w.wal.Log(record.encode()); err != nil {
+			return err
+		}
 	}
 
 	return nil
