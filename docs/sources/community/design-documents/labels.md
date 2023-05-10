@@ -1,6 +1,9 @@
 ---
 title: Labels
 description: Labels from Logs
+aliases: 
+- /docs/loki/latest/design-documents/
+- /docs/loki/latest/community/design-documents/
 weight: 10
 ---
 # Labels

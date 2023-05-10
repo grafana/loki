@@ -1,6 +1,9 @@
 ---
 title: Loki Improvement Documents (LIDs)
 description: Loki Improvement Documents (LIDs)
+aliases: 
+- /docs/loki/latest/lids
+- /docs/loki/latest/community/lids
 weight: 1400
 ---
 
