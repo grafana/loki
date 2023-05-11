@@ -630,16 +630,11 @@ func containerSecurityContext() *corev1.SecurityContext {
 	}
 }
 
-func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
-	context := corev1.PodSecurityContext{
+func podSecurityContext() *corev1.PodSecurityContext {
+	return &corev1.PodSecurityContext{
 		RunAsNonRoot: pointer.Bool(true),
-	}
-
-	if withSeccompProfile {
-		context.SeccompProfile = &corev1.SeccompProfile{
+		SeccompProfile: &corev1.SeccompProfile{
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
-		}
+		},
 	}
-
-	return &context
 }

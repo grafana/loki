@@ -123,7 +123,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
+		SecurityContext: podSecurityContext(),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Compactor != nil {

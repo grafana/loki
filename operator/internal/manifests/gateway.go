@@ -10,7 +10,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -82,7 +81,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
+	configureDeploymentForRestrictedPolicy(dpl)
 
 	return objs, nil
 }
@@ -599,10 +598,10 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	return nil
 }
 
-func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
+func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment) {
 	podSpec := d.Spec.Template.Spec
 
-	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
+	podSpec.SecurityContext = podSecurityContext()
 	for i := range podSpec.Containers {
 		podSpec.Containers[i].SecurityContext = containerSecurityContext()
 	}

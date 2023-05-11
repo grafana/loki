@@ -778,12 +778,8 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				}
 
 				t.Run(name, func(t *testing.T) {
-					if tst.BuildOptions.Gates.RuntimeSeccompProfile {
-						require.NotNil(t, spec.SecurityContext.SeccompProfile)
-						require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
-					} else {
-						require.Nil(t, spec.SecurityContext.SeccompProfile)
-					}
+					require.NotNil(t, spec.SecurityContext.SeccompProfile)
+					require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
 				})
 			}
 		})
