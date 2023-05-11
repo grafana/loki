@@ -32,7 +32,7 @@ something with that extracted data. The most common action stage will be a
 [labels]({{<relref "stages/labels/">}}) stage to turn extracted data into a label.
 
 A common stage will also be the [match]({{<relref "stages/match/">}}) stage to selectively
-apply stages or drop entries based on a [LogQL stream selector and filter expressions]({{<relref "../../logql/">}}).
+apply stages or drop entries based on a [LogQL stream selector and filter expressions]({{<relref "../../query/">}}).
 
 Note that pipelines can not currently be used to deduplicate logs; Grafana Loki will
 receive the same log line multiple times if, for example:
