@@ -1,6 +1,9 @@
 ---
 title: Design documents
 description: Design documents
+aliases: 
+- /docs/loki/latest/design-documents
+- /docs/loki/latest/community/design-documents
 weight: 1300
 ---
 # Design documents

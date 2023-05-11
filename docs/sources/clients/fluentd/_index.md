@@ -182,7 +182,7 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ### `url`
 
-The URL of the Loki server to send logs to.  When sending data, the publish path (`../api/loki/v1/push`) will automatically be appended.
+The URL of the Loki server to send logs to.  When sending data, the publish path (`../reference/api/loki/v1/push`) will automatically be appended.
 By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](/products/cloud/) service.
 
 #### Proxy Support
