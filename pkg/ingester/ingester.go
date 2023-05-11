@@ -1091,7 +1091,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil {
+	if err != nil && req.Matchers != "{}" {
 		return nil, err
 	}
 

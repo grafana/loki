@@ -741,7 +741,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	}
 
 	matchers, err := syntax.ParseMatchers(req.Query)
-	if err != nil {
+	if err != nil && req.Query != "{}" {
 		return nil, err
 	}
 

@@ -276,6 +276,18 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	var totalSeries uint64
+	err := i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error { // Assume this is fast
+		for p.Next() {
+			totalSeries++
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	var processedSeries uint64
 	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
@@ -285,7 +297,9 @@ func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through mode
 		}
 
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			processedSeries++
+			sr := p.At()
+			fp, stats, err := i.reader.ChunkStats(sr, int64(from), int64(through), &ls)
 			if err != nil {
 				return err
 			}
@@ -304,8 +318,29 @@ func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through mode
 				acc.AddStream(model.Fingerprint(fp))
 				acc.AddChunkStats(stats)
 			}
+
+			if acc.Stats().Chunks > 1000 {
+				s := acc.Stats()
+				keptSeriesPercentage := float64(s.Streams) / float64(processedSeries) // What proportion of streams did we record after filtering rejecting series with no entries
+				totalSeries = uint64(float64(totalSeries) * keptSeriesPercentage)
+
+				chunksPerSeries := float64(s.Chunks) / float64(s.Streams)
+				entriesPerSeries := float64(s.Entries) / float64(s.Streams)
+				sizePerChunk := float64(s.Bytes) / float64(s.Chunks)
+
+				remainingSeries := totalSeries - s.Streams
+				remainingChunks := float64(remainingSeries) * chunksPerSeries
+				remainingSize := remainingChunks * sizePerChunk
+				remainingEntries := float64(remainingSeries) * entriesPerSeries
+
+				s.Streams += remainingSeries
+				s.Chunks += uint64(remainingChunks)
+				s.Bytes += uint64(remainingSize)
+				s.Entries += uint64(remainingEntries)
+
+				return nil
+			}
 		}
 		return p.Err()
 	})
-
 }

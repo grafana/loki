@@ -43,7 +43,7 @@ func DefaultIndexClientOptions() IndexClientOptions {
 type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
 	AddChunkStats(s index.ChunkStats)
-	Stats() stats.Stats
+	Stats() *stats.Stats
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -216,7 +216,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	if err != nil {
 		return nil, err
 	}
-	res := acc.Stats()
+	res := *(acc.Stats()) // make a copy here so nothing bad happens in callers
 
 	return &res, nil
 }

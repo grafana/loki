@@ -561,7 +561,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil {
+	if err != nil && req.Matchers != "{}" {
 		return nil, err
 	}
 

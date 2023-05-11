@@ -43,8 +43,8 @@ func (m *IndexStatsResponse) AddChunkStats(s index.ChunkStats) {
 	atomic.AddUint64(&m.Entries, s.Entries)
 }
 
-func (m *IndexStatsResponse) Stats() IndexStatsResponse {
-	return *m
+func (m *IndexStatsResponse) Stats() *IndexStatsResponse {
+	return m
 }
 
 // Helper function for returning the key value pairs

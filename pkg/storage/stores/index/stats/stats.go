@@ -86,7 +86,7 @@ type Blooms struct {
 	stats   *Stats
 }
 
-func (b *Blooms) Stats() Stats { return b.stats.Stats() }
+func (b *Blooms) Stats() *Stats { return b.stats.Stats() }
 
 func (b *Blooms) AddStream(fp model.Fingerprint) {
 	key := make([]byte, 8)

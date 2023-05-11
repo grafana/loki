@@ -289,7 +289,7 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 		return nil, err
 	}
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil {
+	if err != nil && req.Matchers != "{}" {
 		return nil, err
 	}
 
