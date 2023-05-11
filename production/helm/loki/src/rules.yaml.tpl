@@ -1,6 +1,6 @@
 ---
 groups:
-  - name: "loki_rules"
+  - name: "loki_api_1"
     rules:
     - expr: histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[1m]))
         by (le, job))
@@ -29,6 +29,8 @@ groups:
       record: job:loki_request_duration_seconds_count:sum_rate
       labels:
         cluster: "{{ include "loki.fullname" $ }}"
+  - name: "loki_api_2"
+    rules:
     - expr: histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[1m]))
         by (le, job, route))
       record: job_route:loki_request_duration_seconds:99quantile
@@ -56,6 +58,8 @@ groups:
       record: job_route:loki_request_duration_seconds_count:sum_rate
       labels:
         cluster: "{{ include "loki.fullname" $ }}"
+  - name: "loki_api_3"
+    rules:
     - expr: histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[1m]))
         by (le, namespace, job, route))
       record: namespace_job_route:loki_request_duration_seconds:99quantile
