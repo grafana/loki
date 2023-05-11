@@ -355,7 +355,7 @@ func CreateOrUpdateLokiStack(
 			"object_kind", obj.GetObjectKind(),
 		)
 
-		if isNamespaceScoped(obj) {
+		if isNamespaceScoped(obj) && !isManagedNamespace(obj.GetNamespace(), req.Namespace) {
 			obj.SetNamespace(req.Namespace)
 
 			if err := ctrl.SetControllerReference(&stack, obj, s); err != nil {
@@ -428,4 +428,8 @@ func isNamespaceScoped(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+func isManagedNamespace(clientNamespace, stackNamespace string) bool {
+	return clientNamespace != "" && clientNamespace != stackNamespace
 }

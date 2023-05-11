@@ -24,6 +24,10 @@ testbin/*
 *.swo
 *~
 
+# JSONNet vendored files
+
+jsonnet/vendor/*
+
 # website
 
 website/public/*

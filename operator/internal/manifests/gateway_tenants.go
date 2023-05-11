@@ -127,6 +127,12 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 		objs = append(objs, openShiftObjs...)
 	}
 
+	dashboards, err := openshift.BuildDashboards(opts.OpenShiftOptions)
+	if err != nil {
+		return nil
+	}
+	objs = append(objs, dashboards...)
+
 	return objs
 }
 

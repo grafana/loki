@@ -69,6 +69,10 @@ func serviceCABundleName(opts Options) string {
 	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.GatewayName)
 }
 
+func dashboardPrometheusRulesName(opts Options) string {
+	return fmt.Sprintf("%s-dashboard-rules", opts.BuildOpts.LokiStackName)
+}
+
 func alertmanagerCABundleName(opts Options) string {
 	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.RulerName)
 }
