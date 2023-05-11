@@ -98,7 +98,7 @@ type FeatureGates struct {
 	// More details: https://grafana.com/docs/loki/latest/release-notes/v2-5/#usage-reporting
 	GrafanaLabsUsageReport bool `json:"grafanaLabsUsageReport,omitempty"`
 
-	// RuntimeSeccompProfile enables the restricted seccomp profile on all
+	// Deprecated: RuntimeSeccompProfile enables the restricted seccomp profile on all
 	// Lokistack components.
 	RuntimeSeccompProfile bool `json:"runtimeSeccompProfile,omitempty"`
 
