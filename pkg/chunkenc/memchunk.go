@@ -1083,7 +1083,6 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 			Timestamp: e.t,
 			Value:     value,
 			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-			Length:    int64(len(unsafeGetBytes(e.s))),
 		})
 	}
 
@@ -1322,7 +1321,6 @@ func (e *sampleBufferedIterator) Next() bool {
 		e.cur.Value = val
 		e.cur.Hash = xxhash.Sum64(e.currLine)
 		e.cur.Timestamp = e.currTs
-		e.cur.Length = int64(len(e.currLine))
 		return true
 	}
 	return false

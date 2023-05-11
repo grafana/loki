@@ -224,7 +224,7 @@ Caching log (filter, regexp) queries are under active development.
 
 ## Querier
 
-The **querier** service handles queries using the [LogQL]({{<relref "../../../logql/">}}) query
+The **querier** service handles queries using the [LogQL]({{<relref "../../../query/">}}) query
 language, fetching logs both from the ingesters and from long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to
