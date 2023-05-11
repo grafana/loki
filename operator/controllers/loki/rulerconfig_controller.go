@@ -49,6 +49,11 @@ func (r *RulerConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	err = lokistack.RestartRulerOnRulerConfigUpdate(ctx, r.Client, req.Name, req.Namespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
