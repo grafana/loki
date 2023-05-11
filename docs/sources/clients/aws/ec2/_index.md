@@ -236,7 +236,7 @@ Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.56029474Z caller=main.go:67 msg="Starting Promtail" version="(version=1.6.0, branch=HEAD, revision=12c7eab8)"
 ```
 
-You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL]({{< relref "../../../logql/" >}}) query `{zone="us-east-2"}`.
+You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL]({{< relref "../../../query/" >}}) query `{zone="us-east-2"}`.
 
 ![Grafana Loki logs][ec2 logs]
 
@@ -265,7 +265,7 @@ Note that you can use [relabeling][relabeling] to convert systemd labels to matc
 
 That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
 
-Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL]({{< relref "../../../logql/" >}}) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
+Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL]({{< relref "../../../query/" >}}) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
 
 [promtail]: ../../promtail/README
 [aws cli]: https://aws.amazon.com/cli/
@@ -285,7 +285,7 @@ Let's head back to Grafana and verify that your Promtail logs are available in G
 [discovery page]: ./promtail-ec2-discovery.png "Service discovery"
 [relabel]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
 [systemd]: https://www.freedesktop.org/software/systemd/man/systemd.service.html
-[logql]: ../../../logql
+[logql]: ../../../query
 [ec2 logs]: ./promtail-ec2-logs.png "Grafana Loki logs"
 [config gist]: https://gist.github.com/cyriltovena/d0881cc717757db951b642be48c01445
 [labels]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
