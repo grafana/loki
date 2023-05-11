@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-05-10T15:32:48Z"
+    createdAt: "2023-05-11T08:04:32Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -461,7 +461,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: 'Zones defines an array of ZoneSpec that the scheduler will try
           to satisfy. IMPORTANT: Make sure that the replication factor defined is
-          less than the number of available zones.'
+          less than or equal to the number of available zones.'
         displayName: Zones Spec
         path: replication.zones
       - description: MaxSkew describes the maximum degree to which Pods can be unevenly
