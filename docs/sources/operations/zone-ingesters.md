@@ -4,7 +4,7 @@ description: How to migrate from a single ingester statefulset to three zone awa
 weight: 10
 ---
 
-# Zone Aware Ingesters
+# Zone aware ingesters
 
 Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra k8s config you could deploy them in separate zones.
 
