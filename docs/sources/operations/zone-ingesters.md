@@ -1,6 +1,6 @@
 ---
-title: Zone Aware Ingesters
-description: Migration guide and additional details
+title: Zone aware ingesters
+description: How to migrate from a single ingester statefulset to three zone aware ingester StatefulSets
 weight: 10
 ---
 
@@ -8,7 +8,7 @@ weight: 10
 
 Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra k8s config you could deploy them in separate zones.
 
-By default, an incomming log stream's logs are replicated to 3 random (but the same 3, except in the case of some replica scaling) ingesters. This means that if one ingester is restarted, no data is lost, but two can mean data is lost and also impacts the systems ability to ingest logs because of an unhealthy ring status.
+By default, an incoming log stream's logs are replicated to 3 random ingesters. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost, but two restarting can mean data is lost and also impacts the systems ability to ingest logs because of an unhealthy ring status.
 
 With zone awareness enabled, an incomming log line will be replicated to one ingester in each zone. This means that we're not only concerned if ingesters in multiple zones restart at the same time. We can now rollout, or lose, an entire zone at once and not impact the system. This allows deployments with a large number of ingesters to be deployed too much more quickly.
 
