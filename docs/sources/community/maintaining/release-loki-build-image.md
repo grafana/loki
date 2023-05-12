@@ -1,6 +1,9 @@
 ---
 title: Releasing Loki Build Image
 description: Releasing Loki Build Image
+aliases: 
+- /docs/loki/latest/maintaining
+- /docs/loki/latest/community/maintaining
 ---
 # Releasing Loki Build Image
 

@@ -349,6 +349,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.image.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -407,6 +416,7 @@ null
   "env": [],
   "extraVolumeMounts": [],
   "image": {
+    "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs-provisioner",
@@ -476,11 +486,21 @@ true
 			<td>Provisioner image to Utilize</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/enterprise-logs-provisioner",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -915,6 +935,15 @@ true
 			<td>Volumes to add to the gateway pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.image.digest</td>
+			<td>string</td>
+			<td>Overrides the gateway image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -1543,6 +1572,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>kubectlImage.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>kubectlImage.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -1659,6 +1697,15 @@ true
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2151,11 +2198,21 @@ true
 			<td>Image to use for loki canary</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -3490,6 +3547,7 @@ null
   "annotations": {},
   "enabled": true,
   "image": {
+    "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
@@ -3517,11 +3575,21 @@ null
 			<td>Image to use for loki canary</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>test.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

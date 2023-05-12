@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Add clusterLabelOverride for alert label overrides.
 
+## 5.5.1
+
+- [FEATURE] Added ability to reference images by digest
+
 ## 5.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2

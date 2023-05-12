@@ -1,6 +1,9 @@
 ---
 title: "0002: Remote Rule Evaluation"
 description: "Remote Rule Evaluation"
+aliases: 
+- /docs/loki/latest/lids
+- /docs/loki/latest/community/lids
 ---
 
 # 0002: Remote Rule Evaluation
