@@ -4,6 +4,7 @@
 - [9511](https://github.com/grafana/loki/pull/9511) **xperimental**: Do not update status after setting degraded condition
 - [9405](https://github.com/grafana/loki/pull/9405) **periklis**: Add support for configuring HTTP server timeouts
 - [9378](https://github.com/grafana/loki/pull/9378) **aminesnow**: Add zone aware API spec validation
+-[9457](https://github.com/grafana/loki/pull/9457) **Red-GV**: Set seccomp profile to runtime default
 - [9408](https://github.com/grafana/loki/pull/9408) **JoaoBraveCoding**: Add PodAntiAffinity overwrites per component
 - [9429](https://github.com/grafana/loki/pull/9429) **aminesnow**: Add default TopologySpreadContraints to Gateway
 - [9418](https://github.com/grafana/loki/pull/9418) **JoaoBraveCoding**: Add default TopologySpreadContaints to Querier
