@@ -135,11 +135,11 @@ Base template for building docker image reference
 {{- define "loki.baseImage" }}
 {{- $registry := .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
-{{- $tag := .service.tag | default .defaultVersion | toString -}}
+{{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
 {{- if and $registry $repository -}}
-  {{- printf "%s/%s:%s" $registry $repository $tag -}}
+  {{- printf "%s/%s%s" $registry $repository $ref -}}
 {{- else -}}
-  {{- printf "%s%s:%s" $registry $repository $tag -}}
+  {{- printf "%s%s%s" $registry $repository $ref -}}
 {{- end -}}
 {{- end -}}
 
