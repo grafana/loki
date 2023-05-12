@@ -3,11 +3,12 @@ package config
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"k8s.io/utils/pointer"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/stretchr/testify/require"
-	"k8s.io/utils/pointer"
 )
 
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
@@ -174,7 +175,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -420,7 +423,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -525,7 +530,9 @@ overrides:
 func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -815,7 +822,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1157,7 +1166,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1513,7 +1524,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1837,7 +1850,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2217,7 +2232,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2598,7 +2615,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2978,7 +2997,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -3352,7 +3373,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{

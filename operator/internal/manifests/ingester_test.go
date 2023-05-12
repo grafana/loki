@@ -1,20 +1,21 @@
-package manifests_test
+package manifests
 
 import (
 	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
 func TestNewIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewIngesterStatefulSet(manifests.Options{
+	ss := NewIngesterStatefulSet(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
@@ -35,7 +36,7 @@ func TestNewIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 }
 
 func TestNewIngesterStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
-	ss := manifests.NewIngesterStatefulSet(manifests.Options{
+	ss := NewIngesterStatefulSet(Options{
 		Name:                   "abcd",
 		Namespace:              "efgh",
 		CertRotationRequiredAt: "deadbeef",
@@ -61,7 +62,7 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	// failing to specify a matching Pod Selector will result in a validation error
 	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	sts := manifests.NewIngesterStatefulSet(manifests.Options{
+	sts := NewIngesterStatefulSet(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -99,7 +100,7 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
-			opts := manifests.Options{
+			opts := Options{
 				Name:      "abcd",
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
@@ -119,7 +120,7 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 					},
 				},
 			}
-			objs, err := manifests.BuildIngester(opts)
+			objs, err := BuildIngester(opts)
 			require.NoError(t, err)
 			require.Len(t, objs, 4)
 
@@ -129,7 +130,59 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 			require.Equal(t, "efgh", pdb.Namespace)
 			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
-			require.EqualValues(t, manifests.ComponentLabels(manifests.LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
+			require.EqualValues(t, ComponentLabels(LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 		})
 	}
+}
+
+func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
+	ss := NewIngesterStatefulSet(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     2,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     1,
+					},
+				},
+				Factor: 1,
+			},
+		},
+	})
+
+	require.Equal(t, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           2,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "ingester",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "ingester",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }

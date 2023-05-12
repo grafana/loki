@@ -62,8 +62,10 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ingester),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -141,8 +143,10 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
 	}
 
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
+	}
+
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",

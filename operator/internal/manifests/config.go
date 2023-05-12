@@ -103,6 +103,16 @@ func ConfigOptions(opt Options) config.Options {
 		protocol = "https"
 	}
 
+	// nolint:staticcheck
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opt.Stack.Replication == nil || opt.Stack.Replication.Factor == 0) && opt.Stack.ReplicationFactor > 0 {
+		if opt.Stack.Replication == nil {
+			opt.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+
+		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
+	}
+
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,

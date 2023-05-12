@@ -56,8 +56,11 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 
 // NewDistributorDeployment creates a deployment object for a distributor
 func NewDistributorDeployment(opts Options) *appsv1.Deployment {
+	l := ComponentLabels(LabelDistributorComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity:                  configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
+		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelDistributorComponent, opts.Name),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -125,8 +128,9 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.Distributor.NodeSelector
 	}
 
-	l := ComponentLabels(LabelDistributorComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelDistributorComponent, opts.Name)...)
+	}
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{

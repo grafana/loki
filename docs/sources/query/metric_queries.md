@@ -1,7 +1,11 @@
 ---
-title: Metric queries
-description: Metric queries
-weight: 20
+title: Metric queries 
+menuTItle:  
+description: Metric queries extend log queries by applying a function to log query results. This powerful feature creates metrics from logs.
+aliases: 
+- /docs/loki/latest/logql
+- /docs/loki/latest/query
+weight: 20  
 ---
 
 # Metric queries
