@@ -81,8 +81,10 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		})
 	}
 
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelRulerComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ruler),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -172,9 +174,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.Tolerations = opts.Stack.Template.Ruler.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ruler.NodeSelector
 	}
-
-	l := ComponentLabels(LabelRulerComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
