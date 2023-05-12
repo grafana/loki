@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -115,6 +117,55 @@ func TestGatewayClient(t *testing.T) {
 	cfg.Mode = indexgateway.SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
+
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	queries := []index.Query{}
+	for i := 0; i < 10; i++ {
+		queries = append(queries, index.Query{
+			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
+			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
+			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),
+			RangeValueStart:  []byte(fmt.Sprintf("%s%d", rangeValueStartPrefix, i)),
+			ValueEqual:       []byte(fmt.Sprintf("%s%d", valueEqualPrefix, i)),
+		})
+	}
+
+	numCallbacks := 0
+	err = gatewayClient.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+		itr := batch.Iterator()
+
+		for j := 0; j <= numCallbacks; j++ {
+			require.True(t, itr.Next())
+			require.Equal(t, fmt.Sprintf("%s%d", rangeValuePrefix, j), string(itr.RangeValue()))
+			require.Equal(t, fmt.Sprintf("%s%d", valuePrefix, j), string(itr.Value()))
+		}
+
+		require.False(t, itr.Next())
+		numCallbacks++
+		return true
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, len(queries), numCallbacks)
+}
+
+func TestGatewayClientTimeout(t *testing.T) {
+	cleanup, storeAddress := createTestGrpcServer(t)
+	t.Cleanup(cleanup)
+
+	var cfg IndexGatewayClientConfig
+	cfg.Mode = indexgateway.RingMode
+	flagext.DefaultValues(&cfg)
+	cfg.Address = storeAddress
+	cfg.Ring = newReadRingMock([]ring.InstanceDesc{
+		{
+			Addr: storeAddress,
+		},
+	}, 1)
 
 	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
 	require.NoError(t, err)
@@ -308,4 +359,95 @@ func TestDoubleRegistration(t *testing.T) {
 	client, err = NewGatewayClient(clientCfg, r, util_log.Logger)
 	require.NoError(t, err)
 	defer client.Stop()
+}
+
+// readRingMock is a mocked version of a ReadRing, used in querier unit tests
+// to control the pool of ingesters available
+type readRingMock struct {
+	replicationSet ring.ReplicationSet
+}
+
+func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock {
+	return &readRingMock{
+		replicationSet: ring.ReplicationSet{
+			Instances: ingesters,
+			MaxErrors: maxErrors,
+		},
+	}
+}
+
+func (r *readRingMock) Describe(ch chan<- *prometheus.Desc) {
+}
+
+func (r *readRingMock) Collect(ch chan<- prometheus.Metric) {
+}
+
+func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
+	// pass by value to copy
+	return func(r readRingMock) *readRingMock {
+		r.replicationSet.Instances = r.replicationSet.Instances[:size]
+		return &r
+	}(*r)
+}
+
+func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
+	return []ring.ReplicationSet{r.replicationSet}, nil
+}
+
+func (r *readRingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) ReplicationFactor() int {
+	return 1
+}
+
+func (r *readRingMock) InstancesCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
+	return r
+}
+
+func (r *readRingMock) HasInstance(instanceID string) bool {
+	for _, ing := range r.replicationSet.Instances {
+		if ing.Addr != instanceID {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *readRingMock) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
+	return r
+}
+
+func (r *readRingMock) CleanupShuffleShardCache(identifier string) {}
+
+func (r *readRingMock) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+	return 0, nil
+}
+
+func mockReadRingWithOneActiveIngester() *readRingMock {
+	return newReadRingMock([]ring.InstanceDesc{
+		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
+	}, 0)
+}
+
+func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
+	return ring.InstanceDesc{
+		Addr:      addr,
+		Timestamp: time.Now().UnixNano(),
+		State:     state,
+		Tokens:    []uint32{1, 2, 3},
+	}
 }
