@@ -39,6 +39,7 @@ import (
   BoolModifier            *BinOpOptions
   OnOrIgnoringModifier    *BinOpOptions
   LabelParser             *LabelParserExpr
+  LogfmtParser            *LogfmtParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
   DistinctLabel           []string
@@ -96,6 +97,7 @@ import (
 %type <BoolModifier>          boolModifier
 %type <OnOrIgnoringModifier>  onOrIgnoringModifier
 %type <LabelParser>           labelParser
+%type <LogfmtParser>          logfmtParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
 %type <BytesFilter>           bytesFilter
@@ -131,7 +133,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON DISTINCT REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE DROP
+                  DECOLORIZE DROP STRICT
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -262,6 +264,7 @@ pipelineExpr:
 
 pipelineStage:
    lineFilters                   { $$ = $1 }
+  | PIPE logfmtParser            { $$ = $2 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE logfmtExpressionParser  { $$ = $2 }
@@ -287,19 +290,25 @@ lineFilters:
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
+logfmtParser:
+    LOGFMT STRICT       { $$ = newLogfmtParserExpr(true) }
+  | LOGFMT              { $$ = newLogfmtParserExpr(false) }
+  ;
+
 labelParser:
-    JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
-  | LOGFMT         { $$ = newLabelParserExpr(OpParserTypeLogfmt, "") }
-  | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
-  | UNPACK         { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
-  | PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
+    JSON                { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
+  | REGEXP STRING       { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
+  | UNPACK              { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
+  | PATTERN STRING      { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
   ;
 
 jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
 
 logfmtExpressionParser:
-    LOGFMT labelExtractionExpressionList { $$ = newLogfmtExpressionParser($2)}
+    LOGFMT STRICT labelExtractionExpressionList   { $$ = newLogfmtExpressionParser($3, true)}
+  | LOGFMT labelExtractionExpressionList          { $$ = newLogfmtExpressionParser($2, false)}
+  ;
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 

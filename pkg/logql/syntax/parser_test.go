@@ -149,11 +149,20 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{ foo = "bar" }|logfmt --strict`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLogfmtParserExpr(true),
+				},
+			),
+		},
+		{
 			in: `{ foo = "bar" }|logfmt|rate="a"`, // rate should also be able to use it as IDENTIFIER
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "rate", "a"))),
 				},
 			),
@@ -163,7 +172,17 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
+					newLabelFilterExpr(log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "length", 5*24*time.Hour)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt --strict|length>5d`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLogfmtParserExpr(true),
 					newLabelFilterExpr(log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "length", 5*24*time.Hour)),
 				},
 			),
@@ -385,7 +404,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar"), mustNewMatcher(labels.MatchEqual, "ip", "foo")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "127.0.0.1"),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
@@ -499,14 +518,14 @@ func TestParse(t *testing.T) {
 			in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual))},
+				MultiStageExpr{newLogfmtParserExpr(false), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual))},
 			),
 		},
 		{
 			in: `{ foo = "bar" }|logfmt|addr!=ip("1.2.3.4")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual))},
+				MultiStageExpr{newLogfmtParserExpr(false), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual))},
 			),
 		},
 		{
@@ -514,7 +533,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual)),
 				},
@@ -525,7 +544,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
 				},
@@ -536,7 +555,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual)),
@@ -548,7 +567,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterNotEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
@@ -560,7 +579,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
@@ -572,7 +591,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 				},
 			),
@@ -582,7 +601,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 				},
@@ -593,7 +612,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
@@ -605,7 +624,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(false),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
@@ -3058,7 +3077,7 @@ func TestParse(t *testing.T) {
 				MultiStages: MultiStageExpr{
 					newLogfmtExpressionParser([]log.LabelExtractionExpr{
 						log.NewLabelExtractionExpr("message", `msg`),
-					}),
+					}, false),
 				},
 			},
 		},
@@ -3069,19 +3088,30 @@ func TestParse(t *testing.T) {
 				MultiStages: MultiStageExpr{
 					newLogfmtExpressionParser([]log.LabelExtractionExpr{
 						log.NewLabelExtractionExpr("msg", `msg`),
-					}),
+					}, false),
 				},
 			},
 		},
 		{
-			in: `{app="foo"} | logfmt msg, err `,
+			in: `{app="foo"} | logfmt --strict msg`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+					}, true),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt --strict msg, err `,
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
 					newLogfmtExpressionParser([]log.LabelExtractionExpr{
 						log.NewLabelExtractionExpr("msg", `msg`),
 						log.NewLabelExtractionExpr("err", `err`),
-					}),
+					}, true),
 				},
 			},
 		},
@@ -3093,19 +3123,19 @@ func TestParse(t *testing.T) {
 					newLogfmtExpressionParser([]log.LabelExtractionExpr{
 						log.NewLabelExtractionExpr("msg", `msg`),
 						log.NewLabelExtractionExpr("err", `error`),
-					}),
+					}, false),
 				},
 			},
 		},
 		{
-			in: `{app="foo"} | logfmt msg="message", apiKey="api_key"`,
+			in: `{app="foo"} | logfmt --strict msg="message", apiKey="api_key"`,
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
 					newLogfmtExpressionParser([]log.LabelExtractionExpr{
 						log.NewLabelExtractionExpr("msg", `message`),
 						log.NewLabelExtractionExpr("apiKey", `api_key`),
-					}),
+					}, true),
 				},
 			},
 		},

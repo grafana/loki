@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -387,6 +386,37 @@ func (e *LineFilterExpr) Stage() (log.Stage, error) {
 	return f.ToStage(), nil
 }
 
+type LogfmtParserExpr struct {
+	Strict bool
+	implicit
+}
+
+func newLogfmtParserExpr(strict bool) *LogfmtParserExpr {
+	return &LogfmtParserExpr{Strict: strict}
+}
+
+func (e *LogfmtParserExpr) Shardable() bool { return true }
+
+func (e *LogfmtParserExpr) Walk(f WalkFn) { f(e) }
+
+func (e *LogfmtParserExpr) Stage() (log.Stage, error) {
+	return log.NewLogfmtParser(e.Strict), nil
+}
+
+func (e *LogfmtParserExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpPipe)
+	sb.WriteString(" ")
+	sb.WriteString(OpParserTypeLogfmt)
+
+	if e.Strict {
+		sb.WriteString(" ")
+		sb.WriteString("--strict")
+	}
+
+	return sb.String()
+}
+
 type LabelParserExpr struct {
 	Op    string
 	Param string
@@ -421,8 +451,6 @@ func (e *LabelParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
 		return log.NewJSONParser(), nil
-	case OpParserTypeLogfmt:
-		return log.NewLogfmtParser(), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
@@ -669,15 +697,15 @@ type internedStringSet map[string]struct {
 
 type LogfmtExpressionParser struct {
 	Expressions []log.LabelExtractionExpr
-	dec         *logfmt.Decoder
-	keys        internedStringSet
+	Strict      bool
 
 	implicit
 }
 
-func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr) *LogfmtExpressionParser {
+func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr, strict bool) *LogfmtExpressionParser {
 	return &LogfmtExpressionParser{
 		Expressions: expressions,
+		Strict:      strict,
 	}
 }
 
@@ -686,12 +714,15 @@ func (l *LogfmtExpressionParser) Shardable() bool { return true }
 func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
 
 func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
-	return log.NewLogfmtExpressionParser(l.Expressions)
+	return log.NewLogfmtExpressionParser(l.Expressions, l.Strict)
 }
 
 func (l *LogfmtExpressionParser) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	if l.Strict {
+		sb.WriteString("--strict ")
+	}
 	for i, exp := range l.Expressions {
 		sb.WriteString(exp.Identifier)
 		sb.WriteString("=")
@@ -939,6 +970,9 @@ const (
 
 	// drop labels
 	OpDrop = "drop"
+
+	// parser flags
+	OpStrict = "--strict"
 )
 
 func IsComparisonOperator(op string) bool {

@@ -131,7 +131,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			name: "dynamic label, convert duration",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser()}, NoopStage,
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser(false)}, NoopStage,
 			)),
 			in: labels.Labels{
 				{Name: "bar", Value: "foo"},
@@ -146,7 +146,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			name: "dynamic label, not convertable",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser()}, NoopStage,
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser(false)}, NoopStage,
 			)),
 			in: labels.Labels{
 				{Name: "bar", Value: "foo"},
@@ -207,7 +207,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			name: "with just logfmt and stringlabelfilter",
 			// {foo="bar"} | logfmt | subqueries != "0" (note: "0", a stringlabelfilter)
 			extractor: mustSampleExtractor(
-				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0"))}, NoopStage),
+				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(false), NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0"))}, NoopStage),
 			),
 			checkLines: []checkLine{
 				{logLine: "msg=hello subqueries=5", skip: false, sample: 5},
@@ -219,7 +219,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			name: "with just logfmt and numeric labelfilter",
 			// {foo="bar"} | logfmt | subqueries != 0 (note: "0", a numericLabelFilter)
 			extractor: mustSampleExtractor(
-				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewNumericLabelFilter(LabelFilterNotEqual, "subqueries", 0)}, NoopStage),
+				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(false), NewNumericLabelFilter(LabelFilterNotEqual, "subqueries", 0)}, NoopStage),
 			),
 			checkLines: []checkLine{
 				{logLine: "msg=hello subqueries=5", skip: false, sample: 5},

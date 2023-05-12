@@ -78,6 +78,10 @@ var tokens = map[string]int{
 	OpDrop: DROP,
 }
 
+var flagTokens = map[string]int{
+	OpStrict: STRICT,
+}
+
 // functionTokens are tokens that needs to be suffixes with parenthesis
 var functionTokens = map[string]int{
 	// range vec ops
@@ -158,7 +162,15 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 		lval.str = numberText
 		return NUMBER
-	case '-': // handle negative durations
+	case '-': // handle flags and negative durations
+		if l.Peek() == '-' {
+			if flag, ok := tryScanFlag(&l.Scanner); ok {
+				if tok, ok := flagTokens[flag]; ok {
+					return tok
+				}
+			}
+		}
+
 		tokenText := l.TokenText()
 		if duration, ok := tryScanDuration(tokenText, &l.Scanner); ok {
 			lval.duration = duration
@@ -234,6 +246,35 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 func (l *lexer) Error(msg string) {
 	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
+}
+
+func tryScanFlag(l *Scanner) (string, bool) {
+	var sb strings.Builder
+	sb.WriteString(l.TokenText())
+
+	// copy the scanner to avoid advancing it in case it's not a flag
+	s := *l
+	consumed := 0
+	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
+		if !unicode.IsLetter(r) && r != '-' {
+			break
+		}
+
+		_, _ = sb.WriteRune(r)
+		_ = s.Next()
+		consumed++
+	}
+
+	if consumed == 0 {
+		return "", false
+	}
+
+	// we need to consume the scanner.
+	for i := 0; i < consumed; i++ {
+		_ = l.Next()
+	}
+
+	return sb.String(), true
 }
 
 func tryScanDuration(number string, l *Scanner) (time.Duration, bool) {

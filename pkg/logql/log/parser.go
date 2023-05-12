@@ -284,16 +284,18 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtParser struct {
-	dec  *logfmt.Decoder
-	keys internedStringSet
+	strict bool
+	dec    *logfmt.Decoder
+	keys   internedStringSet
 }
 
 // NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
 // Each keyval is extracted into a respective label.
-func NewLogfmtParser() *LogfmtParser {
+func NewLogfmtParser(strict bool) *LogfmtParser {
 	return &LogfmtParser{
-		dec:  logfmt.NewDecoder(nil),
-		keys: internedStringSet{},
+		strict: strict,
+		dec:    logfmt.NewDecoder(nil),
+		keys:   internedStringSet{},
 	}
 }
 
@@ -304,7 +306,21 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 
 	l.dec.Reset(line)
-	for l.dec.ScanKeyval() {
+	for {
+		if l.dec.EOL() {
+			break
+		}
+
+		ok := l.dec.ScanKeyval()
+		if !ok {
+			// for strict parsing, do not continue on errs
+			if l.strict {
+				break
+			}
+
+			continue
+		}
+
 		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
 			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
 			if len(sanitized) == 0 {
@@ -323,6 +339,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		if !ok {
 			continue
 		}
+
 		val := l.dec.Value()
 		// the rune error replacement is rejected by Prometheus, so we skip it.
 		if bytes.ContainsRune(val, utf8.RuneError) {
@@ -338,7 +355,8 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			break
 		}
 	}
-	if l.dec.Err() != nil {
+
+	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 
 		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
@@ -346,6 +364,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 		return line, true
 	}
+
 	return line, true
 }
 
@@ -403,9 +422,10 @@ type LogfmtExpressionParser struct {
 	expressions map[string][]interface{}
 	dec         *logfmt.Decoder
 	keys        internedStringSet
+	strict      bool
 }
 
-func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpressionParser, error) {
+func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
 	if len(expressions) == 0 {
 		return nil, fmt.Errorf("no logfmt expression provided")
 	}
@@ -426,6 +446,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpres
 		expressions: paths,
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
+		strict:      strict,
 	}, nil
 }
 
@@ -452,7 +473,21 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 	l.dec.Reset(line)
 	var current []byte
-	for l.dec.ScanKeyval() {
+	for {
+		if l.dec.EOL() {
+			break
+		}
+
+		ok := l.dec.ScanKeyval()
+		if !ok {
+			// for strict parsing, do not continue on errs
+			if l.strict {
+				break
+			}
+
+			continue
+		}
+
 		current = l.dec.Key()
 		key, ok := l.keys.Get(current, func() (string, bool) {
 			sanitized := sanitizeLabelKey(string(current), true)
@@ -497,12 +532,8 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 		}
 	}
-	if l.dec.Err() != nil {
-		lbs.SetErr(errLogfmt)
-		lbs.SetErrorDetails(l.dec.Err().Error())
-		if lbs.ParserLabelHints().PreserveError() {
-			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
-		}
+	if l.strict && l.dec.Err() != nil {
+		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 		return line, true
 	}
 
