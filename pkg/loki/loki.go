@@ -95,7 +95,7 @@ type Config struct {
 	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
 	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist" doc:"hidden"`
+	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
