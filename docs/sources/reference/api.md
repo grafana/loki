@@ -1,8 +1,11 @@
 ---
 title: Grafana Loki HTTP API
 menuTitle: "HTTP API"
-description: "Loki exposes REST endpoints for operating on a Loki cluster. This section details the endpoints."
-weight: 900
+description: Loki exposes REST endpoints for operating on a Loki cluster. This section details the REST endpoints.
+aliases:
+- /docs/loki/latest/api
+- /docs/loki/latest/reference
+weight: 100
 ---
 
 # Grafana Loki HTTP API
@@ -114,7 +117,7 @@ GET /loki/api/v1/query
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
 query parameters support the following values:
 
-- `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
@@ -266,7 +269,7 @@ GET /loki/api/v1/query_range
 `/loki/api/v1/query_range` is used to do a query over a range of time and
 accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago. Loki returns results with timestamp greater or equal to this value.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now. Loki returns results with timestamp lower than this value.
@@ -521,7 +524,7 @@ GET /loki/api/v1/tail
 `/loki/api/v1/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return. It defaults to `100`.
@@ -840,7 +843,7 @@ The `/loki/api/v1/index/stats` endpoint can be used to query the index for the n
 
 URL query parameters:
 
-- `query`: The [LogQL]({{< relref "../logql/" >}}) matchers to check (i.e. `{job="foo", env!="dev"}`)
+- `query`: The [LogQL]({{< relref "../query/" >}}) matchers to check (i.e. `{job="foo", env!="dev"}`)
 - `start=<nanosecond Unix epoch>`: Start timestamp.
 - `end=<nanosecond Unix epoch>`: End timestamp.
 
@@ -1210,7 +1213,7 @@ curl -u "Tenant1:$API_TOKEN" \
 `/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return
@@ -1259,7 +1262,7 @@ will be sent over the WebSocket multiple times.
 `/api/prom/query` supports doing general queries. The URL query parameters
 support the following values:
 
-- `query`: The [LogQL]({{< relref "../logql/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.

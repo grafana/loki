@@ -65,7 +65,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ingester),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -144,7 +144,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

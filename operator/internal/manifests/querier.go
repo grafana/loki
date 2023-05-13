@@ -65,7 +65,8 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
+		Affinity:                  configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
+		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelQuerierComponent, opts.Name),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -134,7 +135,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelQuerierComponent, opts.Name)...)
 	}
 
 	return &appsv1.Deployment{

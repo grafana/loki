@@ -1,8 +1,13 @@
 ---
-title: Log queries
-description: Log queries
-weight: 10
+title: Log queries 
+menuTItle:  
+description: Overview of how log queries are constructed and parsed.
+aliases: 
+- /docs/loki/latest/logql/log_queries/
+- /docs/loki/latest/query/log_queries/
+weight: 10 
 ---
+
 # Log queries
 
 All LogQL queries contain a **log stream selector**.
