@@ -98,9 +98,14 @@ type FeatureGates struct {
 	// More details: https://grafana.com/docs/loki/latest/release-notes/v2-5/#usage-reporting
 	GrafanaLabsUsageReport bool `json:"grafanaLabsUsageReport,omitempty"`
 
-	// Deprecated: RuntimeSeccompProfile enables the restricted seccomp profile on all
+	// RuntimeSeccompProfile enables the restricted seccomp profile on all
 	// Lokistack components.
+	// Deprecated: Please use RestrictedPodSecurityStandard instead.
 	RuntimeSeccompProfile bool `json:"runtimeSeccompProfile,omitempty"`
+
+	// RestrictedPodSecurityStandard enables compliance with the restrictive pod security standard.
+	// More details: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
+	RestrictedPodSecurityStandard bool `json:"restrictedPodSecurityStandard,omitempty"`
 
 	// LokiStackWebhook enables the LokiStack CR validation and conversion webhooks.
 	LokiStackWebhook bool `json:"lokiStackWebhook,omitempty"`

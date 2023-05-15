@@ -22,6 +22,7 @@ configMapGenerator:
 
 patchesStrategicMerge:
 - manager_related_image_patch.yaml
+- manager_security_context_patch.yaml
 - prometheus_service_monitor_patch.yaml
 
 images:

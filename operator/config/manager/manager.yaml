@@ -27,9 +27,6 @@ spec:
           name: metrics
         securityContext:
           allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
         livenessProbe:
           httpGet:
             path: /healthz
@@ -45,7 +42,3 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       terminationGracePeriodSeconds: 10
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-           type: RuntimeDefault

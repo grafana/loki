@@ -655,7 +655,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
+func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -663,7 +663,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 
 	table := []test{
 		{
-			desc: "disabled default/runtime seccomp profile",
+			desc: "disabled restricted security standard",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -700,13 +700,13 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 					},
 				},
 				Gates: configv1.FeatureGates{
-					RuntimeSeccompProfile: false,
+					RestrictedPodSecurityStandard: false,
 				},
 				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
-			desc: "enabled default/runtime seccomp profile",
+			desc: "enabled restricted security standard",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -743,7 +743,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 					},
 				},
 				Gates: configv1.FeatureGates{
-					RuntimeSeccompProfile: true,
+					RestrictedPodSecurityStandard: true,
 				},
 				Timeouts: defaultTimeoutConfig,
 			},
@@ -778,8 +778,26 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				}
 
 				t.Run(name, func(t *testing.T) {
-					require.NotNil(t, spec.SecurityContext.SeccompProfile)
-					require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
+					if tst.BuildOptions.Gates.RestrictedPodSecurityStandard {
+						require.NotNil(t, spec.SecurityContext)
+
+						require.True(t, *spec.SecurityContext.RunAsNonRoot)
+
+						require.NotNil(t, spec.SecurityContext.SeccompProfile)
+						require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
+					} else {
+						require.Nil(t, spec.SecurityContext)
+					}
+
+					for _, c := range spec.Containers {
+						require.NotNil(t, c.SecurityContext)
+						require.False(t, *c.SecurityContext.AllowPrivilegeEscalation)
+
+						if tst.BuildOptions.Gates.RestrictedPodSecurityStandard {
+							require.Empty(t, c.SecurityContext.Capabilities.Add)
+							require.Equal(t, c.SecurityContext.Capabilities.Drop, []corev1.Capability{"ALL"})
+						}
+					}
 				})
 			}
 		})

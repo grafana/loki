@@ -49,6 +49,7 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
 	f.BoolVar(&c.featureFlags.LokiStackAlerts, "with-lokistack-alerts", false, "Enables prometheus alerts")
 	f.BoolVar(&c.featureFlags.LokiStackGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
+	f.BoolVar(&c.featureFlags.RestrictedPodSecurityStandard, "with-restricted-pod-security-standard", false, "Enable restricted security standard settings")
 	// Object storage options
 	c.objectStorage = storage.Options{
 		S3: &storage.S3StorageConfig{},
