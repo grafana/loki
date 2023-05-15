@@ -111,9 +111,10 @@ const (
 )
 
 var (
-	lokiDefaultHTTPIdleTimeout  = 30 * time.Second
-	lokiDefaultHTTPReadTimeout  = 30 * time.Second
-	lokiDefaultHTTPWriteTimeout = 10 * time.Minute
+	lokiDefaultHTTPIdleTimeout        = 30 * time.Second
+	lokiDefaultHTTPReadTimeout        = 30 * time.Second
+	lokiDefaultHTTPWriteTimeout       = 10 * time.Minute
+	lokiQueryTimeoutTimeoutWiggleRoom = 1 * time.Minute
 
 	gatewayReadWiggleRoom      = 30 * time.Second
 	gatewayWriteWiggleRoom     = 2 * time.Minute

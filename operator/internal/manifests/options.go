@@ -140,52 +140,64 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 		},
 	}
 
-	if s == nil || s.Server == nil || s.Server.HTTP == nil {
+	var (
+		maxTenantQueryTimeout time.Duration
+		globalQueryTimeout    time.Duration
+	)
+
+	if s == nil {
 		return defaults, nil
 	}
 
-	customCfg := ServerConfig{}
-
-	if s.Server.HTTP.IdleTimeout != "" {
-		idleTimeout, err := time.ParseDuration(s.Server.HTTP.IdleTimeout)
-		if err != nil {
-			return defaults, err
-		}
-
-		if customCfg.HTTP == nil {
-			customCfg.HTTP = &HTTPConfig{}
-		}
-
-		customCfg.HTTP.IdleTimeout = idleTimeout
+	if s.Global == nil && s.Tenants == nil {
+		return defaults, nil
 	}
 
-	if s.Server.HTTP.ReadTimeout != "" {
-		readTimeout, err := time.ParseDuration(s.Server.HTTP.ReadTimeout)
+	if s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
+		var err error
+		globalQueryTimeout, err = time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
 		if err != nil {
 			return defaults, err
 		}
-
-		if customCfg.HTTP == nil {
-			customCfg.HTTP = &HTTPConfig{}
-		}
-
-		customCfg.HTTP.ReadTimeout = readTimeout
-		customCfg.HTTP.GatewayReadTimeout = readTimeout + gatewayReadWiggleRoom
 	}
 
-	if s.Server.HTTP.WriteTimeout != "" {
-		writeTimeout, err := time.ParseDuration(s.Server.HTTP.WriteTimeout)
+	for _, tLimit := range s.Tenants {
+		if tLimit.QueryLimits == nil || tLimit.QueryLimits.QueryTimeout == "" {
+			continue
+		}
+
+		tQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
 		if err != nil {
 			return defaults, err
 		}
 
-		if customCfg.HTTP == nil {
-			customCfg.HTTP = &HTTPConfig{}
+		if maxTenantQueryTimeout < tQueryTimeout {
+			maxTenantQueryTimeout = tQueryTimeout
 		}
+	}
 
-		customCfg.HTTP.WriteTimeout = writeTimeout
-		customCfg.HTTP.GatewayWriteTimeout = writeTimeout + gatewayWriteWiggleRoom
-		customCfg.HTTP.GatewayUpstreamWriteTimeout = writeTimeout
+	queryTimeout := maxTenantQueryTimeout
+	if queryTimeout < globalQueryTimeout {
+		queryTimeout = globalQueryTimeout
+	}
+
+	idleTimeout := lokiDefaultHTTPIdleTimeout
+	if queryTimeout < idleTimeout {
+		idleTimeout = queryTimeout
+	}
+
+	readTimeout := queryTimeout / 10
+	writeTimeout := queryTimeout + lokiQueryTimeoutTimeoutWiggleRoom
+
+	customCfg := ServerConfig{
+		HTTP: &HTTPConfig{
+			IdleTimeout:                 idleTimeout,
+			ReadTimeout:                 readTimeout,
+			GatewayReadTimeout:          readTimeout + gatewayReadWiggleRoom,
+			WriteTimeout:                writeTimeout,
+			GatewayWriteTimeout:         writeTimeout + gatewayWriteWiggleRoom,
+			GatewayUpstreamWriteTimeout: writeTimeout,
+		},
 	}
 
 	if err := mergo.Merge(&defaults, &customCfg, mergo.WithOverride); err != nil {

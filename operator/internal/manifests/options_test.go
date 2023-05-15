@@ -21,11 +21,9 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
-				Server: &lokiv1.ServerLimitsSpec{
-					HTTP: &lokiv1.HttpServerLimitsSpec{
-						IdleTimeout:  "1m",
-						ReadTimeout:  "10m",
-						WriteTimeout: "20m",
+				Global: &lokiv1.LimitsTemplateSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
+						QueryTimeout: "10m",
 					},
 				},
 			},
@@ -37,27 +35,67 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 
 	want := ServerConfig{
 		HTTP: &HTTPConfig{
-			IdleTimeout:                 1 * time.Minute,
-			ReadTimeout:                 10 * time.Minute,
-			WriteTimeout:                20 * time.Minute,
-			GatewayReadTimeout:          10*time.Minute + gatewayReadWiggleRoom,
-			GatewayWriteTimeout:         20*time.Minute + gatewayWriteWiggleRoom,
-			GatewayUpstreamWriteTimeout: 20 * time.Minute,
+			IdleTimeout:                 30 * time.Second,
+			ReadTimeout:                 1 * time.Minute,
+			WriteTimeout:                11 * time.Minute,
+			GatewayReadTimeout:          1*time.Minute + gatewayReadWiggleRoom,
+			GatewayWriteTimeout:         11*time.Minute + gatewayWriteWiggleRoom,
+			GatewayUpstreamWriteTimeout: 11 * time.Minute,
 		},
 	}
 
 	require.Equal(t, want, got)
 }
 
-func TestNewServerConfig_ReturnsDefaults_WhenIdleTimeoutParseError(t *testing.T) {
+func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenantQueryTimeout(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
-				Server: &lokiv1.ServerLimitsSpec{
-					HTTP: &lokiv1.HttpServerLimitsSpec{
-						IdleTimeout:  "invalid",
-						ReadTimeout:  "10m",
-						WriteTimeout: "20m",
+				Global: &lokiv1.LimitsTemplateSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
+						QueryTimeout: "10m",
+					},
+				},
+				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					"tenant-a": {
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "10m",
+						},
+					},
+					"tenant-b": {
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "20m",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := NewServerConfig(s.Spec.Limits)
+	require.NoError(t, err)
+
+	want := ServerConfig{
+		HTTP: &HTTPConfig{
+			IdleTimeout:                 30 * time.Second,
+			ReadTimeout:                 2 * time.Minute,
+			WriteTimeout:                21 * time.Minute,
+			GatewayReadTimeout:          2*time.Minute + gatewayReadWiggleRoom,
+			GatewayWriteTimeout:         21*time.Minute + gatewayWriteWiggleRoom,
+			GatewayUpstreamWriteTimeout: 21 * time.Minute,
+		},
+	}
+
+	require.Equal(t, want, got)
+}
+
+func TestNewServerConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *testing.T) {
+	s := lokiv1.LokiStack{
+		Spec: lokiv1.LokiStackSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
+						QueryTimeout: "invalid",
 					},
 				},
 			},
@@ -69,35 +107,25 @@ func TestNewServerConfig_ReturnsDefaults_WhenIdleTimeoutParseError(t *testing.T)
 	require.Equal(t, defaultServerConfig(), got)
 }
 
-func TestNewServerConfig_ReturnsDefaults_WhenReadTimeoutParseError(t *testing.T) {
+func TestNewServerConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
-				Server: &lokiv1.ServerLimitsSpec{
-					HTTP: &lokiv1.HttpServerLimitsSpec{
-						IdleTimeout:  "1m",
-						ReadTimeout:  "invalid",
-						WriteTimeout: "20m",
+				Global: &lokiv1.LimitsTemplateSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
+						QueryTimeout: "10m",
 					},
 				},
-			},
-		},
-	}
-
-	got, err := NewServerConfig(s.Spec.Limits)
-	require.Error(t, err)
-	require.Equal(t, defaultServerConfig(), got)
-}
-
-func TestNewServerConfig_ReturnsDefaults_WhenWriteTimeoutParseError(t *testing.T) {
-	s := lokiv1.LokiStack{
-		Spec: lokiv1.LokiStackSpec{
-			Limits: &lokiv1.LimitsSpec{
-				Server: &lokiv1.ServerLimitsSpec{
-					HTTP: &lokiv1.HttpServerLimitsSpec{
-						IdleTimeout:  "1m",
-						ReadTimeout:  "10m",
-						WriteTimeout: "invalid",
+				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					"tenant-a": {
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "invalid",
+						},
+					},
+					"tenant-b": {
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "20m",
+						},
 					},
 				},
 			},

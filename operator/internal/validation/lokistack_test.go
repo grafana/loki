@@ -286,55 +286,6 @@ var ltt = []struct {
 			},
 		),
 	},
-	{
-		desc: "invalid http server timeouts",
-		spec: lokiv1.LokiStack{
-			Spec: lokiv1.LokiStackSpec{
-				Storage: lokiv1.ObjectStorageSpec{
-					Schemas: []lokiv1.ObjectStorageSchema{
-						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
-							EffectiveDate: "2020-10-11",
-						},
-						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
-							EffectiveDate: "2020-10-13",
-						},
-					},
-				},
-				Limits: &lokiv1.LimitsSpec{
-					Server: &lokiv1.ServerLimitsSpec{
-						HTTP: &lokiv1.HttpServerLimitsSpec{
-							IdleTimeout:  "invalid-idle",
-							ReadTimeout:  "invalid-read",
-							WriteTimeout: "invalid-write",
-						},
-					},
-				},
-			},
-		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "server", "http", "idleTimeout"),
-					"invalid-idle",
-					`time: invalid duration "invalid-idle"`,
-				),
-				field.Invalid(
-					field.NewPath("spec", "limits", "server", "http", "readTimeout"),
-					"invalid-read",
-					`time: invalid duration "invalid-read"`,
-				),
-				field.Invalid(
-					field.NewPath("spec", "limits", "server", "http", "writeTimeout"),
-					"invalid-write",
-					`time: invalid duration "invalid-write"`,
-				),
-			},
-		),
-	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {

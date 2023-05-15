@@ -979,6 +979,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Server: defaultServerConfig(),
 	}, "deadbeef")
 
 	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{

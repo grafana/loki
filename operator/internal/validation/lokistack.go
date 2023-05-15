@@ -68,11 +68,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 		allErrs = append(allErrs, errors...)
 	}
 
-	errors = ValidateLimits(stack.Spec.Limits)
-	if len(errors) != 0 {
-		allErrs = append(allErrs, errors...)
-	}
-
 	if v.ExtendedValidator != nil {
 		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
 	}
@@ -86,42 +81,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 		stack.Name,
 		allErrs,
 	)
-}
-
-// ValidateLimits ensures all limits have valid values. Currently only for
-// http server limits.
-func ValidateLimits(s *lokiv1.LimitsSpec) field.ErrorList {
-	if s == nil || s.Server == nil || s.Server.HTTP == nil {
-		return nil
-	}
-
-	var allErrs field.ErrorList
-
-	if _, err := time.ParseDuration(s.Server.HTTP.IdleTimeout); err != nil {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "limits", "server", "http", "idleTimeout"),
-			s.Server.HTTP.IdleTimeout,
-			err.Error(),
-		))
-	}
-
-	if _, err := time.ParseDuration(s.Server.HTTP.ReadTimeout); err != nil {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "limits", "server", "http", "readTimeout"),
-			s.Server.HTTP.ReadTimeout,
-			err.Error(),
-		))
-	}
-
-	if _, err := time.ParseDuration(s.Server.HTTP.WriteTimeout); err != nil {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec", "limits", "server", "http", "writeTimeout"),
-			s.Server.HTTP.WriteTimeout,
-			err.Error(),
-		))
-	}
-
-	return allErrs
 }
 
 // ValidateSchemas ensures that the schemas are in a valid format
