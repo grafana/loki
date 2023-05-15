@@ -1,8 +1,11 @@
 ---
 title: Query examples
-menuTitle: Query examples
+menuTitle: Query examples  
 description: LogQL query examples with explanations on what those queries accomplish.
-weight: 50
+aliases: 
+- /docs/loki/latest/logql
+- /docs/loki/latest/query
+weight: 50 
 ---
 
 # Query examples
