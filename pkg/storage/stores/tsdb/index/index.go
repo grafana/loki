@@ -2015,9 +2015,9 @@ type chunkSamples struct {
 	chunks []chunkSample
 }
 
-func newChunkSamples() *chunkSamples {
+func newChunkSamples(n int) *chunkSamples {
 	return &chunkSamples{
-		chunks: make([]chunkSample, 0, 30),
+		chunks: make([]chunkSample, 0, n),
 	}
 }
 
@@ -2140,7 +2140,7 @@ func (dec *Decoder) getOrCreateChunksSample(d encoding.Decbuf, seriesRef storage
 		return sample, nil
 	}
 
-	sample = newChunkSamples()
+	sample = newChunkSamples(numChunks)
 	dec.chunksSample[seriesRef] = sample
 	sample.Lock()
 	defer sample.Unlock()
