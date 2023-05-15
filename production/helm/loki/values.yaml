@@ -88,6 +88,9 @@ loki:
     {{- end}}
 
     memberlist:
+    {{- if .Values.loki.extraMemberlistConfig}}
+    {{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}
+    {{- end }}
       join_members:
         - {{ include "loki.memberlist" . }}
         {{- with .Values.migrate.fromDistributed }}
@@ -206,6 +209,8 @@ loki:
     {{- end }}
   # Should authentication be enabled
   auth_enabled: true
+  #  Extra memberlist configuration
+  extraMemberlistConfig: {}
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
   tenants: []
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
