@@ -5,7 +5,8 @@ description: geoip stage
 # geoip
 
 The `geoip` stage is a parsing stage that reads an ip address and
-populates the labelset with geoip fields. Maxmind's GeoIP2 database is used for the lookup.
+
+populates the labelset with geoip fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
 
 Populated fields for City db:
 
@@ -128,3 +129,6 @@ The `regex` stage parses the log line and `ip` is extracted. Then the extracted 
 
 - `geoip_autonomous_system_number`: `396982`
 - `geoip_autonomous_system_organization`: `GOOGLE-CLOUD-PLATFORM`
+
+For more information and real life example, see [Protect PII and add geolocation data: Monitoring legacy systems with Grafana
+](/blog/2023/03/14/protect-pii-and-add-geolocation-data-monitoring-legacy-systems-with-grafana/) which has real-life examples on how to infuse dashboards with geo-location data.

@@ -1,6 +1,10 @@
 ---
 title: Template functions
-description: Template functions
+menuTItle:  
+description: Describes functions that are supported by the text template.
+aliases: 
+- /docs/loki/latest/logql
+- /docs/loki/latest/query
 weight: 30
 ---
 

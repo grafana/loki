@@ -1,4 +1,4 @@
-package manifests_test
+package manifests
 
 import (
 	"math/rand"
@@ -10,11 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func TestNewDistributorDeployment_SelectorMatchesLabels(t *testing.T) {
-	dpl := manifests.NewDistributorDeployment(manifests.Options{
+	dpl := NewDistributorDeployment(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -34,7 +33,7 @@ func TestNewDistributorDeployment_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestNewDistributorDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewDistributorDeployment(manifests.Options{
+	ss := NewDistributorDeployment(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
@@ -54,7 +53,7 @@ func TestNewDistributorDeployment_HasTemplateConfigHashAnnotation(t *testing.T) 
 }
 
 func TestNewDistributorDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
-	ss := manifests.NewDistributorDeployment(manifests.Options{
+	ss := NewDistributorDeployment(Options{
 		Name:                   "abcd",
 		Namespace:              "efgh",
 		CertRotationRequiredAt: "deadbeef",
@@ -74,7 +73,7 @@ func TestNewDistributorDeployment_HasTemplateCertRotationRequiredAtAnnotation(t 
 }
 
 func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
-	opts := manifests.Options{
+	opts := Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -88,7 +87,7 @@ func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
 			},
 		},
 	}
-	objs, err := manifests.BuildDistributor(opts)
+	objs, err := BuildDistributor(opts)
 	require.NoError(t, err)
 	require.Len(t, objs, 4)
 
@@ -98,7 +97,7 @@ func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
 	require.Equal(t, "efgh", pdb.Namespace)
 	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
-	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelDistributorComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
+	require.EqualValues(t, ComponentLabels(LabelDistributorComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
 func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
@@ -176,7 +175,7 @@ func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
-			depl := manifests.NewDistributorDeployment(manifests.Options{
+			depl := NewDistributorDeployment(Options{
 				Name:      "abcd",
 				Namespace: "efgh",
 				Stack: lokiv1.LokiStackSpec{

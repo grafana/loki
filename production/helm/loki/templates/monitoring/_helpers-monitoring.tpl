@@ -11,7 +11,7 @@ Client definition for LogsInstance
 {{- end -}}
 - url: {{ $url }}
   externalLabels:
-    cluster: {{ include "loki.fullname" . }}
+    cluster: {{ include "loki.clusterLabel" . }}
   {{- if .Values.enterprise.enabled }}
   basicAuth:
     username:

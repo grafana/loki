@@ -1,8 +1,13 @@
 ---
 title: "LogQL: Log query language"
-description: "LogQL: Log query language"
-weight: 700
+menuTItle: Query
+description: LogQL, Loki's query language for logs.
+aliases: 
+- /docs/loki/latest/logql
+- /docs/loki/latest/query
+weight: 700 
 ---
+
 # LogQL: Log query language
 
 LogQL is Grafana Loki's PromQL-inspired query language.
