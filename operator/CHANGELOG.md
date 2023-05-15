@@ -3,7 +3,7 @@
 - [9405](https://github.com/grafana/loki/pull/9405) **periklis**: Add support for configuring HTTP server timeouts
 - [9408](https://github.com/grafana/loki/pull/9408) **JoaoBraveCoding**: Add PodAntiAffinity overwrites per component
 - [9429](https://github.com/grafana/loki/pull/9429) **aminesnow**: Add default TopologySpreadContraints to Gateway
-- [9418](https://github.com/grafana/loki/pull/9418) **JoaoBraveCoding**: Add default TopologySpreadContaints to Querie
+- [9418](https://github.com/grafana/loki/pull/9418) **JoaoBraveCoding**: Add default TopologySpreadContaints to Querier
 - [9383](https://github.com/grafana/loki/pull/9383) **JoaoBraveCoding**: Add default TopologySpreadContaints to Distributor
 - [9406](https://github.com/grafana/loki/pull/9406) **aminesnow**: Add label selector to zone awareness TopologySpreadConstraints
 - [9366](https://github.com/grafana/loki/pull/9366) **periklis**: Add support for custom tenant topology in rules
