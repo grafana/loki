@@ -90,7 +90,7 @@ func Test_Hedging(t *testing.T) {
 	}{
 		{
 			"delete/put/list are not hedged",
-			3,
+			4,
 			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
@@ -101,7 +101,7 @@ func Test_Hedging(t *testing.T) {
 		},
 		{
 			"gets are hedged",
-			3,
+			4,
 			20 * time.Nanosecond,
 			3,
 			func(c *BlobStorage) {
@@ -110,7 +110,7 @@ func Test_Hedging(t *testing.T) {
 		},
 		{
 			"gets are not hedged when not configured",
-			1,
+			2,
 			0,
 			0,
 			func(c *BlobStorage) {
