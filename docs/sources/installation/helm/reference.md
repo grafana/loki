@@ -1763,6 +1763,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.configStorageType</td>
+			<td>string</td>
+			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
+			<td><pre lang="json">
+"ConfigMap"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for Loki containers</td>
@@ -1794,6 +1803,15 @@ true
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.externalConfigSecretName</td>
+			<td>string</td>
+			<td>Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).</td>
+			<td><pre lang="json">
+"{{ include \"loki.name\" . }}"
 </pre>
 </td>
 		</tr>
