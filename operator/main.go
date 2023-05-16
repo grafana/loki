@@ -110,6 +110,17 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "lokistack")
 		os.Exit(1)
 	}
+
+	if ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
+		if err = (&lokictrl.LokiStackDasboardsReconciler{
+			Client: mgr.GetClient(),
+			Log:    logger.WithName("controllers").WithName("lokistack-dashboards"),
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
+			os.Exit(1)
+		}
+	}
+
 	if ctrlCfg.Gates.LokiStackWebhook {
 		v := &validation.LokiStackValidator{}
 		if err = v.SetupWebhookWithManager(mgr); err != nil {
