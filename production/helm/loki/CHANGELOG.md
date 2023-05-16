@@ -41,6 +41,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Use $.Release.Namespace consistently
 - [CHANGE] Add clusterLabelOverride for alert label overrides.
+- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
 
 ## 5.5.1
 
