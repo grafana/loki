@@ -43,6 +43,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Add clusterLabelOverride for alert label overrides.
 - [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
 - [BUGFIX] Use $.Release.Namespace consistently
+- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
 
 ## 5.5.1
 
@@ -86,10 +87,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 4.6.2
 
 - [BUGFIX] Fix tokengen and provisioner secrets creation on enterprise-logs chart.
-
-## 4.6.2
-
-- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
 
 ## 4.6.1
 
