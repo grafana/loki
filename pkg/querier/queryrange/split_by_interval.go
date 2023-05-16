@@ -212,7 +212,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest:
+	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest, *logproto.LabelVolumeRequest:
 		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
@@ -284,6 +284,16 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 		endTS := model.Time(r.GetEnd()).Time()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
 			reqs = append(reqs, &logproto.IndexStatsRequest{
+				From:     model.TimeFromUnix(start.Unix()),
+				Through:  model.TimeFromUnix(end.Unix()),
+				Matchers: r.GetMatchers(),
+			})
+		})
+	case *logproto.LabelVolumeRequest:
+		startTS := model.Time(r.GetStart()).Time()
+		endTS := model.Time(r.GetEnd()).Time()
+		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
+			reqs = append(reqs, &logproto.LabelVolumeRequest{
 				From:     model.TimeFromUnix(start.Unix()),
 				Through:  model.TimeFromUnix(end.Unix()),
 				Matchers: r.GetMatchers(),

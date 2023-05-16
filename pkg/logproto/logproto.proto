@@ -377,3 +377,25 @@ message IndexStatsResponse {
   uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
   uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
 }
+
+message LabelVolumeRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+}
+
+message LabelVolumeResponse {
+  repeated LabelVolume volumes = 1 [(gogoproto.nullable) = false];
+}
+
+message LabelVolume {
+  string name = 1 [(gogoproto.jsontag) = "name"];
+  string value = 2 [(gogoproto.jsontag) = "value"];
+  uint64 volume = 3 [(gogoproto.jsontag) = "volume"];
+}

@@ -110,28 +110,40 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
+	labelVolumeCfg := cfg
+	labelVolumeCfg.CacheIndexStatsResults = false
+	labelVolumeTripperware, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, LokiCodec, c,
+		cacheGenNumLoader, retentionEnabled, metrics)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return func(next http.RoundTripper) http.RoundTripper {
-		metricRT := metricsTripperware(next)
-		limitedRT := limitedTripperware(next)
-		logFilterRT := logFilterTripperware(next)
-		seriesRT := seriesTripperware(next)
-		labelsRT := labelsTripperware(next)
-		instantRT := instantMetricTripperware(next)
-		statsRT := indexStatsTripperware(next)
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, limits)
+		var (
+			metricRT      = metricsTripperware(next)
+			limitedRT     = limitedTripperware(next)
+			logFilterRT   = logFilterTripperware(next)
+			seriesRT      = seriesTripperware(next)
+			labelsRT      = labelsTripperware(next)
+			instantRT     = instantMetricTripperware(next)
+			statsRT       = indexStatsTripperware(next)
+			labelVolumeRT = labelVolumeTripperware(next)
+		)
+
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, labelVolumeRT, limits)
 	}, c, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats http.RoundTripper
+	next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
 		logger:        logger,
 		limited:       limited,
@@ -142,6 +154,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		labels:        labels,
 		instantMetric: instantMetric,
 		indexStats:    indexStats,
+		labelVolume:   labelVolume,
 		next:          next,
 	}
 }
@@ -250,6 +263,15 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
 
 		return r.indexStats.RoundTrip(req)
+	case LabelVolumeOp:
+		statsQuery, err := loghttp.ParseIndexStatsQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
+
+		return r.labelVolume.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -280,6 +302,7 @@ const (
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
 	IndexStatsOp   = "index_stats"
+	LabelVolumeOp  = "label_volume"
 )
 
 func getOperation(path string) string {
@@ -294,6 +317,8 @@ func getOperation(path string) string {
 		return InstantQueryOp
 	case path == "/loki/api/v1/index/stats":
 		return IndexStatsOp
+	case path == "/loki/api/v1/index/label_volume":
+		return LabelVolumeOp
 	default:
 		return ""
 	}

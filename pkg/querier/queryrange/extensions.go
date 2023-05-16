@@ -61,3 +61,11 @@ func (m *IndexStatsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHe
 	}
 	return nil
 }
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *LabelVolumeResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}

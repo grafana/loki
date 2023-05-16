@@ -269,6 +269,17 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Through:  through,
 			Matchers: req.Query,
 		}, err
+	case LabelVolumeOp:
+		req, err := loghttp.ParseIndexStatsQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &logproto.LabelVolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: req.Query,
+		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -400,6 +411,24 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
+	case *logproto.LabelVolumeRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
+			"query": []string{request.GetQuery()},
+		}
+		u := &url.URL{
+			Path:     "/loki/api/v1/index/label_volume",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(),
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
@@ -464,6 +493,15 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &IndexStatsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
+		}, nil
+	case *logproto.LabelVolumeRequest:
+		var resp logproto.LabelVolumeResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &LabelVolumeResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
@@ -595,7 +633,10 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
-
+	case *LabelVolumeResponse:
+		if err := marshal.WriteLabelVolumeResponseJSON(response.Response, &buf); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
@@ -696,6 +737,41 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &IndexStatsResponse{
 			Response: &mergedIndexStats,
 			Headers:  headers,
+		}, nil
+	case *LabelVolumeResponse:
+		headers := responses[0].(*LabelVolumeResponse).Headers
+
+		mergedVolumes := make(map[string]map[string]uint64)
+		for _, res := range responses {
+			for _, v := range res.(*LabelVolumeResponse).Response.Volumes {
+				if _, ok := mergedVolumes[v.Name]; !ok {
+					mergedVolumes[v.Name] = make(map[string]uint64)
+				}
+				mergedVolumes[v.Name][v.Value] += v.GetVolume()
+			}
+		}
+
+		//TODO(masslessparticle): restrict to the top N
+		volumes := make([]logproto.LabelVolume, 0, len(mergedVolumes))
+		for name, v := range mergedVolumes {
+			for value, volume := range v {
+				volumes = append(volumes, logproto.LabelVolume{
+					Name:   name,
+					Value:  value,
+					Volume: volume,
+				})
+			}
+		}
+
+		sort.Slice(volumes, func(i, j int) bool {
+			return volumes[i].Name < volumes[j].Name
+		})
+
+		return &LabelVolumeResponse{
+			Response: &logproto.LabelVolumeResponse{
+				Volumes: volumes,
+			},
+			Headers: headers,
 		}, nil
 
 	default:
