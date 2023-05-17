@@ -41,7 +41,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -148,8 +148,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         - name: runtime-config
           configMap:
