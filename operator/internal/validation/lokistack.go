@@ -68,6 +68,11 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 		allErrs = append(allErrs, errors...)
 	}
 
+	errors = v.validateReplicationSpec(ctx, stack.Spec)
+	if len(errors) != 0 {
+		allErrs = append(allErrs, errors...)
+	}
+
 	if v.ExtendedValidator != nil {
 		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
 	}
@@ -81,6 +86,27 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 		stack.Name,
 		allErrs,
 	)
+}
+
+func (v LokiStackValidator) validateReplicationSpec(ctx context.Context, stack lokiv1.LokiStackSpec) field.ErrorList {
+	if stack.Replication == nil {
+		return nil
+	}
+
+	var allErrs field.ErrorList
+
+	// nolint:staticcheck
+	if stack.Replication != nil && stack.ReplicationFactor > 0 {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("spec", "replicationFactor"),
+			stack.ReplicationFactor,
+			lokiv1.ErrReplicationSpecConflict.Error(),
+		))
+
+		return allErrs
+	}
+
+	return nil
 }
 
 // ValidateSchemas ensures that the schemas are in a valid format
