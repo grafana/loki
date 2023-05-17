@@ -79,6 +79,26 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 {{- end }}
 
+{{/*
+Cluster label for rules and alerts.
+*/}}
+{{- define "loki.clusterLabel" -}}
+{{- if .Values.clusterLabelOverride }}
+{{- .Values.clusterLabelOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := include "loki.name" . }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{/* Create a default storage config that uses filesystem storage
 This is required for CI, but Loki will not be queryable with this default
 applied, thus it is encouraged that users override this.
@@ -135,11 +155,11 @@ Base template for building docker image reference
 {{- define "loki.baseImage" }}
 {{- $registry := .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
-{{- $tag := .service.tag | default .defaultVersion | toString -}}
+{{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
 {{- if and $registry $repository -}}
-  {{- printf "%s/%s:%s" $registry $repository $tag -}}
+  {{- printf "%s/%s%s" $registry $repository $ref -}}
 {{- else -}}
-  {{- printf "%s%s:%s" $registry $repository $tag -}}
+  {{- printf "%s%s%s" $registry $repository $ref -}}
 {{- end -}}
 {{- end -}}
 

@@ -412,6 +412,30 @@ func TestStringLabelFilter(t *testing.T) {
 			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
 			shouldMatch: true,
 		},
+		{
+			name:        `logfmt|msg=~"(?i)hello" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)hello")),
+			labels:      labels.Labels{{Name: "msg", Value: "HELLO"}, {Name: "subqueries", Value: ""}}, // label `msg` contains HELLO
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|msg=~"(?i)hello" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)hello")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `msg` contains hello
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|msg=~"(?i)HELLO" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)HELLO")),
+			labels:      labels.Labels{{Name: "msg", Value: "HELLO"}, {Name: "subqueries", Value: ""}}, // label `msg` contains HELLO
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|msg=~"(?i)HELLO" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)HELLO")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `msg` contains hello
+			shouldMatch: true,
+		},
 	}
 
 	for _, tc := range tests {

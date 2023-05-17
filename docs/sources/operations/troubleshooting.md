@@ -165,7 +165,7 @@ Promtail container log.
 
 Loki can be traced using [Jaeger](https://www.jaegertracing.io/) by setting
 the environment variable `JAEGER_AGENT_HOST` to the hostname and port where
-Loki is running.
+Jaeger is running.
 
 If you deploy with Helm, use the following command:
 
