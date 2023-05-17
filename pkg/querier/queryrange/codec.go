@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	io "io"
 	"net/http"
 	"net/url"
@@ -741,37 +742,15 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	case *LabelVolumeResponse:
 		headers := responses[0].(*LabelVolumeResponse).Headers
 
-		mergedVolumes := make(map[string]map[string]uint64)
-		for _, res := range responses {
-			for _, v := range res.(*LabelVolumeResponse).Response.Volumes {
-				if _, ok := mergedVolumes[v.Name]; !ok {
-					mergedVolumes[v.Name] = make(map[string]uint64)
-				}
-				mergedVolumes[v.Name][v.Value] += v.GetVolume()
-			}
-		}
-
 		//TODO(masslessparticle): restrict to the top N
-		volumes := make([]logproto.LabelVolume, 0, len(mergedVolumes))
-		for name, v := range mergedVolumes {
-			for value, volume := range v {
-				volumes = append(volumes, logproto.LabelVolume{
-					Name:   name,
-					Value:  value,
-					Volume: volume,
-				})
-			}
+		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
+		for _, r := range responses {
+			resps = append(resps, r.(*LabelVolumeResponse).Response)
 		}
-
-		sort.Slice(volumes, func(i, j int) bool {
-			return volumes[i].Name < volumes[j].Name
-		})
 
 		return &LabelVolumeResponse{
-			Response: &logproto.LabelVolumeResponse{
-				Volumes: volumes,
-			},
-			Headers: headers,
+			Response: labelvolume.Merge(resps),
+			Headers:  headers,
 		}, nil
 
 	default:

@@ -130,6 +130,11 @@ func (c *IndexGatewayClientStore) Stats(ctx context.Context, userID string, from
 	return resp, nil
 }
 
+func (c *IndexGatewayClientStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	//TODO(masslessparticle): implement me
+	panic("unimplemented")
+}
+
 func (c *IndexGatewayClientStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	// if there is no fallback store, we can't set the chunk filterer and index gateway would take care of filtering out data
 	if c.fallbackStore != nil {

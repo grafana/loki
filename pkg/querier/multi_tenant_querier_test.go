@@ -407,6 +407,43 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	}
 }
 
+func TestLabelVolume(t *testing.T) {
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+	for _, tc := range []struct {
+		desc                 string
+		orgID                string
+		expectedLabelVolumes []logproto.LabelVolume
+	}{
+		{
+			desc:  "multiple tenants are aggregated",
+			orgID: "1|2",
+			expectedLabelVolumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 76},
+			},
+		},
+
+		{
+			desc:  "single tenant",
+			orgID: "2",
+			expectedLabelVolumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 38},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("LabelVolume", mock.Anything, mock.Anything).Return(mockLabelValueResponse(), nil)
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			resp, err := multiTenantQuerier.LabelVolume(ctx, mockLabelValueRequest())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedLabelVolumes, resp.GetVolumes())
+		})
+	}
+}
+
 func mockSeriesRequest() *logproto.SeriesRequest {
 	return &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
@@ -431,6 +468,20 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 			},
 		},
 	}
+}
+
+func mockLabelValueRequest() *logproto.LabelVolumeRequest {
+	return &logproto.LabelVolumeRequest{
+		From:     0,
+		Through:  1000,
+		Matchers: `{foo="bar"}`,
+	}
+}
+
+func mockLabelValueResponse() *logproto.LabelVolumeResponse {
+	return &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+		{Name: "foo", Value: "bar", Volume: 38},
+	}}
 }
 
 func removeWhiteSpace(s string) string {

@@ -23,6 +23,7 @@ type BaseReader interface {
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 type Reader interface {
@@ -117,6 +118,11 @@ func (m monitoredReaderWriter) Stats(ctx context.Context, userID string, from, t
 
 	return sts, nil
 
+}
+
+func (m monitoredReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	//TODO(masslessparticle): implement me
+	panic("unimplemented")
 }
 
 func (m monitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {

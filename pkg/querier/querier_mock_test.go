@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/loghttp"
 	"time"
 
 	"github.com/grafana/dskit/grpcclient"
@@ -19,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -355,6 +355,11 @@ func (s *storeMock) Stats(ctx context.Context, userID string, from, through mode
 	return nil, nil
 }
 
+func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	args := s.Called(ctx, userID, from, through, matchers)
+	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+}
+
 func (s *storeMock) Stop() {
 }
 
@@ -519,4 +524,16 @@ func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tai
 
 func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	return nil, nil
+}
+
+func (q *querierMock) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	args := q.MethodCalled("LabelVolume", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.LabelVolumeResponse), err
 }

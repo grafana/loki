@@ -2,6 +2,8 @@ package querier
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/common/model"
 	"net/http"
 	"strconv"
 	"strings"
@@ -433,6 +435,36 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = marshal.WriteIndexStatsResponseJSON(resp, w)
 	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+}
+
+// LabelVolumeHandler queries the index label volumes related to the passed matchers
+func (q *QuerierAPI) LabelVolumeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseIndexStatsQuery(r)
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	req := &logproto.LabelVolumeRequest{
+		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers: rawReq.Query,
+	}
+
+	resp, err := q.querier.LabelVolume(r.Context(), req)
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	if resp == nil { // Some stores don't implement this
+		resp = &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{}}
+	}
+
+	if marshal.WriteLabelVolumeResponseJSON(resp, w) != nil {
 		serverutil.WriteError(err, w)
 		return
 	}

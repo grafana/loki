@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -126,6 +127,11 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 	}
 
 	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
+}
+
+func (c *storeEntry) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	//TODO(masslessparticle): implement me
+	panic("unimplemented")
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

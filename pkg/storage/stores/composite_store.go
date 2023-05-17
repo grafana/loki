@@ -193,6 +193,11 @@ func (c compositeStore) Stats(ctx context.Context, userID string, from, through 
 	return &res, err
 }
 
+func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	//TODO(masslessparticle): implement me
+	panic("unimplemented")
+}
+
 func (c compositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	// find the schema with the lowest start _after_ tm
 	j := sort.Search(len(c.stores), func(j int) bool {

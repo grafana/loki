@@ -221,6 +221,11 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
+func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	//TODO(masslessparticle): implement me
+	panic("unimplemented")
+}
+
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
 // This is only used for GetSeries implementation.
 // Todo we might want to pass it as a parameter to GetSeries instead.

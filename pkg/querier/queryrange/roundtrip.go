@@ -254,24 +254,20 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		default:
 			return r.next.RoundTrip(req)
 		}
-	case IndexStatsOp:
+	case IndexStatsOp, LabelVolumeOp:
 		statsQuery, err := loghttp.ParseIndexStatsQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
 		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
+
+		if op == LabelVolumeOp {
+			return r.labelVolume.RoundTrip(req)
+		}
 
 		return r.indexStats.RoundTrip(req)
-	case LabelVolumeOp:
-		statsQuery, err := loghttp.ParseIndexStatsQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
 
-		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
-
-		return r.labelVolume.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
