@@ -10,7 +10,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-func TestNewServerConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
+func TestNewTimeoutConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
 	s := lokiv1.LokiStack{}
 
 	got, err := NewTimeoutConfig(s.Spec.Limits)
@@ -18,7 +18,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
 	require.Equal(t, defaultTimeoutConfig, got)
 }
 
-func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T) {
+func TestNewTimeoutConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
@@ -50,7 +50,7 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 	require.Equal(t, want, got)
 }
 
-func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenantQueryTimeout(t *testing.T) {
+func TestNewTimeoutConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenantQueryTimeout(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
@@ -94,7 +94,7 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenant
 	require.Equal(t, want, got)
 }
 
-func TestNewServerConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *testing.T) {
+func TestNewTimeoutConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
@@ -111,7 +111,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *tes
 	require.Error(t, err)
 }
 
-func TestNewServerConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *testing.T) {
+func TestNewTimeoutConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
