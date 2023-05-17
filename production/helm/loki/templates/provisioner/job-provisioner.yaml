@@ -4,6 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
     {{- with .Values.enterprise.provisioner.labels }}
