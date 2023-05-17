@@ -13,9 +13,9 @@ import (
 func TestNewServerConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
 	s := lokiv1.LokiStack{}
 
-	got, err := NewServerConfig(s.Spec.Limits)
+	got, err := NewTimeoutConfig(s.Spec.Limits)
 	require.NoError(t, err)
-	require.Equal(t, defaultServerConfig, got)
+	require.Equal(t, defaultTimeoutConfig, got)
 }
 
 func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T) {
@@ -31,16 +31,16 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 		},
 	}
 
-	got, err := NewServerConfig(s.Spec.Limits)
+	got, err := NewTimeoutConfig(s.Spec.Limits)
 	require.NoError(t, err)
 
-	want := ServerConfig{
-		LokiTimeouts: config.HTTPTimeoutConfig{
+	want := TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  1 * time.Minute,
 			WriteTimeout: 11 * time.Minute,
 		},
-		GatewayTimeouts: GatewayTimeoutConfig{
+		Gateway: GatewayTimeoutConfig{
 			ReadTimeout:          1*time.Minute + gatewayReadDuration,
 			WriteTimeout:         11*time.Minute + gatewayWriteDuration,
 			UpstreamWriteTimeout: 11 * time.Minute,
@@ -75,16 +75,16 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenant
 		},
 	}
 
-	got, err := NewServerConfig(s.Spec.Limits)
+	got, err := NewTimeoutConfig(s.Spec.Limits)
 	require.NoError(t, err)
 
-	want := ServerConfig{
-		LokiTimeouts: config.HTTPTimeoutConfig{
+	want := TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  2 * time.Minute,
 			WriteTimeout: 21 * time.Minute,
 		},
-		GatewayTimeouts: GatewayTimeoutConfig{
+		Gateway: GatewayTimeoutConfig{
 			ReadTimeout:          2*time.Minute + gatewayReadDuration,
 			WriteTimeout:         21*time.Minute + gatewayWriteDuration,
 			UpstreamWriteTimeout: 21 * time.Minute,
@@ -107,7 +107,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *tes
 		},
 	}
 
-	_, err := NewServerConfig(s.Spec.Limits)
+	_, err := NewTimeoutConfig(s.Spec.Limits)
 	require.Error(t, err)
 }
 
@@ -136,6 +136,6 @@ func TestNewServerConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *tes
 		},
 	}
 
-	_, err := NewServerConfig(s.Spec.Limits)
+	_, err := NewTimeoutConfig(s.Spec.Limits)
 	require.Error(t, err)
 }

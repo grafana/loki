@@ -42,9 +42,9 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	assert.JSONEq(t, string(expected), string(actual))
 }
 
-func defaultServerOptions() ServerConfig {
-	return ServerConfig{
-		LokiTimeouts: config.HTTPTimeoutConfig{
+func testTimeoutConfig() TimeoutConfig {
+	return TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
 			IdleTimeout:  1 * time.Second,
 			ReadTimeout:  1 * time.Minute,
 			WriteTimeout: 10 * time.Minute,
@@ -57,7 +57,7 @@ func randomConfigOptions() Options {
 		Name:      uuid.New().String(),
 		Namespace: uuid.New().String(),
 		Image:     uuid.New().String(),
-		Server:    defaultServerOptions(),
+		Timeouts:  testTimeoutConfig(),
 		Stack: lokiv1.LokiStackSpec{
 			Size:             lokiv1.SizeOneXExtraSmall,
 			Storage:          lokiv1.ObjectStorageSpec{},
@@ -268,7 +268,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				Name:      "my-stack",
 				Namespace: "my-ns",
 				Stack:     tc.spec,
-				Server:    defaultServerOptions(),
+				Timeouts:  testTimeoutConfig(),
 			}
 			options := ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, options.GossipRing)
@@ -374,8 +374,8 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 			t.Parallel()
 
 			inOpt := Options{
-				Stack:  tc.spec,
-				Server: defaultServerOptions(),
+				Stack:    tc.spec,
+				Timeouts: testTimeoutConfig(),
 			}
 			options := ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, options.Retention)
@@ -397,7 +397,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -409,7 +409,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -421,7 +421,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						AlertManagerEnabled: true,
@@ -443,7 +443,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						AlertManagerEnabled: true,
@@ -487,7 +487,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -499,7 +499,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -514,7 +514,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -551,7 +551,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -606,7 +606,7 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -618,7 +618,7 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -633,7 +633,7 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -687,7 +687,7 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -737,7 +737,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -749,7 +749,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
@@ -764,7 +764,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -896,7 +896,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -947,7 +947,7 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions:          nil,
 			wantOverridesOptions: nil,
@@ -960,7 +960,7 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions:          nil,
 			wantOverridesOptions: nil,
@@ -976,7 +976,7 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -1037,7 +1037,7 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 					},
 				},
 
-				Server: defaultServerOptions(),
+				Timeouts: testTimeoutConfig(),
 				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
@@ -1166,8 +1166,8 @@ func TestConfigOptions_Replication(t *testing.T) {
 			t.Parallel()
 
 			inOpt := Options{
-				Stack:  tc.spec,
-				Server: defaultServerOptions(),
+				Stack:    tc.spec,
+				Timeouts: testTimeoutConfig(),
 			}
 			options := ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, *options.Stack.Replication)
@@ -1177,8 +1177,8 @@ func TestConfigOptions_Replication(t *testing.T) {
 
 func TestConfigOptions_ServerOptions(t *testing.T) {
 	opt := Options{
-		Stack:  lokiv1.LokiStackSpec{},
-		Server: defaultServerOptions(),
+		Stack:    lokiv1.LokiStackSpec{},
+		Timeouts: testTimeoutConfig(),
 	}
 	got := ConfigOptions(opt)
 

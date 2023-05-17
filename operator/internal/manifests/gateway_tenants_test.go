@@ -59,8 +59,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -79,8 +79,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -131,8 +131,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -151,8 +151,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -186,8 +186,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -225,8 +225,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -302,8 +302,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -331,8 +331,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
-				Server: ServerConfig{
-					GatewayTimeouts: GatewayTimeoutConfig{
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
 						WriteTimeout: 1 * time.Minute,
 					},
 				},

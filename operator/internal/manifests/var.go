@@ -120,7 +120,7 @@ const (
 )
 
 var (
-	defaultServerConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
+	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
 
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem

@@ -142,11 +142,11 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.write.endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
-					fmt.Sprintf("--logs.write-timeout=%s", opts.Server.GatewayTimeouts.UpstreamWriteTimeout),
+					fmt.Sprintf("--logs.write-timeout=%s", opts.Timeouts.Gateway.UpstreamWriteTimeout),
 					fmt.Sprintf("--rbac.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRbacFileName)),
 					fmt.Sprintf("--tenants.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName)),
-					fmt.Sprintf("--server.read-timeout=%s", opts.Server.GatewayTimeouts.ReadTimeout),
-					fmt.Sprintf("--server.write-timeout=%s", opts.Server.GatewayTimeouts.WriteTimeout),
+					fmt.Sprintf("--server.read-timeout=%s", opts.Timeouts.Gateway.ReadTimeout),
+					fmt.Sprintf("--server.write-timeout=%s", opts.Timeouts.Gateway.WriteTimeout),
 				},
 				Ports: []corev1.ContainerPort{
 					{

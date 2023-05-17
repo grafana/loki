@@ -37,7 +37,7 @@ type Options struct {
 
 	OpenShiftOptions openshift.Options
 
-	Server ServerConfig
+	Timeouts TimeoutConfig
 
 	Tenants Tenants
 
@@ -51,10 +51,10 @@ type GatewayTimeoutConfig struct {
 	UpstreamWriteTimeout time.Duration
 }
 
-// ServerConfig contains the server configuration options for all Loki components
-type ServerConfig struct {
-	LokiTimeouts    config.HTTPTimeoutConfig
-	GatewayTimeouts GatewayTimeoutConfig
+// TimeoutConfig contains the server configuration options for all Loki components
+type TimeoutConfig struct {
+	Loki    config.HTTPTimeoutConfig
+	Gateway GatewayTimeoutConfig
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -124,15 +124,14 @@ func (o Options) TLSCipherSuites() string {
 	return strings.Join(o.TLSProfile.Ciphers, ",")
 }
 
-// NewServerConfig transforms the Loki LimitsSpec.Server options
-// to a NewServerConfig by applying defaults and parsing durations.
-func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
+// NewTimeoutConfig creates a TimeoutConfig from the QueryTimeout values in the spec's limits.
+func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 	if s == nil {
-		return defaultServerConfig, nil
+		return defaultTimeoutConfig, nil
 	}
 
 	if s.Global == nil && s.Tenants == nil {
-		return defaultServerConfig, nil
+		return defaultTimeoutConfig, nil
 	}
 
 	queryTimeout := lokiDefaultQueryTimeout
@@ -140,7 +139,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 		var err error
 		globalQueryTimeout, err := time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
 		if err != nil {
-			return ServerConfig{}, err
+			return TimeoutConfig{}, err
 		}
 
 		if globalQueryTimeout > queryTimeout {
@@ -155,7 +154,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 
 		tenantQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
 		if err != nil {
-			return ServerConfig{}, err
+			return TimeoutConfig{}, err
 		}
 
 		if tenantQueryTimeout > queryTimeout {
@@ -166,7 +165,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 	return calculateHTTPTimeouts(queryTimeout), nil
 }
 
-func calculateHTTPTimeouts(queryTimeout time.Duration) ServerConfig {
+func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
 	idleTimeout := lokiDefaultHTTPIdleTimeout
 	if queryTimeout < idleTimeout {
 		idleTimeout = queryTimeout
@@ -175,13 +174,13 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) ServerConfig {
 	readTimeout := queryTimeout / 10
 	writeTimeout := queryTimeout + lokiQueryWriteDuration
 
-	return ServerConfig{
-		LokiTimeouts: config.HTTPTimeoutConfig{
+	return TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
 			IdleTimeout:  idleTimeout,
 			ReadTimeout:  readTimeout,
 			WriteTimeout: writeTimeout,
 		},
-		GatewayTimeouts: GatewayTimeoutConfig{
+		Gateway: GatewayTimeoutConfig{
 			ReadTimeout:          readTimeout + gatewayReadDuration,
 			WriteTimeout:         writeTimeout + gatewayWriteDuration,
 			UpstreamWriteTimeout: writeTimeout,
