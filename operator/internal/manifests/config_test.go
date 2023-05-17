@@ -262,6 +262,24 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
+		{
+			desc: "user selected Topology zone",
+			spec: lokiv1.LokiStackSpec{
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "testzone",
+						},
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				InstanceAvailabilityZone: "${INSTANCE_AVAILABILITY_ZONE}",
+				InstancePort:             9095,
+				BindPort:                 7946,
+				MembersDiscoveryAddr:     "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
 	}
 	for _, tc := range tt {
 		tc := tc

@@ -68,6 +68,9 @@ type GossipRing struct {
 	BindPort int
 	// MembersDiscoveryAddr is required
 	MembersDiscoveryAddr string
+	// InstanceAvailabilityZone is optional,
+	// identifies the zone where this instance lives
+	InstanceAvailabilityZone string
 }
 
 // HTTPTimeoutConfig defines the HTTP server config options.

@@ -58,6 +58,12 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Stack.Replication != nil {
+		if err := configureZoneAwareEnv(&deployment.Spec.Template.Spec, *opts.Stack.Replication); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		deployment,
 		NewQuerierGRPCService(opts),
@@ -68,8 +74,14 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 
 // NewQuerierDeployment creates a deployment object for a querier
 func NewQuerierDeployment(opts Options) *appsv1.Deployment {
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	var l labels.Set
+	var a map[string]string
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		l, a = setZoneAwareLabelAnnotation(opts.Stack.Replication.Zones, LabelQuerierComponent, opts.Name, opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	} else {
+		l = ComponentLabels(LabelQuerierComponent, opts.Name)
+		a = commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	}
 	podSpec := corev1.PodSpec{
 		Affinity:                  configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
 		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelQuerierComponent, opts.Name),
@@ -139,7 +151,12 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelQuerierComponent, opts.Name)...)
+		configureReplication(&podSpec, *opts.Stack.Replication, LabelQuerierComponent, opts.Name)
+		// podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelQuerierComponent, opts.Name)...)
+		// if len(opts.Stack.Replication.Zones) > 0 {
+		// 	resetEnvVar(&podSpec, availibilityZoneEnvVarName)
+		// 	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
+		// }
 	}
 
 	return &appsv1.Deployment{

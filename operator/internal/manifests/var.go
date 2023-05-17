@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"strings"
 	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -23,6 +24,8 @@ const (
 	protocolTCP      = "TCP"
 
 	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
+	// availibilityZoneEnvVarName    = "INSTANCE_AVAILIBILITY_ZONE"
+	// concatenatedZonePodAnnotation = "metadata.annotations['loki_instance_availability_zone']"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -148,7 +151,7 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
-func componentInstaceLabels(component string, stackName string) map[string]string {
+func componentInstanceLabels(component string, stackName string) map[string]string {
 	return map[string]string{
 		kubernetesInstanceLabel:  stackName,
 		kubernetesComponentLabel: component,
@@ -162,7 +165,7 @@ func defaultTopologySpreadConstraints(component string, stackName string) []core
 		MaxSkew:     1,
 		TopologyKey: kubernetesNodeHostnameLabel,
 		LabelSelector: &metav1.LabelSelector{
-			MatchLabels: componentInstaceLabels(component, stackName),
+			MatchLabels: componentInstanceLabels(component, stackName),
 		},
 		WhenUnsatisfiable: corev1.ScheduleAnyway,
 	}}
@@ -176,7 +179,7 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
-func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
+/* func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
 	var tsc []corev1.TopologySpreadConstraint
 	if len(spec.Zones) > 0 {
 		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
@@ -196,7 +199,7 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, st
 	}
 
 	return tsc
-}
+} */
 
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
@@ -578,7 +581,7 @@ func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAff
 				Weight: 100,
 				PodAffinityTerm: corev1.PodAffinityTerm{
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: componentInstaceLabels(componentLabel, stackName),
+						MatchLabels: componentInstanceLabels(componentLabel, stackName),
 					},
 					TopologyKey: kubernetesNodeHostnameLabel,
 				},
@@ -618,4 +621,22 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
+}
+
+func resetEnvVar(podSpec *corev1.PodSpec, name string) {
+	for i, container := range podSpec.Containers {
+		found, index := findEnvVar(name, container.Env)
+		if found {
+			podSpec.Containers[i].Env = append(podSpec.Containers[i].Env[:index], podSpec.Containers[i].Env[index+1:]...)
+		}
+	}
+}
+
+func findEnvVar(name string, envVars []corev1.EnvVar) (bool, int) {
+	for i, env := range envVars {
+		if env.Name == name || env.Name == strings.ToLower(name) {
+			return true, i
+		}
+	}
+	return false, 0
 }

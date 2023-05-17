@@ -58,6 +58,12 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Stack.Replication != nil {
+		if err := configureZoneAwareEnv(&statefulSet.Spec.Template.Spec, *opts.Stack.Replication); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
@@ -68,8 +74,14 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	var l labels.Set
+	var a map[string]string
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		l, a = setZoneAwareLabelAnnotation(opts.Stack.Replication.Zones, LabelIngesterComponent, opts.Name, opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	} else {
+		l = ComponentLabels(LabelIngesterComponent, opts.Name)
+		a = commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	}
 	podSpec := corev1.PodSpec{
 		Affinity: configureAffinity(LabelIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ingester),
 		Volumes: []corev1.Volume{
@@ -148,7 +160,12 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
+		configureReplication(&podSpec, *opts.Stack.Replication, LabelIngesterComponent, opts.Name)
+		// podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
+		// if len(opts.Stack.Replication.Zones) > 0 {
+		// 	resetEnvVar(&podSpec, availibilityZoneEnvVarName)
+		// 	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
+		// }
 	}
 
 	return &appsv1.StatefulSet{
