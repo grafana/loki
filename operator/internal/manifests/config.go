@@ -102,6 +102,8 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
+	gossippRingconfig := gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing, opt.Stack.Replication)
+
 	protocol := "http"
 	if opt.Gates.HTTPEncryption {
 		protocol = "https"
@@ -157,7 +159,7 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing),
+		GossipRing: gossippRingconfig,
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
@@ -258,8 +260,8 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 	return conf
 }
 
-func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
-	var instanceAddr string
+func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, replication *lokiv1.ReplicationSpec) config.GossipRing {
+	var instanceAddr, instanceAZ string
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
@@ -271,12 +273,25 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) conf
 		}
 	}
 
-	return config.GossipRing{
-		InstanceAddr:         instanceAddr,
-		InstancePort:         grpcPort,
-		BindPort:             gossipPort,
-		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+	if replication != nil {
+		instanceAZ = zoneAwareConfig(replication)
 	}
+
+	return config.GossipRing{
+		InstanceAddr:             instanceAddr,
+		InstancePort:             grpcPort,
+		BindPort:                 gossipPort,
+		MembersDiscoveryAddr:     fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+		InstanceAvailabilityZone: instanceAZ,
+	}
+}
+
+func zoneAwareConfig(spec *lokiv1.ReplicationSpec) string {
+	var available_zone string
+	if len(spec.Zones) > 0 {
+		available_zone = fmt.Sprintf("${%s}", availibilityZoneEnvVarName)
+	}
+	return available_zone
 }
 
 func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {

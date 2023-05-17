@@ -145,6 +145,10 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 
 	if opts.Stack.Replication != nil {
 		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
+		if len(opts.Stack.Replication.Zones) > 0 {
+			resetEnvVar(&podSpec, availibilityZoneEnvVarName)
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
+		}
 	}
 
 	return &appsv1.Deployment{

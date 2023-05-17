@@ -63,6 +63,10 @@ common:
     instance_addr: {{ . }}
     {{- end }}
     instance_port: {{ .InstancePort }}
+    {{- with .InstanceAvailabilityZone }}
+    zone_awareness_enabled: true
+    instance_availability_zone: {{ . }}
+    {{- end }}
   {{- end }}
 compactor:
   compaction_interval: 2h

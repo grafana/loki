@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"strings"
 	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -22,7 +23,9 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
-	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarName  = "HASH_RING_INSTANCE_ADDR"
+	availibilityZoneEnvVarName    = "INSTANCE_AVAILIBILITY_ZONE"
+	concatenatedZonePodAnnotation = "metadata.annotations['loki_instance_availability_zone']"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -148,7 +151,7 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
-func componentInstaceLabels(component string, stackName string) map[string]string {
+func componentInstanceLabels(component string, stackName string) map[string]string {
 	return map[string]string{
 		kubernetesInstanceLabel:  stackName,
 		kubernetesComponentLabel: component,
@@ -162,7 +165,7 @@ func defaultTopologySpreadConstraints(component string, stackName string) []core
 		MaxSkew:     1,
 		TopologyKey: kubernetesNodeHostnameLabel,
 		LabelSelector: &metav1.LabelSelector{
-			MatchLabels: componentInstaceLabels(component, stackName),
+			MatchLabels: componentInstanceLabels(component, stackName),
 		},
 		WhenUnsatisfiable: corev1.ScheduleAnyway,
 	}}
@@ -578,7 +581,7 @@ func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAff
 				Weight: 100,
 				PodAffinityTerm: corev1.PodAffinityTerm{
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: componentInstaceLabels(componentLabel, stackName),
+						MatchLabels: componentInstanceLabels(componentLabel, stackName),
 					},
 					TopologyKey: kubernetesNodeHostnameLabel,
 				},
@@ -617,5 +620,47 @@ func lokiReadinessProbe() *corev1.Probe {
 		TimeoutSeconds:      1,
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
+	}
+}
+
+func resetEnvVar(podSpec *corev1.PodSpec, name string) {
+	for i, container := range podSpec.Containers {
+		found, index := findEnvVar(name, container.Env)
+		if found {
+			podSpec.Containers[i].Env = append(podSpec.Containers[i].Env[:index], podSpec.Containers[i].Env[index+1:]...)
+		}
+	}
+}
+
+func findEnvVar(name string, envVars []corev1.EnvVar) (bool, int) {
+	for i, env := range envVars {
+		if env.Name == name || env.Name == strings.ToLower(name) {
+			return true, i
+		}
+	}
+	return false, 0
+}
+
+// isZoneawareComponent returns true if the Component pod is either in the read/write path or gateway.
+func CheckZoneawareComponent(pod *corev1.Pod) bool {
+	podLabels := pod.Labels
+
+	switch podLabels[kubernetesComponentLabel] {
+	case LabelDistributorComponent, LabelIndexGatewayComponent,
+		LabelIngesterComponent, LabelQuerierComponent,
+		LabelQueryFrontendComponent:
+		return true
+	}
+	return false
+}
+
+func getInstanceAvailabilityZoneEnvVar() corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: availibilityZoneEnvVarName,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
+				FieldPath: concatenatedZonePodAnnotation,
+			},
+		},
 	}
 }

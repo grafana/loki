@@ -39,7 +39,7 @@ func BuildLokiGossipRingService(stackName string) *corev1.Service {
 }
 
 func configureHashRingEnv(p *corev1.PodSpec, opts Options) error {
-	resetProxyVar(p, gossipInstanceAddrEnvVarName)
+	resetEnvVar(p, gossipInstanceAddrEnvVarName)
 	hashRing := opts.Stack.HashRing
 
 	if hashRing == nil {

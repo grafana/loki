@@ -134,6 +134,10 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 
 	if opts.Stack.Replication != nil {
 		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelDistributorComponent, opts.Name)...)
+		if len(opts.Stack.Replication.Zones) > 0 {
+			resetEnvVar(&podSpec, availibilityZoneEnvVarName)
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
+		}
 	}
 
 	return &appsv1.Deployment{
