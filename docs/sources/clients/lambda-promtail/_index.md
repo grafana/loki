@@ -188,7 +188,7 @@ scrape_configs:
       - source_labels: ['__aws_cloudwatch_log_group']
         target_label: 'log_group'
       # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
-      - source_label: ['__aws_s3_log_lb']
+      - source_labels: ['__aws_s3_log_lb']
         target_label: 'loadbalancer_name'
 ```
 
