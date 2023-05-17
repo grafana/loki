@@ -1182,13 +1182,11 @@ func TestConfigOptions_ServerOptions(t *testing.T) {
 	}
 	got := ConfigOptions(opt)
 
-	want := config.ServerConfig{
-		HTTP: config.HTTPServerConfig{
-			IdleTimeout:  time.Second,
-			ReadTimeout:  time.Minute,
-			WriteTimeout: 10 * time.Minute,
-		},
+	want := config.HTTPTimeoutConfig{
+		IdleTimeout:  time.Second,
+		ReadTimeout:  time.Minute,
+		WriteTimeout: 10 * time.Minute,
 	}
 
-	require.Equal(t, want, got.Server)
+	require.Equal(t, want, got.HTTPTimeouts)
 }

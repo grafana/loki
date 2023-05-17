@@ -172,7 +172,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
-		Server:                serverConfig(opt.Server),
+		HTTPTimeouts:          serverConfig(opt.Server),
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
@@ -187,13 +187,11 @@ func ConfigOptions(opt Options) config.Options {
 	}
 }
 
-func serverConfig(cfg ServerConfig) config.ServerConfig {
-	return config.ServerConfig{
-		HTTP: config.HTTPServerConfig{
-			IdleTimeout:  cfg.HTTP.IdleTimeout,
-			ReadTimeout:  cfg.HTTP.ReadTimeout,
-			WriteTimeout: cfg.HTTP.WriteTimeout,
-		},
+func serverConfig(cfg ServerConfig) config.HTTPTimeoutConfig {
+	return config.HTTPTimeoutConfig{
+		IdleTimeout:  cfg.HTTP.IdleTimeout,
+		ReadTimeout:  cfg.HTTP.ReadTimeout,
+		WriteTimeout: cfg.HTTP.WriteTimeout,
 	}
 }
 

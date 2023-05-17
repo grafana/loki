@@ -249,12 +249,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -530,12 +528,10 @@ overrides:
 				},
 			},
 		},
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -959,12 +955,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -1312,12 +1306,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -1695,12 +1687,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -2023,12 +2013,10 @@ overrides:
 			Enabled:           true,
 			DeleteWorkerCount: 50,
 		},
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -2436,12 +2424,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -2776,12 +2762,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -3266,12 +3250,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -3520,12 +3502,10 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
-		Server: ServerConfig{
-			HTTP: HTTPServerConfig{
-				IdleTimeout:  30 * time.Second,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 10 * time.Minute,
-			},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)

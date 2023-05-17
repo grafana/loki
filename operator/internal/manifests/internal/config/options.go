@@ -32,7 +32,7 @@ type Options struct {
 
 	ObjectStorage storage.Options
 
-	Server ServerConfig
+	HTTPTimeouts HTTPTimeoutConfig
 
 	Retention RetentionOptions
 
@@ -70,16 +70,11 @@ type GossipRing struct {
 	MembersDiscoveryAddr string
 }
 
-// HTTPServerConfig defines the HTTP server config options.
-type HTTPServerConfig struct {
+// HTTPTimeoutConfig defines the HTTP server config options.
+type HTTPTimeoutConfig struct {
 	IdleTimeout  time.Duration
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
-}
-
-// ServerConfig defines the server config options.
-type ServerConfig struct {
-	HTTP HTTPServerConfig
 }
 
 // Ruler configuration
