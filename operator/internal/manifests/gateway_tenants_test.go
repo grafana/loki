@@ -60,7 +60,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -80,7 +80,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -132,7 +132,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -152,7 +152,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -187,7 +187,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -226,7 +226,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -303,7 +303,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},
@@ -332,7 +332,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: &HTTPConfig{
+					HTTP: HTTPConfig{
 						GatewayWriteTimeout: 1 * time.Minute,
 					},
 				},

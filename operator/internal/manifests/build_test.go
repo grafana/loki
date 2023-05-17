@@ -17,11 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func defaultServerConfig() ServerConfig {
-	s, _ := NewServerConfig(nil)
-	return s
-}
-
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
@@ -41,7 +36,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 					},
 				},
 			},
-			Server: defaultServerConfig(),
+			Server: defaultServerConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -84,7 +79,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 					},
 				},
 			},
-			Server: defaultServerConfig(),
+			Server: defaultServerConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -239,7 +234,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 		{
@@ -258,7 +253,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 	}
@@ -301,7 +296,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 		{
@@ -319,7 +314,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: true,
 					},
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 	}
@@ -360,7 +355,7 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		Gates: configv1.FeatureGates{
 			HTTPEncryption: true,
 		},
-		Server: defaultServerConfig(),
+		Server: defaultServerConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -434,7 +429,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			HTTPEncryption:             true,
 			ServiceMonitorTLSEndpoints: true,
 		},
-		Server: defaultServerConfig(),
+		Server: defaultServerConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -539,7 +534,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: false,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 		{
@@ -582,7 +577,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: true,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 	}
@@ -707,7 +702,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					RuntimeSeccompProfile: false,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 		{
@@ -750,7 +745,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					RuntimeSeccompProfile: true,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 	}
@@ -814,7 +809,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: false,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 		{
@@ -853,7 +848,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 	}
@@ -892,7 +887,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: false,
 					LokiStackAlerts: false,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 		{
@@ -907,7 +902,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: true,
 					LokiStackAlerts: true,
 				},
-				Server: defaultServerConfig(),
+				Server: defaultServerConfig,
 			},
 		},
 	}

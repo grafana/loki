@@ -110,7 +110,7 @@ const (
 	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
 )
 
-var (
+const (
 	lokiDefaultHTTPIdleTimeout        = 30 * time.Second
 	lokiDefaultHTTPReadTimeout        = 30 * time.Second
 	lokiDefaultHTTPWriteTimeout       = 10 * time.Minute
@@ -123,6 +123,17 @@ var (
 )
 
 var (
+	defaultServerConfig = ServerConfig{
+		HTTP: HTTPConfig{
+			IdleTimeout:                 lokiDefaultHTTPIdleTimeout,
+			ReadTimeout:                 lokiDefaultHTTPReadTimeout,
+			WriteTimeout:                lokiDefaultHTTPWriteTimeout,
+			GatewayReadTimeout:          gatewayDefaultReadTimeout,
+			GatewayWriteTimeout:         gatewayDefaultWriteTimeout,
+			GatewayUpstreamWriteTimeout: lokiDefaultHTTPWriteTimeout,
+		},
+	}
+
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
 	podAntiAffinityComponents = map[string]struct{}{

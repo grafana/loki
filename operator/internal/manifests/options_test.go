@@ -14,7 +14,7 @@ func TestNewServerConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
 
 	got, err := NewServerConfig(s.Spec.Limits)
 	require.NoError(t, err)
-	require.Equal(t, defaultServerConfig(), got)
+	require.Equal(t, defaultServerConfig, got)
 }
 
 func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T) {
@@ -34,7 +34,7 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 	require.NoError(t, err)
 
 	want := ServerConfig{
-		HTTP: &HTTPConfig{
+		HTTP: HTTPConfig{
 			IdleTimeout:                 30 * time.Second,
 			ReadTimeout:                 1 * time.Minute,
 			WriteTimeout:                11 * time.Minute,
@@ -76,7 +76,7 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenant
 	require.NoError(t, err)
 
 	want := ServerConfig{
-		HTTP: &HTTPConfig{
+		HTTP: HTTPConfig{
 			IdleTimeout:                 30 * time.Second,
 			ReadTimeout:                 2 * time.Minute,
 			WriteTimeout:                21 * time.Minute,
@@ -102,9 +102,8 @@ func TestNewServerConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *tes
 		},
 	}
 
-	got, err := NewServerConfig(s.Spec.Limits)
+	_, err := NewServerConfig(s.Spec.Limits)
 	require.Error(t, err)
-	require.Equal(t, defaultServerConfig(), got)
 }
 
 func TestNewServerConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *testing.T) {
@@ -132,7 +131,6 @@ func TestNewServerConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *tes
 		},
 	}
 
-	got, err := NewServerConfig(s.Spec.Limits)
+	_, err := NewServerConfig(s.Spec.Limits)
 	require.Error(t, err)
-	require.Equal(t, defaultServerConfig(), got)
 }

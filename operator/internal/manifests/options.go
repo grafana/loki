@@ -56,7 +56,7 @@ type HTTPConfig struct {
 
 // ServerConfig contains the server configuration options for all Loki components
 type ServerConfig struct {
-	HTTP *HTTPConfig
+	HTTP HTTPConfig
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -129,16 +129,7 @@ func (o Options) TLSCipherSuites() string {
 // NewServerConfig transforms the Loki LimitsSpec.Server options
 // to a NewServerConfig by applying defaults and parsing durations.
 func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
-	defaults := ServerConfig{
-		HTTP: &HTTPConfig{
-			IdleTimeout:                 lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:                 lokiDefaultHTTPReadTimeout,
-			WriteTimeout:                lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:          gatewayDefaultReadTimeout,
-			GatewayWriteTimeout:         gatewayDefaultWriteTimeout,
-			GatewayUpstreamWriteTimeout: lokiDefaultHTTPWriteTimeout,
-		},
-	}
+	defaults := defaultServerConfig
 
 	var (
 		maxTenantQueryTimeout time.Duration
@@ -168,7 +159,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 
 		tQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
 		if err != nil {
-			return defaults, err
+			return ServerConfig{}, err
 		}
 
 		if maxTenantQueryTimeout < tQueryTimeout {
@@ -190,7 +181,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 	writeTimeout := queryTimeout + lokiQueryTimeoutTimeoutWiggleRoom
 
 	customCfg := ServerConfig{
-		HTTP: &HTTPConfig{
+		HTTP: HTTPConfig{
 			IdleTimeout:                 idleTimeout,
 			ReadTimeout:                 readTimeout,
 			GatewayReadTimeout:          readTimeout + gatewayReadWiggleRoom,
