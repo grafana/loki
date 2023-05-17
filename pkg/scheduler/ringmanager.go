@@ -236,7 +236,7 @@ func (rm *RingManager) stopping(_ error) error {
 
 // ServeHTTP serves the HTTP route /scheduler/ring.
 func (rm *RingManager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if rm.cfg.UseSchedulerRing == true {
+	if rm.cfg.UseSchedulerRing {
 		rm.Ring.ServeHTTP(w, req)
 	} else {
 		_, _ = w.Write([]byte("QueryScheduler running with '-query-scheduler.use-scheduler-ring' set to false."))
