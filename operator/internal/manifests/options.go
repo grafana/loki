@@ -129,26 +129,24 @@ func (o Options) TLSCipherSuites() string {
 // NewServerConfig transforms the Loki LimitsSpec.Server options
 // to a NewServerConfig by applying defaults and parsing durations.
 func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
-	defaults := defaultServerConfig
+	if s == nil {
+		return defaultServerConfig, nil
+	}
+
+	if s.Global == nil && s.Tenants == nil {
+		return defaultServerConfig, nil
+	}
 
 	var (
 		maxTenantQueryTimeout time.Duration
 		globalQueryTimeout    time.Duration
 	)
 
-	if s == nil {
-		return defaults, nil
-	}
-
-	if s.Global == nil && s.Tenants == nil {
-		return defaults, nil
-	}
-
 	if s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
 		var err error
 		globalQueryTimeout, err = time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
 		if err != nil {
-			return defaults, err
+			return ServerConfig{}, err
 		}
 	}
 
@@ -180,6 +178,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 	readTimeout := queryTimeout / 10
 	writeTimeout := queryTimeout + lokiQueryTimeoutTimeoutWiggleRoom
 
+	defaults := defaultServerConfig
 	customCfg := ServerConfig{
 		HTTP: HTTPConfig{
 			IdleTimeout:                 idleTimeout,
