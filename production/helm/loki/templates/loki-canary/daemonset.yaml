@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ include "loki-canary.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki-canary.labels" $ | nindent 4 }}
 spec:
