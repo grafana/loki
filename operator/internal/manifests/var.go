@@ -111,28 +111,16 @@ const (
 )
 
 const (
+	lokiDefaultQueryTimeout           = 1 * time.Minute
 	lokiDefaultHTTPIdleTimeout        = 30 * time.Second
-	lokiDefaultHTTPReadTimeout        = 30 * time.Second
-	lokiDefaultHTTPWriteTimeout       = 10 * time.Minute
 	lokiQueryTimeoutTimeoutWiggleRoom = 1 * time.Minute
 
-	gatewayReadWiggleRoom      = 30 * time.Second
-	gatewayWriteWiggleRoom     = 2 * time.Minute
-	gatewayDefaultReadTimeout  = lokiDefaultHTTPReadTimeout + gatewayReadWiggleRoom
-	gatewayDefaultWriteTimeout = lokiDefaultHTTPWriteTimeout + gatewayWriteWiggleRoom
+	gatewayReadWiggleRoom  = 30 * time.Second
+	gatewayWriteWiggleRoom = 2 * time.Minute
 )
 
 var (
-	defaultServerConfig = ServerConfig{
-		HTTP: HTTPConfig{
-			IdleTimeout:                 lokiDefaultHTTPIdleTimeout,
-			ReadTimeout:                 lokiDefaultHTTPReadTimeout,
-			WriteTimeout:                lokiDefaultHTTPWriteTimeout,
-			GatewayReadTimeout:          gatewayDefaultReadTimeout,
-			GatewayWriteTimeout:         gatewayDefaultWriteTimeout,
-			GatewayUpstreamWriteTimeout: lokiDefaultHTTPWriteTimeout,
-		},
-	}
+	defaultServerConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
 
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem

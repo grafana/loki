@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/imdario/mergo"
 )
 
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
@@ -137,16 +136,16 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 		return defaultServerConfig, nil
 	}
 
-	var (
-		maxTenantQueryTimeout time.Duration
-		globalQueryTimeout    time.Duration
-	)
-
+	queryTimeout := lokiDefaultQueryTimeout
 	if s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
 		var err error
-		globalQueryTimeout, err = time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
+		globalQueryTimeout, err := time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
 		if err != nil {
 			return ServerConfig{}, err
+		}
+
+		if globalQueryTimeout > queryTimeout {
+			queryTimeout = globalQueryTimeout
 		}
 	}
 
@@ -155,21 +154,20 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 			continue
 		}
 
-		tQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
+		tenantQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
 		if err != nil {
 			return ServerConfig{}, err
 		}
 
-		if maxTenantQueryTimeout < tQueryTimeout {
-			maxTenantQueryTimeout = tQueryTimeout
+		if tenantQueryTimeout > queryTimeout {
+			queryTimeout = tenantQueryTimeout
 		}
 	}
 
-	queryTimeout := maxTenantQueryTimeout
-	if queryTimeout < globalQueryTimeout {
-		queryTimeout = globalQueryTimeout
-	}
+	return calculateHTTPTimeouts(queryTimeout), nil
+}
 
+func calculateHTTPTimeouts(queryTimeout time.Duration) ServerConfig {
 	idleTimeout := lokiDefaultHTTPIdleTimeout
 	if queryTimeout < idleTimeout {
 		idleTimeout = queryTimeout
@@ -178,8 +176,7 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 	readTimeout := queryTimeout / 10
 	writeTimeout := queryTimeout + lokiQueryTimeoutTimeoutWiggleRoom
 
-	defaults := defaultServerConfig
-	customCfg := ServerConfig{
+	return ServerConfig{
 		HTTP: HTTPConfig{
 			IdleTimeout:                 idleTimeout,
 			ReadTimeout:                 readTimeout,
@@ -189,10 +186,4 @@ func NewServerConfig(s *lokiv1.LimitsSpec) (ServerConfig, error) {
 			GatewayUpstreamWriteTimeout: writeTimeout,
 		},
 	}
-
-	if err := mergo.Merge(&defaults, &customCfg, mergo.WithOverride); err != nil {
-		return defaults, err
-	}
-
-	return defaults, nil
 }
