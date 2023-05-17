@@ -241,7 +241,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	// records query statistics
 	start := time.Now()
-	statsCtx, ctx := stats.NewContext(ctx)
+	statsCtx, ctx := stats.GetOrCreateContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
 	data, err := q.Eval(ctx)

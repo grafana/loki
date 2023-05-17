@@ -41,6 +41,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "result"
   ];
+  Cache statsResult = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statsResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.

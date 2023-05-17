@@ -53,6 +53,7 @@ func TestLimits(t *testing.T) {
 func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
 	cfg.CacheResults = false
+	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
 	tpw, stopper, err := NewTripperware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{

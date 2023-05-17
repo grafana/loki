@@ -88,9 +88,22 @@ func IsEmbeddedCacheSet(cfg Config) bool {
 	return cfg.EmbeddedCache.Enabled
 }
 
-// IsCacheConfigured determines if memcached, redis, or embedded-cache have been configured
+func IsFifoCacheSet(cfg Config) bool {
+	return cfg.EnableFifoCache
+}
+
+func IsSpecificImplementationSet(cfg Config) bool {
+	return cfg.Cache != nil
+}
+
+// IsCacheConfigured determines if either of the following caches is configured:
+// - memcached
+// - redis
+// - embedded-cache
+// - fifo-cache
+// - specific cache implementation
 func IsCacheConfigured(cfg Config) bool {
-	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg)
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg) || IsFifoCacheSet(cfg) || IsSpecificImplementationSet(cfg)
 }
 
 // New creates a new Cache using Config.
