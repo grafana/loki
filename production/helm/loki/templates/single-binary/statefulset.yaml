@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.singleBinaryFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist

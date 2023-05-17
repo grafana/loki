@@ -3,6 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
     {{- with .Values.enterprise.provisioner.labels }}
