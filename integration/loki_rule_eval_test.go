@@ -71,6 +71,7 @@ func testRuleEval(t *testing.T, mode string) {
 		// and we have a circular dependency with the backend
 		"-common.compactor-address=http://fake",
 		"-legacy-read-mode=false",
+		"-query-scheduler.use-scheduler-ring=false",
 	)
 
 	require.NoError(t, clu.Run())
