@@ -38,8 +38,8 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 			IdleTimeout:                 30 * time.Second,
 			ReadTimeout:                 1 * time.Minute,
 			WriteTimeout:                11 * time.Minute,
-			GatewayReadTimeout:          1*time.Minute + gatewayReadWiggleRoom,
-			GatewayWriteTimeout:         11*time.Minute + gatewayWriteWiggleRoom,
+			GatewayReadTimeout:          1*time.Minute + gatewayReadDuration,
+			GatewayWriteTimeout:         11*time.Minute + gatewayWriteDuration,
 			GatewayUpstreamWriteTimeout: 11 * time.Minute,
 		},
 	}
@@ -80,8 +80,8 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenant
 			IdleTimeout:                 30 * time.Second,
 			ReadTimeout:                 2 * time.Minute,
 			WriteTimeout:                21 * time.Minute,
-			GatewayReadTimeout:          2*time.Minute + gatewayReadWiggleRoom,
-			GatewayWriteTimeout:         21*time.Minute + gatewayWriteWiggleRoom,
+			GatewayReadTimeout:          2*time.Minute + gatewayReadDuration,
+			GatewayWriteTimeout:         21*time.Minute + gatewayWriteDuration,
 			GatewayUpstreamWriteTimeout: 21 * time.Minute,
 		},
 	}

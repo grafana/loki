@@ -174,15 +174,15 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) ServerConfig {
 	}
 
 	readTimeout := queryTimeout / 10
-	writeTimeout := queryTimeout + lokiQueryTimeoutTimeoutWiggleRoom
+	writeTimeout := queryTimeout + lokiQueryWriteDuration
 
 	return ServerConfig{
 		HTTP: HTTPConfig{
 			IdleTimeout:                 idleTimeout,
 			ReadTimeout:                 readTimeout,
-			GatewayReadTimeout:          readTimeout + gatewayReadWiggleRoom,
+			GatewayReadTimeout:          readTimeout + gatewayReadDuration,
 			WriteTimeout:                writeTimeout,
-			GatewayWriteTimeout:         writeTimeout + gatewayWriteWiggleRoom,
+			GatewayWriteTimeout:         writeTimeout + gatewayWriteDuration,
 			GatewayUpstreamWriteTimeout: writeTimeout,
 		},
 	}
