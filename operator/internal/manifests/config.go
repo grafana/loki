@@ -4,7 +4,6 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"strings"
-	"time"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -189,28 +188,11 @@ func ConfigOptions(opt Options) config.Options {
 }
 
 func serverConfig(cfg ServerConfig) config.ServerConfig {
-	oneMinute := 1 * time.Minute
-
-	idleTimeout := fmt.Sprintf("%.fm", cfg.HTTP.IdleTimeout.Minutes())
-	if cfg.HTTP.IdleTimeout < oneMinute {
-		idleTimeout = fmt.Sprintf("%.fs", cfg.HTTP.IdleTimeout.Seconds())
-	}
-
-	readTimeout := fmt.Sprintf("%.fm", cfg.HTTP.ReadTimeout.Minutes())
-	if cfg.HTTP.ReadTimeout < oneMinute {
-		readTimeout = fmt.Sprintf("%.fs", cfg.HTTP.ReadTimeout.Seconds())
-	}
-
-	writeTimeout := fmt.Sprintf("%.fm", cfg.HTTP.WriteTimeout.Minutes())
-	if cfg.HTTP.WriteTimeout < oneMinute {
-		writeTimeout = fmt.Sprintf("%.fs", cfg.HTTP.WriteTimeout.Seconds())
-	}
-
 	return config.ServerConfig{
 		HTTP: config.HTTPServerConfig{
-			IdleTimeout:  idleTimeout,
-			ReadTimeout:  readTimeout,
-			WriteTimeout: writeTimeout,
+			IdleTimeout:  cfg.HTTP.IdleTimeout,
+			ReadTimeout:  cfg.HTTP.ReadTimeout,
+			WriteTimeout: cfg.HTTP.WriteTimeout,
 		},
 	}
 }

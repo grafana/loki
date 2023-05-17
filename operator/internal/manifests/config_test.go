@@ -1184,9 +1184,9 @@ func TestConfigOptions_ServerOptions(t *testing.T) {
 
 	want := config.ServerConfig{
 		HTTP: config.HTTPServerConfig{
-			IdleTimeout:  "1s",
-			ReadTimeout:  "1m",
-			WriteTimeout: "10m",
+			IdleTimeout:  time.Second,
+			ReadTimeout:  time.Minute,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 

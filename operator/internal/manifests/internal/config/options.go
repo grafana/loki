@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -71,9 +72,9 @@ type GossipRing struct {
 
 // HTTPServerConfig defines the HTTP server config options.
 type HTTPServerConfig struct {
-	IdleTimeout  string
-	ReadTimeout  string
-	WriteTimeout string
+	IdleTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 }
 
 // ServerConfig defines the server config options.
