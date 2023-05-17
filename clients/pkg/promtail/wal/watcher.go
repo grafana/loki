@@ -207,6 +207,7 @@ func (w *Watcher) watch(segmentNum int) error {
 
 			}
 		case <-w.readNotify:
+			w.metrics.segmentRead.WithLabelValues(w.id, "notification").Inc()
 		}
 
 		// read from open segment routine
