@@ -60,8 +60,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 			},
@@ -80,8 +80,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				OpenShiftOptions: openshift.Options{
@@ -132,8 +132,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 			},
@@ -152,8 +152,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				OpenShiftOptions: openshift.Options{
@@ -187,8 +187,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -226,8 +226,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -303,8 +303,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -332,8 +332,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 					},
 				},
 				Server: ServerConfig{
-					HTTP: HTTPConfig{
-						GatewayWriteTimeout: 1 * time.Minute,
+					GatewayTimeouts: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{

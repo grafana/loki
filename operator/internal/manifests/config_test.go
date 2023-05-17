@@ -44,7 +44,7 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 
 func defaultServerOptions() ServerConfig {
 	return ServerConfig{
-		HTTP: HTTPConfig{
+		LokiTimeouts: config.HTTPTimeoutConfig{
 			IdleTimeout:  1 * time.Second,
 			ReadTimeout:  1 * time.Minute,
 			WriteTimeout: 10 * time.Minute,

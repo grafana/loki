@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/stretchr/testify/require"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -34,13 +35,15 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty(t *testing.T
 	require.NoError(t, err)
 
 	want := ServerConfig{
-		HTTP: HTTPConfig{
-			IdleTimeout:                 30 * time.Second,
-			ReadTimeout:                 1 * time.Minute,
-			WriteTimeout:                11 * time.Minute,
-			GatewayReadTimeout:          1*time.Minute + gatewayReadDuration,
-			GatewayWriteTimeout:         11*time.Minute + gatewayWriteDuration,
-			GatewayUpstreamWriteTimeout: 11 * time.Minute,
+		LokiTimeouts: config.HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  1 * time.Minute,
+			WriteTimeout: 11 * time.Minute,
+		},
+		GatewayTimeouts: GatewayTimeoutConfig{
+			ReadTimeout:          1*time.Minute + gatewayReadDuration,
+			WriteTimeout:         11*time.Minute + gatewayWriteDuration,
+			UpstreamWriteTimeout: 11 * time.Minute,
 		},
 	}
 
@@ -76,13 +79,15 @@ func TestNewServerConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenant
 	require.NoError(t, err)
 
 	want := ServerConfig{
-		HTTP: HTTPConfig{
-			IdleTimeout:                 30 * time.Second,
-			ReadTimeout:                 2 * time.Minute,
-			WriteTimeout:                21 * time.Minute,
-			GatewayReadTimeout:          2*time.Minute + gatewayReadDuration,
-			GatewayWriteTimeout:         21*time.Minute + gatewayWriteDuration,
-			GatewayUpstreamWriteTimeout: 21 * time.Minute,
+		LokiTimeouts: config.HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  2 * time.Minute,
+			WriteTimeout: 21 * time.Minute,
+		},
+		GatewayTimeouts: GatewayTimeoutConfig{
+			ReadTimeout:          2*time.Minute + gatewayReadDuration,
+			WriteTimeout:         21*time.Minute + gatewayWriteDuration,
+			UpstreamWriteTimeout: 21 * time.Minute,
 		},
 	}
 

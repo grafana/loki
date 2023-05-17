@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
@@ -42,20 +44,17 @@ type Options struct {
 	TLSProfile TLSProfileSpec
 }
 
-// HTTPConfig contains the http server configuration options for all Loki components.
-type HTTPConfig struct {
-	IdleTimeout  time.Duration
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-
-	GatewayReadTimeout          time.Duration
-	GatewayWriteTimeout         time.Duration
-	GatewayUpstreamWriteTimeout time.Duration
+// GatewayTimeoutConfig contains the http server configuration options for all Loki components.
+type GatewayTimeoutConfig struct {
+	ReadTimeout          time.Duration
+	WriteTimeout         time.Duration
+	UpstreamWriteTimeout time.Duration
 }
 
 // ServerConfig contains the server configuration options for all Loki components
 type ServerConfig struct {
-	HTTP HTTPConfig
+	LokiTimeouts    config.HTTPTimeoutConfig
+	GatewayTimeouts GatewayTimeoutConfig
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -177,13 +176,15 @@ func calculateHTTPTimeouts(queryTimeout time.Duration) ServerConfig {
 	writeTimeout := queryTimeout + lokiQueryWriteDuration
 
 	return ServerConfig{
-		HTTP: HTTPConfig{
-			IdleTimeout:                 idleTimeout,
-			ReadTimeout:                 readTimeout,
-			GatewayReadTimeout:          readTimeout + gatewayReadDuration,
-			WriteTimeout:                writeTimeout,
-			GatewayWriteTimeout:         writeTimeout + gatewayWriteDuration,
-			GatewayUpstreamWriteTimeout: writeTimeout,
+		LokiTimeouts: config.HTTPTimeoutConfig{
+			IdleTimeout:  idleTimeout,
+			ReadTimeout:  readTimeout,
+			WriteTimeout: writeTimeout,
+		},
+		GatewayTimeouts: GatewayTimeoutConfig{
+			ReadTimeout:          readTimeout + gatewayReadDuration,
+			WriteTimeout:         writeTimeout + gatewayWriteDuration,
+			UpstreamWriteTimeout: writeTimeout,
 		},
 	}
 }
