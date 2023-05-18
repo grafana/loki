@@ -703,11 +703,6 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
-		deps[Store] = append(deps[Store], IngesterQuerier)
-	}
-
 	// If the query scheduler and querier are running together, make sure the scheduler goes
 	// first to initialize the ring that will also be used by the querier
 	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
