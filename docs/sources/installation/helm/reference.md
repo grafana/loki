@@ -1701,6 +1701,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>loki.extraMemberlistConfig</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.image.digest</td>
 			<td>string</td>
 			<td>Overrides the image tag with an image digest</td>

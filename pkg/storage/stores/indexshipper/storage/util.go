@@ -82,7 +82,16 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 
+	fStat, err := f.Stat()
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get stat for downloaded file", "err", err)
+	}
+
+	if err == nil {
+		logger = log.With(logger, "size", fStat.Size())
+	}
 	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
+
 	if sync {
 		return f.Sync()
 	}
