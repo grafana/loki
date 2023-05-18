@@ -89,6 +89,7 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 		Enabled:       true,
 		Dir:           walDir,
 		MaxSegmentAge: time.Second * 30,
+		WatchConfig:   wal.DefaultWatchConfig,
 	}
 
 	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
@@ -202,6 +203,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 		Enabled:       true,
 		Dir:           walDir,
 		MaxSegmentAge: time.Second * 30,
+		WatchConfig:   wal.DefaultWatchConfig,
 	}
 
 	clientMetrics := client.NewMetrics(nil)
