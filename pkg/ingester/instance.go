@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"os"
 	"sync"
@@ -603,7 +604,49 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
-	panic("unimplemented")
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != labelvolume.MatchAny {
+		return nil, err
+	}
+
+	from, through := req.From.Time(), req.Through.Time()
+
+	volumes := make(map[string]map[string]uint64)
+	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
+		// Consider streams which overlap our time range
+		if shouldConsiderStream(s, from, through) {
+			s.chunkMtx.RLock()
+
+			var size uint64
+			for _, chk := range s.chunks {
+				// Consider chunks which overlap our time range
+				// and haven't been flushed.
+				// Flushed chunks will already be counted
+				// by the TSDB manager+shipper
+				chkFrom, chkThrough := chk.chunk.Bounds()
+
+				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+					size += uint64(chk.chunk.UncompressedSize())
+				}
+
+			}
+
+			for _, l := range s.labels {
+				if _, ok := volumes[l.Name]; !ok {
+					volumes[l.Name] = make(map[string]uint64)
+				}
+				volumes[l.Name][l.Value] += size
+			}
+
+			s.chunkMtx.RUnlock()
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	res := labelvolume.MapToLabelVolumeResponse(volumes)
+	return res, nil
 }
 
 func (i *instance) numStreams() int {

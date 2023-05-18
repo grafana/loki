@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"strings"
 	"time"
@@ -318,7 +319,34 @@ func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, throug
 }
 
 func (q *IngesterQuerier) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	panic("unimplemented")
+	matcherString := "{}"
+	if len(matchers) > 0 {
+		matcherString = syntax.MatchersString(matchers)
+	}
+
+	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: matcherString,
+		})
+	})
+
+	if err != nil {
+		if isUnimplementedCallError(err) {
+			// Handle communication with older ingesters gracefully
+			return &logproto.LabelVolumeResponse{}, nil
+		}
+		return nil, err
+	}
+
+	casted := make([]*logproto.LabelVolumeResponse, 0, len(resps))
+	for _, resp := range resps {
+		casted = append(casted, resp.response.(*logproto.LabelVolumeResponse))
+	}
+
+	merged := labelvolume.Merge(casted)
+	return merged, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

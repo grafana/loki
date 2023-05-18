@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"os"
 	"path"
@@ -1125,7 +1126,47 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
-	panic("unimplemented")
+	user, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(user)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != labelvolume.MatchAny {
+		return nil, err
+	}
+
+	type f func() (*logproto.LabelVolumeResponse, error)
+	jobs := []f{
+		f(func() (*logproto.LabelVolumeResponse, error) {
+			return instance.GetLabelVolume(ctx, req)
+		}),
+		f(func() (*logproto.LabelVolumeResponse, error) {
+			return i.store.LabelVolume(ctx, user, req.From, req.Through, matchers...)
+		}),
+	}
+	resps := make([]*logproto.LabelVolumeResponse, len(jobs))
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(ctx context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := labelvolume.Merge(resps)
+	return merged, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.

@@ -854,6 +854,23 @@ func TestGetStats(t *testing.T) {
 	}, resp)
 }
 
+func TestLabelVolume(t *testing.T) {
+	instance := defaultInstance(t)
+	volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		From:     0,
+		Through:  11000,
+		Matchers: "{}",
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []logproto.LabelVolume{
+		{Name: "host", Value: "agent", Volume: 160},
+		{Name: "job", Value: "3", Volume: 160},
+		{Name: "log_stream", Value: "dispatcher", Volume: 90},
+		{Name: "log_stream", Value: "worker", Volume: 70},
+	}, volumes.Volumes)
+}
+
 func defaultInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
@@ -877,6 +894,7 @@ func defaultInstance(t *testing.T) *instance {
 	return instance
 }
 
+// inserts 160 bytes into the instance. 90 for the dispatcher label and 70 for the worker label
 func insertData(t *testing.T, instance *instance) {
 	for i := 0; i < 10; i++ {
 		// nolint
@@ -884,6 +902,7 @@ func insertData(t *testing.T, instance *instance) {
 		if i%2 == 0 {
 			stream = "worker"
 		}
+
 		require.NoError(t,
 			instance.Push(context.TODO(), &logproto.PushRequest{
 				Streams: []logproto.Stream{
