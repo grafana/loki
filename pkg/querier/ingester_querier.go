@@ -317,6 +317,10 @@ func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, throug
 	return &merged, nil
 }
 
+func (q *IngesterQuerier) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	panic("unimplemented")
+}
+
 func convertMatchersToString(matchers []*labels.Matcher) string {
 	out := strings.Builder{}
 	out.WriteRune('{')

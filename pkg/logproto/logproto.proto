@@ -27,6 +27,9 @@ service Querier {
   // Note: this MUST be the same as the variant defined in
   // indexgateway.proto on the IndexGateway service.
   rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetLabelVolume(LabelVolumeRequest) returns (LabelVolumeResponse) {}
 }
 
 service Ingester {

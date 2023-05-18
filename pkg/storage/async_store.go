@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -22,6 +23,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -152,6 +154,10 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 
 	merged := stats.MergeStats(resps...)
 	return &merged, nil
+}
+
+func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	panic("unimplemented")
 }
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {

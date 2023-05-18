@@ -602,6 +602,10 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
+func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	panic("unimplemented")
+}
+
 func (i *instance) numStreams() int {
 	return i.streams.Len()
 }

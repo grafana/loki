@@ -171,6 +171,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1121,6 +1122,10 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 
 	merged := index_stats.MergeStats(resps...)
 	return &merged, nil
+}
+
+func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	panic("unimplemented")
 }
 
 // Watch implements grpc_health_v1.HealthCheck.

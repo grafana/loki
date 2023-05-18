@@ -464,6 +464,10 @@ func (s *mockStore) Stats(ctx context.Context, userID string, from, through mode
 	return &stats.Stats{}, nil
 }
 
+func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	return &logproto.LabelVolumeResponse{}, nil
+}
+
 func (s *mockStore) Stop() {}
 
 type mockQuerierServer struct {
