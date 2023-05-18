@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
 	"reflect"
 	"testing"
 
@@ -49,6 +50,10 @@ func (m mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 }
 
 func (m mockStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
+}
+
+func (m mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }
 
@@ -289,4 +294,30 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(tc.tm))
 		})
 	}
+}
+
+type mockStoreLabelVolume struct {
+	mockStore
+	value *logproto.LabelVolumeResponse
+}
+
+func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	return m.value, nil
+}
+
+func TestLabelVolume(t *testing.T) {
+	cs := compositeStore{
+		stores: []compositeStoreEntry{
+			{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore(0), &logproto.LabelVolumeResponse{
+				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}},
+			}}},
+			{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore(1), &logproto.LabelVolumeResponse{
+				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 30}},
+			}}},
+		},
+	}
+
+	volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, nil)
+	require.NoError(t, err)
+	require.Equal(t, []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 45}}, volumes.Volumes)
 }

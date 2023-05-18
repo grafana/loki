@@ -117,12 +117,19 @@ func (m monitoredReaderWriter) Stats(ctx context.Context, userID string, from, t
 	}
 
 	return sts, nil
-
 }
 
 func (m monitoredReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	//TODO(masslessparticle): implement me
-	panic("unimplemented")
+	var vol *logproto.LabelVolumeResponse
+	if err := instrument.CollectedRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		vol, err = m.rw.LabelVolume(ctx, userID, from, through, matchers...)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return vol, nil
 }
 
 func (m monitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {

@@ -130,8 +130,17 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (c *storeEntry) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	//TODO(masslessparticle): implement me
-	panic("unimplemented")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelVolume")
+	defer sp.Finish()
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.indexReader.LabelVolume(ctx, userID, from, through, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

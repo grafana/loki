@@ -716,7 +716,7 @@ func (c *indexReaderWriter) Stats(ctx context.Context, userID string, from, thro
 	return nil, nil
 }
 
+// old index stores do not implement label volume -- skip
 func (c *indexReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	//TODO(masslessparticle): implement me
-	panic("unimplemented")
+	return nil, nil
 }
