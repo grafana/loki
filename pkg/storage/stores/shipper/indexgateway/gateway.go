@@ -296,6 +296,21 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
+func (g *Gateway) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Allow any matchers
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	return g.indexQuerier.LabelVolume(ctx, instanceID, req.From, req.Through, matchers...)
+}
+
 type failingIndexClient struct{}
 
 func (f failingIndexClient) QueryPages(ctx context.Context, queries []seriesindex.Query, callback seriesindex.QueryPagesCallback) error {
