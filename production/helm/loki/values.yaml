@@ -207,12 +207,12 @@ loki:
     index_gateway:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
-    
+
     {{- with .Values.loki.frontend }}
     frontend:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
-    
+
     {{- with .Values.loki.frontend_worker }}
     frontend_worker:
       {{- tpl (. | toYaml) $ | nindent 4 }}
