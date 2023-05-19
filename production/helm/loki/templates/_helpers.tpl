@@ -730,6 +730,10 @@ http {
     }
 
 
+    location ~ /config {
+      proxy_pass       http://{{ $writeHost }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;
+    }
+
     {{- with .Values.gateway.nginxConfig.serverSnippet }}
     {{ . | nindent 4 }}
     {{- end }}
@@ -761,4 +765,3 @@ enableServiceLinks: false
 {{- end -}}
 {{- printf "%s" $compactorAddress }}
 {{- end }}
-
