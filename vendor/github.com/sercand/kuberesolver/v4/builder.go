@@ -1,6 +1,7 @@
 package kuberesolver
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
 )
@@ -47,19 +47,20 @@ type targetInfo struct {
 }
 
 func (ti targetInfo) String() string {
-	return fmt.Sprintf("kubernetes:///%s/%s:%s", ti.serviceNamespace, ti.serviceName, ti.port)
+	return fmt.Sprintf("kubernetes://%s/%s:%s", ti.serviceNamespace, ti.serviceName, ti.port)
 }
 
-// RegisterInCluster registers the kuberesolver builder to grpc
+// RegisterInCluster registers the kuberesolver builder to grpc with kubernetes schema
 func RegisterInCluster() {
 	RegisterInClusterWithSchema(kubernetesSchema)
 }
 
+// RegisterInClusterWithSchema registers the kuberesolver builder to the grpc with custom schema
 func RegisterInClusterWithSchema(schema string) {
 	resolver.Register(NewBuilder(nil, schema))
 }
 
-// NewBuilder creates a kubeBuilder which is used to factory Kuberesolvers.
+// NewBuilder creates a kubeBuilder which is used by grpc resolver.
 func NewBuilder(client K8sClient, schema string) resolver.Builder {
 	return &kubeBuilder{
 		k8sClient: client,
@@ -72,56 +73,55 @@ type kubeBuilder struct {
 	schema    string
 }
 
+func splitServicePortNamespace(hpn string) (service, port, namespace string) {
+	service = hpn
+
+	colon := strings.LastIndexByte(service, ':')
+	if colon != -1 {
+		service, port = service[:colon], service[colon+1:]
+	}
+
+	dot := strings.LastIndexByte(service, '.')
+	if dot != -1 {
+		service, namespace = service[:dot], service[dot+1:]
+	}
+
+	return
+}
+
 func parseResolverTarget(target resolver.Target) (targetInfo, error) {
-	// kubernetes://default/service:port
-	end := target.Endpoint
-	snamespace := target.Authority
-	// kubernetes://service.default:port/
-	if end == "" {
-		end = target.Authority
-		snamespace = "default"
-	}
-	// kubernetes:///service:port
-	// kubernetes://service:port/
-	if snamespace == "" {
-		snamespace = "default"
-	}
-
-	ti := targetInfo{}
-	if end == "" {
-		return targetInfo{}, fmt.Errorf("target(%q) is empty", target)
-	}
-	var name string
-	var port string
-	if strings.LastIndex(end, ":") < 0 {
-		name = end
-		port = ""
-		ti.useFirstPort = true
+	var service, port, namespace string
+	if target.URL.Host == "" {
+		// kubernetes:///service.namespace:port
+		service, port, namespace = splitServicePortNamespace(target.Endpoint())
+	} else if target.URL.Port() == "" && target.Endpoint() != "" {
+		// kubernetes://namespace/service:port
+		service, port, _ = splitServicePortNamespace(target.Endpoint())
+		namespace = target.URL.Hostname()
 	} else {
-		var err error
-		name, port, err = net.SplitHostPort(end)
-		if err != nil {
-			return targetInfo{}, fmt.Errorf("target endpoint='%s' is invalid. grpc target is %#v, err=%v", end, target, err)
-		}
+		// kubernetes://service.namespace:port
+		service, port, namespace = splitServicePortNamespace(target.URL.Host)
 	}
 
-	namesplit := strings.SplitN(name, ".", 2)
-	sname := name
-	if len(namesplit) == 2 {
-		sname = namesplit[0]
-		snamespace = namesplit[1]
+	if service == "" {
+		return targetInfo{}, fmt.Errorf("target %s must specify a service", &target.URL)
 	}
-	ti.serviceName = sname
-	ti.serviceNamespace = snamespace
-	ti.port = port
-	if !ti.useFirstPort {
-		if _, err := strconv.Atoi(ti.port); err != nil {
-			ti.resolveByPortName = true
-		} else {
-			ti.resolveByPortName = false
-		}
+
+	resolveByPortName := false
+	useFirstPort := false
+	if port == "" {
+		useFirstPort = true
+	} else if _, err := strconv.Atoi(port); err != nil {
+		resolveByPortName = true
 	}
-	return ti, nil
+
+	return targetInfo{
+		serviceName:       service,
+		serviceNamespace:  namespace,
+		port:              port,
+		resolveByPortName: resolveByPortName,
+		useFirstPort:      useFirstPort,
+	}, nil
 }
 
 // Build creates a new resolver for the given target.
@@ -139,6 +139,9 @@ func (b *kubeBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts
 	ti, err := parseResolverTarget(target)
 	if err != nil {
 		return nil, err
+	}
+	if ti.serviceNamespace == "" {
+		ti.serviceNamespace = getCurrentNamespaceOrDefault()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &kResolver{
@@ -224,14 +227,10 @@ func (k *kResolver) makeAddresses(e Endpoints) ([]resolver.Address, string) {
 		}
 
 		for _, address := range subset.Addresses {
-			sname := k.target.serviceName
-			if address.TargetRef != nil {
-				sname = address.TargetRef.Name
-			}
 			newAddrs = append(newAddrs, resolver.Address{
 				Type:       resolver.Backend,
 				Addr:       net.JoinHostPort(address.IP, port),
-				ServerName: sname,
+				ServerName: fmt.Sprintf("%s.%s", k.target.serviceName, k.target.serviceNamespace),
 				Metadata:   nil,
 			})
 		}
@@ -264,7 +263,7 @@ func (k *kResolver) resolve() {
 func (k *kResolver) watch() error {
 	defer k.wg.Done()
 	// watch endpoints lists existing endpoints at start
-	sw, err := watchEndpoints(k.k8sClient, k.target.serviceNamespace, k.target.serviceName)
+	sw, err := watchEndpoints(k.ctx, k.k8sClient, k.target.serviceNamespace, k.target.serviceName)
 	if err != nil {
 		return err
 	}
