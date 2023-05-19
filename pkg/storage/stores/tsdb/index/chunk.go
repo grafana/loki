@@ -5,8 +5,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/encoding"
-	"github.com/grafana/loki/pkg/util/math"
 )
 
 // Meta holds information about a chunk of data.
@@ -245,27 +245,8 @@ func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
 }
 
 func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
-	// Assuming entries and bytes are evenly distributed in the chunk,
-	// We will take the proportional number of entries and number of bytes
-	// if (chk.MinTime < from) and/or (chk.MaxTime > through).
-	//
-	//       MinTime  From              Through  MaxTime
-	//       ┌────────┬─────────────────┬────────┐
-	//       │        *      Chunk      *        │
-	//       └────────┴─────────────────┴────────┘
-	//       ▲   A    |        C        |   B    ▲
-	//       └───────────────────────────────────┘
-	//               T = MinTime - MaxTime
-	//
-	// We want to get the percentage of time that fits into C
-	// to use it as a factor to get the amount of bytes and entries
-	// factor = C = (T - (A + B)) / T = (chunkTime - (leadingTime + trailingTime)) / chunkTime
-	chunkTime := chk.MaxTime - chk.MinTime
-	leadingTime := math.Max64(0, from-chk.MinTime)
-	trailingTime := math.Max64(0, chk.MaxTime-through)
-	factor := float32(chunkTime-(leadingTime+trailingTime)) / float32(chunkTime)
-
-	kb := uint32(float32(chk.KB) * factor)
-	entries := uint32(float32(chk.Entries) * factor)
+	factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
+	kb := uint32(float64(chk.KB) * factor)
+	entries := uint32(float64(chk.Entries) * factor)
 	cs.addRaw(1, kb, entries)
 }
