@@ -3684,6 +3684,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>write.extraVolumeClaimTemplates</td>
+			<td>list</td>
+			<td>volumeClaimTemplates to add to stateful set</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
