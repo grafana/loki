@@ -341,4 +341,4 @@ replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-2022100509
 replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 // Pin grpc to previous version: using newer version breaks kuberesolver, but updating kuberesolver needs to be done in weaveworks/common.
-replace google.golang.org/grpc => google.golang.org/grpc v1.52.3
+replace google.golang.org/grpc => google.golang.org/grpc v1.53.0
