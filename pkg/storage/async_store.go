@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -157,7 +158,48 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	panic("unimplemented")
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	matchersStr := syntax.MatchersString(matchers)
+	type f func() (*logproto.LabelVolumeResponse, error)
+	var jobs []f
+
+	if a.shouldQueryIngesters(through, model.Now()) {
+		jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
+			vols, err := a.ingesterQuerier.LabelVolume(ctx, userID, from, through, matchers...)
+			level.Debug(logger).Log(
+				"msg", "queried label volumes",
+				"matchers", matchersStr,
+				"source", "ingesters",
+			)
+			return vols, err
+		})
+	}
+	jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
+		vols, err := a.Store.LabelVolume(ctx, userID, from, through, matchers...)
+		level.Debug(logger).Log(
+			"msg", "queried label volume",
+			"matchers", matchersStr,
+			"source", "store",
+		)
+		return vols, err
+	})
+
+	resps := make([]*logproto.LabelVolumeResponse, len(jobs))
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		len(jobs),
+		func(ctx context.Context, i int) error {
+			resp, err := jobs[i]()
+			resps[i] = resp
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := labelvolume.Merge(resps)
+	return merged, nil
 }
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
