@@ -75,7 +75,7 @@ func mapAllToLineResult(originLine string, analysisRecords []StageAnalysisRecord
 	return LineResult{originLine, stageRecords}
 }
 
-func mapAllToLabelsResponse(labels labels.Labels) []Label {
+func mapAllToLabelsResponse(labels []labels.Label) []Label {
 	result := make([]Label, 0, len(labels))
 	for _, label := range labels {
 		result = append(result, Label{Name: label.Name, Value: label.Value})
@@ -152,8 +152,8 @@ func (s StageAnalysisRecorder) RequiredLabelNames() []string {
 type StageAnalysisRecord struct {
 	Processed    bool
 	LineBefore   string
-	LabelsBefore labels.Labels
+	LabelsBefore []labels.Label
 	LineAfter    string
-	LabelsAfter  labels.Labels
+	LabelsAfter  []labels.Label
 	FilteredOut  bool
 }

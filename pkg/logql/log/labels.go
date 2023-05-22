@@ -1,9 +1,8 @@
 package log
 
 import (
-	"sort"
-
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
@@ -84,7 +83,7 @@ type BaseLabelsBuilder struct {
 type LabelsBuilder struct {
 	base          labels.Labels
 	baseMap       map[string]string
-	buf           labels.Labels
+	buf           []labels.Label
 	currentResult LabelsResult
 	groupedResult LabelsResult
 
@@ -207,10 +206,8 @@ func (b *LabelsBuilder) Get(key string) (string, bool) {
 		}
 	}
 
-	for _, l := range b.base {
-		if l.Name == key {
-			return l.Value, true
-		}
+	if v := b.base.Get(key); v != "" {
+		return v, true
 	}
 	return "", false
 }
@@ -246,13 +243,13 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
-func (b *LabelsBuilder) labels() labels.Labels {
+func (b *LabelsBuilder) labels() []labels.Label {
 	b.buf = b.UnsortedLabels(b.buf)
-	sort.Sort(b.buf)
+	slices.SortFunc(b.buf, func(a, b labels.Label) bool { return a.Name < b.Name })
 	return b.buf
 }
 
-func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
+func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 	if b.err != "" {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	}
@@ -262,38 +259,39 @@ func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
 	return buf
 }
 
-func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels) labels.Labels {
+func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label) []labels.Label {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		if buf == nil {
-			buf = make(labels.Labels, 0, len(b.base)+1)
+			buf = make([]labels.Label, 0, b.base.Len()+1)
 		} else {
 			buf = buf[:0]
 		}
-		buf = append(buf, b.base...)
+		b.base.Range(func(l labels.Label) {
+			buf = append(buf, l)
+		})
 		return b.appendErrors(buf)
 	}
 
 	// In the general case, labels are removed, modified or moved
 	// rather than added.
 	if buf == nil {
-		buf = make(labels.Labels, 0, len(b.base)+len(b.add)+1)
+		buf = make([]labels.Label, 0, b.base.Len()+len(b.add)+1)
 	} else {
 		buf = buf[:0]
 	}
-Outer:
-	for _, l := range b.base {
+	b.base.Range(func(l labels.Label) {
 		for _, n := range b.del {
 			if l.Name == n {
-				continue Outer
+				return
 			}
 		}
 		for _, la := range b.add {
 			if l.Name == la.Name {
-				continue Outer
+				return
 			}
 		}
 		buf = append(buf, l)
-	}
+	})
 	buf = append(buf, b.add...)
 	return b.appendErrors(buf)
 }
@@ -325,7 +323,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	return b.toResult(b.labels())
 }
 
-func (b *BaseLabelsBuilder) toResult(buf labels.Labels) LabelsResult {
+func (b *BaseLabelsBuilder) toResult(buf []labels.Label) LabelsResult {
 	hash := b.hasher.Hash(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
@@ -365,7 +363,7 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 
 func (b *LabelsBuilder) withResult() LabelsResult {
 	if b.buf == nil {
-		b.buf = make(labels.Labels, 0, len(b.groups))
+		b.buf = make([]labels.Label, 0, len(b.groups))
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -382,11 +380,9 @@ Outer:
 				continue Outer
 			}
 		}
-		for _, l := range b.base {
-			if g == l.Name {
-				b.buf = append(b.buf, l)
-				continue Outer
-			}
+		if v := b.base.Get(g); v != "" {
+			b.buf = append(b.buf, labels.Label{Name: g, Value: v})
+			continue Outer
 		}
 	}
 	return b.toResult(b.buf)
@@ -394,33 +390,32 @@ Outer:
 
 func (b *LabelsBuilder) withoutResult() LabelsResult {
 	if b.buf == nil {
-		size := len(b.base) + len(b.add) - len(b.del) - len(b.groups)
+		size := b.base.Len() + len(b.add) - len(b.del) - len(b.groups)
 		if size < 0 {
 			size = 0
 		}
-		b.buf = make(labels.Labels, 0, size)
+		b.buf = make([]labels.Label, 0, size)
 	} else {
 		b.buf = b.buf[:0]
 	}
-Outer:
-	for _, l := range b.base {
+	b.base.Range(func(l labels.Label) {
 		for _, n := range b.del {
 			if l.Name == n {
-				continue Outer
+				return
 			}
 		}
 		for _, la := range b.add {
 			if l.Name == la.Name {
-				continue Outer
+				return
 			}
 		}
 		for _, lg := range b.groups {
 			if l.Name == lg {
-				continue Outer
+				return
 			}
 		}
 		b.buf = append(b.buf, l)
-	}
+	})
 OuterAdd:
 	for _, la := range b.add {
 		for _, lg := range b.groups {
@@ -430,7 +425,7 @@ OuterAdd:
 		}
 		b.buf = append(b.buf, la)
 	}
-	sort.Sort(b.buf)
+	slices.SortFunc(b.buf, func(a, b labels.Label) bool { return a.Name < b.Name })
 	return b.toResult(b.buf)
 }
 
