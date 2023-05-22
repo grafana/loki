@@ -762,3 +762,12 @@ enableServiceLinks: false
 {{- printf "%s" $compactorAddress }}
 {{- end }}
 
+{{/* Determine query-scheduler address */}}
+{{- define "loki.querySchedulerAddress" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- $schedulerAddress := ""}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- printf "%s" $schedulerAddress }}
+{{- end }}

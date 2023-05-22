@@ -16,7 +16,8 @@ import (
 // WriterEventsNotifier implements a notifier that's received by the Manager, to which wal.Watcher can subscribe for
 // writer events.
 type WriterEventsNotifier interface {
-	Subscribe(subscriber wal.WriterEventSubscriber)
+	SubscribeCleanup(subscriber wal.CleanupEventSubscriber)
+	SubscribeWrite(subscriber wal.WriteEventSubscriber)
 }
 
 type Stoppable interface {
@@ -83,11 +84,15 @@ func NewManager(
 		writeTo := newClientWriteTo(client.Chan(), wlog)
 		// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
 		// series cache whenever a segment is deleted.
-		notifier.Subscribe(writeTo)
+		notifier.SubscribeCleanup(writeTo)
 
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog)
+		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
+		// subscribe watcher to wal write events
+		notifier.SubscribeWrite(watcher)
+
 		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
 		watcher.Start()
+
 		watchers = append(watchers, watcher)
 	}
 
