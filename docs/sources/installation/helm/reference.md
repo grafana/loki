@@ -1719,6 +1719,24 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>loki.frontend.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.frontend_worker.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.image.digest</td>
 			<td>string</td>
 			<td>Overrides the image tag with an image digest</td>
