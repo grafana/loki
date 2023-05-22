@@ -1078,7 +1078,7 @@ func TestStats(t *testing.T) {
 	}, resp)
 }
 
-func TestLogVolume(t *testing.T) {
+func TestLabelVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)

@@ -982,7 +982,7 @@ func TestQuerier_LabeleVolumes(t *testing.T) {
 			limits: limits,
 		}
 
-		req := &logproto.LabelVolumeRequest{From: 0, Through: 1000, Matchers: `{foo="bar"}`}
+		req := &logproto.LabelVolumeRequest{From: 0, Through: 1000, Matchers: `{}`}
 		ctx := user.InjectOrgID(context.Background(), "test")
 		resp, err := querier.LabelVolume(ctx, req)
 		require.NoError(t, err)

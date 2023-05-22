@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"sort"
 	"sync"
 
@@ -302,9 +303,8 @@ func (g *Gateway) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeR
 		return nil, err
 	}
 
-	// TODO: Allow any matchers
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil {
+	if err != nil && req.Matchers != labelvolume.MatchAny {
 		return nil, err
 	}
 

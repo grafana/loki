@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"time"
 
@@ -771,9 +772,8 @@ func (q *SingleTenantQuerier) LabelVolume(ctx context.Context, req *logproto.Lab
 		return nil, err
 	}
 
-	//TODO(masslessparticle): allow any matchers
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil {
+	if err != nil && req.Matchers != labelvolume.MatchAny {
 		return nil, err
 	}
 
