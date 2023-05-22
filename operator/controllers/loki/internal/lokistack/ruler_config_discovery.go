@@ -5,14 +5,11 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 const (
@@ -32,6 +29,10 @@ func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace s
 	timeStamp := time.Now().UTC().Format(time.RFC3339)
 	if err := updateAnnotation(ctx, k, ss, annotationRulerConfigDiscoveredAt, timeStamp); err != nil {
 		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
+	}
+
+	if err := updateRulerAnnotation(ctx, k, ss, annotationRulesDiscoveredAt, timeStamp); err != nil {
+		return kverrors.Wrap(err, "failed to update ruler `rulerConfigDiscoveredAt` annotation", "key", key)
 	}
 
 	return nil
@@ -67,30 +68,4 @@ func getLokiStack(ctx context.Context, k k8s.Client, key client.ObjectKey) (*lok
 	}
 
 	return s.DeepCopy(), nil
-}
-
-// RestartOnRulerConfigUpdate restarts the ruler pod after changes done on the rulerConfig
-func RestartRulerOnRulerConfigUpdate(ctx context.Context, k k8s.Client, name, namespace string) error {
-	var rulerPods corev1.PodList
-	err := k.List(ctx, &rulerPods, &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			"app.kubernetes.io/component": manifests.LabelRulerComponent,
-			"app.kubernetes.io/instance":  name,
-		}),
-	})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to list any ruler instances", "req")
-	}
-
-	// restarting ruler by deleting the pod
-	for _, rp := range rulerPods.Items {
-		if err := k.Delete(ctx, &rp, &client.DeleteOptions{}); err != nil {
-			return kverrors.Wrap(err, "failed to update ruler pod", "name", rp.Name, "namespace", rp.Namespace)
-		}
-	}
-
-	return nil
 }
