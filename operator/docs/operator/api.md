@@ -1568,6 +1568,9 @@ for the ruler is missing.</p>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
 </td>
+</tr><tr><td><p>&#34;ReasonQueryTimeoutInvalid&#34;</p></td>
+<td><p>ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.</p>
+</td>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
 </td>
