@@ -97,7 +97,15 @@ func NewRingManager(managerMode RingManagerMode, cfg Config, log log.Logger, reg
 
 	// instantiate ring for both mode modes.
 	ringCfg := rm.cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
-	rm.Ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), rm.log)
+	rm.Ring, err = ring.NewWithStoreClientAndStrategy(
+		ringCfg,
+		ringNameForServer,
+		ringKey,
+		ringStore,
+		ring.NewIgnoreUnhealthyInstancesReplicationStrategy(),
+		prometheus.WrapRegistererWithPrefix("cortex_", registerer),
+		rm.log,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create ring client for scheduler ring manager")
 	}
