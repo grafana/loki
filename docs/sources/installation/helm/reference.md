@@ -3731,7 +3731,7 @@ Hard node and soft zone anti-affinity
 		<tr>
 			<td>write.extraVolumeClaimTemplates</td>
 			<td>list</td>
-			<td>volumeClaimTemplates to add to statefulset</td>
+			<td>volumeClaimTemplates to add to StatefulSet</td>
 			<td><pre lang="json">
 []
 </pre>
