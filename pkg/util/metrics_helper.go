@@ -725,10 +725,11 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser(labelTransformFn MetricLabel
 
 // FromLabelPairsToLabels converts dto.LabelPair into labels.Labels.
 func FromLabelPairsToLabels(pairs []*dto.LabelPair) labels.Labels {
-	builder := labels.NewBuilder(nil)
+	builder := labels.NewScratchBuilder(len(pairs))
 	for _, pair := range pairs {
-		builder.Set(pair.GetName(), pair.GetValue())
+		builder.Add(pair.GetName(), pair.GetValue())
 	}
+	builder.Sort()
 	return builder.Labels()
 }
 
@@ -772,7 +773,7 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 	errs := tsdb_errors.NewMulti()
 	var result []labels.Labels
 	dtoMetric := &dto.Metric{}
-	lbls := labels.NewBuilder(nil)
+	lbls := labels.NewScratchBuilder(0)
 
 nextMetric:
 	for m := range ch {
@@ -783,7 +784,7 @@ nextMetric:
 			continue
 		}
 
-		lbls.Reset(nil)
+		lbls.Reset()
 		for _, lp := range dtoMetric.Label {
 			n := lp.GetName()
 			v := lp.GetValue()
@@ -793,8 +794,9 @@ nextMetric:
 				continue nextMetric
 			}
 
-			lbls.Set(lp.GetName(), lp.GetValue())
+			lbls.Add(lp.GetName(), lp.GetValue())
 		}
+		lbls.Sort()
 		result = append(result, lbls.Labels())
 	}
 
