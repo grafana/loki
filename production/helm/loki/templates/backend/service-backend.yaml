@@ -5,6 +5,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.backendFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.backendLabels" . | nindent 4 }}
     {{- with .Values.backend.serviceLabels }}

@@ -829,6 +829,7 @@ type ReplicationSpec struct {
 	Factor int32 `json:"factor,omitempty"`
 
 	// Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+	// IMPORTANT: Make sure that the replication factor defined is less than or equal to the number of available zones.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
