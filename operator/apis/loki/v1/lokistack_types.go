@@ -913,6 +913,8 @@ const (
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
+	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
+	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
