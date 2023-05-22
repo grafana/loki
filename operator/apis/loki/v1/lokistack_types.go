@@ -561,7 +561,7 @@ type QueryLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default:="1m"
+	// +kubebuilder:default:="3m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
 	QueryTimeout string `json:"queryTimeout,omitempty"`
 }

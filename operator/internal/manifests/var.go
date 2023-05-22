@@ -111,7 +111,9 @@ const (
 )
 
 const (
-	lokiDefaultQueryTimeout    = 1 * time.Minute
+	// lokiDefaultQueryTimeout contains the default query timeout. It should match the value mentioned in the CRD
+	// definition and also the default in the `sizes.go`.
+	lokiDefaultQueryTimeout    = 3 * time.Minute
 	lokiDefaultHTTPIdleTimeout = 30 * time.Second
 	lokiQueryWriteDuration     = 1 * time.Minute
 
