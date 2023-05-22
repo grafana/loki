@@ -151,6 +151,23 @@ func Test_parseS3Log(t *testing.T) {
 			expectedStream: `{__aws_log_type="s3_lb", __aws_s3_lb="source", __aws_s3_lb_owner="123456789"}`,
 			wantErr:        false,
 		},
+		{
+			name: "cloudtraillogs",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/cloudtrail-log-file.json.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"type":       CLOUDTRAIL_LOG_TYPE,
+					"src":        "source",
+					"account_id": "123456789",
+				},
+			},
+			expectedStream: `{__aws_log_type="s3_cloudtrail", __aws_s3_cloudtrail="source", __aws_s3_cloudtrail_owner="123456789"}`,
+			wantErr:        false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,11 +177,9 @@ func Test_parseS3Log(t *testing.T) {
 			if err != nil {
 				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
 			}
-
 			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
 			require.Len(t, tt.args.b.streams, 1)
 			stream, ok := tt.args.b.streams[tt.expectedStream]
 			require.True(t, ok, "batch does not contain stream: %s", tt.expectedStream)
