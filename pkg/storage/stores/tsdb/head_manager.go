@@ -783,6 +783,14 @@ func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through mo
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
+func (t *tenantHeads) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil
+	}
+	return idx.LabelVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+}
+
 // helper only used in building TSDBs
 func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
 	for i, shard := range t.tenants {

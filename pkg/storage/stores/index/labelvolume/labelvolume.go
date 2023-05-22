@@ -3,9 +3,44 @@ package labelvolume
 import (
 	"github.com/grafana/loki/pkg/logproto"
 	"sort"
+	"sync"
 )
 
 const MatchAny = "{}"
+
+// TODO(masslessparticle): Lock striping to reduce contention on this map
+type Accumulator struct {
+	lock    sync.RWMutex
+	volumes map[string]map[string]uint64
+}
+
+func NewAccumulator() *Accumulator {
+	return &Accumulator{
+		volumes: make(map[string]map[string]uint64),
+	}
+}
+
+func (acc *Accumulator) AddVolumes(v map[string]map[string]uint64) {
+	acc.lock.Lock()
+	defer acc.lock.Unlock()
+
+	for name, values := range v {
+		if _, ok := acc.volumes[name]; !ok {
+			acc.volumes[name] = make(map[string]uint64)
+		}
+
+		for value, size := range values {
+			acc.volumes[name][value] += size
+		}
+	}
+}
+
+func (acc *Accumulator) Volumes() *logproto.LabelVolumeResponse {
+	acc.lock.RLock()
+	defer acc.lock.RUnlock()
+
+	return MapToLabelVolumeResponse(acc.volumes)
+}
 
 func Merge(responses []*logproto.LabelVolumeResponse) *logproto.LabelVolumeResponse {
 	mergedVolumes := make(map[string]map[string]uint64)

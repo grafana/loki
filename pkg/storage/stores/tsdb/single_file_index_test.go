@@ -2,6 +2,9 @@ package tsdb
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"math/rand"
 	"sort"
 	"testing"
@@ -12,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -364,4 +366,60 @@ func TestTSDBIndex_Stats(t *testing.T) {
 			require.Equal(t, tc.expected, *acc)
 		})
 	}
+}
+
+func TestTSDBIndex_LabelVolume(t *testing.T) {
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 2,
+					Entries:  20,
+					KB:       20,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 4,
+					Entries:  40,
+					KB:       40,
+				},
+			},
+		},
+	}
+
+	// Create the TSDB index
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series)
+
+	acc := labelvolume.NewAccumulator()
+	err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	require.NoError(t, err)
+	require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+		{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024},
+		{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024},
+		{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
+	}}, acc.Volumes())
 }

@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/logproto"
 	"math"
 	"testing"
 	"time"
@@ -211,6 +212,86 @@ func TestIndexClient_Stats(t *testing.T) {
 			require.Equal(t, tc.expectedNumEntries, stats.Entries)
 			require.Equal(t, tc.expectedNumStreams, stats.Streams)
 			require.Equal(t, tc.expectedNumBytes, stats.Bytes)
+		})
+	}
+}
+
+func TestIndexClient_LabelVolume(t *testing.T) {
+	tempDir := t.TempDir()
+	tableRange := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.PeriodicTableConfig{
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
+		},
+	}
+
+	indexStartToday := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+	indexStartYesterday := indexStartToday.Add(-config.ObjectStorageIndexRequiredPeriod)
+
+	tables := map[string][]*TSDBFile{
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{fizz="buzz"}`),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
+				},
+			}),
+		},
+
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{ping="pong"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+			}),
+		},
+	}
+
+	idx := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, config.TableRange{
+		Start:        0,
+		End:          math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{},
+	})
+
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+
+	for _, tc := range []struct {
+		name          string
+		queryInterval model.Interval
+	}{
+		{
+			name: "request spanning 2 tables",
+			queryInterval: model.Interval{
+				Start: indexStartYesterday,
+				End:   indexStartToday + 1000,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vol, err := indexClient.LabelVolume(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, nil...)
+			require.NoError(t, err)
+
+			require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
+				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+				{Name: "ping", Value: "pong", Volume: 100 * 1024},
+			}}, vol)
 		})
 	}
 }

@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -44,6 +45,11 @@ type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
 	AddChunkStats(s index.ChunkStats)
 	Stats() stats.Stats
+}
+
+type LabelVolumeAccumulator interface {
+	AddVolumes(map[string]map[string]uint64)
+	Volumes() *logproto.LabelVolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -222,8 +228,44 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 }
 
 func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	//TODO(masslessparticle): implement me
-	panic("unimplemented")
+	matchers, shard, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// split the query range to align with table intervals i.e. ObjectStorageIndexRequiredPeriod
+	// This is to avoid explicitly deduping chunks by leveraging the table intervals.
+	// The idea is to make each split process chunks that have start time >= start time of the table interval.
+	// In other terms, table interval that contains start time of the chunk, owns it.
+	// For e.g. if the table interval is 10s, and we have chunks 5-7, 8-12, 11-13.
+	// Query with range 6-15 would be split into 6-10, 10-15.
+	// query1 would process chunks 5-7, 8-12 and query2 would process chunks 11-13.
+	// This check is not applied for first query of the split so that
+	// we do not eliminate any chunks that overlaps the original query intervals but starts at the previous table.
+	// For e.g. if the table interval is 10s, and we have chunks 5-7, 8-13, 14-13.
+	// Query with range 11-12 should process chunk 8-13 even though its start time <= start time of table we will query for index.
+	// The caveat here is that we will overestimate the data we will be processing if the index is not compacted yet
+	// since it could have duplicate chunks when RF > 1
+	var intervals []model.Interval
+	util.ForInterval(config.ObjectStorageIndexRequiredPeriod, from.Time(), through.Time(), true, func(start, end time.Time) {
+		intervals = append(intervals, model.Interval{
+			Start: model.TimeFromUnixNano(start.UnixNano()),
+			End:   model.TimeFromUnixNano(end.UnixNano()),
+		})
+	})
+
+	acc := labelvolume.NewAccumulator()
+	for _, interval := range intervals {
+		if err := c.idx.LabelVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+			return nil, err
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return acc.Volumes(), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
