@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
