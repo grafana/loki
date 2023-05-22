@@ -297,6 +297,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				From:     model.TimeFromUnix(start.Unix()),
 				Through:  model.TimeFromUnix(end.Unix()),
 				Matchers: r.GetMatchers(),
+				Limit:    r.Limit,
 			})
 		})
 	default:

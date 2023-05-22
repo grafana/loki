@@ -414,12 +414,14 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 	tempDir := t.TempDir()
 	tsdbIndex := BuildIndex(t, tempDir, series)
 
-	acc := labelvolume.NewAccumulator()
+	acc := labelvolume.NewAccumulator(10)
 	err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	require.NoError(t, err)
-	require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-		{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024},
-		{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024},
-		{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
-	}}, acc.Volumes())
+	require.Equal(t, &logproto.LabelVolumeResponse{
+		Volumes: []logproto.LabelVolume{
+			{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024},
+			{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
+			{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024},
+		},
+		Limit: 10}, acc.Volumes())
 }

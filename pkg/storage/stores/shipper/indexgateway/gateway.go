@@ -308,7 +308,7 @@ func (g *Gateway) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeR
 		return nil, err
 	}
 
-	return g.indexQuerier.LabelVolume(ctx, instanceID, req.From, req.Through, matchers...)
+	return g.indexQuerier.LabelVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
 }
 
 type failingIndexClient struct{}

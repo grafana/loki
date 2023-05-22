@@ -6,17 +6,22 @@ import (
 	"sync"
 )
 
-const MatchAny = "{}"
+const (
+	MatchAny     = "{}"
+	DefaultLimit = 100
+)
 
 // TODO(masslessparticle): Lock striping to reduce contention on this map
 type Accumulator struct {
 	lock    sync.RWMutex
 	volumes map[string]map[string]uint64
+	limit   int32
 }
 
-func NewAccumulator() *Accumulator {
+func NewAccumulator(limit int32) *Accumulator {
 	return &Accumulator{
 		volumes: make(map[string]map[string]uint64),
+		limit:   limit,
 	}
 }
 
@@ -39,7 +44,7 @@ func (acc *Accumulator) Volumes() *logproto.LabelVolumeResponse {
 	acc.lock.RLock()
 	defer acc.lock.RUnlock()
 
-	return MapToLabelVolumeResponse(acc.volumes)
+	return MapToLabelVolumeResponse(acc.volumes, int(acc.limit))
 }
 
 func Merge(responses []*logproto.LabelVolumeResponse) *logproto.LabelVolumeResponse {
@@ -53,10 +58,15 @@ func Merge(responses []*logproto.LabelVolumeResponse) *logproto.LabelVolumeRespo
 		}
 	}
 
-	return MapToLabelVolumeResponse(mergedVolumes)
+	limit := DefaultLimit
+	if len(responses) > 0 {
+		limit = int(responses[0].Limit)
+	}
+
+	return MapToLabelVolumeResponse(mergedVolumes, limit)
 }
 
-func MapToLabelVolumeResponse(mergedVolumes map[string]map[string]uint64) *logproto.LabelVolumeResponse {
+func MapToLabelVolumeResponse(mergedVolumes map[string]map[string]uint64, limit int) *logproto.LabelVolumeResponse {
 	volumes := make([]logproto.LabelVolume, 0, len(mergedVolumes))
 	for name, v := range mergedVolumes {
 		for value, volume := range v {
@@ -69,12 +79,23 @@ func MapToLabelVolumeResponse(mergedVolumes map[string]map[string]uint64) *logpr
 	}
 
 	sort.Slice(volumes, func(i, j int) bool {
-		if volumes[i].Name == volumes[j].Name {
-			return volumes[i].Value < volumes[j].Value
+		if volumes[i].Volume == volumes[j].Volume {
+			if volumes[i].Name == volumes[j].Name {
+				return volumes[i].Value < volumes[j].Value
+			}
+
+			return volumes[i].Name < volumes[j].Name
 		}
 
-		return volumes[i].Name < volumes[j].Name
+		return volumes[i].Volume > volumes[j].Volume
 	})
 
-	return &logproto.LabelVolumeResponse{Volumes: volumes}
+	if limit < len(volumes) {
+		volumes = volumes[:limit]
+	}
+
+	return &logproto.LabelVolumeResponse{
+		Volumes: volumes,
+		Limit:   int32(limit),
+	}
 }

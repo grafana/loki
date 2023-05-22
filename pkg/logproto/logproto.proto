@@ -391,10 +391,12 @@ message LabelVolumeRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
+  int32 limit = 4;
 }
 
 message LabelVolumeResponse {
   repeated LabelVolume volumes = 1 [(gogoproto.nullable) = false];
+  int32 limit = 2;
 }
 
 message LabelVolume {

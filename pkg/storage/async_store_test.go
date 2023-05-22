@@ -38,7 +38,7 @@ func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return args.Get(0).(*fetcher.Fetcher)
 }
 
-func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := s.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {
@@ -62,7 +62,7 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (i *ingesterQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *ingesterQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {
@@ -317,9 +317,12 @@ func TestLabelVolume(t *testing.T) {
 		}}, nil)
 
 	ingesterQuerier := newIngesterQuerierMock()
-	ingesterQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-		{Name: "bar", Value: "baz", Volume: 38},
-	}}, nil)
+	ingesterQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{
+		Volumes: []logproto.LabelVolume{
+			{Name: "bar", Value: "baz", Volume: 38},
+		},
+		Limit: 10,
+	}, nil)
 
 	asyncStoreCfg := AsyncStoreCfg{
 		IngesterQuerier:      ingesterQuerier,
@@ -327,13 +330,16 @@ func TestLabelVolume(t *testing.T) {
 	}
 	asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-	vol, err := asyncStore.LabelVolume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), nil...)
+	vol, err := asyncStore.LabelVolume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil...)
 	require.NoError(t, err)
 
-	require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-		{Name: "bar", Value: "baz", Volume: 38},
-		{Name: "foo", Value: "bar", Volume: 38},
-	}}, vol)
+	require.Equal(t, &logproto.LabelVolumeResponse{
+		Volumes: []logproto.LabelVolume{
+			{Name: "bar", Value: "baz", Volume: 38},
+			{Name: "foo", Value: "bar", Volume: 38},
+		},
+		Limit: 10,
+	}, vol)
 }
 
 func convertChunksToChunkIDs(s config.SchemaConfig, chunks []chunk.Chunk) []string {

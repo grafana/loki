@@ -246,7 +246,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 
 func TestLabelVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()
-	indexQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+	indexQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
 		{Name: "bar", Value: "baz", Volume: 38},
 	}}, nil)
 
@@ -271,7 +271,7 @@ func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
 }
 
-func (i *indexQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *indexQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {

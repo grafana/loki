@@ -854,12 +854,13 @@ func TestGetStats(t *testing.T) {
 	}, resp)
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestInstance_LabelVolume(t *testing.T) {
 	instance := defaultInstance(t)
 	volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
 		From:     0,
 		Through:  11000,
 		Matchers: "{}",
+		Limit:    3,
 	})
 	require.NoError(t, err)
 
@@ -867,7 +868,6 @@ func TestLabelVolume(t *testing.T) {
 		{Name: "host", Value: "agent", Volume: 160},
 		{Name: "job", Value: "3", Volume: 160},
 		{Name: "log_stream", Value: "dispatcher", Volume: 90},
-		{Name: "log_stream", Value: "worker", Volume: 70},
 	}, volumes.Volumes)
 }
 

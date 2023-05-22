@@ -227,7 +227,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
-func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -254,7 +254,7 @@ func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, thro
 		})
 	})
 
-	acc := labelvolume.NewAccumulator()
+	acc := labelvolume.NewAccumulator(limit)
 	for _, interval := range intervals {
 		if err := c.idx.LabelVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
 			return nil, err

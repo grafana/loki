@@ -24,7 +24,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -157,7 +157,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	return &merged, nil
 }
 
-func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
 	type f func() (*logproto.LabelVolumeResponse, error)
@@ -165,7 +165,7 @@ func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, throu
 
 	if a.shouldQueryIngesters(through, model.Now()) {
 		jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
-			vols, err := a.ingesterQuerier.LabelVolume(ctx, userID, from, through, matchers...)
+			vols, err := a.ingesterQuerier.LabelVolume(ctx, userID, from, through, limit, matchers...)
 			level.Debug(logger).Log(
 				"msg", "queried label volumes",
 				"matchers", matchersStr,
@@ -175,7 +175,7 @@ func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, throu
 		})
 	}
 	jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
-		vols, err := a.Store.LabelVolume(ctx, userID, from, through, matchers...)
+		vols, err := a.Store.LabelVolume(ctx, userID, from, through, limit, matchers...)
 		level.Debug(logger).Log(
 			"msg", "queried label volume",
 			"matchers", matchersStr,

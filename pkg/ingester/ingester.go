@@ -172,7 +172,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1147,7 +1147,7 @@ func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 			return instance.GetLabelVolume(ctx, req)
 		}),
 		f(func() (*logproto.LabelVolumeResponse, error) {
-			return i.store.LabelVolume(ctx, user, req.From, req.Through, matchers...)
+			return i.store.LabelVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
 		}),
 	}
 	resps := make([]*logproto.LabelVolumeResponse, len(jobs))

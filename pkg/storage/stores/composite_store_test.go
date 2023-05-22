@@ -53,7 +53,7 @@ func (m mockStore) Stats(ctx context.Context, userID string, from, through model
 	return nil, nil
 }
 
-func (m mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }
 
@@ -301,7 +301,7 @@ type mockStoreLabelVolume struct {
 	value *logproto.LabelVolumeResponse
 }
 
-func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return m.value, nil
 }
 
@@ -309,15 +309,15 @@ func TestLabelVolume(t *testing.T) {
 	cs := compositeStore{
 		stores: []compositeStoreEntry{
 			{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore(0), &logproto.LabelVolumeResponse{
-				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}},
+				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
 			}}},
 			{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore(1), &logproto.LabelVolumeResponse{
-				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 30}},
+				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 30}}, Limit: 10,
 			}}},
 		},
 	}
 
-	volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, nil)
+	volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, 10, nil)
 	require.NoError(t, err)
 	require.Equal(t, []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 45}}, volumes.Volumes)
 }

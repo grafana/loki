@@ -351,7 +351,7 @@ func (s *testStore) Stats(ctx context.Context, userID string, from, through mode
 	return &stats.Stats{}, nil
 }
 
-func (s *testStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (s *testStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return &logproto.LabelVolumeResponse{}, nil
 }
 

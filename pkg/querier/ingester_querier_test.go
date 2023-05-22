@@ -346,9 +346,12 @@ func TestConvertMatchersToString(t *testing.T) {
 
 func TestIngesterQuerier_LabelVolume(t *testing.T) {
 	t.Run("it gets label volumes from all the ingesters", func(t *testing.T) {
-		ret := &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 38},
-		}}
+		ret := &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 38},
+			},
+			Limit: 10,
+		}
 
 		ingesterClient := newQuerierClientMock()
 		ingesterClient.On("GetLabelVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
@@ -360,7 +363,7 @@ func TestIngesterQuerier_LabelVolume(t *testing.T) {
 			newIngesterClientMockFactory(ingesterClient),
 		)
 
-		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1)
+		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1, 10)
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.LabelVolume{
@@ -379,7 +382,7 @@ func TestIngesterQuerier_LabelVolume(t *testing.T) {
 			newIngesterClientMockFactory(ingesterClient),
 		)
 
-		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1)
+		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1, 10)
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.LabelVolume(nil), volumes.Volumes)

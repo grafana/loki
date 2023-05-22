@@ -119,6 +119,7 @@ var (
 			{Name: "foo", Value: "bar", Volume: 1024},
 			{Name: "bar", Value: "baz", Volume: 3350},
 		},
+		Limit: 10,
 	}
 )
 
@@ -546,6 +547,7 @@ func TestLabelVolumeTripperware(t *testing.T) {
 		Matchers: `{job="varlogs"}`,
 		From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
 		Through:  model.TimeFromUnixNano(testTime.UnixNano()),
+		Limit:    10,
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")

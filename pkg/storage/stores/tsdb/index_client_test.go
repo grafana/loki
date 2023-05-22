@@ -271,27 +271,27 @@ func TestIndexClient_LabelVolume(t *testing.T) {
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
 
-	for _, tc := range []struct {
-		name          string
-		queryInterval model.Interval
-	}{
-		{
-			name: "request spanning 2 tables",
-			queryInterval: model.Interval{
-				Start: indexStartYesterday,
-				End:   indexStartToday + 1000,
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			vol, err := indexClient.LabelVolume(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, nil...)
-			require.NoError(t, err)
+	t.Run("it returns label volumes from the whole index", func(t *testing.T) {
+		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 10, nil...)
+		require.NoError(t, err)
 
-			require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
 				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
 				{Name: "ping", Value: "pong", Volume: 100 * 1024},
-			}}, vol)
-		})
-	}
+			},
+			Limit: 10}, vol)
+	})
+
+	t.Run("it returns largest label from the index", func(t *testing.T) {
+		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 1, nil...)
+		require.NoError(t, err)
+
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+			},
+			Limit: 1}, vol)
+	})
 }

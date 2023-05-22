@@ -793,6 +793,7 @@ func (q *SingleTenantQuerier) LabelVolume(ctx context.Context, req *logproto.Lab
 		userID,
 		req.From,
 		req.Through,
+		req.Limit,
 		matchers...,
 	)
 }

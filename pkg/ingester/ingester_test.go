@@ -469,7 +469,7 @@ func (s *mockStore) Stats(ctx context.Context, userID string, from, through mode
 	}, nil
 }
 
-func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return &logproto.LabelVolumeResponse{
 		Volumes: []logproto.LabelVolume{
 			{"foo", "bar", 38},
@@ -1091,11 +1091,11 @@ func TestLabelVolume(t *testing.T) {
 		From:     0,
 		Through:  10000,
 		Matchers: "{}",
+		Limit:    4,
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, []logproto.LabelVolume{
-		{Name: "foo", Value: "bar", Volume: 38},
 		{Name: "host", Value: "agent", Volume: 160},
 		{Name: "job", Value: "3", Volume: 160},
 		{Name: "log_stream", Value: "dispatcher", Volume: 90},

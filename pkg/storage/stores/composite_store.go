@@ -194,10 +194,10 @@ func (c compositeStore) Stats(ctx context.Context, userID string, from, through 
 	return &res, err
 }
 
-func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	volumes := make([]*logproto.LabelVolumeResponse, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		volume, err := store.LabelVolume(innerCtx, userID, from, through, matchers...)
+		volume, err := store.LabelVolume(innerCtx, userID, from, through, limit, matchers...)
 		volumes = append(volumes, volume)
 		return err
 	})

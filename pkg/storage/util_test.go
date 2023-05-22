@@ -259,7 +259,7 @@ func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m *mockChunkStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }
 

@@ -271,7 +271,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Matchers: req.Query,
 		}, err
 	case LabelVolumeOp:
-		req, err := loghttp.ParseIndexStatsQuery(r)
+		req, err := loghttp.ParseLabelVolumeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -280,6 +280,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
+			Limit:    int32(req.Limit),
 		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
@@ -417,6 +418,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
 			"query": []string{request.GetQuery()},
+			"limit": []string{fmt.Sprintf("%d", request.Limit)},
 		}
 		u := &url.URL{
 			Path:     "/loki/api/v1/index/label_volume",
@@ -742,7 +744,6 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	case *LabelVolumeResponse:
 		headers := responses[0].(*LabelVolumeResponse).Headers
 
-		//TODO(masslessparticle): restrict to the top N
 		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
 		for _, r := range responses {
 			resps = append(resps, r.(*LabelVolumeResponse).Response)

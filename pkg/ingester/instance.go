@@ -645,7 +645,7 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	res := labelvolume.MapToLabelVolumeResponse(volumes)
+	res := labelvolume.MapToLabelVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 

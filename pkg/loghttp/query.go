@@ -3,6 +3,7 @@ package loghttp
 import (
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"time"
 	"unsafe"
@@ -342,4 +343,76 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func ParseLabelVolumeQuery(r *http.Request) (*RangeQuery, error) {
+	// This is mostly copied from `ParseRangeQuery` but the limits
+	// behavior is slightly different.
+	var result RangeQuery
+	var err error
+
+	result.Query = query(r)
+	result.Start, result.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	result.Limit, err = labelVolumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Direction, err = direction(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Step, err = step(r, result.Start, result.End)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Step <= 0 {
+		return nil, errNegativeStep
+	}
+
+	result.Shards = shards(r)
+
+	// For safety, limit the number of returned points per timeseries.
+	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
+	if (result.End.Sub(result.Start) / result.Step) > 11000 {
+		return nil, errStepTooSmall
+	}
+
+	result.Interval, err = interval(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Interval < 0 {
+		return nil, errNegativeInterval
+	}
+
+	return &result, nil
+}
+
+func labelVolumeLimit(r *http.Request) (uint32, error) {
+	l, err := parseInt(r.Form.Get("limit"), labelvolume.DefaultLimit)
+	if err != nil {
+		return 0, err
+	}
+
+	if l == 0 {
+		return labelvolume.DefaultLimit, nil
+	}
+
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+
+	return uint32(l), nil
 }

@@ -481,7 +481,9 @@ func mockLabelValueRequest() *logproto.LabelVolumeRequest {
 func mockLabelValueResponse() *logproto.LabelVolumeResponse {
 	return &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
 		{Name: "foo", Value: "bar", Volume: 38},
-	}}
+	},
+		Limit: 10,
+	}
 }
 
 func removeWhiteSpace(s string) string {
