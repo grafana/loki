@@ -45,7 +45,7 @@ func TestBuildGatewayObjets_RouteWithTimeoutAnnotation(t *testing.T) {
 	got, ok := a[annotationGatewayRouteTimeout]
 	require.True(t, ok)
 
-	routeTimeout := gwWriteTimeout + defaultGatewayRouteWiggleRoom
+	routeTimeout := gwWriteTimeout + gatewayRouteTimeoutExtension
 	want := fmt.Sprintf("%.fs", routeTimeout.Seconds())
 	require.Equal(t, want, got)
 }

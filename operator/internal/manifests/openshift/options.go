@@ -69,7 +69,7 @@ func NewOptions(
 			GatewayName:          gwName,
 			GatewaySvcName:       gwSvcName,
 			GatewaySvcTargetPort: gwPortName,
-			GatewayRouteTimeout:  gwWriteTimeout + defaultGatewayRouteWiggleRoom,
+			GatewayRouteTimeout:  gwWriteTimeout + gatewayRouteTimeoutExtension,
 			Labels:               gwLabels,
 			RulerName:            rulerName,
 		},
