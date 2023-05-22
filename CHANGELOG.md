@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [8067](https://github.com/grafana/loki/pull/9497) **CCOLLOT**: Lambda-Promtail: Add support for AWS CloudTrail log ingestion.
 * [8067](https://github.com/grafana/loki/pull/8067) **DylanGuedes**: Distributor: Add auto-forget unhealthy members support.
 * [9175](https://github.com/grafana/loki/pull/9175) **MichelHollands**: Ingester: update the `prepare_shutdown` endpoint so it supports GET and DELETE and stores the state on disk.
 * [8953](https://github.com/grafana/loki/pull/8953) **dannykopping**: Querier: block queries by hash.
