@@ -469,11 +469,11 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 
 	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
-	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
+	if (labelHash < lastHash && !w.lastSeries.IsEmpty()) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && len(w.lastSeries) != 0 {
+	if ref < w.lastRef && !w.lastSeries.IsEmpty() {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -488,9 +488,9 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 
 	w.buf2.Reset()
 	w.buf2.PutBE64(labelHash)
-	w.buf2.PutUvarint(len(lset))
+	w.buf2.PutUvarint(lset.Len())
 
-	for _, l := range lset {
+	if err := lset.Validate(func(l labels.Label) error {
 		var err error
 		cacheEntry, ok := w.symbolCache[l.Name]
 		nameIndex := cacheEntry.index
@@ -516,6 +516,9 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	w.addChunks(chunks, &w.buf2, &w.buf1, ChunkPageSize)
@@ -525,7 +528,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 
 	w.buf2.PutHash(w.crc32)
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries.CopyFrom(lset)
 	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
@@ -1818,7 +1821,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, builder *labels.ScratchBuilder, chks *[]ChunkMeta) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1830,14 +1833,14 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, builder, chks)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
 	return fprint, nil
 }
 
-func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, ChunkStats, error) {
+func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, builder *labels.ScratchBuilder) (uint64, ChunkStats, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1849,7 +1852,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 		return 0, ChunkStats{}, d.Err()
 	}
 
-	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls)
+	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, builder)
 }
 
 func (r *Reader) Postings(name string, shard *ShardAnnotation, values ...string) (Postings, error) {
@@ -2203,8 +2206,8 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
-	*lbls = (*lbls)[:0]
+func (dec *Decoder) prepSeries(b []byte, builder *labels.ScratchBuilder, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
+	builder.Reset()
 	if chks != nil {
 		*chks = (*chks)[:0]
 	}
@@ -2231,13 +2234,13 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		builder.Add(ln, lv)
 	}
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeries(b, lbls, nil)
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, builder *labels.ScratchBuilder) (uint64, ChunkStats, error) {
+	d, fp, err := dec.prepSeries(b, builder, nil)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2383,16 +2386,16 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, builder *labels.ScratchBuilder, chks *[]ChunkMeta) (uint64, error) {
 
-	d, fprint, err := dec.prepSeries(b, lbls, chks)
+	d, fprint, err := dec.prepSeries(b, builder, chks)
 	if err != nil {
 		return 0, err
 	}
 
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
-		return 0, errors.Wrapf(err, "series %s", lbls.String())
+		return 0, errors.Wrapf(err, "series %s", builder.Labels().String())
 	}
 	return fprint, nil
 

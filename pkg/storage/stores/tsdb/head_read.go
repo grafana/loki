@@ -122,14 +122,14 @@ func (h *headIndexReader) Postings(name string, shard *index.ShardAnnotation, va
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, builder *labels.ScratchBuilder, chks *[]index.ChunkMeta) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
 		h.head.metrics.seriesNotFound.Inc()
 		return 0, storage.ErrNotFound
 	}
-	*lbls = append((*lbls)[:0], s.ls...)
+	builder.Assign(s.ls)
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
@@ -146,14 +146,14 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
-func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, index.ChunkStats, error) {
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, builder *labels.ScratchBuilder) (uint64, index.ChunkStats, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
 		h.head.metrics.seriesNotFound.Inc()
 		return 0, index.ChunkStats{}, storage.ErrNotFound
 	}
-	*lbls = append((*lbls)[:0], s.ls...)
+	builder.Assign(s.ls)
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
@@ -194,9 +194,9 @@ func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, err
 		if memSeries == nil {
 			return nil, storage.ErrNotFound
 		}
-		for _, lbl := range memSeries.ls {
+		memSeries.ls.Range(func(lbl labels.Label) {
 			namesMap[lbl.Name] = struct{}{}
-		}
+		})
 	}
 	names := make([]string, 0, len(namesMap))
 	for name := range namesMap {
