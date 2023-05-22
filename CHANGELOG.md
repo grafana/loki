@@ -34,6 +34,7 @@
 * [9491](https://github.com/grafana/loki/pull/9491) **thschue**: Helm: Make nginx resolver dns name or ip address configurable
 * [8684](https://github.com/grafana/loki/pull/8684) **oleksii-boiko-ua**: Helm: Add hpa templates for read, write and backend components.
 * [9604](https://github.com/grafana/loki/pull/9604) **dannykopping**: Querier: configurable writeback queue bytes size
+* [9491](https://github.com/grafana/loki/pull/9491) **thschue**: Helm: Make nginx resolver dns name or ip address configurable
 
 ##### Fixes
 
