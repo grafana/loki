@@ -678,7 +678,7 @@ write:
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
   extraVolumes: []
-  # -- volumeClaimTemplates to add to statefulset
+  # -- volumeClaimTemplates to add to StatefulSet
   extraVolumeClaimTemplates: []
   # -- Resource requests and limits for the write
   resources: {}
