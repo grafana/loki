@@ -16,7 +16,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.5.4
 
 - [CHANGE] Add extraVolumeClaimTemplates for StatefulSet of the write component.
-- [CHANGE] Add clusterLabelOverride for alert label overrides.
 
 ## 5.5.3
 
@@ -25,6 +24,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.5.2
 
 - [BUGFIX] Use $.Release.Namespace consistently
+- [CHANGE] Add clusterLabelOverride for alert label overrides.
 
 ## 5.5.1
 
