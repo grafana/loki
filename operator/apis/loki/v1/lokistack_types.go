@@ -561,7 +561,7 @@ type QueryLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default:="1m"
+	// +kubebuilder:default:="3m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
 	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
@@ -913,6 +913,8 @@ const (
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
+	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
+	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

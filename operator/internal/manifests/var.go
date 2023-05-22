@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -109,7 +110,20 @@ const (
 	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
 )
 
+const (
+	// lokiDefaultQueryTimeout contains the default query timeout. It should match the value mentioned in the CRD
+	// definition and also the default in the `sizes.go`.
+	lokiDefaultQueryTimeout    = 3 * time.Minute
+	lokiDefaultHTTPIdleTimeout = 30 * time.Second
+	lokiQueryWriteDuration     = 1 * time.Minute
+
+	gatewayReadDuration  = 30 * time.Second
+	gatewayWriteDuration = 2 * time.Minute
+)
+
 var (
+	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
+
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
 	podAntiAffinityComponents = map[string]struct{}{
