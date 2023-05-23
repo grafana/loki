@@ -175,6 +175,9 @@ func (sbc *subBalancerWrapper) gracefulSwitch(builder balancer.Builder) {
 }
 
 func (sbc *subBalancerWrapper) stopBalancer() {
+	if sbc.balancer == nil {
+		return
+	}
 	sbc.balancer.Close()
 	sbc.balancer = nil
 }
@@ -393,13 +396,15 @@ func (bg *BalancerGroup) Remove(id string) {
 	if sbToRemove, ok := bg.idToBalancerConfig[id]; ok {
 		if bg.outgoingStarted {
 			bg.balancerCache.Add(id, sbToRemove, func() {
-				// After timeout, when sub-balancer is removed from cache, need
-				// to close the underlying sub-balancer, and remove all its
-				// subconns.
+				// A sub-balancer evicted from the timeout cache needs to closed
+				// and its subConns need to removed, unconditionally. There is a
+				// possibility that a sub-balancer might be removed (thereby
+				// moving it to the cache) around the same time that the
+				// balancergroup is closed, and by the time we get here the
+				// balancergroup might be closed.  Check for `outgoingStarted ==
+				// true` at that point can lead to a leaked sub-balancer.
 				bg.outgoingMu.Lock()
-				if bg.outgoingStarted {
-					sbToRemove.stopBalancer()
-				}
+				sbToRemove.stopBalancer()
 				bg.outgoingMu.Unlock()
 				bg.cleanupSubConns(sbToRemove)
 			})

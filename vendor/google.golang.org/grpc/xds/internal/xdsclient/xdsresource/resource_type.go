@@ -65,11 +65,8 @@ type ResourceWatcher interface {
 // Type wraps all resource-type specific functionality. Each supported resource
 // type will provide an implementation of this interface.
 type Type interface {
-	// V2TypeURL is the xDS type URL of this resource type for v2 transport.
-	V2TypeURL() string
-
-	// V3TypeURL is the xDS type URL of this resource type for v3 transport.
-	V3TypeURL() string
+	// TypeURL is the xDS type URL of this resource type for v3 transport.
+	TypeURL() string
 
 	// TypeEnum is an enumerated value for this resource type. This can be used
 	// for logging/debugging purposes, as well in cases where the resource type
@@ -135,18 +132,13 @@ type DecodeResult struct {
 // type implementations, which can then embed this struct and get the methods
 // implemented here for free.
 type resourceTypeState struct {
-	v2TypeURL                  string
-	v3TypeURL                  string
+	typeURL                    string
 	typeEnum                   ResourceType
 	allResourcesRequiredInSotW bool
 }
 
-func (r resourceTypeState) V2TypeURL() string {
-	return r.v2TypeURL
-}
-
-func (r resourceTypeState) V3TypeURL() string {
-	return r.v3TypeURL
+func (r resourceTypeState) TypeURL() string {
+	return r.typeURL
 }
 
 func (r resourceTypeState) TypeEnum() ResourceType {

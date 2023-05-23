@@ -88,6 +88,9 @@ loki:
     {{- end}}
 
     memberlist:
+    {{- if .Values.loki.extraMemberlistConfig}}
+    {{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}
+    {{- end }}
       join_members:
         - {{ include "loki.memberlist" . }}
         {{- with .Values.migrate.fromDistributed }}
@@ -204,8 +207,20 @@ loki:
     index_gateway:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.frontend }}
+    frontend:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.frontend_worker }}
+    frontend_worker:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
+  #  Extra memberlist configuration
+  extraMemberlistConfig: {}
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
   tenants: []
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
@@ -297,6 +312,10 @@ loki:
   # --  Optional index gateway configuration
   index_gateway:
     mode: ring
+  frontend:
+    scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
+  frontend_worker:
+    scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false

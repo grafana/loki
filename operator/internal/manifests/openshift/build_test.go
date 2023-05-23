@@ -1,17 +1,20 @@
 package openshift
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 func TestBuildGatewayTenantModeObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc").
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", 1*time.Minute, map[string]string{}, "abc").
 		WithTenantsForMode(lokiv1.OpenshiftLogging, "example.com", map[string]TenantData{})
 
 	objs := BuildGatewayTenantModeObjects(*opts)
@@ -23,7 +26,7 @@ func TestBuildGatewayTenantModeObjects_ClusterRoleRefMatches(t *testing.T) {
 }
 
 func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", 1*time.Minute, map[string]string{}, "abc")
 
 	objs := BuildGatewayObjects(*opts)
 	cr := objs[2].(*rbacv1.Role)
@@ -33,8 +36,23 @@ func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
+func TestBuildGatewayObjets_RouteWithTimeoutAnnotation(t *testing.T) {
+	gwWriteTimeout := 1 * time.Minute
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", gwWriteTimeout, map[string]string{}, "abc")
+
+	objs := BuildGatewayObjects(*opts)
+	a := objs[0].GetAnnotations()
+
+	got, ok := a[annotationGatewayRouteTimeout]
+	require.True(t, ok)
+
+	routeTimeout := gwWriteTimeout + gatewayRouteTimeoutExtension
+	want := fmt.Sprintf("%.fs", routeTimeout.Seconds())
+	require.Equal(t, want, got)
+}
+
 func TestBuildRulerObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions("abc", "ns", "abc", "abc", "abc", map[string]string{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", 1*time.Minute, map[string]string{}, "abc")
 
 	objs := BuildRulerObjects(*opts)
 	sa := objs[1].(*corev1.ServiceAccount)

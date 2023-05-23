@@ -65,7 +65,7 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request, stats []s
 	contentSubtype, validContentType := grpcutil.ContentSubtype(contentType)
 	if !validContentType {
 		msg := fmt.Sprintf("invalid gRPC request content-type %q", contentType)
-		http.Error(w, msg, http.StatusBadRequest)
+		http.Error(w, msg, http.StatusUnsupportedMediaType)
 		return nil, errors.New(msg)
 	}
 	if _, ok := w.(http.Flusher); !ok {
@@ -87,7 +87,7 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request, stats []s
 	if v := r.Header.Get("grpc-timeout"); v != "" {
 		to, err := decodeTimeout(v)
 		if err != nil {
-			msg := fmt.Sprintf("malformed time-out: %v", err)
+			msg := fmt.Sprintf("malformed grpc-timeout: %v", err)
 			http.Error(w, msg, http.StatusBadRequest)
 			return nil, status.Error(codes.Internal, msg)
 		}

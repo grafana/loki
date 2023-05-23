@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/exporter-toolkit/web"
+	"github.com/soheilhy/cmux"
 	"golang.org/x/net/context"
 	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
@@ -59,7 +61,13 @@ type TLSConfig struct {
 
 // Config for a Server
 type Config struct {
-	MetricsNamespace  string `yaml:"-"`
+	MetricsNamespace string `yaml:"-"`
+	// Set to > 1 to add native histograms to requestDuration.
+	// See documentation for NativeHistogramBucketFactor in
+	// https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#HistogramOpts
+	// for details. A generally useful value is 1.1.
+	MetricsNativeHistogramFactor float64 `yaml:"-"`
+
 	HTTPListenNetwork string `yaml:"http_listen_network"`
 	HTTPListenAddress string `yaml:"http_listen_address"`
 	HTTPListenPort    int    `yaml:"http_listen_port"`
@@ -89,6 +97,7 @@ type Config struct {
 	HTTPMiddleware                []middleware.Interface         `yaml:"-"`
 	Router                        *mux.Router                    `yaml:"-"`
 	DoNotAddDefaultHTTPMiddleware bool                           `yaml:"-"`
+	RouteHTTPToGRPC               bool                           `yaml:"-"`
 
 	GPRCServerMaxRecvMsgSize           int           `yaml:"grpc_server_max_recv_msg_size"`
 	GRPCServerMaxSendMsgSize           int           `yaml:"grpc_server_max_send_msg_size"`
@@ -101,13 +110,15 @@ type Config struct {
 	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
 	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
 
-	LogFormat             logging.Format    `yaml:"log_format"`
-	LogLevel              logging.Level     `yaml:"log_level"`
-	Log                   logging.Interface `yaml:"-"`
-	LogSourceIPs          bool              `yaml:"log_source_ips_enabled"`
-	LogSourceIPsHeader    string            `yaml:"log_source_ips_header"`
-	LogSourceIPsRegex     string            `yaml:"log_source_ips_regex"`
-	LogRequestAtInfoLevel bool              `yaml:"log_request_at_info_level_enabled"`
+	LogFormat                    logging.Format    `yaml:"log_format"`
+	LogLevel                     logging.Level     `yaml:"log_level"`
+	Log                          logging.Interface `yaml:"-"`
+	LogSourceIPs                 bool              `yaml:"log_source_ips_enabled"`
+	LogSourceIPsHeader           string            `yaml:"log_source_ips_header"`
+	LogSourceIPsRegex            string            `yaml:"log_source_ips_regex"`
+	LogRequestHeaders            bool              `yaml:"log_request_headers"`
+	LogRequestAtInfoLevel        bool              `yaml:"log_request_at_info_level_enabled"`
+	LogRequestExcludeHeadersList string            `yaml:"log_request_exclude_headers_list"`
 
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
@@ -162,7 +173,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogSourceIPs, "server.log-source-ips-enabled", false, "Optionally log the source IPs.")
 	f.StringVar(&cfg.LogSourceIPsHeader, "server.log-source-ips-header", "", "Header field storing the source IPs. Only used if server.log-source-ips-enabled is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For headers are used")
 	f.StringVar(&cfg.LogSourceIPsRegex, "server.log-source-ips-regex", "", "Regex for matching the source IPs. Only used if server.log-source-ips-enabled is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For headers are used")
-	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level.")
+	f.BoolVar(&cfg.LogRequestHeaders, "server.log-request-headers", false, "Optionally log request headers.")
+	f.StringVar(&cfg.LogRequestExcludeHeadersList, "server.log-request-headers-exclude-list", "", "Comma separated list of headers to exclude from loggin. Only used if server.log-request-headers is true.")
+	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level. Applies to request headers as well if server.log-request-headers is enabled.")
 }
 
 // Server wraps a HTTP and gRPC server, and some common initialization.
@@ -173,6 +186,13 @@ type Server struct {
 	handler      SignalHandler
 	grpcListener net.Listener
 	httpListener net.Listener
+
+	// These fields are used to support grpc over the http server
+	//  if RouteHTTPToGRPC is set. the fields are kept here
+	//  so they can be initialized in New() and started in Run()
+	grpchttpmux        cmux.CMux
+	grpcOnHTTPListener net.Listener
+	GRPCOnHTTPServer   *grpc.Server
 
 	HTTP       *mux.Router
 	HTTPServer *http.Server
@@ -229,6 +249,15 @@ func New(cfg Config) (*Server, error) {
 	tcpConnectionsLimit.WithLabelValues("http").Set(float64(cfg.HTTPConnLimit))
 	if cfg.HTTPConnLimit > 0 {
 		httpListener = netutil.LimitListener(httpListener, cfg.HTTPConnLimit)
+	}
+
+	var grpcOnHTTPListener net.Listener
+	var grpchttpmux cmux.CMux
+	if cfg.RouteHTTPToGRPC {
+		grpchttpmux = cmux.New(httpListener)
+
+		httpListener = grpchttpmux.Match(cmux.HTTP1Fast())
+		grpcOnHTTPListener = grpchttpmux.Match(cmux.HTTP2())
 	}
 
 	network = cfg.GRPCListenNetwork
@@ -289,10 +318,13 @@ func New(cfg Config) (*Server, error) {
 
 	// Prometheus histograms for requests.
 	requestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: cfg.MetricsNamespace,
-		Name:      "request_duration_seconds",
-		Help:      "Time (in seconds) spent serving HTTP requests.",
-		Buckets:   instrument.DefBuckets,
+		Namespace:                       cfg.MetricsNamespace,
+		Name:                            "request_duration_seconds",
+		Help:                            "Time (in seconds) spent serving HTTP requests.",
+		Buckets:                         instrument.DefBuckets,
+		NativeHistogramBucketFactor:     cfg.MetricsNativeHistogramFactor,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route", "status_code", "ws"})
 	reg.MustRegister(requestDuration)
 
@@ -370,6 +402,7 @@ func New(cfg Config) (*Server, error) {
 		grpcOptions = append(grpcOptions, grpc.Creds(grpcCreds))
 	}
 	grpcServer := grpc.NewServer(grpcOptions...)
+	grpcOnHttpServer := grpc.NewServer(grpcOptions...)
 
 	// Setup HTTP server
 	var router *mux.Router
@@ -400,11 +433,7 @@ func New(cfg Config) (*Server, error) {
 			RouteMatcher: router,
 			SourceIPs:    sourceIPs,
 		},
-		middleware.Log{
-			Log:                   log,
-			SourceIPs:             sourceIPs,
-			LogRequestAtInfoLevel: cfg.LogRequestAtInfoLevel,
-		},
+		middleware.NewLogMiddleware(log, cfg.LogRequestHeaders, cfg.LogRequestAtInfoLevel, sourceIPs, strings.Split(cfg.LogRequestExcludeHeadersList, ",")),
 		middleware.Instrument{
 			RouteMatcher:     router,
 			Duration:         requestDuration,
@@ -413,7 +442,7 @@ func New(cfg Config) (*Server, error) {
 			InflightRequests: inflightRequests,
 		},
 	}
-	httpMiddleware := []middleware.Interface{}
+	var httpMiddleware []middleware.Interface
 	if cfg.DoNotAddDefaultHTTPMiddleware {
 		httpMiddleware = cfg.HTTPMiddleware
 	} else {
@@ -436,17 +465,20 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	return &Server{
-		cfg:          cfg,
-		httpListener: httpListener,
-		grpcListener: grpcListener,
-		handler:      handler,
+		cfg:                cfg,
+		httpListener:       httpListener,
+		grpcListener:       grpcListener,
+		grpcOnHTTPListener: grpcOnHTTPListener,
+		handler:            handler,
+		grpchttpmux:        grpchttpmux,
 
-		HTTP:       router,
-		HTTPServer: httpServer,
-		GRPC:       grpcServer,
-		Log:        log,
-		Registerer: reg,
-		Gatherer:   gatherer,
+		HTTP:             router,
+		HTTPServer:       httpServer,
+		GRPC:             grpcServer,
+		GRPCOnHTTPServer: grpcOnHttpServer,
+		Log:              log,
+		Registerer:       reg,
+		Gatherer:         gatherer,
 	}, nil
 }
 
@@ -499,17 +531,35 @@ func (s *Server) Run() error {
 
 	go func() {
 		err := s.GRPC.Serve(s.grpcListener)
-		if err == grpc.ErrServerStopped {
-			err = nil
-		}
-
-		select {
-		case errChan <- err:
-		default:
-		}
+		handleGRPCError(err, errChan)
 	}()
 
+	// grpchttpmux will only be set if grpchttpmux RouteHTTPToGRPC is set
+	if s.grpchttpmux != nil {
+		go func() {
+			err := s.grpchttpmux.Serve()
+			handleGRPCError(err, errChan)
+		}()
+		go func() {
+			err := s.GRPCOnHTTPServer.Serve(s.grpcOnHTTPListener)
+			handleGRPCError(err, errChan)
+		}()
+	}
+
 	return <-errChan
+}
+
+// handleGRPCError consolidates GRPC Server error handling by sending
+// any error to errChan except for grpc.ErrServerStopped which is ignored.
+func handleGRPCError(err error, errChan chan error) {
+	if err == grpc.ErrServerStopped {
+		err = nil
+	}
+
+	select {
+	case errChan <- err:
+	default:
+	}
 }
 
 // HTTPListenAddr exposes `net.Addr` that `Server` is listening to for HTTP connections.
