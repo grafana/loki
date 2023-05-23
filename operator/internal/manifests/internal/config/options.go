@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -30,6 +31,8 @@ type Options struct {
 	EnableRemoteReporting bool
 
 	ObjectStorage storage.Options
+
+	HTTPTimeouts HTTPTimeoutConfig
 
 	Retention RetentionOptions
 
@@ -65,6 +68,13 @@ type GossipRing struct {
 	BindPort int
 	// MembersDiscoveryAddr is required
 	MembersDiscoveryAddr string
+}
+
+// HTTPTimeoutConfig defines the HTTP server config options.
+type HTTPTimeoutConfig struct {
+	IdleTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 }
 
 // Ruler configuration

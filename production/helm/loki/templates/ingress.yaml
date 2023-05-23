@@ -4,6 +4,7 @@ apiVersion: {{ include "loki.ingress.apiVersion" . }}
 kind: Ingress
 metadata:
   name: {{ include "loki.fullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}

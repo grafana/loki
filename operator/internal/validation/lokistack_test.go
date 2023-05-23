@@ -286,6 +286,70 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "valid replication zones",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+	},
+	{
+		desc: "using both replication and replicationFactor",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				ReplicationFactor: 2,
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+						{
+							TopologyKey: "region",
+						},
+						{
+							TopologyKey: "planet",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "replicationFactor"),
+					2,
+					lokiv1.ErrReplicationSpecConflict.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {

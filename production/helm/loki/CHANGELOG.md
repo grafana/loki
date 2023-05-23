@@ -13,6 +13,20 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [CHANGE] Add clusterLabelOverride for alert label overrides.
+
+## 5.5.3
+
+- [BUGFIX] Fix issue in distribution of queries to available read pods by using k8s service for discovering query-scheduler replicas
+
+## 5.5.2
+
+- [BUGFIX] Use $.Release.Namespace consistently
+
+## 5.5.1
+
+- [FEATURE] Added ability to reference images by digest
+
 ## 5.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2
