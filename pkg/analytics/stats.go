@@ -28,7 +28,35 @@ var (
 	statsPrefix   = "github.com/grafana/loki/"
 	targetKey     = "target"
 	editionKey    = "edition"
+
+	createLock sync.RWMutex
 )
+
+func createOrRetrieveExpvar[K any](check func() (*K, error), create func() *K) *K {
+	// check if string exists holding read lock
+	createLock.RLock()
+	s, err := check()
+	createLock.RUnlock()
+	if err != nil {
+		panic(err.Error())
+	}
+	if s != nil {
+		return s
+	}
+
+	// acquire write lock and check again and create if still missing
+	createLock.Lock()
+	defer createLock.Unlock()
+	s, err = check()
+	if err != nil {
+		panic(err.Error())
+	}
+	if s != nil {
+		return s
+	}
+
+	return create()
+}
 
 // Report is the JSON object sent to the stats server
 type Report struct {
@@ -156,40 +184,61 @@ func memstats() interface{} {
 // NewFloat returns a new Float stats object.
 // If a Float stats object with the same name already exists it is returned.
 func NewFloat(name string) *expvar.Float {
-	existing := expvar.Get(statsPrefix + name)
-	if existing != nil {
-		if f, ok := existing.(*expvar.Float); ok {
-			return f
-		}
-		panic(fmt.Sprintf("%v is set to a non-float value", name))
-	}
-	return expvar.NewFloat(statsPrefix + name)
+	return createOrRetrieveExpvar(
+		func() (*expvar.Float, error) { // check
+			existing := expvar.Get(statsPrefix + name)
+			if existing != nil {
+				if f, ok := existing.(*expvar.Float); ok {
+					return f, nil
+				}
+				return nil, fmt.Errorf("%v is set to a non-float value", name)
+			}
+			return nil, nil
+		},
+		func() *expvar.Float { // create
+			return expvar.NewFloat(statsPrefix + name)
+		},
+	)
 }
 
 // NewInt returns a new Int stats object.
 // If an Int stats object object with the same name already exists it is returned.
 func NewInt(name string) *expvar.Int {
-	existing := expvar.Get(statsPrefix + name)
-	if existing != nil {
-		if i, ok := existing.(*expvar.Int); ok {
-			return i
-		}
-		panic(fmt.Sprintf("%v is set to a non-int value", name))
-	}
-	return expvar.NewInt(statsPrefix + name)
+	return createOrRetrieveExpvar(
+		func() (*expvar.Int, error) { // check
+			existing := expvar.Get(statsPrefix + name)
+			if existing != nil {
+				if i, ok := existing.(*expvar.Int); ok {
+					return i, nil
+				}
+				return nil, fmt.Errorf("%v is set to a non-int value", name)
+			}
+			return nil, nil
+		},
+		func() *expvar.Int { // create
+			return expvar.NewInt(statsPrefix + name)
+		},
+	)
 }
 
 // NewString returns a new String stats object.
 // If a String stats object with the same name already exists it is returned.
 func NewString(name string) *expvar.String {
-	existing := expvar.Get(statsPrefix + name)
-	if existing != nil {
-		if s, ok := existing.(*expvar.String); ok {
-			return s
-		}
-		panic(fmt.Sprintf("%v is set to a non-string value", name))
-	}
-	return expvar.NewString(statsPrefix + name)
+	return createOrRetrieveExpvar(
+		func() (*expvar.String, error) { // check
+			existing := expvar.Get(statsPrefix + name)
+			if existing != nil {
+				if s, ok := existing.(*expvar.String); ok {
+					return s, nil
+				}
+				return nil, fmt.Errorf("%v is set to a non-string value", name)
+			}
+			return nil, nil
+		},
+		func() *expvar.String { // create
+			return expvar.NewString(statsPrefix + name)
+		},
+	)
 }
 
 // Target sets the target name. This can be set multiple times.
@@ -225,23 +274,31 @@ type Statistics struct {
 // - stdvar
 // If a Statistics object with the same name already exists it is returned.
 func NewStatistics(name string) *Statistics {
-	s := &Statistics{
-		min:   atomic.NewFloat64(math.Inf(0)),
-		max:   atomic.NewFloat64(math.Inf(-1)),
-		count: atomic.NewInt64(0),
-		avg:   atomic.NewFloat64(0),
-		mean:  atomic.NewFloat64(0),
-		value: atomic.NewFloat64(0),
-	}
-	existing := expvar.Get(statsPrefix + name)
-	if existing != nil {
-		if s, ok := existing.(*Statistics); ok {
+	return createOrRetrieveExpvar(
+		func() (*Statistics, error) { // check
+
+			existing := expvar.Get(statsPrefix + name)
+			if existing != nil {
+				if s, ok := existing.(*Statistics); ok {
+					return s, nil
+				}
+				return nil, fmt.Errorf("%v is set to a non-Statistics value", name)
+			}
+			return nil, nil
+		},
+		func() *Statistics { // create
+			s := &Statistics{
+				min:   atomic.NewFloat64(math.Inf(0)),
+				max:   atomic.NewFloat64(math.Inf(-1)),
+				count: atomic.NewInt64(0),
+				avg:   atomic.NewFloat64(0),
+				mean:  atomic.NewFloat64(0),
+				value: atomic.NewFloat64(0),
+			}
+			expvar.Publish(statsPrefix+name, s)
 			return s
-		}
-		panic(fmt.Sprintf("%v is set to a non-Statistics value", name))
-	}
-	expvar.Publish(statsPrefix+name, s)
-	return s
+		},
+	)
 }
 
 func (s *Statistics) String() string {
@@ -319,20 +376,27 @@ type Counter struct {
 // NewCounter returns a new Counter stats object.
 // If a Counter stats object with the same name already exists it is returned.
 func NewCounter(name string) *Counter {
-	c := &Counter{
-		total:     atomic.NewInt64(0),
-		rate:      atomic.NewFloat64(0),
-		resetTime: time.Now(),
-	}
-	existing := expvar.Get(statsPrefix + name)
-	if existing != nil {
-		if c, ok := existing.(*Counter); ok {
+	return createOrRetrieveExpvar(
+		func() (*Counter, error) { // check
+			existing := expvar.Get(statsPrefix + name)
+			if existing != nil {
+				if c, ok := existing.(*Counter); ok {
+					return c, nil
+				}
+				return nil, fmt.Errorf("%v is set to a non-Counter value", name)
+			}
+			return nil, nil
+		},
+		func() *Counter { // create
+			c := &Counter{
+				total:     atomic.NewInt64(0),
+				rate:      atomic.NewFloat64(0),
+				resetTime: time.Now(),
+			}
+			expvar.Publish(statsPrefix+name, c)
 			return c
-		}
-		panic(fmt.Sprintf("%v is set to a non-Counter value", name))
-	}
-	expvar.Publish(statsPrefix+name, c)
-	return c
+		},
+	)
 }
 
 func (c *Counter) updateRate() {
@@ -371,19 +435,26 @@ type WordCounter struct {
 // The WordCounter object is thread-safe and counts the number of words recorded.
 // If a WordCounter stats object with the same name already exists it is returned.
 func NewWordCounter(name string) *WordCounter {
-	c := &WordCounter{
-		count: atomic.NewInt64(0),
-		words: sync.Map{},
-	}
-	existing := expvar.Get(statsPrefix + name)
-	if existing != nil {
-		if w, ok := existing.(*WordCounter); ok {
-			return w
-		}
-		panic(fmt.Sprintf("%v is set to a non-WordCounter value", name))
-	}
-	expvar.Publish(statsPrefix+name, c)
-	return c
+	return createOrRetrieveExpvar(
+		func() (*WordCounter, error) { // check
+			existing := expvar.Get(statsPrefix + name)
+			if existing != nil {
+				if w, ok := existing.(*WordCounter); ok {
+					return w, nil
+				}
+				return nil, fmt.Errorf("%v is set to a non-WordCounter value", name)
+			}
+			return nil, nil
+		},
+		func() *WordCounter { // create
+			c := &WordCounter{
+				count: atomic.NewInt64(0),
+				words: sync.Map{},
+			}
+			expvar.Publish(statsPrefix+name, c)
+			return c
+		},
+	)
 }
 
 func (w *WordCounter) Add(word string) {
