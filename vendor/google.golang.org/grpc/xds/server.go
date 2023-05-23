@@ -49,7 +49,7 @@ const serverPrefix = "[xds-server %p] "
 
 var (
 	// These new functions will be overridden in unit tests.
-	newXDSClient = func() (xdsclient.XDSClient, error) {
+	newXDSClient = func() (xdsclient.XDSClient, func(), error) {
 		return xdsclient.New()
 	}
 	newGRPCServer = func(opts ...grpc.ServerOption) grpcServer {
@@ -89,8 +89,9 @@ type GRPCServer struct {
 	// clientMu is used only in initXDSClient(), which is called at the
 	// beginning of Serve(), where we have to decide if we have to create a
 	// client or use an existing one.
-	clientMu sync.Mutex
-	xdsC     xdsclient.XDSClient
+	clientMu       sync.Mutex
+	xdsC           xdsclient.XDSClient
+	xdsClientClose func()
 }
 
 // NewGRPCServer creates an xDS-enabled gRPC server using the passed in opts.
@@ -184,16 +185,17 @@ func (s *GRPCServer) initXDSClient() error {
 	newXDSClient := newXDSClient
 	if s.opts.bootstrapContentsForTesting != nil {
 		// Bootstrap file contents may be specified as a server option for tests.
-		newXDSClient = func() (xdsclient.XDSClient, error) {
+		newXDSClient = func() (xdsclient.XDSClient, func(), error) {
 			return xdsclient.NewWithBootstrapContentsForTesting(s.opts.bootstrapContentsForTesting)
 		}
 	}
 
-	client, err := newXDSClient()
+	client, close, err := newXDSClient()
 	if err != nil {
 		return fmt.Errorf("xds: failed to create xds-client: %v", err)
 	}
 	s.xdsC = client
+	s.xdsClientClose = close
 	s.logger.Infof("Created an xdsClient")
 	return nil
 }
@@ -334,7 +336,7 @@ func (s *GRPCServer) Stop() {
 	s.quit.Fire()
 	s.gs.Stop()
 	if s.xdsC != nil {
-		s.xdsC.Close()
+		s.xdsClientClose()
 	}
 }
 
@@ -345,7 +347,7 @@ func (s *GRPCServer) GracefulStop() {
 	s.quit.Fire()
 	s.gs.GracefulStop()
 	if s.xdsC != nil {
-		s.xdsC.Close()
+		s.xdsClientClose()
 	}
 }
 

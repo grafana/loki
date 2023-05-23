@@ -21,8 +21,11 @@ package xdsclient
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc/internal/envconfig"
+	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
@@ -34,7 +37,8 @@ const (
 var (
 	// This is the client returned by New(). It contains one client implementation,
 	// and maintains the refcount.
-	singletonClient = &clientRefCounted{}
+	singletonMu     sync.Mutex
+	singletonClient *clientRefCounted
 
 	// The following functions are no-ops in the actual code, but can be
 	// overridden in tests to give them visibility into certain events.
@@ -45,57 +49,57 @@ var (
 // To override in tests.
 var bootstrapNewConfig = bootstrap.NewConfig
 
-// onceClosingClient is a thin wrapper around clientRefCounted. The Close()
-// method is overridden such that the underlying reference counted client's
-// Close() is called at most once, thereby making Close() idempotent.
-//
-// This is the type which is returned by New() and NewWithConfig(), making it
-// safe for these callers to call Close() any number of times.
-type onceClosingClient struct {
-	XDSClient
+func clientRefCountedClose() {
+	singletonMu.Lock()
+	defer singletonMu.Unlock()
 
-	once sync.Once
+	if singletonClient.decrRef() != 0 {
+		return
+	}
+	singletonClient.clientImpl.close()
+	singletonClientImplCloseHook()
+	singletonClient = nil
 }
 
-func (o *onceClosingClient) Close() {
-	o.once.Do(o.XDSClient.Close)
-}
+func newRefCountedWithConfig(fallbackConfig *bootstrap.Config) (XDSClient, func(), error) {
+	singletonMu.Lock()
+	defer singletonMu.Unlock()
 
-func newRefCountedWithConfig(config *bootstrap.Config) (XDSClient, error) {
-	singletonClient.mu.Lock()
-	defer singletonClient.mu.Unlock()
+	if singletonClient != nil {
+		singletonClient.incrRef()
+		return singletonClient, grpcsync.OnceFunc(clientRefCountedClose), nil
 
-	// If the client implementation was created, increment ref count and return
-	// the client.
-	if singletonClient.clientImpl != nil {
-		singletonClient.refCount++
-		return &onceClosingClient{XDSClient: singletonClient}, nil
 	}
 
-	// If the passed in config is nil, perform bootstrap to read config.
-	if config == nil {
+	// Use fallbackConfig only if bootstrap env vars are unspecified.
+	var config *bootstrap.Config
+	if envconfig.XDSBootstrapFileName == "" && envconfig.XDSBootstrapFileContent == "" {
+		if fallbackConfig == nil {
+			return nil, nil, fmt.Errorf("xds: bootstrap env vars are unspecified and provided fallback config is nil")
+		}
+		config = fallbackConfig
+	} else {
 		var err error
 		config, err = bootstrapNewConfig()
 		if err != nil {
-			return nil, fmt.Errorf("xds: failed to read bootstrap file: %v", err)
+			return nil, nil, fmt.Errorf("xds: failed to read bootstrap file: %v", err)
 		}
 	}
 
 	// Create the new client implementation.
 	c, err := newWithConfig(config, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	singletonClient.clientImpl = c
-	singletonClient.refCount++
+	singletonClient = &clientRefCounted{clientImpl: c, refCount: 1}
 	singletonClientImplCreateHook()
+
 	nodeID := "<unknown>"
 	if node, ok := config.XDSServer.NodeProto.(interface{ GetId() string }); ok {
 		nodeID = node.GetId()
 	}
 	logger.Infof("xDS node ID: %s", nodeID)
-	return &onceClosingClient{XDSClient: singletonClient}, nil
+	return singletonClient, grpcsync.OnceFunc(clientRefCountedClose), nil
 }
 
 // clientRefCounted is ref-counted, and to be shared by the xds resolver and
@@ -103,23 +107,13 @@ func newRefCountedWithConfig(config *bootstrap.Config) (XDSClient, error) {
 type clientRefCounted struct {
 	*clientImpl
 
-	// This mu protects all the fields, including the embedded clientImpl above.
-	mu       sync.Mutex
-	refCount int
+	refCount int32 // accessed atomically
 }
 
-// Close closes the client. It does ref count of the xds client implementation,
-// and closes the gRPC connection to the management server when ref count
-// reaches 0.
-func (c *clientRefCounted) Close() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.refCount--
-	if c.refCount == 0 {
-		c.clientImpl.Close()
-		// Set clientImpl back to nil. So if New() is called after this, a new
-		// implementation will be created.
-		c.clientImpl = nil
-		singletonClientImplCloseHook()
-	}
+func (c *clientRefCounted) incrRef() int32 {
+	return atomic.AddInt32(&c.refCount, 1)
+}
+
+func (c *clientRefCounted) decrRef() int32 {
+	return atomic.AddInt32(&c.refCount, -1)
 }
