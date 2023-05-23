@@ -33,15 +33,6 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// UnmarshalEndpoints processes resources received in an EDS response,
-// validates them, and transforms them into a native struct which contains only
-// fields we are interested in.
-func UnmarshalEndpoints(opts *UnmarshalOptions) (map[string]EndpointsUpdateErrTuple, UpdateMetadata, error) {
-	update := make(map[string]EndpointsUpdateErrTuple)
-	md, err := processAllResources(opts, update)
-	return update, md, err
-}
-
 func unmarshalEndpointsResource(r *anypb.Any, logger *grpclog.PrefixLogger) (string, EndpointsUpdate, error) {
 	r, err := unwrapResource(r)
 	if err != nil {

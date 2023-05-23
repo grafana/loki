@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
@@ -83,19 +84,23 @@ type BasicLifecycler struct {
 	// The current instance state.
 	currState        sync.RWMutex
 	currInstanceDesc *InstanceDesc
+
+	// Whether to keep the instance in the ring or to unregister it on shutdown
+	keepInstanceInTheRingOnShutdown *atomic.Bool
 }
 
 // NewBasicLifecycler makes a new BasicLifecycler.
 func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
 	l := &BasicLifecycler{
-		cfg:       cfg,
-		ringName:  ringName,
-		ringKey:   ringKey,
-		logger:    logger,
-		store:     store,
-		delegate:  delegate,
-		metrics:   NewBasicLifecyclerMetrics(ringName, reg),
-		actorChan: make(chan func()),
+		cfg:                             cfg,
+		ringName:                        ringName,
+		ringKey:                         ringKey,
+		logger:                          logger,
+		store:                           store,
+		delegate:                        delegate,
+		metrics:                         NewBasicLifecyclerMetrics(ringName, reg),
+		actorChan:                       make(chan func()),
+		keepInstanceInTheRingOnShutdown: atomic.NewBool(cfg.KeepInstanceInTheRingOnShutdown),
 	}
 
 	l.metrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -160,6 +165,16 @@ func (l *BasicLifecycler) ChangeState(ctx context.Context, state InstanceState) 
 	return l.run(func() error {
 		return l.changeState(ctx, state)
 	})
+}
+
+// ShouldKeepInstanceInTheRingOnShutdown returns if the instance should be kept in the ring or unregistered on shutdown.
+func (l *BasicLifecycler) ShouldKeepInstanceInTheRingOnShutdown() bool {
+	return l.keepInstanceInTheRingOnShutdown.Load()
+}
+
+// SetKeepInstanceInTheRingOnShutdown enables/disables unregistering on shutdown.
+func (l *BasicLifecycler) SetKeepInstanceInTheRingOnShutdown(enabled bool) {
+	l.keepInstanceInTheRingOnShutdown.Store(enabled)
 }
 
 func (l *BasicLifecycler) starting(ctx context.Context) error {
@@ -232,7 +247,7 @@ heartbeatLoop:
 		}
 	}
 
-	if l.cfg.KeepInstanceInTheRingOnShutdown {
+	if l.ShouldKeepInstanceInTheRingOnShutdown() {
 		level.Info(l.logger).Log("msg", "keeping instance the ring", "ring", l.ringName)
 	} else {
 		// Remove the instance from the ring.
