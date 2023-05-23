@@ -346,7 +346,7 @@ func (q *IngesterQuerier) LabelVolume(ctx context.Context, userID string, from, 
 		casted = append(casted, resp.response.(*logproto.LabelVolumeResponse))
 	}
 
-	merged := labelvolume.Merge(casted)
+	merged := labelvolume.Merge(casted, limit)
 	return merged, nil
 }
 

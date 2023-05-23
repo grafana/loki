@@ -47,8 +47,7 @@ func (acc *Accumulator) Volumes() *logproto.LabelVolumeResponse {
 	return MapToLabelVolumeResponse(acc.volumes, int(acc.limit))
 }
 
-func Merge(responses []*logproto.LabelVolumeResponse) *logproto.LabelVolumeResponse {
-	limit := DefaultLimit
+func Merge(responses []*logproto.LabelVolumeResponse, limit int32) *logproto.LabelVolumeResponse {
 	mergedVolumes := make(map[string]map[string]uint64)
 	for _, res := range responses {
 		if res == nil {
@@ -56,7 +55,6 @@ func Merge(responses []*logproto.LabelVolumeResponse) *logproto.LabelVolumeRespo
 			continue
 		}
 
-		limit = int(res.Limit)
 		for _, v := range res.Volumes {
 			if _, ok := mergedVolumes[v.Name]; !ok {
 				mergedVolumes[v.Name] = make(map[string]uint64)
@@ -65,7 +63,7 @@ func Merge(responses []*logproto.LabelVolumeResponse) *logproto.LabelVolumeRespo
 		}
 	}
 
-	return MapToLabelVolumeResponse(mergedVolumes, limit)
+	return MapToLabelVolumeResponse(mergedVolumes, int(limit))
 }
 
 func MapToLabelVolumeResponse(mergedVolumes map[string]map[string]uint64, limit int) *logproto.LabelVolumeResponse {

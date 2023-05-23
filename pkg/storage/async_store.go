@@ -198,7 +198,7 @@ func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, throu
 		return nil, err
 	}
 
-	merged := labelvolume.Merge(resps)
+	merged := labelvolume.Merge(resps, limit)
 	return merged, nil
 }
 

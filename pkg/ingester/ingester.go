@@ -1165,7 +1165,7 @@ func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	merged := labelvolume.Merge(resps)
+	merged := labelvolume.Merge(resps, req.Limit)
 	return merged, nil
 }
 

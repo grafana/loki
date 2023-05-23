@@ -206,7 +206,7 @@ func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, th
 		return nil, err
 	}
 
-	res := labelvolume.Merge(volumes)
+	res := labelvolume.Merge(volumes, limit)
 	return res, err
 }
 

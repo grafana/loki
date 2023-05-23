@@ -742,7 +742,8 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Headers:  headers,
 		}, nil
 	case *LabelVolumeResponse:
-		headers := responses[0].(*LabelVolumeResponse).Headers
+		resp0 := responses[0].(*LabelVolumeResponse)
+		headers := resp0.Headers
 
 		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
 		for _, r := range responses {
@@ -750,7 +751,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}
 
 		return &LabelVolumeResponse{
-			Response: labelvolume.Merge(resps),
+			Response: labelvolume.Merge(resps, resp0.Response.Limit),
 			Headers:  headers,
 		}, nil
 

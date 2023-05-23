@@ -204,7 +204,7 @@ func (q *MultiTenantQuerier) LabelVolume(ctx context.Context, req *logproto.Labe
 		responses[i] = resp
 	}
 
-	merged := labelvolume.Merge(responses)
+	merged := labelvolume.Merge(responses, req.Limit)
 	return merged, nil
 }
 

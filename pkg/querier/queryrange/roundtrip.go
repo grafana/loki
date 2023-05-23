@@ -267,7 +267,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
+		level.Info(logger).Log("msg", "executing query", "type", "label_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
 
 		return r.labelVolume.RoundTrip(req)
 	default:
