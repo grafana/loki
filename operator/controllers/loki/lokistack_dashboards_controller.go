@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -53,6 +54,8 @@ func (r *LokiStackDasboardsReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to build dashboards manifests", "req", req)
 	}
 
+	// Removes all LokiStack dashboard ConfigMap objects on OpenShift clusters when
+	// the last LokiStack custom resource is deleted.
 	for _, obj := range objs {
 		// Skip objects managed by owner references, e.g. PrometheusRules
 		var skip bool
@@ -69,6 +72,9 @@ func (r *LokiStackDasboardsReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		key := client.ObjectKeyFromObject(obj)
 		if err := r.Delete(ctx, obj, &client.DeleteOptions{}); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
 			return ctrl.Result{}, kverrors.Wrap(err, "failed to delete dashboard", "key", key)
 		}
 	}
@@ -76,7 +82,7 @@ func (r *LokiStackDasboardsReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
+// SetupWithManager sets up the controller with the Manager to only call this controller on deletes.
 func (r *LokiStackDasboardsReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1.LokiStack{}, deletesOnlyPred).
