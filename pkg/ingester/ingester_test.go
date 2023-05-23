@@ -474,6 +474,7 @@ func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, throug
 		Volumes: []logproto.LabelVolume{
 			{"foo", "bar", 38},
 		},
+		Limit: limit,
 	}, nil
 }
 

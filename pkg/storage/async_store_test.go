@@ -312,9 +312,12 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 func TestLabelVolume(t *testing.T) {
 	store := newStoreMock()
 	store.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		&logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 38},
-		}}, nil)
+		&logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 38},
+			},
+			Limit: 10,
+		}, nil)
 
 	ingesterQuerier := newIngesterQuerierMock()
 	ingesterQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{
