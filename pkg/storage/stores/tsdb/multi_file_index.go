@@ -125,6 +125,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 				seen[ref] = struct{}{}
 				res = append(res, ref)
 			}
+			ChunkRefsPool.Put(g)
 		}
 		return res, nil
 	})
@@ -136,9 +137,9 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		func(ctx context.Context, idx Index) error {
 			var err error
 			buf := ChunkRefsPool.Get()
-			defer ChunkRefsPool.Put(buf)
 			buf, err = idx.GetChunkRefs(ctx, userID, from, through, buf, shard, matchers...)
 			if err != nil {
+				ChunkRefsPool.Put(buf)
 				return err
 			}
 			acc.Add(buf)
@@ -156,7 +157,6 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		return nil, err
 	}
 	return merged.([]ChunkRef), nil
-
 }
 
 func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
