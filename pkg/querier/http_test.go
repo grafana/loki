@@ -216,11 +216,12 @@ func TestLabelVolumeHandler(t *testing.T) {
 
 		calls := querier.GetMockedCallsByMethod("LabelVolume")
 		require.Len(t, calls, 1)
-		require.Equal(t, calls[0].Arguments[1], &logproto.LabelVolumeRequest{
+		require.Equal(t, &logproto.LabelVolumeRequest{
 			From:     0,
 			Through:  1000,
 			Matchers: `{foo="bar"}`,
-		})
+			Limit:    100,
+		}, calls[0].Arguments[1])
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[{"name":"foo","value":"bar","volume":38}]}`)
 	})

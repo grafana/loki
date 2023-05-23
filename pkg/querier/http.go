@@ -442,7 +442,7 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 // LabelVolumeHandler queries the index label volumes related to the passed matchers
 func (q *QuerierAPI) LabelVolumeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseIndexStatsQuery(r)
+	rawReq, err := loghttp.ParseLabelVolumeQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -452,6 +452,7 @@ func (q *QuerierAPI) LabelVolumeHandler(w http.ResponseWriter, r *http.Request) 
 		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
 		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
 		Matchers: rawReq.Query,
+		Limit:    int32(rawReq.Limit),
 	}
 
 	resp, err := q.querier.LabelVolume(r.Context(), req)
