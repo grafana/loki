@@ -1110,7 +1110,7 @@ See values.yaml
 		<tr>
 			<td>gateway.nginxConfig.resolver</td>
 			<td>string</td>
-			<td>Allows to set a custom resolver</td>
+			<td>Lets you set a custom resolver</td>
 			<td><pre lang="json">
 null
 </pre>
