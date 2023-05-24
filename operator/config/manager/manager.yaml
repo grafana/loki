@@ -25,8 +25,6 @@ spec:
         ports:
         - containerPort: 8080
           name: metrics
-        securityContext:
-          allowPrivilegeEscalation: false
         livenessProbe:
           httpGet:
             path: /healthz

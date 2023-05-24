@@ -138,9 +138,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext: &corev1.SecurityContext{
-					AllowPrivilegeEscalation: pointer.Bool(false),
-				},
 			},
 		},
 	}

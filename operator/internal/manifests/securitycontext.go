@@ -21,6 +21,7 @@ func configurePodSpecForRestrictedStandard(podSpec *corev1.PodSpec) error {
 
 	containerSecurityContext := corev1.Container{
 		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: pointer.Bool(false),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},

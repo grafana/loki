@@ -81,8 +81,10 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	if err := configureGatewayDeploymentSecurityContext(dpl, opts); err != nil {
-		return nil, err
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&dpl.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
 	}
 
 	return objs, nil
@@ -597,24 +599,5 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	return nil
-}
-
-func configureGatewayDeploymentSecurityContext(d *appsv1.Deployment, opts Options) error {
-	podSpec := d.Spec.Template.Spec
-
-	for i := range podSpec.Containers {
-		podSpec.Containers[i].SecurityContext = &corev1.SecurityContext{
-			AllowPrivilegeEscalation: pointer.Bool(false),
-		}
-	}
-
-	if opts.Gates.RestrictedPodSecurityStandard {
-		if err := configurePodSpecForRestrictedStandard(&podSpec); err != nil {
-			return err
-		}
-	}
-
-	d.Spec.Template.Spec = podSpec
 	return nil
 }

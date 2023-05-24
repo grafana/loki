@@ -790,12 +790,13 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 					}
 
 					for _, c := range spec.Containers {
-						require.NotNil(t, c.SecurityContext)
-						require.False(t, *c.SecurityContext.AllowPrivilegeEscalation)
-
 						if tst.BuildOptions.Gates.RestrictedPodSecurityStandard {
+							require.False(t, *c.SecurityContext.AllowPrivilegeEscalation)
+
 							require.Empty(t, c.SecurityContext.Capabilities.Add)
 							require.Equal(t, c.SecurityContext.Capabilities.Drop, []corev1.Capability{"ALL"})
+						} else {
+							require.Nil(t, c.SecurityContext)
 						}
 					}
 				})

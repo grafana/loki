@@ -134,9 +134,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext: &corev1.SecurityContext{
-					AllowPrivilegeEscalation: pointer.Bool(false),
-				},
 			},
 		},
 	}
