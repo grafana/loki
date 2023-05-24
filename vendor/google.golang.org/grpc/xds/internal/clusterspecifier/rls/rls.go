@@ -102,7 +102,7 @@ func (rls) ParseClusterSpecifierConfig(cfg proto.Message) (clusterspecifier.Bala
 		return nil, fmt.Errorf("RLS LB policy not registered")
 	}
 	if _, err = rlsBB.(balancer.ConfigParser).ParseConfig(rawJSON); err != nil {
-		return nil, fmt.Errorf("rls_csp: validation error from rls lb policy parsing %v", err)
+		return nil, fmt.Errorf("rls_csp: validation error from rls lb policy parsing: %v", err)
 	}
 
 	return clusterspecifier.BalancerConfig{{internal.RLSLoadBalancingPolicyName: lbCfgJSON}}, nil
