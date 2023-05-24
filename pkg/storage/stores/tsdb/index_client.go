@@ -172,6 +172,10 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started IndexClient stats evaluation")
+		defer sp.LogKV("event", "finished IndexClient stats evaluation")
+	}
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err

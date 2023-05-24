@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -276,6 +277,11 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "started TSDBIndex stats evaluation")
+		defer sp.LogKV("event", "finished TSDBIndex stats evaluation")
+	}
+
 	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
