@@ -678,6 +678,8 @@ write:
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
   extraVolumes: []
+  # -- volumeClaimTemplates to add to StatefulSet
+  extraVolumeClaimTemplates: []
   # -- Resource requests and limits for the write
   resources: {}
   # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingester,

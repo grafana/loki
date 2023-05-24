@@ -3729,6 +3729,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>write.extraVolumeClaimTemplates</td>
+			<td>list</td>
+			<td>volumeClaimTemplates to add to StatefulSet</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraVolumeMounts</td>
 			<td>list</td>
 			<td>Volume mounts to add to the write pods</td>

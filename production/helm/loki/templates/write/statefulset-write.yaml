@@ -173,4 +173,7 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+    {{- with .Values.write.extraVolumeClaimTemplates }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 {{- end }}
