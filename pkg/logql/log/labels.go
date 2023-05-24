@@ -43,21 +43,35 @@ func (l labelsResult) Hash() uint64 {
 }
 
 type hasher struct {
-	buf []byte // buffer for computing hash without bytes slice allocation.
+	builder labels.ScratchBuilder
+	lbs     labels.Labels // Overwritten on every operation; do not use without copying.
 }
 
 // newHasher allow to compute hashes for labels by reusing the same buffer.
 func newHasher() *hasher {
 	return &hasher{
-		buf: make([]byte, 0, 1024),
+		builder: labels.NewScratchBuilder(10),
 	}
 }
 
 // Hash hashes the labels
 func (h *hasher) Hash(lbs labels.Labels) uint64 {
-	var hash uint64
-	hash, h.buf = lbs.HashWithoutLabels(h.buf, []string(nil)...)
-	return hash
+	return lbs.Hash()
+}
+
+// HashSlice hashes a slice of labels, consistent with Hash()
+func (h *hasher) HashFromSlice(ls []labels.Label) uint64 {
+	h.builder.Reset()
+	for _, l := range ls {
+		h.builder.Add(l.Name, l.Value)
+	}
+	h.builder.Overwrite(&h.lbs)
+	return h.lbs.Hash()
+}
+
+// Return a usable Labels built from the data passed to HashFromSlice.
+func (h *hasher) Labels() labels.Labels {
+	return h.lbs.Copy()
 }
 
 // BaseLabelsBuilder is a label builder used by pipeline and stages.
@@ -324,11 +338,11 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 }
 
 func (b *BaseLabelsBuilder) toResult(buf []labels.Label) LabelsResult {
-	hash := b.hasher.Hash(buf)
+	hash := b.hasher.HashFromSlice(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
-	res := NewLabelsResult(buf.Copy(), hash)
+	res := NewLabelsResult(b.hasher.Labels(), hash)
 	b.resultCache[hash] = res
 	return res
 }
