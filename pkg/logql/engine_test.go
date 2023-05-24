@@ -332,7 +332,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(5, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by () (rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 0.4, Metric: labels.Labels{}},
@@ -1204,7 +1204,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(5, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by () (rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2171,7 +2171,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `sum(rate({job="foo"} | logfmt | bar > 0  | unwrap bazz [30s]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `sum by () (rate({job="foo"} | logfmt | bar > 0  | unwrap bazz [30s]))`}},
 			},
 			promql.Matrix{
 				promql.Series{

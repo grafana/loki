@@ -15,7 +15,7 @@ func Test_optimizeSampleExpr(t *testing.T) {
 		// noop
 		{`1`, `1`},
 		{`1 + 1`, `2`},
-		{`topk(10,sum by(name)(rate({region="us-east1"}[5m])))`, `topk(10,sum by (name)(rate({region="us-east1"}[5m])))`},
+		{`topk(10,sum by(name)(rate({region="us-east1"}[5m])))`, `topk by ()(10,sum by (name)(rate({region="us-east1"}[5m])))`},
 		{`sum by(name)(rate({region="us-east1"}[5m]))`, `sum by (name)(rate({region="us-east1"}[5m]))`},
 		{`sum by(name)(bytes_over_time({region="us-east1"} | line_format "something else"[5m]))`, `sum by (name)(bytes_over_time({region="us-east1"} | line_format "something else"[5m]))`},
 		{`sum by(name)(rate({region="us-east1"} | json | line_format "something else" |= "something"[5m]))`, `sum by (name)(rate({region="us-east1"} | json | line_format "something else" |= "something"[5m]))`},
