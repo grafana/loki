@@ -251,7 +251,7 @@ func vectorAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	lb := labels.NewBuilder(nil)
+	lb := labels.NewBuilder(labels.EmptyLabels())
 	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
@@ -286,16 +286,9 @@ func vectorAggEvaluator(
 					lb.Del(labels.MetricName)
 					m = lb.Labels()
 				} else {
-					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
-					for _, l := range metric {
-						for _, n := range expr.Grouping.Groups {
-							if l.Name == n {
-								m = append(m, l)
-								break
-							}
-						}
-					}
-					sort.Sort(m)
+					lb.Reset(metric)
+					lb.Keep(expr.Grouping.Groups...)
+					m = lb.Labels()
 				}
 				result[groupingKey] = &groupedAggregation{
 					labels:     m,
@@ -851,15 +844,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		matching := opts.VectorMatching
 		if matching.Card == syntax.CardOneToOne {
 			if matching.On {
-			Outer:
-				for _, l := range lhs {
-					for _, n := range matching.MatchingLabels {
-						if l.Name == n {
-							continue Outer
-						}
-					}
-					lb.Del(l.Name)
-				}
+				lb.Keep(matching.MatchingLabels...)
 			} else {
 				lb.Del(matching.MatchingLabels...)
 			}
@@ -1029,7 +1014,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	selector, err := expr.Selector()
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
 	lm := selector.Matchers()
 	if len(lm) == 0 {

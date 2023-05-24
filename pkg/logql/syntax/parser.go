@@ -3,7 +3,6 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -230,13 +229,10 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 func ParseLabels(lbs string) (labels.Labels, error) {
 	ls, err := promql_parser.ParseMetric(lbs)
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
-	// Sort labels to ensure functionally equivalent
-	// inputs map to the same output
-	sort.Sort(ls)
 
-	// Use the label builder to trim empty label values.
+	// Trim empty label values.
 	// Empty label values are equivalent to absent labels
 	// in Prometheus, but they unfortunately alter the
 	// Hash values created. This can cause problems in Loki
@@ -245,5 +241,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// Therefore we must normalize early in the write path.
 	// See https://github.com/grafana/loki/pull/7355
 	// for more information
-	return labels.NewBuilder(ls).Labels(), nil
+	return ls.WithoutEmpty(), nil
 }
