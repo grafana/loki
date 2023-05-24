@@ -1710,6 +1710,24 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>loki.frontend.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.frontend_worker.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.image.digest</td>
 			<td>string</td>
 			<td>Overrides the image tag with an image digest</td>
@@ -3705,6 +3723,15 @@ Hard node and soft zone anti-affinity
 			<td>write.extraEnvFrom</td>
 			<td>list</td>
 			<td>Environment variables from secrets or configmaps to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraVolumeClaimTemplates</td>
+			<td>list</td>
+			<td>volumeClaimTemplates to add to StatefulSet</td>
 			<td><pre lang="json">
 []
 </pre>

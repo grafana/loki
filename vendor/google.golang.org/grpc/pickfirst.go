@@ -51,7 +51,7 @@ type pickfirstBalancer struct {
 
 func (b *pickfirstBalancer) ResolverError(err error) {
 	if logger.V(2) {
-		logger.Infof("pickfirstBalancer: ResolverError called with error %v", err)
+		logger.Infof("pickfirstBalancer: ResolverError called with error: %v", err)
 	}
 	if b.subConn == nil {
 		b.state = connectivity.TransientFailure

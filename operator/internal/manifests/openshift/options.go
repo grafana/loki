@@ -3,6 +3,7 @@ package openshift
 import (
 	"fmt"
 	"math/rand"
+	"time"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
@@ -41,6 +42,7 @@ type BuildOptions struct {
 	GatewayName                     string
 	GatewaySvcName                  string
 	GatewaySvcTargetPort            string
+	GatewayRouteTimeout             time.Duration
 	RulerName                       string
 	Labels                          map[string]string
 	AlertManagerEnabled             bool
@@ -56,6 +58,7 @@ type TenantData struct {
 func NewOptions(
 	stackName, stackNamespace string,
 	gwName, gwSvcName, gwPortName string,
+	gwWriteTimeout time.Duration,
 	gwLabels map[string]string,
 	rulerName string,
 ) *Options {
@@ -66,6 +69,7 @@ func NewOptions(
 			GatewayName:          gwName,
 			GatewaySvcName:       gwSvcName,
 			GatewaySvcTargetPort: gwPortName,
+			GatewayRouteTimeout:  gwWriteTimeout + gatewayRouteTimeoutExtension,
 			Labels:               gwLabels,
 			RulerName:            rulerName,
 		},

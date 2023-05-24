@@ -1302,6 +1302,21 @@ the component onto it.</p>
 the component onto it.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>podAntiAffinity</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#podantiaffinity-v1-core">
+Kubernetes core/v1.PodAntiAffinity
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+of a component.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -1552,6 +1567,9 @@ for the ruler is missing.</p>
 </td>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
+</td>
+</tr><tr><td><p>&#34;ReasonQueryTimeoutInvalid&#34;</p></td>
+<td><p>ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.</p>
 </td>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
@@ -3329,7 +3347,8 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>Zones defines an array of ZoneSpec that the scheduler will try to satisfy.</p>
+<p>Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+IMPORTANT: Make sure that the replication factor defined is less than or equal to the number of available zones.</p>
 </td>
 </tr>
 </tbody>
