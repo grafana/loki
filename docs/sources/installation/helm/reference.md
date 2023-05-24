@@ -41,6 +41,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>backend.annotations</td>
+			<td>object</td>
+			<td>Annotations for backend StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.autoscaling.behavior</td>
 			<td>object</td>
 			<td>Behavior policies while scaling.</td>
@@ -826,6 +835,15 @@ null
 			<td>Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.annotations</td>
+			<td>object</td>
+			<td>Annotations for gateway deployment</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1690,6 +1708,15 @@ null
 			<td>loki.analytics</td>
 			<td>object</td>
 			<td>Optional analytics configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.annotations</td>
+			<td>object</td>
+			<td>Common annotations for all deployments/StatefulSets</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2853,6 +2880,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>read.annotations</td>
+			<td>object</td>
+			<td>Annotations for read deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.autoscaling.behavior</td>
 			<td>object</td>
 			<td>Behavior policies while scaling.</td>
@@ -3204,6 +3240,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.annotations</td>
+			<td>object</td>
+			<td>Annotations for single binary StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
 			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
@@ -3479,6 +3524,15 @@ null
 			<td>Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.annotations</td>
+			<td>object</td>
+			<td>Annotations for table-manager deployment</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3786,6 +3840,15 @@ null
 			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.annotations</td>
+			<td>object</td>
+			<td>Annotations for write StatefulSet</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

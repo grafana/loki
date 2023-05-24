@@ -5,10 +5,13 @@ metadata:
   name: {{ include "loki.tableManagerFullname" . }}
   labels:
     {{- include "loki.tableManagerLabels" . | nindent 4 }}
-  {{- with .Values.loki.annotations }}
   annotations:
+    {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
+    {{- with .Values.tableManager.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   replicas: 1
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
