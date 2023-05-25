@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
-	
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -50,7 +50,6 @@ var (
 	timestampRegex = regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`)
 )
 
-
 func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	var s3Client *s3.Client
 
@@ -80,21 +79,21 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	switch labels["type"] {
 	case FLOW_LOG_TYPE:
 		skipHeader = true
-		logType = "s3_vpc_flow"	
+		logType = "s3_vpc_flow"
 	case LB_LOG_TYPE:
 		logType = "s3_lb"
-    case CLOUDTRAIL_LOG_TYPE:
+	case CLOUDTRAIL_LOG_TYPE:
 		logType = "s3_cloudtrail"
 	case CLOUDTRAIL_DIGEST_LOG_TYPE:
 		// do not ingest digest files' content
 		return nil
 	}
-	
+
 	ls := model.LabelSet{
 		model.LabelName("__aws_log_type"):                       model.LabelValue(logType),
 		model.LabelName(fmt.Sprintf("__aws_%s", logType)):       model.LabelValue(labels["src"]),
 		model.LabelName(fmt.Sprintf("__aws_%s_owner", logType)): model.LabelValue(labels["account_id"]),
-		}
+	}
 
 	ls = applyExtraLabels(ls)
 
@@ -163,7 +162,6 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 		if exp.MatchString(labels["key"]) {
 			matchingExp = exp
 			matchingType = aws.String(key)
-		} else {
 		}
 	}
 	match := matchingExp.FindStringSubmatch(labels["key"])
