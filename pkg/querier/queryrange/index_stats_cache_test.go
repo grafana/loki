@@ -139,9 +139,12 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 			)
 			require.NoError(t, err)
 
+			statsCacheMiddlewareNowTimeFunc = func() model.Time { return model.Time(testTime.UnixMilli()) }
+			now := statsCacheMiddlewareNowTimeFunc()
+
 			statsReq := &logproto.IndexStatsRequest{
-				From:     model.Now().Add(-1 * time.Hour),
-				Through:  model.Now().Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
+				From:     now.Add(-1 * time.Hour),
+				Through:  now.Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
 				Matchers: `{foo="bar"}`,
 			}
 
