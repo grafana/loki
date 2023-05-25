@@ -20,6 +20,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+const (
+	FLOW_LOG_TYPE              string = "vpcflowlogs"
+	LB_LOG_TYPE                string = "elasticloadbalancing"
+	CLOUDTRAIL_LOG_TYPE        string = "CloudTrail"
+	CLOUDTRAIL_DIGEST_LOG_TYPE string = "CloudTrail-Digest"
+	CLOUDFRONT_LOG_TYPE        string = "cloudfront"
+)
+
 var (
 	// AWS Application Load Balancers
 	// source:  https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html#access-log-file-format
@@ -29,18 +37,20 @@ var (
 	// source: https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs-s3.html#flow-logs-s3-path
 	// format: bucket-and-optional-prefix/AWSLogs/account_id/vpcflowlogs/region/year/month/day/aws_account_id_vpcflowlogs_region_flow_log_id_YYYYMMDDTHHmmZ_hash.log.gz
 	// example: 123456789012_vpcflowlogs_us-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz
-	filenameRegex = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs|CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
-
+	// CloudTrail
+	// source: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-log-file-examples.html#cloudtrail-log-filename-format
+	// example: 111122223333_CloudTrail_us-east-2_20150801T0210Z_Mu0KsOhtH1ar15ZZ.json.gz
+	defaultFilenameRegex    = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
+	cloudtrailFilenameRegex = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
+	filenameRegexes         = map[string]*regexp.Regexp{
+		FLOW_LOG_TYPE:       defaultFilenameRegex,
+		LB_LOG_TYPE:         defaultFilenameRegex,
+		CLOUDTRAIL_LOG_TYPE: cloudtrailFilenameRegex,
+	}
 	// regex that extracts the timestamp (RFC3339) from message log
 	timestampRegex = regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`)
 )
 
-const (
-	FLOW_LOG_TYPE       string = "vpcflowlogs"
-	LB_LOG_TYPE         string = "elasticloadbalancing"
-	CLOUDTRAIL_LOG_TYPE string = "CloudTrail"
-	CLOUDTRAIL_DIGEST_LOG_TYPE string = "CloudTrail-Digest"
-)
 
 func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	var s3Client *s3.Client
@@ -148,13 +158,24 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket"] = record.S3.Bucket.Name
 	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
-	match := filenameRegex.FindStringSubmatch(labels["key"])
-	for i, name := range filenameRegex.SubexpNames() {
+	var matchingExp *regexp.Regexp
+	var matchingType *string
+	for key, exp := range filenameRegexes {
+		if exp.MatchString(labels["key"]) {
+			matchingExp = exp
+			matchingType = aws.String(key)
+		} else {
+		}
+	}
+	match := matchingExp.FindStringSubmatch(labels["key"])
+	for i, name := range matchingExp.SubexpNames() {
 		if i != 0 && name != "" {
 			labels[name] = match[i]
 		}
 	}
-
+	if labels["type"] == "" {
+		labels["type"] = *matchingType
+	}
 	return labels, nil
 }
 

@@ -50,7 +50,7 @@ func Test_getLabels(t *testing.T) {
 				"month":         "01",
 				"region":        "us-east-1",
 				"src":           "my-loadbalancer",
-				"type":          "elasticloadbalancing",
+				"type":          LB_LOG_TYPE,
 				"year":          "2022",
 			},
 			wantErr: false,
@@ -62,7 +62,7 @@ func Test_getLabels(t *testing.T) {
 					AWSRegion: "us-east-1",
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
-							Name: "elb_logs_test",
+							Name: "vpc_logs_test",
 							OwnerIdentity: events.S3UserIdentity{
 								PrincipalID: "test",
 							},
@@ -75,7 +75,7 @@ func Test_getLabels(t *testing.T) {
 			},
 			want: map[string]string{
 				"account_id":    "123456789012",
-				"bucket":        "elb_logs_test",
+				"bucket":        "vpc_logs_test",
 				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
@@ -83,7 +83,40 @@ func Test_getLabels(t *testing.T) {
 				"month":         "01",
 				"region":        "us-east-1",
 				"src":           "fl-1234abcd",
-				"type":          "vpcflowlogs",
+				"type":          FLOW_LOG_TYPE,
+				"year":          "2022",
+			},
+			wantErr: false,
+		},
+		{
+			name: "cloudtrail_logs",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "cloudtrail_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "my-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "cloudtrail_logs_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"day":           "24",
+				"key":           "my-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
+				"month":         "01",
+				"region":        "us-east-1",
+				"src":           "4jhzXFO2Jlvu2b3y",
+				"type":          CLOUDTRAIL_LOG_TYPE,
 				"year":          "2022",
 			},
 			wantErr: false,
