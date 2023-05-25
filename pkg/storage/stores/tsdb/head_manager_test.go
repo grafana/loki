@@ -104,17 +104,19 @@ func Test_TenantHeads_Append(t *testing.T) {
 	}
 	_ = h.Append("fake", ls, ls.Hash(), chks)
 
+	buf := ChunkRefsPool.Get()
+	defer ChunkRefsPool.Put(buf)
+
 	found, err := h.GetChunkRefs(
 		context.Background(),
 		"fake",
 		0,
 		100,
-		nil, nil,
+		buf, nil,
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 	)
 	require.Nil(t, err)
 	require.Equal(t, chunkMetasToChunkRefs("fake", ls.Hash(), chks), found)
-
 }
 
 // Test multitenant reads
@@ -157,20 +159,23 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 
 	}
 
+	buf := ChunkRefsPool.Get()
+	defer ChunkRefsPool.Put(buf)
+
 	// ensure we're only returned the data from the correct tenant
 	for _, tenant := range tenants {
+		buf = buf[:0]
 		found, err := h.GetChunkRefs(
 			context.Background(),
 			tenant.user,
 			0,
 			100,
-			nil, nil,
+			buf, nil,
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 		)
 		require.Nil(t, err)
 		require.Equal(t, chunkMetasToChunkRefs(tenant.user, tenant.ls.Hash(), chks), found)
 	}
-
 }
 
 // test head recover from wal
@@ -247,18 +252,21 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Equal(t, 1, len(grp.wals))
 	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
 
+	buf := ChunkRefsPool.Get()
+	defer ChunkRefsPool.Put(buf)
+
 	for _, c := range cases {
+		buf = buf[:0]
 		refs, err := mgr.GetChunkRefs(
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
-			nil, nil,
+			buf, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
-
 }
 
 // test mgr recover from multiple wals across multiple periods
@@ -323,12 +331,16 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	// Ensure old WAL data is queryable
 	multiIndex := NewMultiIndex(IndexSlice{mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads})
 
+	buf := ChunkRefsPool.Get()
+	defer ChunkRefsPool.Put(buf)
+
 	for _, c := range cases {
+		buf = buf[:0]
 		refs, err := multiIndex.GetChunkRefs(
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
-			nil, nil,
+			buf, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
@@ -359,11 +371,12 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 	// Ensure old + new data is queryable
 	for _, c := range append(cases, newCase) {
+		buf = buf[:0]
 		refs, err := multiIndex.GetChunkRefs(
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
-			nil, nil,
+			buf, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
@@ -536,7 +549,9 @@ func BenchmarkTenantHeads(b *testing.B) {
 					wg.Add(1)
 					go func(r int) {
 						defer wg.Done()
-						var res []ChunkRef
+						res := ChunkRefsPool.Get()
+						defer ChunkRefsPool.Put(res)
+
 						tenant := r % nTenants
 
 						// nolint:ineffassign,staticcheck
