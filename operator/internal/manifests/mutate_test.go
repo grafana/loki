@@ -653,7 +653,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 			},
 			want: &appsv1.StatefulSet{
 				Spec: appsv1.StatefulSetSpec{
-					PodManagementPolicy: appsv1.OrderedReadyPodManagement,
+					PodManagementPolicy: appsv1.ParallelPodManagement,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"test": "test",
@@ -717,7 +717,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 			want: &appsv1.StatefulSet{
 				ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.Now()},
 				Spec: appsv1.StatefulSetSpec{
-					PodManagementPolicy: appsv1.OrderedReadyPodManagement,
+					PodManagementPolicy: appsv1.ParallelPodManagement,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"test": "test",

@@ -147,7 +147,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
+			PodManagementPolicy:  appsv1.ParallelPodManagement,
 			RevisionHistoryLimit: pointer.Int32(10),
 			Replicas:             pointer.Int32(opts.Stack.Template.IndexGateway.Replicas),
 			Selector: &metav1.LabelSelector{
