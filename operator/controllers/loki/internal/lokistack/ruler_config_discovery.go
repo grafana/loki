@@ -31,10 +31,6 @@ func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace s
 		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
 	}
 
-	if err := updateRulerAnnotation(ctx, k, ss, annotationRulesDiscoveredAt, timeStamp); err != nil {
-		return kverrors.Wrap(err, "failed to update ruler `rulerConfigDiscoveredAt` annotation", "key", key)
-	}
-
 	return nil
 }
 

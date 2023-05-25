@@ -3,16 +3,12 @@ package lokistack
 import (
 	"context"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func updateAnnotation(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, key, value string) error {
@@ -77,19 +73,4 @@ func removeAnnotation(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack
 
 		return k.Update(ctx, stack)
 	})
-}
-
-func updateRulerAnnotation(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, key, value string) error {
-	stsKey := client.ObjectKey{Name: manifests.RulerName(stack.Name), Namespace: stack.Namespace}
-	var rulerSts appsv1.StatefulSet
-	if err := k.Get(ctx, stsKey, &rulerSts); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to lookup Statefulset", "name", key)
-	}
-
-	rulerSts.Spec.Template.ObjectMeta.Annotations[key] = value
-
-	return k.Update(ctx, &rulerSts)
 }
