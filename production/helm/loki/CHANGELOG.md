@@ -13,10 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.5.5
+
+- [BUGFIX] Quote tenantId value in logsInstance
+
 ## 5.5.4
 
 - [CHANGE] Add extraVolumeClaimTemplates for StatefulSet of the write component.
-- [CHANGE] Add clusterLabelOverride for alert label overrides.
 
 ## 5.5.3
 
@@ -25,6 +28,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.5.2
 
 - [BUGFIX] Use $.Release.Namespace consistently
+- [CHANGE] Add clusterLabelOverride for alert label overrides.
 
 ## 5.5.1
 
