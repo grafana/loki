@@ -25,7 +25,6 @@ const (
 	LB_LOG_TYPE                string = "elasticloadbalancing"
 	CLOUDTRAIL_LOG_TYPE        string = "CloudTrail"
 	CLOUDTRAIL_DIGEST_LOG_TYPE string = "CloudTrail-Digest"
-	CLOUDFRONT_LOG_TYPE        string = "cloudfront"
 )
 
 var (
