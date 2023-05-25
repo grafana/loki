@@ -30,6 +30,45 @@ type ResourceRequirements struct {
 }
 
 // ResourceRequirementsTable defines the default resource requests and limits for each size
+//
+// # LokiStack Sizes per Type
+//
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	| Type           | Component      | Total CPU | Total Memory | Total Storage |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	| 1x.extra-small | Compactor      |     1000m |          1Gi |          10Gi |
+//	|                | Distributor    |     2000m |          1Gi |               |
+//	|                | Gateway        |      200m |        0.5Gi |               |
+//	|                | IndexGateway   |     1000m |          2Gi |         100Gi |
+//	|                | Ingester       |     2000m |          2Gi |  300Gi + 20Gi |
+//	|                | Querier        |     2000m |          6Gi |               |
+//	|                | QueryFrontend  |      400m |          1Gi |               |
+//	|                | Ruler          |     2000m |          4Gi |          20Gi |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	|                | Total:         |      10.6 |       23.5Gi |         450Gi |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	| 1x.small       | Compactor      |     2000m |          4Gi |          10Gi |
+//	|                | Distributor    |     4000m |          4Gi |               |
+//	|                | Gateway        |     2000m |          2Gi |               |
+//	|                | IndexGateway   |     2000m |          4Gi |         100Gi |
+//	|                | Ingester       |     8000m |         40Gi |  300Gi + 20Gi |
+//	|                | Querier        |     8000m |          8Gi |               |
+//	|                | QueryFrontend  |     8000m |          5Gi |               |
+//	|                | Ruler          |     8000m |         16Gi |          20Gi |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	|                | Total:         |        42 |         83Gi |         450Gi |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	| 1x.medium      | Compactor      |     2000m |          4Gi |          10Gi |
+//	|                | Distributor    |     4000m |          4Gi |               |
+//	|                | Gateway        |     2000m |          2Gi |               |
+//	|                | IndexGateway   |     2000m |          4Gi |         100Gi |
+//	|                | Ingester       |    18000m |         60Gi |  450Gi + 30Gi |
+//	|                | Querier        |    18000m |         30Gi |               |
+//	|                | QueryFrontend  |     8000m |          5Gi |               |
+//	|                | Ruler          |    16000m |         32Gi |          20Gi |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
+//	|                | Total:         |        70 |        141Gi |         610Gi |
+//	| -------------- | -------------- | --------- | ------------ | ------------- |
 var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 	lokiv1.SizeOneXDemo: {
 		Ruler: ResourceRequirements{
