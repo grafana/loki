@@ -664,7 +664,7 @@ func BenchmarkReorderedPipeline(b *testing.B) {
 	p, err := l.Pipeline()
 	require.NoError(b, err)
 
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
