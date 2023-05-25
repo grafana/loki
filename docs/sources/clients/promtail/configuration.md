@@ -356,7 +356,7 @@ is restarted to allow it to continue from where it left off.
 ## scrape_configs
 
 The `scrape_configs` block configures how Promtail can scrape logs from a series
-of targets using a specified discovery method. Promtail uses the same [Prometheus scrape_configs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config). This means if you already own a Prometheus instance, the config will be very similar and easy to grasp:
+of targets using a specified discovery method. Promtail uses the same [Prometheus scrape_configs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config). This means if you already own a Prometheus instance, the config will be very similar:
 
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
