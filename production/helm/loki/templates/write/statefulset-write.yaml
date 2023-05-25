@@ -9,9 +9,10 @@ metadata:
     {{- include "loki.writeLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
 spec:
+{{- if not .Values.write.autoscaling.enabled }}
   replicas: {{ .Values.write.replicas }}
-
-  podManagementPolicy: Parallel
+{{- end }}
+  podManagementPolicy: OrderedReady
   updateStrategy:
     rollingUpdate:
       partition: 0
@@ -101,9 +102,15 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
-          {{- with .Values.write.lifecycle }}
+          {{- if .Values.write.lifecycle }}
           lifecycle:
-            {{- toYaml . | nindent 12 }}
+            {{- toYaml .Values.write.lifecycle | nindent 12 }}
+          {{- else if .Values.write.autoscaling.enabled }}
+          lifecycle:
+            preStop:
+              httpGet:
+                path: "/ingester/flush_shutdown"
+                port: http-metrics
           {{- end }}
           volumeMounts:
             - name: config

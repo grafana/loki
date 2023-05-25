@@ -10,7 +10,9 @@ metadata:
     {{- include "loki.backendLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
 spec:
+{{- if not .Values.backend.autoscaling.enabled }}
   replicas: {{ .Values.backend.replicas }}
+{{- end }}
   podManagementPolicy: Parallel
   updateStrategy:
     rollingUpdate:
