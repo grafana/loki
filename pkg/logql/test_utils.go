@@ -240,24 +240,23 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
 func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (streams []logproto.Stream) {
+	b := labels.NewScratchBuilder(len(labelNames) + 1)
 	for i := 0; i < nStreams; i++ {
 		// labels
+		b.Reset()
 		stream := logproto.Stream{}
-		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
+		b.Add("index", fmt.Sprintf("%d", i))
+		// I needed a way to hash something to uint64
+		// in order to get some form of random label distribution
+		shard := b.Labels().Hash() % uint64(nShards)
 
 		for _, lName := range labelNames {
-			// I needed a way to hash something to uint64
-			// in order to get some form of random label distribution
-			shard := append(ls, labels.Label{
-				Name:  lName,
-				Value: fmt.Sprintf("%d", i),
-			}).Hash() % uint64(nShards)
-
-			ls = append(ls, labels.Label{
-				Name:  lName,
-				Value: fmt.Sprintf("%d", shard),
-			})
+			b.Add(lName, fmt.Sprintf("%d", shard))
+			shard = b.Labels().Hash() % uint64(nShards)
 		}
+		b.Sort()
+		ls := b.Labels()
+
 		for j := 0; j <= nEntries; j++ {
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Unix(0, int64(j*int(time.Second))),
