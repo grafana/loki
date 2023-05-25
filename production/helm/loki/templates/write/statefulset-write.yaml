@@ -12,7 +12,7 @@ spec:
 {{- if not .Values.write.autoscaling.enabled }}
   replicas: {{ .Values.write.replicas }}
 {{- end }}
-  podManagementPolicy: OrderedReady
+  podManagementPolicy: Parallel
   updateStrategy:
     rollingUpdate:
       partition: 0
