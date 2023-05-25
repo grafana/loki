@@ -151,7 +151,7 @@ const (
 )
 
 func BenchmarkEncodeLabelsJson(b *testing.B) {
-	decoded := &labels.Labels{}
+	var decoded labels.Labels
 	lbs := labels.FromMap(map[string]string{
 		"foo":      "bar",
 		"fuzz":     "buzz",
@@ -169,7 +169,7 @@ func BenchmarkEncodeLabelsJson(b *testing.B) {
 		if err != nil {
 			panic(err)
 		}
-		err = json.Unmarshal(data, decoded)
+		err = json.Unmarshal(data, &decoded)
 		if err != nil {
 			panic(err)
 		}
