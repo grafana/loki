@@ -1010,7 +1010,7 @@ func labelReplaceEvaluator(
 
 // This is to replace missing timeseries during absent_over_time aggregation.
 func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
-	m := labels.Labels{}
+	m := labels.EmptyLabels()
 
 	selector, err := expr.Selector()
 	if err != nil {

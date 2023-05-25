@@ -472,7 +472,7 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 		return promql.Vector{promql.Sample{
 			T:      q.params.Start().UnixMilli(),
 			F:      value,
-			Metric: labels.Labels{},
+			Metric: labels.EmptyLabels(),
 		}}, nil
 	}
 
