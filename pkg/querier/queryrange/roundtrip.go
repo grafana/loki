@@ -742,6 +742,7 @@ func NewIndexStatsTripperware(
 	if cfg.CacheIndexStatsResults {
 		var err error
 		cacheMiddleware, err = NewIndexStatsCacheMiddleware(
+			cfg.StatsCacheConfig,
 			log,
 			limits,
 			codec,

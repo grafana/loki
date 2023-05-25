@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -17,22 +18,26 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-func TestIndexStatsCache(t *testing.T) {
-	cfg := queryrangebase.ResultsCacheConfig{
+var cfg = IndexStatsCacheConfig{
+	ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 		CacheConfig: cache.Config{
 			Cache: cache.NewMockCache(),
 		},
-	}
+	},
+}
+
+func TestIndexStatsCache(t *testing.T) {
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
+		cfg,
 		log.NewNopLogger(),
 		WithSplitByLimits(fakeLimits{}, 24*time.Hour),
 		LokiCodec,
 		c,
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r queryrangebase.Request) int {
+		func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 			return 1
 		},
 		false,
@@ -57,29 +62,26 @@ func TestIndexStatsCache(t *testing.T) {
 		},
 	}
 
-	var calls int
-	rc := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		calls++
-		return statsResp, nil
-	}))
+	calls, statsHandler := indexStatsResultHandler(statsResp)
+	rc := cacheMiddleware.Wrap(statsHandler)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
 	resp, err := rc.Do(ctx, statsReq)
 	require.NoError(t, err)
-	require.Equal(t, 1, calls)
+	require.Equal(t, 1, *calls)
 	require.Equal(t, statsResp, resp)
 
 	// Doing same request again shouldn't change anything.
-	calls = 0
+	*calls = 0
 	resp, err = rc.Do(ctx, statsReq)
 	require.NoError(t, err)
-	require.Equal(t, 0, calls)
+	require.Equal(t, 0, *calls)
 	require.Equal(t, statsResp, resp)
 
 	// Doing a request with new start later than the previous query and end time later than the previous one,
 	// should reuse part of the previous request and issue a new request for the remaining time till end.
 	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
-	calls = 0
+	*calls = 0
 	req := statsReq.WithStartEnd(statsReq.GetStart()+(15*time.Minute).Milliseconds(), statsReq.GetEnd()+(15*time.Minute).Milliseconds())
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
@@ -91,6 +93,90 @@ func TestIndexStatsCache(t *testing.T) {
 	}
 	resp, err = rc.Do(ctx, req)
 	require.NoError(t, err)
-	require.Equal(t, 1, calls)
+	require.Equal(t, 1, *calls)
 	require.Equal(t, expectedStats, resp)
+}
+
+func TestIndexStatsCache_RecentData(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		doNotCacheRequestWithin time.Duration
+		expectedCalls           int
+	}{
+		{
+			name:                    "DoNotCacheRequestWithin disabled",
+			doNotCacheRequestWithin: 0,
+			expectedCalls:           0,
+		},
+		{
+			name:                    "DoNotCacheRequestWithin enabled",
+			doNotCacheRequestWithin: 30 * time.Minute,
+			expectedCalls:           1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+			defer c.Stop()
+			require.NoError(t, err)
+
+			statsCacheCfg := cfg
+			statsCacheCfg.DoNotCacheRequestWithin = tc.doNotCacheRequestWithin
+
+			cacheMiddleware, err := NewIndexStatsCacheMiddleware(
+				statsCacheCfg,
+				log.NewNopLogger(),
+				WithSplitByLimits(fakeLimits{}, 24*time.Hour),
+				LokiCodec,
+				c,
+				nil,
+				nil,
+				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
+					return 1
+				},
+				false,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			statsReq := &logproto.IndexStatsRequest{
+				From:     model.Now().Add(-1 * time.Hour),
+				Through:  model.Now().Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
+				Matchers: `{foo="bar"}`,
+			}
+
+			statsResp := &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
+					Streams: 1,
+					Chunks:  2,
+					Bytes:   1 << 10,
+					Entries: 10,
+				},
+			}
+
+			calls, statsHandler := indexStatsResultHandler(statsResp)
+			rc := cacheMiddleware.Wrap(statsHandler)
+
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			resp, err := rc.Do(ctx, statsReq)
+			require.NoError(t, err)
+			require.Equal(t, 1, *calls)
+			require.Equal(t, statsResp, resp)
+
+			// Doing same request again
+			*calls = 0
+			resp, err = rc.Do(ctx, statsReq)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedCalls, *calls)
+			require.Equal(t, statsResp, resp)
+		})
+	}
+}
+
+func indexStatsResultHandler(v *IndexStatsResponse) (*int, queryrangebase.Handler) {
+	calls := 0
+	return &calls, queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		calls++
+		return v, nil
+	})
 }
