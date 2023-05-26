@@ -60,8 +60,10 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 
 // NewCompactorStatefulSet creates a statefulset object for a compactor.
 func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
+	l := ComponentLabels(LabelCompactorComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelCompactorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Compactor),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -129,8 +131,6 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.Compactor.NodeSelector
 	}
 
-	l := ComponentLabels(LabelCompactorComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",

@@ -349,7 +349,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in:  `rate({ foo = "bar" }[5minutes])`,
-			err: logqlmodel.NewParseError(`not a valid duration string: "5minutes"`, 0, 21),
+			err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 		},
 		{
 			in:  `label_replace(rate({ foo = "bar" }[5m]),"")`,
@@ -3351,6 +3351,10 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
+		},
+		{
+			in:  `count without (rate({namespace="apps"}[15s]))`,
+			err: logqlmodel.NewParseError("syntax error: unexpected RATE, expecting IDENTIFIER or )", 1, 16),
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

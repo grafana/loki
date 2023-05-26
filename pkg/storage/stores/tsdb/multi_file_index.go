@@ -110,11 +110,6 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	acc := newResultAccumulator(func(xs []interface{}) (interface{}, error) {
-		if res == nil {
-			res = ChunkRefsPool.Get()
-		}
-		res = res[:0]
-
 		// keep track of duplicates
 		seen := make(map[ChunkRef]struct{})
 
@@ -131,9 +126,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 				res = append(res, ref)
 			}
 			ChunkRefsPool.Put(g)
-
 		}
-
 		return res, nil
 	})
 
@@ -142,11 +135,14 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+			var err error
+			buf := ChunkRefsPool.Get()
+			buf, err = idx.GetChunkRefs(ctx, userID, from, through, buf, shard, matchers...)
 			if err != nil {
+				ChunkRefsPool.Put(buf)
 				return err
 			}
-			acc.Add(got)
+			acc.Add(buf)
 			return nil
 		},
 	); err != nil {
@@ -161,7 +157,6 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		return nil, err
 	}
 	return merged.([]ChunkRef), nil
-
 }
 
 func (i *MultiIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {

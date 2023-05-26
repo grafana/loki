@@ -51,6 +51,11 @@ func newErrorInterceptor(w http.ResponseWriter, code int) *errorInterceptor {
 	return &i
 }
 
+// Unwrap method is used by http.ResponseController to get access to original http.ResponseWriter.
+func (i *errorInterceptor) Unwrap() http.ResponseWriter {
+	return i.originalWriter
+}
+
 // Header implements http.ResponseWriter
 func (i *errorInterceptor) Header() http.Header {
 	return i.headers

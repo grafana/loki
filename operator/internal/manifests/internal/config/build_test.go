@@ -2,12 +2,14 @@ package config
 
 import (
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"k8s.io/utils/pointer"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/stretchr/testify/require"
-	"k8s.io/utils/pointer"
 )
 
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
@@ -151,8 +153,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -174,7 +177,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -244,6 +249,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -392,8 +402,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -420,7 +431,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -515,6 +528,11 @@ overrides:
 				},
 			},
 		},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -525,7 +543,9 @@ overrides:
 func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -792,8 +812,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -815,7 +836,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -932,6 +955,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -1134,8 +1162,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -1157,7 +1186,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1275,6 +1306,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -1490,8 +1526,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -1513,7 +1550,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1648,6 +1687,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -1804,8 +1848,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -1837,7 +1882,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1965,6 +2012,11 @@ overrides:
 		Retention: RetentionOptions{
 			Enabled:           true,
 			DeleteWorkerCount: 50,
+		},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -2194,8 +2246,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -2217,7 +2270,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2369,6 +2424,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -2555,8 +2615,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   tls_min_version: VersionTLS12
   tls_cipher_suites: cipher1,cipher2
   http_tls_config:
@@ -2598,7 +2659,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2699,6 +2762,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -2927,8 +2995,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -2978,7 +3047,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -3179,6 +3250,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -3329,8 +3405,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -3352,7 +3429,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -3423,6 +3502,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)

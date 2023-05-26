@@ -1,5 +1,5 @@
 ---
-title: Helm chart values
+title: Helm Chart Values
 menuTitle: Helm chart values
 description: Reference for Helm Chart values.
 weight: 200
@@ -37,6 +37,60 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>Affinity for backend pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the backend.</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the backend.</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilization percentage for the backend.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilization percentage for the backend.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -185,6 +239,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for backend pods</td>
@@ -253,6 +316,15 @@ null
 			<td>Tolerations for backend pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>clusterLabelOverride</td>
+			<td>string</td>
+			<td>Overrides the chart's cluster label</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -340,6 +412,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.image.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -398,6 +479,7 @@ null
   "env": [],
   "extraVolumeMounts": [],
   "image": {
+    "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs-provisioner",
@@ -467,11 +549,21 @@ true
 			<td>Provisioner image to Utilize</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/enterprise-logs-provisioner",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -706,7 +798,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.7.0"
+"v1.7.2"
 </pre>
 </td>
 		</tr>
@@ -734,6 +826,15 @@ null
 			<td>Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -845,13 +946,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>gateway.deploymentStrategy</td>
-			<td>object</td>
-			<td>ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy</td>
+			<td>gateway.deploymentStrategy.type</td>
+			<td>string</td>
+			<td></td>
 			<td><pre lang="json">
-{
-  "type": "RollingUpdate"
-}
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -906,6 +1005,15 @@ true
 			<td>Volumes to add to the gateway pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.image.digest</td>
+			<td>string</td>
+			<td>Overrides the gateway image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -1534,6 +1642,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>kubectlImage.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>kubectlImage.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -1650,6 +1767,42 @@ true
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.extraMemberlistConfig</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.frontend.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.frontend_worker.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -1892,6 +2045,7 @@ null
     "accountKey": null,
     "accountName": null,
     "requestTimeout": null,
+    "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
   },
@@ -1917,7 +2071,8 @@ null
     "region": null,
     "s3": null,
     "s3ForcePathStyle": false,
-    "secretAccessKey": null
+    "secretAccessKey": null,
+    "signatureVersion": null
   },
   "type": "s3"
 }
@@ -2140,11 +2295,21 @@ true
 			<td>Image to use for loki canary</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2688,6 +2853,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>read.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.autoscaling.enabled</td>
 			<td>bool</td>
 			<td>Enable autoscaling for the read, this is only used if `queryIndex.enabled: true`</td>
@@ -2882,6 +3056,15 @@ null
 			<td>Additional labels for each `read` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>
@@ -3479,6 +3662,7 @@ null
   "annotations": {},
   "enabled": true,
   "image": {
+    "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
@@ -3506,11 +3690,21 @@ null
 			<td>Image to use for loki canary</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>test.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -3596,6 +3790,97 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>write.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{
+  "scaleDown": {
+    "policies": [
+      {
+        "periodSeconds": 1800,
+        "type": "Pods",
+        "value": 1
+      }
+    ]
+  },
+  "scaleUp": {
+    "policies": [
+      {
+        "periodSeconds": 900,
+        "type": "Pods",
+        "value": 1
+      }
+    ]
+  },
+  "stabilizationWindowSeconds": 3600
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>see https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown for scaledown details</td>
+			<td><pre lang="json">
+{
+  "policies": [
+    {
+      "periodSeconds": 900,
+      "type": "Pods",
+      "value": 1
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the write.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the write.</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the write.</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the write.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilization percentage for the write.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
@@ -3617,6 +3902,15 @@ Hard node and soft zone anti-affinity
 			<td>write.extraEnvFrom</td>
 			<td>list</td>
 			<td>Environment variables from secrets or configmaps to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraVolumeClaimTemplates</td>
+			<td>list</td>
+			<td>volumeClaimTemplates to add to StatefulSet</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3745,6 +4039,15 @@ null
 			<td>Additional labels for each `write` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>

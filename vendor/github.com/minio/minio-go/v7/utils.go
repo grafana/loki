@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -142,7 +141,7 @@ func closeResponse(resp *http.Response) {
 		// Without this closing connection would disallow re-using
 		// the same connection for future uses.
 		//  - http://stackoverflow.com/a/17961593/4465767
-		io.Copy(ioutil.Discard, resp.Body)
+		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
 }
@@ -510,6 +509,23 @@ func isAmzHeader(headerKey string) bool {
 	key := strings.ToLower(headerKey)
 
 	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey) || strings.HasPrefix(key, "x-amz-checksum-")
+}
+
+// supportedQueryValues is a list of query strings that can be passed in when using GetObject.
+var supportedQueryValues = map[string]bool{
+	"partNumber":                   true,
+	"versionId":                    true,
+	"response-cache-control":       true,
+	"response-content-disposition": true,
+	"response-content-encoding":    true,
+	"response-content-language":    true,
+	"response-content-type":        true,
+	"response-expires":             true,
+}
+
+// isStandardQueryValue will return true when the passed in query string parameter is supported rather than customized.
+func isStandardQueryValue(qsKey string) bool {
+	return supportedQueryValues[qsKey]
 }
 
 var (

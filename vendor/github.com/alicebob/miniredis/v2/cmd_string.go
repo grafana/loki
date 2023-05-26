@@ -131,16 +131,27 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
+		readonly := false
 		if opts.nx {
 			if db.exists(opts.key) {
-				c.WriteNull()
-				return
+				if opts.get {
+					// special case for SET NX GET
+					readonly = true
+				} else {
+					c.WriteNull()
+					return
+				}
 			}
 		}
 		if opts.xx {
 			if !db.exists(opts.key) {
-				c.WriteNull()
-				return
+				if opts.get {
+					// special case for SET XX GET
+					readonly = true
+				} else {
+					c.WriteNull()
+					return
+				}
 			}
 		}
 		if opts.keepttl {
@@ -154,14 +165,17 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 				return
 			}
 		}
+
 		old, existed := db.stringKeys[opts.key]
-		db.del(opts.key, true) // be sure to remove existing values of other type keys.
-		// a vanilla SET clears the expire
-		if opts.ttl >= 0 { // EXAT/PXAT can expire right away
-			db.stringSet(opts.key, opts.value)
-		}
-		if opts.ttl != 0 {
-			db.ttl[opts.key] = opts.ttl
+		if !readonly {
+			db.del(opts.key, true) // be sure to remove existing values of other type keys.
+			// a vanilla SET clears the expire
+			if opts.ttl >= 0 { // EXAT/PXAT can expire right away
+				db.stringSet(opts.key, opts.value)
+			}
+			if opts.ttl != 0 {
+				db.ttl[opts.key] = opts.ttl
+			}
 		}
 		if opts.get {
 			if !existed {

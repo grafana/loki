@@ -22,7 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -180,7 +180,7 @@ func (c *Client) GetBucketReplicationMetrics(ctx context.Context, bucketName str
 	if resp.StatusCode != http.StatusOK {
 		return s, httpRespToErrorResponse(resp, bucketName, "")
 	}
-	respBytes, err := ioutil.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return s, err
 	}

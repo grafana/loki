@@ -116,7 +116,7 @@ type dnsBuilder struct{}
 
 // Build creates and starts a DNS resolver that watches the name resolution of the target.
 func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
-	host, port, err := parseTarget(target.Endpoint, defaultPort)
+	host, port, err := parseTarget(target.Endpoint(), defaultPort)
 	if err != nil {
 		return nil, err
 	}

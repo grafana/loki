@@ -1,11 +1,13 @@
 package ring
 
 import (
-	"container/heap"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/grafana/dskit/loser"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -476,7 +478,7 @@ func (d *Desc) GetTokens() []uint32 {
 func (d *Desc) getTokensByZone() map[string][]uint32 {
 	zones := map[string][][]uint32{}
 	for _, instance := range d.Ingesters {
-		// Tokens may not be sorted for an older version which, so we enforce sorting here.
+		// Tokens may not be sorted for an older version, so we enforce sorting here.
 		tokens := instance.Tokens
 		if !sort.IsSorted(Tokens(tokens)) {
 			sort.Sort(Tokens(tokens))
@@ -590,68 +592,21 @@ func GetOrCreateRingDesc(d interface{}) *Desc {
 	return d.(*Desc)
 }
 
-// TokensHeap is an heap data structure used to merge multiple lists
-// of sorted tokens into a single one.
-type TokensHeap [][]uint32
-
-func (h TokensHeap) Len() int {
-	return len(h)
-}
-
-func (h TokensHeap) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
-}
-
-func (h TokensHeap) Less(i, j int) bool {
-	return h[i][0] < h[j][0]
-}
-
-func (h *TokensHeap) Push(x interface{}) {
-	*h = append(*h, x.([]uint32))
-}
-
-func (h *TokensHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
-
 // MergeTokens takes in input multiple lists of tokens and returns a single list
 // containing all tokens merged and sorted. Each input single list is required
 // to have tokens already sorted.
 func MergeTokens(instances [][]uint32) []uint32 {
 	numTokens := 0
 
-	// Build the heap.
-	h := make(TokensHeap, 0, len(instances))
 	for _, tokens := range instances {
-		if len(tokens) == 0 {
-			continue
-		}
-
-		// We can safely append the input slice because elements inside are never shuffled.
-		h = append(h, tokens)
 		numTokens += len(tokens)
 	}
-	heap.Init(&h)
 
+	tree := loser.New(instances, math.MaxUint32)
 	out := make([]uint32, 0, numTokens)
 
-	for h.Len() > 0 {
-		// The minimum element in the tree is the root, at index 0.
-		lowest := h[0]
-		out = append(out, lowest[0])
-
-		if len(lowest) > 1 {
-			// Remove the first token from the lowest because we popped it
-			// and then fix the heap to keep it sorted.
-			h[0] = h[0][1:]
-			heap.Fix(&h, 0)
-		} else {
-			heap.Remove(&h, 0)
-		}
+	for tree.Next() {
+		out = append(out, tree.Winner())
 	}
 
 	return out

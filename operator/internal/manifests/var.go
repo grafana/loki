@@ -3,13 +3,17 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"time"
 
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 const (
@@ -55,7 +59,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.8.0"
+	DefaultContainerImage = "docker.io/grafana/loki:2.8.2"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -99,13 +103,34 @@ const (
 	// caFile is the file name of the certificate authority file
 	caFile = "service-ca.crt"
 
-	kubernetesNodeOSLabel = "kubernetes.io/os"
-	kubernetesNodeOSLinux = "linux"
+	kubernetesNodeOSLabel       = "kubernetes.io/os"
+	kubernetesNodeOSLinux       = "linux"
+	kubernetesNodeHostnameLabel = "kubernetes.io/hostname"
+	kubernetesComponentLabel    = "app.kubernetes.io/component"
+	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
+)
+
+const (
+	// lokiDefaultQueryTimeout contains the default query timeout. It should match the value mentioned in the CRD
+	// definition and also the default in the `sizes.go`.
+	lokiDefaultQueryTimeout    = 3 * time.Minute
+	lokiDefaultHTTPIdleTimeout = 30 * time.Second
+	lokiQueryWriteDuration     = 1 * time.Minute
+
+	gatewayReadDuration  = 30 * time.Second
+	gatewayWriteDuration = 2 * time.Minute
 )
 
 var (
-	defaultConfigMapMode = int32(420)
-	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
+	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
+
+	defaultConfigMapMode      = int32(420)
+	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
+	podAntiAffinityComponents = map[string]struct{}{
+		LabelIngesterComponent:      {},
+		LabelRulerComponent:         {},
+		LabelQueryFrontendComponent: {},
+	}
 )
 
 func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
@@ -118,10 +143,30 @@ func commonAnnotations(configHash, rotationRequiredAt string) map[string]string 
 func commonLabels(stackName string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "lokistack",
-		"app.kubernetes.io/instance":   stackName,
+		kubernetesInstanceLabel:        stackName,
 		"app.kubernetes.io/managed-by": "lokistack-controller",
 		"app.kubernetes.io/created-by": "lokistack-controller",
 	}
+}
+
+func componentInstaceLabels(component string, stackName string) map[string]string {
+	return map[string]string{
+		kubernetesInstanceLabel:  stackName,
+		kubernetesComponentLabel: component,
+	}
+}
+
+// defaultTopologySpreadConstraints returns a topology spread contraint that will
+// instruct the scheduler to try and schedule pods from the same component in different nodes
+func defaultTopologySpreadConstraints(component string, stackName string) []corev1.TopologySpreadConstraint {
+	return []corev1.TopologySpreadConstraint{{
+		MaxSkew:     1,
+		TopologyKey: kubernetesNodeHostnameLabel,
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: componentInstaceLabels(component, stackName),
+		},
+		WhenUnsatisfiable: corev1.ScheduleAnyway,
+	}}
 }
 
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
@@ -132,10 +177,32 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
+func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
+	var tsc []corev1.TopologySpreadConstraint
+	if len(spec.Zones) > 0 {
+		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
+		for i, z := range spec.Zones {
+			tsc[i] = corev1.TopologySpreadConstraint{
+				MaxSkew:           int32(z.MaxSkew),
+				TopologyKey:       z.TopologyKey,
+				WhenUnsatisfiable: corev1.DoNotSchedule,
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						kubernetesComponentLabel: component,
+						kubernetesInstanceLabel:  stackName,
+					},
+				},
+			}
+		}
+	}
+
+	return tsc
+}
+
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		"app.kubernetes.io/component": component,
+		kubernetesComponentLabel: component,
 	})
 }
 
@@ -455,26 +522,66 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 	}
 }
 
-func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+// configureAffinity returns an Affinity struture that can be used directly
+// in a Deployment/StatefulSet. Parameters will affected configuration of the
+// different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
+func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool, cSpec *lokiv1.LokiComponentSpec) *corev1.Affinity {
+	affinity := &corev1.Affinity{
+		NodeAffinity:    defaultNodeAffinity(enableNodeAffinity),
+		PodAntiAffinity: defaultPodAntiAffinity(componentLabel, stackName),
+	}
+	if cSpec.PodAntiAffinity != nil {
+		affinity.PodAntiAffinity = cSpec.PodAntiAffinity
+	}
+
+	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
+		return nil
+	}
+	return affinity
+}
+
+// defaultNodeAffinity if enabled will require pods to run on Linux nodes
+func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 	if !enableNodeAffinity {
 		return nil
 	}
 
-	return &corev1.Affinity{
-		NodeAffinity: &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-				NodeSelectorTerms: []corev1.NodeSelectorTerm{
-					{
-						MatchExpressions: []corev1.NodeSelectorRequirement{
-							{
-								Key:      kubernetesNodeOSLabel,
-								Operator: corev1.NodeSelectorOpIn,
-								Values: []string{
-									kubernetesNodeOSLinux,
-								},
+	return &corev1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{
+				{
+					MatchExpressions: []corev1.NodeSelectorRequirement{
+						{
+							Key:      kubernetesNodeOSLabel,
+							Operator: corev1.NodeSelectorOpIn,
+							Values: []string{
+								kubernetesNodeOSLinux,
 							},
 						},
 					},
+				},
+			},
+		},
+	}
+}
+
+// defaultPodAntiAffinity for components in podAntiAffinityComponents will
+// configure pods, of a LokiStack, to preferably not run on the same node
+func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAffinity {
+	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
+	if !enablePodAntiAffinity {
+		return nil
+	}
+
+	return &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			{
+				Weight: 100,
+				PodAffinityTerm: corev1.PodAffinityTerm{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: componentInstaceLabels(componentLabel, stackName),
+					},
+					TopologyKey: kubernetesNodeHostnameLabel,
 				},
 			},
 		},

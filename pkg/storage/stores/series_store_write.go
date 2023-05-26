@@ -23,6 +23,12 @@ var (
 		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
 	})
 
+	DedupedBytesTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "chunk_store_deduped_bytes_total",
+		Help:      "Count of bytes from chunks which were not stored because they have already been stored by another replica.",
+	})
+
 	IndexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "chunk_store_index_entries_per_chunk",
@@ -81,6 +87,13 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 	if len(found) > 0 && !overlap {
 		writeChunk = false
 		DedupedChunksTotal.Inc()
+		encoded, err := chk.Encoded()
+		if err != nil {
+			level.Error(log).Log("msg", "failed to encode chunk, cannot record compressed de-duped chunk size", "err", err)
+		} else {
+			DedupedBytesTotal.Add(float64(len(encoded)))
+		}
+
 	}
 
 	// If we dont have to write the chunk and DisableIndexDeduplication is false, we do not have to do anything.

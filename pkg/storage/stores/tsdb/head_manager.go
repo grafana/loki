@@ -240,7 +240,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
 	b.Del(labels.MetricName)
-	ls = b.Labels(nil)
+	ls = b.Labels()
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
@@ -743,7 +743,7 @@ func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, thr
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
 
 }
 

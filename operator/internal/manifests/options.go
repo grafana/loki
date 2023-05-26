@@ -2,6 +2,9 @@ package manifests
 
 import (
 	"strings"
+	"time"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -34,9 +37,24 @@ type Options struct {
 
 	OpenShiftOptions openshift.Options
 
+	Timeouts TimeoutConfig
+
 	Tenants Tenants
 
 	TLSProfile TLSProfileSpec
+}
+
+// GatewayTimeoutConfig contains the http server configuration options for all Loki components.
+type GatewayTimeoutConfig struct {
+	ReadTimeout          time.Duration
+	WriteTimeout         time.Duration
+	UpstreamWriteTimeout time.Duration
+}
+
+// TimeoutConfig contains the server configuration options for all Loki components
+type TimeoutConfig struct {
+	Loki    config.HTTPTimeoutConfig
+	Gateway GatewayTimeoutConfig
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -104,4 +122,68 @@ type TLSProfileSpec struct {
 // to a string of elements joined with a comma.
 func (o Options) TLSCipherSuites() string {
 	return strings.Join(o.TLSProfile.Ciphers, ",")
+}
+
+// NewTimeoutConfig creates a TimeoutConfig from the QueryTimeout values in the spec's limits.
+func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
+	if s == nil {
+		return defaultTimeoutConfig, nil
+	}
+
+	if s.Global == nil && s.Tenants == nil {
+		return defaultTimeoutConfig, nil
+	}
+
+	queryTimeout := lokiDefaultQueryTimeout
+	if s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
+		var err error
+		globalQueryTimeout, err := time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
+		if err != nil {
+			return TimeoutConfig{}, err
+		}
+
+		if globalQueryTimeout > queryTimeout {
+			queryTimeout = globalQueryTimeout
+		}
+	}
+
+	for _, tLimit := range s.Tenants {
+		if tLimit.QueryLimits == nil || tLimit.QueryLimits.QueryTimeout == "" {
+			continue
+		}
+
+		tenantQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
+		if err != nil {
+			return TimeoutConfig{}, err
+		}
+
+		if tenantQueryTimeout > queryTimeout {
+			queryTimeout = tenantQueryTimeout
+		}
+	}
+
+	return calculateHTTPTimeouts(queryTimeout), nil
+}
+
+func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
+	idleTimeout := lokiDefaultHTTPIdleTimeout
+	if queryTimeout < idleTimeout {
+		idleTimeout = queryTimeout
+	}
+
+	readTimeout := queryTimeout / 10
+	writeTimeout := queryTimeout + lokiQueryWriteDuration
+
+	return TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
+			IdleTimeout:  idleTimeout,
+			ReadTimeout:  readTimeout,
+			WriteTimeout: writeTimeout,
+		},
+		Gateway: GatewayTimeoutConfig{
+			ReadTimeout:          readTimeout + gatewayReadDuration,
+			WriteTimeout:         writeTimeout + gatewayWriteDuration,
+			UpstreamWriteTimeout: writeTimeout,
+		},
+	}
 }

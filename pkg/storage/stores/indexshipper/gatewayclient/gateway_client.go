@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -97,6 +98,9 @@ type GatewayClient struct {
 	pool *ring_client.Pool
 
 	ring ring.ReadRing
+
+	stringBufPool   *sync.Pool
+	instanceBufPool *sync.Pool
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
@@ -142,6 +146,20 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 			return igPool, nil
 		}
 
+		// Replication factor plus additional room for JOINING/LEAVING instances
+		// See also ring.GetBufferSize
+		bufSize := cfg.Ring.ReplicationFactor() * 3 / 2
+		sgClient.stringBufPool = &sync.Pool{
+			New: func() any {
+				return make([]string, 0, bufSize)
+			},
+		}
+		sgClient.instanceBufPool = &sync.Pool{
+			New: func() any {
+				return make([]ring.InstanceDesc, 0, bufSize)
+			},
+		}
+
 		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, sgClient.ring, factory, logger)
 	} else {
 		sgClient.conn, err = grpc.Dial(cfg.Address, dialOpts...)
@@ -176,6 +194,10 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrentGrpcCalls, func(ctx context.Context, idx int) error {
 		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:util_math.Min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
 	})
+}
+
+func (s *GatewayClient) QueryIndex(ctx context.Context, in *logproto.QueryIndexRequest, opts ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
+	panic("not implemented")
 }
 
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
@@ -317,10 +339,15 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 		return errors.Wrap(err, "index gateway client get tenant ID")
 	}
 
-	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
+	bufDescs := s.instanceBufPool.Get().([]ring.InstanceDesc)
+	defer s.instanceBufPool.Put(bufDescs) //nolint:staticcheck
+	bufHosts := s.stringBufPool.Get().([]string)
+	defer s.stringBufPool.Put(bufHosts) //nolint:staticcheck
+	bufZones := s.stringBufPool.Get().([]string)
+	defer s.stringBufPool.Put(bufZones) //nolint:staticcheck
 
 	key := util.TokenFor(userID, "" /* labels */)
-	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs[:0], bufHosts[:0], bufZones[:0])
 	if err != nil {
 		return errors.Wrap(err, "index gateway get ring")
 	}

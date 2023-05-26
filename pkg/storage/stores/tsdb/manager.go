@@ -128,7 +128,7 @@ func (m *tsdbManager) Start() (err error) {
 			}
 			indices++
 
-			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
+			prefixed := NewPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
 			loaded, err := NewShippableTSDBFile(prefixed)
 
 			if err != nil {
@@ -169,7 +169,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 		// Embed the tenant label into TSDB
 		lb := labels.NewBuilder(ls)
 		lb.Set(TenantLabel, user)
-		withTenant := lb.Labels(nil)
+		withTenant := lb.Labels()
 
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {
@@ -196,7 +196,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 
 	for p, b := range periods {
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dst := newPrefixedIdentifier(
+		dst := NewPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
 				ts:       heads.start,
