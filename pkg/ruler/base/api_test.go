@@ -176,6 +176,111 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
+	allRules := map[string][]rulefmt.RuleGroup{
+		"test": {
+			{
+				Name: "group1",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: yaml.Node{
+							Value:  "UP_RULE",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   5,
+							Column: 19,
+						},
+						Expr: yaml.Node{
+							Value:  "up",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   6,
+							Column: 17,
+						},
+					},
+					{
+						Alert: yaml.Node{
+							Value:  "UP_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   7,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "up < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   8,
+							Column: 17,
+						},
+						Labels: map[string]string{"foo": "bar"},
+					},
+					{
+						Alert: yaml.Node{
+							Value:  "DOWN_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   11,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "down < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   12,
+							Column: 17,
+						},
+						Labels: map[string]string{"namespace": "delta"},
+					},
+				},
+				Interval: model.Duration(1 * time.Minute),
+			},
+		},
+	}
+	filteredRules := map[string][]rulefmt.RuleGroup{
+		"test": {
+			{
+				Name: "group1",
+				Rules: []rulefmt.RuleNode{
+					{
+						Alert: yaml.Node{
+							Value:  "UP_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   5,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "up < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   6,
+							Column: 17,
+						},
+						Labels: map[string]string{"foo": "bar"},
+					},
+					{
+						Alert: yaml.Node{
+							Value:  "DOWN_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   9,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "down < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   10,
+							Column: 17,
+						},
+						Labels: map[string]string{"namespace": "delta"},
+					},
+				},
+				Interval: model.Duration(1 * time.Minute),
+			},
+		},
+	}
+
 	tc := []struct {
 		name     string
 		URLQuery string
@@ -183,179 +288,18 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 		err      error
 	}{
 		{
-			name: "query with no filters",
-			output: map[string][]rulefmt.RuleGroup{
-				"test": {
-					{
-						Name: "group1",
-						Rules: []rulefmt.RuleNode{
-							{
-								Record: yaml.Node{
-									Value:  "UP_RULE",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   5,
-									Column: 19,
-								},
-								Expr: yaml.Node{
-									Value:  "up",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   6,
-									Column: 17,
-								},
-							},
-							{
-								Alert: yaml.Node{
-									Value:  "UP_ALERT",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   7,
-									Column: 18,
-								},
-								Expr: yaml.Node{
-									Value:  "up < 1",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   8,
-									Column: 17,
-								},
-								Labels: map[string]string{"foo": "bar"},
-							},
-							{
-								Alert: yaml.Node{
-									Value:  "DOWN_ALERT",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   11,
-									Column: 18,
-								},
-								Expr: yaml.Node{
-									Value:  "down < 1",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   12,
-									Column: 17,
-								},
-								Labels: map[string]string{"namespace": "delta"},
-							},
-						},
-						Interval: model.Duration(1 * time.Minute),
-					},
-				},
-			},
+			name:   "query with no filters",
+			output: allRules,
 		},
 		{
 			name:     "query with a valid filter found",
 			URLQuery: "labels=namespace:delta,foo:bar",
-			output: map[string][]rulefmt.RuleGroup{
-				"test": {
-					{
-						Name: "group1",
-						Rules: []rulefmt.RuleNode{
-							{
-								Alert: yaml.Node{
-									Value:  "UP_ALERT",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   5,
-									Column: 18,
-								},
-								Expr: yaml.Node{
-									Value:  "up < 1",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   6,
-									Column: 17,
-								},
-								Labels: map[string]string{"foo": "bar"},
-							},
-							{
-								Alert: yaml.Node{
-									Value:  "DOWN_ALERT",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   9,
-									Column: 18,
-								},
-								Expr: yaml.Node{
-									Value:  "down < 1",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   10,
-									Column: 17,
-								},
-								Labels: map[string]string{"namespace": "delta"},
-							},
-						},
-						Interval: model.Duration(1 * time.Minute),
-					},
-				},
-			},
+			output:   filteredRules,
 		},
 		{
 			name:     "query with an invalid query param",
 			URLQuery: "test=namespace:delta,foo|bar",
-			output: map[string][]rulefmt.RuleGroup{
-				"test": {
-					{
-						Name: "group1",
-						Rules: []rulefmt.RuleNode{
-							{
-								Record: yaml.Node{
-									Value:  "UP_RULE",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   5,
-									Column: 19,
-								},
-								Expr: yaml.Node{
-									Value:  "up",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   6,
-									Column: 17,
-								},
-							},
-							{
-								Alert: yaml.Node{
-									Value:  "UP_ALERT",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   7,
-									Column: 18,
-								},
-								Expr: yaml.Node{
-									Value:  "up < 1",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   8,
-									Column: 17,
-								},
-								Labels: map[string]string{"foo": "bar"},
-							},
-							{
-								Alert: yaml.Node{
-									Value:  "DOWN_ALERT",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   11,
-									Column: 18,
-								},
-								Expr: yaml.Node{
-									Value:  "down < 1",
-									Tag:    "!!str",
-									Kind:   8,
-									Line:   12,
-									Column: 17,
-								},
-								Labels: map[string]string{"namespace": "delta"},
-							},
-						},
-						Interval: model.Duration(1 * time.Minute),
-					},
-				},
-			},
+			output:   allRules,
 		},
 	}
 
