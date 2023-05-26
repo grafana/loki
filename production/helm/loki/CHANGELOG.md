@@ -41,10 +41,6 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix issue in distribution of queries to available read pods by using k8s service for discovering query-scheduler replicas
 
-## 5.5.3
-
-- [BUGFIX] Fix issue in distribution of queries to available read pods by using k8s service for discovering query-scheduler replicas
-
 ## 5.5.2
 
 - [BUGFIX] Use $.Release.Namespace consistently
