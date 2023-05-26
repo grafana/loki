@@ -41,6 +41,60 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>backend.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the backend.</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the backend.</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilization percentage for the backend.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilization percentage for the backend.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the backend</td>
@@ -181,6 +235,15 @@ null
 			<td>Additional labels for each `backend` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>
@@ -767,6 +830,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>gateway.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.autoscaling.enabled</td>
 			<td>bool</td>
 			<td>Enable autoscaling for the gateway</td>
@@ -874,13 +946,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>gateway.deploymentStrategy</td>
-			<td>object</td>
-			<td>ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy</td>
+			<td>gateway.deploymentStrategy.type</td>
+			<td>string</td>
+			<td></td>
 			<td><pre lang="json">
-{
-  "type": "RollingUpdate"
-}
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -2783,6 +2853,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>read.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.autoscaling.enabled</td>
 			<td>bool</td>
 			<td>Enable autoscaling for the read, this is only used if `queryIndex.enabled: true`</td>
@@ -2977,6 +3056,15 @@ null
 			<td>Additional labels for each `read` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>
@@ -3702,6 +3790,97 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>write.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{
+  "scaleDown": {
+    "policies": [
+      {
+        "periodSeconds": 1800,
+        "type": "Pods",
+        "value": 1
+      }
+    ]
+  },
+  "scaleUp": {
+    "policies": [
+      {
+        "periodSeconds": 900,
+        "type": "Pods",
+        "value": 1
+      }
+    ]
+  },
+  "stabilizationWindowSeconds": 3600
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>see https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown for scaledown details</td>
+			<td><pre lang="json">
+{
+  "policies": [
+    {
+      "periodSeconds": 900,
+      "type": "Pods",
+      "value": 1
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the write.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the write.</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the write.</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the write.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilization percentage for the write.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
@@ -3723,6 +3902,15 @@ Hard node and soft zone anti-affinity
 			<td>write.extraEnvFrom</td>
 			<td>list</td>
 			<td>Environment variables from secrets or configmaps to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraVolumeClaimTemplates</td>
+			<td>list</td>
+			<td>volumeClaimTemplates to add to StatefulSet</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3851,6 +4039,15 @@ null
 			<td>Additional labels for each `write` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>
