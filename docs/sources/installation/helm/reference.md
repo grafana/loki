@@ -239,6 +239,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for backend pods</td>
@@ -3051,6 +3060,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for read pods</td>
@@ -4021,6 +4039,15 @@ null
 			<td>Additional labels for each `write` pod</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>
