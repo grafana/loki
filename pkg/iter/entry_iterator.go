@@ -128,7 +128,6 @@ func (i *mergeEntryIterator) fillBuffer() {
 	for {
 		next := i.tree.Winner()
 		entry := next.Entry()
-		previous := i.buffer
 		i.buffer = append(i.buffer, entryWithLabels{
 			Entry:      entry,
 			labels:     next.Labels(),
@@ -141,7 +140,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 		}
 
 		var dupe bool
-		for _, t := range previous {
+		for _, t := range i.buffer[:len(i.buffer)-1] {
 			if t.Entry.Line == entry.Line {
 				i.stats.AddDuplicates(1)
 				dupe = true
@@ -149,7 +148,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 			}
 		}
 		if dupe {
-			i.buffer = previous
+			i.buffer = i.buffer[:len(i.buffer)-1]
 		}
 		if !i.tree.Next() {
 			break
