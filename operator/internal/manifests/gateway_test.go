@@ -17,6 +17,8 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -46,6 +48,7 @@ func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 				},
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	}, sha1C)
 
 	expected := "loki.grafana.com/config-hash"
@@ -93,6 +96,7 @@ func TestNewGatewayDeployment_HasNodeSelector(t *testing.T) {
 				},
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	}, "deadbeef")
 
 	require.Equal(t, dpl.Spec.Template.Spec.NodeSelector, selector)
@@ -127,6 +131,7 @@ func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 				},
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	}, sha1C)
 
 	expected := "loki.grafana.com/certRotationRequiredAt"
@@ -185,6 +190,7 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 				},
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 		Tenants: Tenants{
 			Secrets: []*TenantSecrets{
 				{
@@ -219,6 +225,7 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	})
 
 	require.NoError(t, err)
@@ -234,6 +241,9 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 		Namespace: "efgh",
 		Gates: configv1.FeatureGates{
 			LokiStackGateway: true,
+			OpenShift: configv1.OpenShiftFeatureGates{
+				Enabled: true,
+			},
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -252,10 +262,11 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	})
 
 	require.NoError(t, err)
-	require.Len(t, objs, 12)
+	require.Len(t, objs, 13)
 }
 
 func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T) {
@@ -264,6 +275,9 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 		Namespace: "efgh",
 		Gates: configv1.FeatureGates{
 			LokiStackGateway: true,
+			OpenShift: configv1.OpenShiftFeatureGates{
+				Enabled: true,
+			},
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -284,12 +298,13 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	})
 
 	require.NoError(t, err)
 
 	svc := objs[5].(*corev1.Service)
-	rt := objs[6].(*routev1.Route)
+	rt := objs[7].(*routev1.Route)
 	require.Equal(t, svc.Kind, rt.Spec.To.Kind)
 	require.Equal(t, svc.Name, rt.Spec.To.Name)
 	require.Equal(t, svc.Spec.Ports[0].Name, rt.Spec.Port.TargetPort.StrVal)
@@ -321,6 +336,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	})
 
 	require.NoError(t, err)
@@ -336,6 +352,9 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 		Namespace: "efgh",
 		Gates: configv1.FeatureGates{
 			LokiStackGateway: true,
+			OpenShift: configv1.OpenShiftFeatureGates{
+				Enabled: true,
+			},
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
@@ -356,6 +375,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	})
 
 	require.NoError(t, err)
@@ -421,6 +441,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 						},
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
@@ -451,6 +472,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
@@ -481,6 +503,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
@@ -552,6 +575,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						},
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			missingArgs: []string{
 				"--logs.rules.endpoint=http://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -601,6 +625,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						},
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=http://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -628,6 +653,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=http://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -659,6 +685,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -690,6 +717,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 			wantArgs: []string{
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
@@ -743,6 +771,7 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 				Authentication: []lokiv1.AuthenticationSpec{},
 			},
 		},
+		Timeouts: defaultTimeoutConfig,
 	})
 
 	require.NoError(t, err)
@@ -762,8 +791,11 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		"--logs.read.endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
 		"--logs.tail.endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
 		"--logs.write.endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100",
+		"--logs.write-timeout=4m0s",
 		"--rbac.config=/etc/lokistack-gateway/rbac.yaml",
 		"--tenants.config=/etc/lokistack-gateway/tenants.yaml",
+		"--server.read-timeout=48s",
+		"--server.write-timeout=6m0s",
 		"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 		"--logs.rules.read-only=true",
 		"--tls.client-auth-type=NoClientCert",
@@ -893,4 +925,74 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		},
 	}
 	require.Equal(t, expectedVolumes, dpl.Spec.Template.Spec.Volumes)
+}
+
+func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+			OpenShift: configv1.OpenShiftFeatureGates{
+				Enabled: true,
+			},
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+	objs, err := BuildGateway(opts)
+	require.NoError(t, err)
+	require.Len(t, objs, 13)
+
+	pdb := objs[6].(*policyv1.PodDisruptionBudget)
+	require.NotNil(t, pdb)
+	require.Equal(t, "abcd-gateway", pdb.Name)
+	require.Equal(t, "efgh", pdb.Namespace)
+	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.EqualValues(t, ComponentLabels(LabelGatewayComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
+}
+
+func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
+	dpl := NewGatewayDeployment(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}, "deadbeef")
+
+	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:     1,
+			TopologyKey: kubernetesNodeHostnameLabel,
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "lokistack-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+			WhenUnsatisfiable: corev1.ScheduleAnyway,
+		},
+	})
 }

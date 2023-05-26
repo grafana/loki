@@ -586,7 +586,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		case jsonparser.Null:
 			lbs.Set(key, "")
 		default:
-			lbs.Set(key, unsafeGetString(data))
+			lbs.Set(key, unescapeJSONString(data))
 		}
 
 		matches++
@@ -702,7 +702,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, key, unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
 		default:
 			return nil
 		}

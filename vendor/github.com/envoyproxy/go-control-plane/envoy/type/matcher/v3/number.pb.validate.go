@@ -57,9 +57,20 @@ func (m *DoubleMatcher) validate(all bool) error {
 
 	var errors []error
 
-	switch m.MatchPattern.(type) {
-
+	oneofMatchPatternPresent := false
+	switch v := m.MatchPattern.(type) {
 	case *DoubleMatcher_Range:
+		if v == nil {
+			err := DoubleMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRange()).(type) {
@@ -91,9 +102,22 @@ func (m *DoubleMatcher) validate(all bool) error {
 		}
 
 	case *DoubleMatcher_Exact:
+		if v == nil {
+			err := DoubleMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 		// no validation rules for Exact
-
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofMatchPatternPresent {
 		err := DoubleMatcherValidationError{
 			field:  "MatchPattern",
 			reason: "value is required",
@@ -102,7 +126,6 @@ func (m *DoubleMatcher) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

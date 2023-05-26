@@ -42,7 +42,7 @@ func DefaultIndexClientOptions() IndexClientOptions {
 
 type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
-	AddChunk(fp model.Fingerprint, chk index.ChunkMeta)
+	AddChunkStats(s index.ChunkStats)
 	Stats() stats.Stats
 }
 
@@ -115,8 +115,10 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
-	// TODO(owen-d): use a pool to reduce allocs here
-	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	chks := ChunkRefsPool.Get()
+	defer ChunkRefsPool.Put(chks)
+
+	chks, err = c.idx.GetChunkRefs(ctx, userID, from, through, chks, shard, matchers...)
 	kvps = append(kvps,
 		"chunks", len(chks),
 		"indexErr", err,
@@ -207,17 +209,8 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 		acc = &stats.Stats{}
 	}
 
-	for idx, interval := range intervals {
-		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, func(chk index.ChunkMeta) bool {
-			// for the first split, purely do overlap check to also include chunks having
-			// start time earlier than start time of the table interval we are querying.
-			// for all other splits, consider only chunks that have from >= interval.Start
-			// so that we start after the start time of the index table we are querying.
-			if idx == 0 || chk.From() >= interval.Start {
-				return true
-			}
-			return false
-		}, matchers...); err != nil {
+	for _, interval := range intervals {
+		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
 			return nil, err
 		}
 	}

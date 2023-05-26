@@ -50,14 +50,19 @@ Currently, this project supports the following environments.
 
 | OS      | Go Version | Architecture |
 | ------- | ---------- | ------------ |
+| Ubuntu  | 1.20       | amd64        |
 | Ubuntu  | 1.19       | amd64        |
 | Ubuntu  | 1.18       | amd64        |
+| Ubuntu  | 1.20       | 386          |
 | Ubuntu  | 1.19       | 386          |
 | Ubuntu  | 1.18       | 386          |
+| MacOS   | 1.20       | amd64        |
 | MacOS   | 1.19       | amd64        |
 | MacOS   | 1.18       | amd64        |
+| Windows | 1.20       | amd64        |
 | Windows | 1.19       | amd64        |
 | Windows | 1.18       | amd64        |
+| Windows | 1.20       | 386          |
 | Windows | 1.19       | 386          |
 | Windows | 1.18       | 386          |
 

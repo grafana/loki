@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -213,8 +214,17 @@ func (q *query) resultLength(res promql_parser.Value) int {
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
+	spLogger := spanlogger.FromContext(ctx)
+	defer spLogger.Finish()
+
+	sp.LogKV(
+		"type", GetRangeType(q.params),
+		"query", q.params.Query(),
+		"start", q.params.Start(),
+		"end", q.params.End(),
+		"step", q.params.Step(),
+		"length", q.params.End().Sub(q.params.Start()),
+	)
 
 	if q.logExecQuery {
 		queryHash := HashedQuery(q.params.Query())
@@ -239,7 +249,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	statResult.Log(level.Debug(log))
+	statResult.Log(level.Debug(spLogger))
 
 	status := "200"
 	if err != nil {
@@ -388,13 +398,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			if !ok {
 				series = &promql.Series{
 					Metric: p.Metric,
-					Points: make([]promql.Point, 0, stepCount),
+					Floats: make([]promql.FPoint, 0, stepCount),
 				}
 				seriesIndex[hash] = series
 			}
-			series.Points = append(series.Points, promql.Point{
+			series.Floats = append(series.Floats, promql.FPoint{
 				T: ts,
-				V: p.V,
+				F: p.F,
 			})
 		}
 		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
@@ -460,7 +470,8 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 
 	if GetRangeType(q.params) == InstantType {
 		return promql.Vector{promql.Sample{
-			Point:  promql.Point{T: q.params.Start().UnixMilli(), V: value},
+			T:      q.params.Start().UnixMilli(),
+			F:      value,
 			Metric: labels.Labels{},
 		}}, nil
 	}
@@ -474,8 +485,8 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 		end    = params.End()
 		step   = params.Step()
 		series = promql.Series{
-			Points: make(
-				[]promql.Point,
+			Floats: make(
+				[]promql.FPoint,
 				0,
 				// allocate enough space for all needed entries
 				int(end.Sub(start)/step)+1,
@@ -484,9 +495,9 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	)
 
 	for ts := start; !ts.After(end); ts = ts.Add(step) {
-		series.Points = append(series.Points, promql.Point{
+		series.Floats = append(series.Floats, promql.FPoint{
 			T: ts.UnixNano() / int64(time.Millisecond),
-			V: data.V,
+			F: data.V,
 		})
 	}
 	return promql.Matrix{series}

@@ -47,14 +47,16 @@ func TestFromValue(t *testing.T) {
 			input: &promql.Result{
 				Value: promql.Vector{
 					promql.Sample{
-						Point: promql.Point{T: 1, V: 1},
+						T: 1,
+						F: 1,
 						Metric: labels.Labels{
 							{Name: "a", Value: "a1"},
 							{Name: "b", Value: "b1"},
 						},
 					},
 					promql.Sample{
-						Point: promql.Point{T: 2, V: 2},
+						T: 2,
+						F: 2,
 						Metric: labels.Labels{
 							{Name: "a", Value: "a2"},
 							{Name: "b", Value: "b2"},
@@ -99,9 +101,9 @@ func TestFromValue(t *testing.T) {
 							{Name: "a", Value: "a1"},
 							{Name: "b", Value: "b1"},
 						},
-						Points: []promql.Point{
-							{T: 1, V: 1},
-							{T: 2, V: 2},
+						Floats: []promql.FPoint{
+							{T: 1, F: 1},
+							{T: 2, F: 2},
 						},
 					},
 					{
@@ -109,9 +111,9 @@ func TestFromValue(t *testing.T) {
 							{Name: "a", Value: "a2"},
 							{Name: "b", Value: "b2"},
 						},
-						Points: []promql.Point{
-							{T: 1, V: 8},
-							{T: 2, V: 9},
+						Floats: []promql.FPoint{
+							{T: 1, F: 8},
+							{T: 2, F: 9},
 						},
 					},
 				},

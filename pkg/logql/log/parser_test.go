@@ -532,6 +532,19 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			noParserHints,
 		},
+		{
+			"nested escaped object",
+			[]byte(`{"app":"{ \"key\": \"value\", \"key2\":\"value2\"}"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.Labels{{Name: "foo", Value: "bar"}},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "app", Value: `{ "key": "value", "key2":"value2"}`},
+			},
+			noParserHints,
+		},
 	}
 	for _, tt := range tests {
 		j, err := NewJSONExpressionParser(tt.expressions)
@@ -1258,6 +1271,20 @@ func Test_unpackParser_Parse(t *testing.T) {
 				{Name: "cluster", Value: "us-central1"},
 			},
 			[]byte(`I0303 17:49:45.976518    1526 kubelet_getters.go:178] "Pod status updated" pod="openshift-etcd/etcd-ip-10-0-150-50.us-east-2.compute.internal" status=Running`),
+			noParserHints,
+		},
+		{
+			"invalid key names",
+			[]byte(`{"foo.bar":"10ms","test-dash":"foo","_entry":"some message"}`),
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "foo_bar", Value: "10ms"},
+				{Name: "test_dash", Value: "foo"},
+			},
+			[]byte(`some message`),
 			noParserHints,
 		},
 	}

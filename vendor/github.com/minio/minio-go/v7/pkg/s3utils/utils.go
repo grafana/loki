@@ -339,12 +339,12 @@ func EncodePath(pathName string) string {
 			encodedPathname.WriteRune(s)
 			continue
 		default:
-			len := utf8.RuneLen(s)
-			if len < 0 {
+			l := utf8.RuneLen(s)
+			if l < 0 {
 				// if utf8 cannot convert return the same string as is
 				return pathName
 			}
-			u := make([]byte, len)
+			u := make([]byte, l)
 			utf8.EncodeRune(u, s)
 			for _, r := range u {
 				hex := hex.EncodeToString([]byte{r})

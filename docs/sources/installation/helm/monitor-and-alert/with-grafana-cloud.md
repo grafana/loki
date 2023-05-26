@@ -1,10 +1,10 @@
 ---
-title: Configure Monitoring and Alerting of Loki Using Grafana Cloud
+title: Configure monitoring and alerting of Loki using Grafana Cloud
 menuTitle: Monitor Loki with Grafana Cloud
 description: setup monitoring and alerts for Loki using Grafana Cloud
 aliases:
   - /docs/installation/helm/monitoring/with-grafana-cloud
-weight: 100
+weight: 200
 keywords:
   - monitoring
   - alert
@@ -12,7 +12,7 @@ keywords:
   - grafana cloud
 ---
 
-# Configure Monitoring and Alerting of Loki Using Grafana Cloud
+# Configure monitoring and alerting of Loki using Grafana Cloud
 
 This topic will walk you through using Grafana Cloud to monitor a Loki installation that is installed with the Helm chart. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a Grafana Cloud Logs instance. This approach also does not require the installation of the Prometheus Operator and instead sends metrics to a Grafana Cloud Metrics instance. Using Grafana Cloud to monitor Loki has the added benefit of being able to troubleshoot problems with Loki when the Helm installed Loki is down, as the logs will still be available in the Grafana Cloud Logs instance.
 
@@ -74,7 +74,7 @@ Walking through this installation will create two Grafana Agent configurations, 
      selfMonitoring:
        logsInstance:
          clients:
-           - url: <CLOUD_METRICS_URL>
+           - url: <CLOUD_LOGS_URL>
              basicAuth:
                username:
                  name: grafana-cloud-logs-credentials
@@ -85,7 +85,7 @@ Walking through this installation will create two Grafana Agent configurations, 
      serviceMonitor:
        metricsInstance:
          remoteWrite:
-           - url: <CLOUD_LOGS_URL>
+           - url: <CLOUD_METRICS_URL>
              basicAuth:
                username:
                  name: grafana-cloud-metrics-credentials
@@ -95,6 +95,6 @@ Walking through this installation will create two Grafana Agent configurations, 
                  key: password
    ```
 
-1. Install the self-hosted Grafana Loki integration by going to your hosted Grafana instance, clicking the lightning bolt icon labeled **Integrations and Connections**, then search for and install the **Self-hosted Grafana Loki** integration.
+1. Install the self-hosted Grafana Loki integration by going to your hosted Grafana instance, selecting **Connections** from the Home menu, then search for and install the **Self-hosted Grafana Loki** integration.
 
 1. Once the self-hosted Grafana Loki integration is installed, click the **View Dashboards** button to see the installed dashboards.

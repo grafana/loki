@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/tail"
+	"github.com/grafana/tail/watch"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
@@ -43,7 +44,7 @@ type tailer struct {
 	decoder *encoding.Decoder
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, pollOptions watch.PollingFileWatcherOptions, path string, encoding string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -68,7 +69,8 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 			Offset: pos,
 			Whence: 0,
 		},
-		Logger: util.NewLogAdapter(logger),
+		Logger:      util.NewLogAdapter(logger),
+		PollOptions: pollOptions,
 	})
 	if err != nil {
 		return nil, err
@@ -151,6 +153,8 @@ func (t *tailer) readLines() {
 		t.running.Store(false)
 		level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
 		close(t.done)
+		// Shut down the position marker thread
+		close(t.posquit)
 	}()
 	entries := t.handler.Chan()
 	for {
@@ -220,10 +224,6 @@ func (t *tailer) Stop() {
 	// stop can be called by two separate threads in filetarget, to avoid a panic closing channels more than once
 	// we wrap the stop in a sync.Once.
 	t.stopOnce.Do(func() {
-		// Shut down the position marker thread
-		close(t.posquit)
-		<-t.posdone
-
 		// Save the current position before shutting down tailer
 		err := t.MarkPositionAndSize()
 		if err != nil {
@@ -237,6 +237,8 @@ func (t *tailer) Stop() {
 		}
 		// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 		<-t.done
+		// Wait for the position marker thread to exit
+		<-t.posdone
 		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 		t.handler.Stop()
 	})

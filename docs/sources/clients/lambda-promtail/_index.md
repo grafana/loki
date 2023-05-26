@@ -5,7 +5,7 @@ weight: 20
 ---
 # Lambda Promtail
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/tree/master/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{<relref "../promtail/configuration#loki_push_api">}}).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{<relref "../promtail/configuration#loki_push_api">}}).
 
 ## Deployment
 
@@ -188,7 +188,7 @@ scrape_configs:
       - source_labels: ['__aws_cloudwatch_log_group']
         target_label: 'log_group'
       # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
-      - source_label: ['__aws_s3_log_lb']
+      - source_labels: ['__aws_s3_log_lb']
         target_label: 'loadbalancer_name'
 ```
 

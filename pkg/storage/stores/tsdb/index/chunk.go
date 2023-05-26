@@ -4,6 +4,9 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // Meta holds information about a chunk of data.
@@ -153,4 +156,97 @@ func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
 	}
 
 	return c[:j+copy(c[j:], c[j+1:])], true
+}
+
+// Some of these fields can realistically be 32bit, but
+// this gives us a lot of wiggle room and they're already
+// encoded only for every n-th chunk based on `ChunkPageSize`
+type chunkPageMarker struct {
+	// ChunksInPage denotes the number of chunks
+	// in the page
+	ChunksInPage int
+
+	// KB, Entries denote the KB and number of entries
+	// in each page
+	KB, Entries uint32
+
+	// byte offset where this chunk starts relative
+	// to the chunks in this series
+	Offset int
+
+	// bounds associated with this page
+	MinTime, MaxTime int64
+
+	// internal field to test if MinTime has been set since the zero
+	// value is valid and I don't want to use a pointer. This is only
+	// used during encoding.
+	minTimeSet bool
+}
+
+func (m *chunkPageMarker) subsetOf(from, through int64) bool {
+	return from <= m.MinTime && through >= m.MaxTime
+}
+
+func (m *chunkPageMarker) combine(c ChunkMeta) {
+	m.KB += c.KB
+	m.Entries += c.Entries
+	if !m.minTimeSet || c.MinTime < m.MinTime {
+		m.MinTime = c.MinTime
+		m.minTimeSet = true
+	}
+	if c.MaxTime > m.MaxTime {
+		m.MaxTime = c.MaxTime
+	}
+}
+
+func (m *chunkPageMarker) encode(e *encoding.Encbuf, offset int, chunksRemaining int) {
+	// put chunks, kb, entries, offset, mintime, maxtime
+	e.PutUvarint(chunksRemaining)
+	e.PutBE32(m.KB)
+	e.PutBE32(m.Entries)
+	e.PutUvarint(offset)
+	e.PutVarint64(m.MinTime)
+	e.PutVarint64(m.MaxTime - m.MinTime) // delta-encoded
+}
+
+func (m *chunkPageMarker) clear() {
+	*m = chunkPageMarker{}
+}
+
+func (m *chunkPageMarker) decode(d *encoding.Decbuf) {
+	m.ChunksInPage = d.Uvarint()
+	m.KB = d.Be32()
+	m.Entries = d.Be32()
+	m.Offset = d.Uvarint()
+	m.MinTime = d.Varint64()
+	m.MaxTime = m.MinTime + d.Varint64()
+}
+
+// Chunks per page. This can be inferred in the data format
+// via the ChunksRemaining field
+// and can thus be changed without needing a
+// new tsdb version
+const ChunkPageSize = 16
+
+// Minimum number of chunks present to use page based lookup
+// instead of linear scan which performs better at lower n-values.
+const DefaultMaxChunksToBypassMarkerLookup = 64
+
+type chunkPageMarkers []chunkPageMarker
+
+type ChunkStats struct {
+	Chunks, KB, Entries uint64
+}
+
+func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
+	cs.Chunks += uint64(chunks)
+	cs.KB += uint64(kb)
+	cs.Entries += uint64(entries)
+}
+
+func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
+	factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
+	kb := uint32(float64(chk.KB) * factor)
+	entries := uint32(float64(chk.Entries) * factor)
+	cs.addRaw(1, kb, entries)
 }

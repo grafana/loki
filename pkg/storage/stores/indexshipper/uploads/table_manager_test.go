@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -32,7 +33,7 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 	cfg := Config{
 		UploadInterval: time.Hour,
 	}
-	tm, err := NewTableManager(cfg, storageClient, nil)
+	tm, err := NewTableManager(cfg, storageClient, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	return tm, func() {

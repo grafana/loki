@@ -1,35 +1,37 @@
-package manifests_test
+package manifests
 
 import (
 	"encoding/json"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 func TestConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 	opts := randomConfigOptions()
 
-	_, sha1C, err := manifests.LokiConfigMap(opts)
+	_, sha1C, err := LokiConfigMap(opts)
 	require.NoError(t, err)
 	require.NotEmpty(t, sha1C)
 }
 
 func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	// regardless of what is provided by the default sizing parameters we should always prefer
-	// the user-defined values. This creates an all-inclusive manifests.Options and then checks
+	// the user-defined values. This creates an all-inclusive Options and then checks
 	// that every value is present in the result
 	opts := randomConfigOptions()
-	res := manifests.ConfigOptions(opts)
+	res := ConfigOptions(opts)
 
 	expected, err := json.Marshal(opts.Stack)
 	require.NoError(t, err)
@@ -40,16 +42,29 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	assert.JSONEq(t, string(expected), string(actual))
 }
 
-func randomConfigOptions() manifests.Options {
-	return manifests.Options{
+func testTimeoutConfig() TimeoutConfig {
+	return TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
+			IdleTimeout:  1 * time.Second,
+			ReadTimeout:  1 * time.Minute,
+			WriteTimeout: 10 * time.Minute,
+		},
+	}
+}
+
+func randomConfigOptions() Options {
+	return Options{
 		Name:      uuid.New().String(),
 		Namespace: uuid.New().String(),
 		Image:     uuid.New().String(),
+		Timeouts:  testTimeoutConfig(),
 		Stack: lokiv1.LokiStackSpec{
-			Size:              lokiv1.SizeOneXExtraSmall,
-			Storage:           lokiv1.ObjectStorageSpec{},
-			StorageClassName:  uuid.New().String(),
-			ReplicationFactor: rand.Int31(),
+			Size:             lokiv1.SizeOneXExtraSmall,
+			Storage:          lokiv1.ObjectStorageSpec{},
+			StorageClassName: uuid.New().String(),
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: rand.Int31(),
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -249,12 +264,13 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			inOpt := manifests.Options{
+			inOpt := Options{
 				Name:      "my-stack",
 				Namespace: "my-ns",
 				Stack:     tc.spec,
+				Timeouts:  testTimeoutConfig(),
 			}
-			options := manifests.ConfigOptions(inOpt)
+			options := ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, options.GossipRing)
 		})
 	}
@@ -357,10 +373,11 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			inOpt := manifests.Options{
-				Stack: tc.spec,
+			inOpt := Options{
+				Stack:    tc.spec,
+				Timeouts: testTimeoutConfig(),
 			}
-			options := manifests.ConfigOptions(inOpt)
+			options := ConfigOptions(inOpt)
 			require.Equal(t, tc.wantOptions, options.Retention)
 		})
 	}
@@ -369,39 +386,42 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 func TestConfigOptions_RulerAlertManager(t *testing.T) {
 	tt := []struct {
 		desc        string
-		opts        manifests.Options
+		opts        Options
 		wantOptions *config.AlertManagerConfig
 	}{
 		{
 			desc: "static mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Static,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "dynamic mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "openshift-logging mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						AlertManagerEnabled: true,
@@ -417,12 +437,13 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 		},
 		{
 			desc: "openshift-network mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
 						AlertManagerEnabled: true,
@@ -443,8 +464,8 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := manifests.ConfigOptions(tc.opts)
-			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := ConfigOptions(tc.opts)
+			err := ConfigureOptionsForMode(&cfg, tc.opts)
 
 			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
@@ -455,34 +476,36 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 	tt := []struct {
 		desc        string
-		opts        manifests.Options
+		opts        Options
 		wantOptions *config.AlertManagerConfig
 	}{
 		{
 			desc: "static mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Static,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "dynamic mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "openshift-logging mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -491,7 +514,8 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -518,7 +542,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 		},
 		{
 			desc: "openshift-network mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
@@ -527,7 +551,8 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -559,8 +584,8 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := manifests.ConfigOptions(tc.opts)
-			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := ConfigOptions(tc.opts)
+			err := ConfigureOptionsForMode(&cfg, tc.opts)
 			require.Nil(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
@@ -570,34 +595,36 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 	tt := []struct {
 		desc        string
-		opts        manifests.Options
+		opts        Options
 		wantOptions map[string]config.LokiOverrides
 	}{
 		{
 			desc: "static mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Static,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "dynamic mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "openshift-logging mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -606,7 +633,8 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -650,7 +678,7 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 		},
 		{
 			desc: "openshift-network mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
@@ -659,7 +687,8 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -686,8 +715,8 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := manifests.ConfigOptions(tc.opts)
-			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := ConfigOptions(tc.opts)
+			err := ConfigureOptionsForMode(&cfg, tc.opts)
 			require.Nil(t, err)
 			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
 		})
@@ -697,34 +726,36 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 func TestConfigOptions_RulerOverrides(t *testing.T) {
 	tt := []struct {
 		desc        string
-		opts        manifests.Options
+		opts        Options
 		wantOptions map[string]config.LokiOverrides
 	}{
 		{
 			desc: "static mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Static,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "dynamic mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions: nil,
 		},
 		{
 			desc: "openshift-logging mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -733,7 +764,8 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -855,7 +887,7 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 		},
 		{
 			desc: "openshift-network mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -864,7 +896,8 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -891,8 +924,8 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := manifests.ConfigOptions(tc.opts)
-			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := ConfigOptions(tc.opts)
+			err := ConfigureOptionsForMode(&cfg, tc.opts)
 			require.Nil(t, err)
 			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
 		})
@@ -902,37 +935,39 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 	tt := []struct {
 		desc                 string
-		opts                 manifests.Options
+		opts                 Options
 		wantOptions          *config.AlertManagerConfig
 		wantOverridesOptions map[string]config.LokiOverrides
 	}{
 		{
 			desc: "static mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Static,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions:          nil,
 			wantOverridesOptions: nil,
 		},
 		{
 			desc: "dynamic mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.Dynamic,
 					},
 				},
+				Timeouts: testTimeoutConfig(),
 			},
 			wantOptions:          nil,
 			wantOverridesOptions: nil,
 		},
 		{
 			desc: "openshift-logging mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
@@ -941,7 +976,8 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -991,7 +1027,7 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 		},
 		{
 			desc: "openshift-network mode",
-			opts: manifests.Options{
+			opts: Options{
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
@@ -1000,7 +1036,9 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Ruler: manifests.Ruler{
+
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
 					Spec: &lokiv1.RulerConfigSpec{
 						AlertManagerSpec: &lokiv1.AlertManagerSpec{
 							EnableV2: false,
@@ -1033,11 +1071,122 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := manifests.ConfigOptions(tc.opts)
-			err := manifests.ConfigureOptionsForMode(&cfg, tc.opts)
+			cfg := ConfigOptions(tc.opts)
+			err := ConfigureOptionsForMode(&cfg, tc.opts)
 			require.Nil(t, err)
 			require.EqualValues(t, tc.wantOverridesOptions, cfg.Overrides)
 			require.EqualValues(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
+}
+
+func TestConfigOptions_Replication(t *testing.T) {
+	tt := []struct {
+		desc        string
+		spec        lokiv1.LokiStackSpec
+		wantOptions lokiv1.ReplicationSpec
+	}{
+		{
+			desc: "nominal case",
+			spec: lokiv1.LokiStackSpec{
+				Replication: &lokiv1.ReplicationSpec{
+					Factor: 2,
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "us-east-1a",
+							MaxSkew:     1,
+						},
+						{
+							TopologyKey: "us-east-1b",
+							MaxSkew:     2,
+						},
+					},
+				},
+			},
+			wantOptions: lokiv1.ReplicationSpec{
+				Factor: 2,
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "us-east-1a",
+						MaxSkew:     1,
+					},
+					{
+						TopologyKey: "us-east-1b",
+						MaxSkew:     2,
+					},
+				},
+			},
+		},
+		{
+			desc: "using deprecated ReplicationFactor",
+			spec: lokiv1.LokiStackSpec{
+				ReplicationFactor: 3,
+			},
+			wantOptions: lokiv1.ReplicationSpec{
+				Factor: 3,
+			},
+		},
+		{
+			desc: "using deprecated ReplicationFactor with ReplicationSpec",
+			spec: lokiv1.LokiStackSpec{
+				ReplicationFactor: 2,
+				Replication: &lokiv1.ReplicationSpec{
+					Factor: 4,
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "us-east-1a",
+							MaxSkew:     1,
+						},
+						{
+							TopologyKey: "us-east-1b",
+							MaxSkew:     2,
+						},
+					},
+				},
+			},
+			wantOptions: lokiv1.ReplicationSpec{
+				Factor: 4,
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "us-east-1a",
+						MaxSkew:     1,
+					},
+					{
+						TopologyKey: "us-east-1b",
+						MaxSkew:     2,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			inOpt := Options{
+				Stack:    tc.spec,
+				Timeouts: testTimeoutConfig(),
+			}
+			options := ConfigOptions(inOpt)
+			require.Equal(t, tc.wantOptions, *options.Stack.Replication)
+		})
+	}
+}
+
+func TestConfigOptions_ServerOptions(t *testing.T) {
+	opt := Options{
+		Stack:    lokiv1.LokiStackSpec{},
+		Timeouts: testTimeoutConfig(),
+	}
+	got := ConfigOptions(opt)
+
+	want := config.HTTPTimeoutConfig{
+		IdleTimeout:  time.Second,
+		ReadTimeout:  time.Minute,
+		WriteTimeout: 10 * time.Minute,
+	}
+
+	require.Equal(t, want, got.HTTPTimeouts)
 }

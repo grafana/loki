@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -32,27 +33,23 @@ import (
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 )
 
 var (
-	indexTypeStats  = usagestats.NewString("store_index_type")
-	objectTypeStats = usagestats.NewString("store_object_type")
-	schemaStats     = usagestats.NewString("store_schema")
+	indexTypeStats  = analytics.NewString("store_index_type")
+	objectTypeStats = analytics.NewString("store_object_type")
+	schemaStats     = analytics.NewString("store_schema")
 
 	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
-// Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	stores.Store
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	stores.ChunkReader
+	index.Filterable
 	GetSchemaConfigs() []config.PeriodConfig
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 }
 
 type store struct {
@@ -76,10 +73,6 @@ type store struct {
 	logger log.Logger
 
 	chunkFilterer chunk.RequestChunkFilterer
-
-	// Keep a reference to the tsdb index store as we use one store for multiple schema period configs.
-	tsdbStore         index.ReaderWriter
-	tsdbStoreStopFunc func()
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -155,7 +148,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 }
 
 func (s *store) init() error {
-	for _, p := range s.schemaCfg.Configs {
+	for i, p := range s.schemaCfg.Configs {
 		chunkClient, err := s.chunkClientForPeriod(p)
 		if err != nil {
 			return err
@@ -165,16 +158,18 @@ func (s *store) init() error {
 			return err
 		}
 
-		w, idx, stop, err := s.storeForPeriod(p, chunkClient, f)
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(s.schemaCfg.Configs)-1 {
+			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+		w, idx, stop, err := s.storeForPeriod(p, p.GetIndexTableNumberRange(periodEndTime), chunkClient, f)
 		if err != nil {
 			return err
 		}
+
 		s.composite.AddStore(p.From.Time, f, idx, w, stop)
 	}
 
-	if s.cfg.EnableAsyncStore {
-		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
-	}
 	return nil
 }
 
@@ -208,7 +203,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{
 			"component": fmt.Sprintf(
@@ -217,11 +212,12 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 				p.From.String(),
 			),
 		}, s.registerer)
+	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if p.IndexType == config.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, indexClientLogger)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -233,7 +229,12 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			}, nil
 		}
 
-		objectClient, err := NewObjectClient(s.cfg.TSDBShipperConfig.SharedStoreType, s.cfg, s.clientMetrics)
+		objectType := p.ObjectType
+		if s.cfg.TSDBShipperConfig.SharedStoreType != "" {
+			objectType = s.cfg.TSDBShipperConfig.SharedStoreType
+		}
+
+		objectClient, err := NewObjectClient(objectType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -244,41 +245,40 @@ func (s *store) storeForPeriod(p config.PeriodConfig, chunkClient client.Client,
 			pCopy := p
 			pCopy.IndexType = config.BoltDBShipperType
 			pCopy.IndexTables.Prefix = fmt.Sprintf("%sbackup_", pCopy.IndexTables.Prefix)
-			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, chunkClient, f)
+
+			tableRange := tableRange
+			tableRange.PeriodConfig = &pCopy
+
+			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, tableRange, chunkClient, f)
 			if err != nil {
 				return nil, nil, nil, err
 			}
 		}
 
-		// We should only create one tsdb.Store per storage.Store and reuse it over all TSDB schema periods.
-		if s.tsdbStore == nil {
-			indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(s.cfg.TSDBShipperConfig, p, f, objectClient, s.limits,
-				getIndexStoreTableRanges(config.TSDBType, s.schemaCfg.Configs), backupIndexWriter, indexClientReg)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			s.tsdbStore = indexReaderWriter
-			s.tsdbStoreStopFunc = stopTSDBStoreFunc
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(fmt.Sprintf("%s_%s", p.ObjectType, p.From.String()), s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits,
+			tableRange, backupIndexWriter, indexClientReg, indexClientLogger)
+		if err != nil {
+			return nil, nil, nil, err
 		}
 
-		indexReaderWriter := index.NewMonitoredReaderWriter(s.tsdbStore, indexClientReg)
-		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, s.tsdbStore, s.storeCfg.DisableIndexDeduplication)
+		indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 		return chunkWriter, indexReaderWriter,
 			func() {
 				f.Stop()
 				chunkClient.Stop()
-				s.tsdbStoreStopFunc()
+				stopTSDBStoreFunc()
 				objectClient.Stop()
 				backupStoreStop()
 			}, nil
 	}
 
-	idx, err := NewIndexClient(p.IndexType, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg)
+	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}
-	idx = series_index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, s.logger, s.cfg.DisableBroadIndexQueries)
+	idx = series_index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, indexClientLogger, s.cfg.DisableBroadIndexQueries)
 	schema, err := series_index.CreateSchema(p)
 	if err != nil {
 		return nil, nil, nil, err
@@ -542,22 +542,4 @@ func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
 
 func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return errWritingChunkUnsupported
-}
-
-func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
-	var ranges config.TableRanges
-	for i := range periodicConfigs {
-		if periodicConfigs[i].IndexType != indexType {
-			continue
-		}
-
-		periodEndTime := config.DayTime{Time: math.MaxInt64}
-		if i < len(periodicConfigs)-1 {
-			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
-		}
-
-		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
-	}
-
-	return ranges
 }

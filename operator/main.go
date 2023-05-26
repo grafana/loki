@@ -8,6 +8,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
+
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/grafana/loki/operator/internal/validation/openshift"
@@ -89,7 +90,7 @@ func main() {
 	if ctrlCfg.Gates.LokiStackGateway {
 		utilruntime.Must(configv1.AddToScheme(scheme))
 
-		if ctrlCfg.Gates.OpenShift.GatewayRoute {
+		if ctrlCfg.Gates.OpenShift.Enabled {
 			utilruntime.Must(routev1.AddToScheme(scheme))
 		}
 	}

@@ -92,7 +92,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 
 ### Labels
 
-Labels are used to [query logs]({{<relref "../../logql">}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs]({{<relref "../../query">}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
@@ -195,7 +195,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     RemoveKeys key1,key2
 ```
 
-A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
+A full [example configuration file](https://github.com/grafana/loki/blob/main/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
 
 ### Running multiple plugin instances
 

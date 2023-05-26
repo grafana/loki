@@ -68,7 +68,7 @@ scrape_configs:
 
 Important details are:
 * It relies on the `\n` character to separate the data into different log lines.
-* The max expected log line is 2MB bytes within the compressed file.
+* The max expected log line is 2MB within the compressed file.
 * The data is decompressed in blocks of 4096 bytes. i.e: it first fetches a block of 4096 bytes
   from the compressed file and processes it. After processing this block and pushing the data to Loki,
   it fetches the following 4096 bytes, and so on.
@@ -77,7 +77,7 @@ Important details are:
   - `.z`: Data will be decompressed with the native Zlib Golang pkg (`pkg/compress/zlib`)
   - `.bz2`: Data will be decompressed with the native Bzip2 Golang pkg (`pkg/compress/bzip2`)
   - `.tar.gz`: Data will be decompressed exactly as the `.gz` extension.
-      However, because `tar` will add its metadata at the beggining of the
+      However, because `tar` will add its metadata at the beginning of the
       compressed file, **the first parsed line will contains metadata together with
       your log line**. It is illustrated at
       `./clients/pkg/promtail/targets/file/decompresser_test.go`.
@@ -94,7 +94,7 @@ Important details are:
   of your compressed file Loki will rate-limit your ingestion. In that case you
   might configure Promtail's [`limits` stage](/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
   [ingestion limits on Loki](/docs/loki/latest/configuration/#limits_config).
-* Log rotations **aren't supported as of now**, mostly because it requires us modifying Promtail to
+* Log rotations on compressed files **aren't supported as of now** (log rotation is fully supported for normal files), mostly because it requires us modifying Promtail to
   rely on file inodes instead of file names. If you'd like to see support for it, please create a new
   issue on Github asking for it and explaining your use case.
 * If you compress a file under a folder being scraped, Promtail might try to ingest your file before you finish compressing it. To avoid it, pick a `initial_delay` that is enough to avoid it.
@@ -104,7 +104,7 @@ Important details are:
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{<relref "../../api#push-log-entries-to-loki">}}) with the [loki_push_api]({{<relref "configuration#loki_push_api">}}) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{<relref "../../reference/api#push-log-entries-to-loki">}}) with the [loki_push_api]({{<relref "configuration#loki_push_api">}}) scrape config.
 
 There are a few instances where this might be helpful:
 

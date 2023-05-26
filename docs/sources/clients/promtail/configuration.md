@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Configuring Promtaim
+description: Configuring Promtail
 ---
 # Configuration
 
@@ -82,6 +82,9 @@ be replaced with a double backslash `\\`
 ### Supported contents and default values of `config.yaml`:
 
 ```yaml
+# Configures global settings which impact all targets.
+[global: <global_config>]
+
 # Configures the server for Promtail.
 [server: <server_config>]
 
@@ -112,6 +115,33 @@ scrape_configs:
 
 # Configures tracing support
 [tracing: <tracing_config>]
+```
+
+## global
+
+The `global` block configures global settings which impact all scrape targets:
+
+```yaml
+# Configure how frequently log files from disk get polled for changes.
+[file_watch_config: <file_watch_config>]
+```
+
+## file_watch_config
+
+The `file_watch_config` block configures how often to poll log files from disk
+for changes:
+
+```yaml
+# Minimum frequency to poll for files. Any time file changes are detected, the
+# poll frequency gets reset to this duration.
+[min_poll_frequency: <duration> | default = "250ms"]
+
+# Maximum frequency to poll for files. Any time no file changes are detected,
+# the poll frequency doubles in value up to the maximum duration specified by
+# this value.
+#
+# The default is set to the same as min_poll_frequency.
+[max_poll_frequency: <duration> | default = "250ms"]
 ```
 
 ## server
@@ -326,7 +356,7 @@ is restarted to allow it to continue from where it left off.
 ## scrape_configs
 
 The `scrape_configs` block configures how Promtail can scrape logs from a series
-of targets using a specified discovery method:
+of targets using a specified discovery method. Promtail uses the same [Prometheus scrape_configs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config). This means if you already own a Prometheus instance, the config will be very similar:
 
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
@@ -562,7 +592,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
+a configurable [LogQL]({{<relref "../../query/">}}) stream selector.
 
 ```yaml
 match:
@@ -751,9 +781,13 @@ picking it from a field in the extracted data map.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID.
-  # Either source or value config option is required, but not both (they
+  # Either label, source or value config option is required, but not all (they
   # are mutually exclusive).
+
+  # Name from labels to whose value should be set as tenant ID.
+  [ label: <string> ]
+
+  # Name from extracted data to whose value should be set as tenant ID.
   [ source: <string> ]
 
   # Value to use to set the tenant ID when this stage is executed. Useful
@@ -883,7 +917,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../api#push-log-entries-to-loki">}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../reference/api#push-log-entries-to-loki">}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1002,6 +1036,10 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# use_full_line to force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+# By default, if `textPayload` is present in the line, then it's used as log line.
+[use_full_line: <boolean> | default = false]
+
 # If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
 # than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
 # and respond with a 503 HTTP status code.
@@ -1012,15 +1050,17 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
 
 **Internal labels available for pull**
 
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 **Internal labels available for push**
 
@@ -1028,8 +1068,10 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_subscription_name`
 - `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 ### Azure Event Hubs
 
@@ -1066,11 +1108,9 @@ connection_string: <string> | default = "range"
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
-
-**Available Labels:**
 
 - `__azure_event_hubs_category`: The log category of the message when a message is an application log.
 
@@ -1169,7 +1209,7 @@ labels:
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
-**Available Labels:**
+#### Available Labels
 
 The list of labels below are discovered when consuming kafka:
 
@@ -1213,7 +1253,7 @@ use_incoming_timestamp: <bool>
 
 ```
 
-**Available Labels:**
+#### Available Labels
 
 - `__gelf_message_level`: The GELF level as string.
 - `__gelf_message_host`: The host sending the GELF message.
@@ -2058,7 +2098,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config

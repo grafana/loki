@@ -85,6 +85,7 @@ type App struct {
 	UpdatedAt               time.Time       `json:"updated_at,omitempty"`
 	ActiveDeployment        *Deployment     `json:"active_deployment,omitempty"`
 	InProgressDeployment    *Deployment     `json:"in_progress_deployment,omitempty"`
+	PendingDeployment       *Deployment     `json:"pending_deployment,omitempty"`
 	LastDeploymentCreatedAt time.Time       `json:"last_deployment_created_at,omitempty"`
 	LiveURL                 string          `json:"live_url,omitempty"`
 	Region                  *AppRegion      `json:"region,omitempty"`
@@ -94,7 +95,7 @@ type App struct {
 	Domains                 []*AppDomain    `json:"domains,omitempty"`
 	PinnedDeployment        *Deployment     `json:"pinned_deployment,omitempty"`
 	BuildConfig             *AppBuildConfig `json:"build_config,omitempty"`
-	// The id of the project for the app. This will be empty if there is a lookup failure.
+	// The id of the project for the app. This will be empty if there is a fleet (project) lookup failure.
 	ProjectID string `json:"project_id,omitempty"`
 }
 
@@ -161,6 +162,8 @@ type AppBuildConfig struct {
 type AppBuildConfigCNBVersioning struct {
 	// List of versioned buildpacks used for the application.  Buildpacks are only versioned based on the major semver version, therefore exact versions will not be available at the app build config.
 	Buildpacks []*Buildpack `json:"buildpacks,omitempty"`
+	// A version id that represents the underlying CNB stack. The version of the stack indicates what buildpacks are supported.
+	StackID string `json:"stack_id,omitempty"`
 }
 
 // AppDatabaseSpec struct for AppDatabaseSpec
@@ -238,10 +241,12 @@ type AppFunctionsSpec struct {
 	CORS            *AppCORSPolicy           `json:"cors,omitempty"`
 }
 
-// AppIngressSpec struct for AppIngressSpec
+// AppIngressSpec Specification for app ingress configurations.
 type AppIngressSpec struct {
 	LoadBalancer     AppIngressSpecLoadBalancer `json:"load_balancer,omitempty"`
 	LoadBalancerSize int64                      `json:"load_balancer_size,omitempty"`
+	// Rules for configuring HTTP ingress for component routes, CORS, rewrites, and redirects.
+	Rules []*AppIngressSpecRule `json:"rules,omitempty"`
 }
 
 // AppIngressSpecLoadBalancer the model 'AppIngressSpecLoadBalancer'
@@ -252,6 +257,49 @@ const (
 	AppIngressSpecLoadBalancer_Unknown      AppIngressSpecLoadBalancer = "UNKNOWN"
 	AppIngressSpecLoadBalancer_DigitalOcean AppIngressSpecLoadBalancer = "DIGITALOCEAN"
 )
+
+// AppIngressSpecRule A rule that configures component routes, rewrites, redirects and cors.
+type AppIngressSpecRule struct {
+	Match     *AppIngressSpecRuleMatch            `json:"match,omitempty"`
+	Component *AppIngressSpecRuleRoutingComponent `json:"component,omitempty"`
+	Redirect  *AppIngressSpecRuleRoutingRedirect  `json:"redirect,omitempty"`
+	CORS      *AppCORSPolicy                      `json:"cors,omitempty"`
+}
+
+// AppIngressSpecRuleMatch The match configuration for a rule.
+type AppIngressSpecRuleMatch struct {
+	Path *AppIngressSpecRuleStringMatch `json:"path,omitempty"`
+}
+
+// AppIngressSpecRuleRoutingComponent The component routing configuration.
+type AppIngressSpecRuleRoutingComponent struct {
+	// The name of the component to route to.
+	Name string `json:"name,omitempty"`
+	// An optional flag to preserve the path that is forwarded to the backend service. By default, the HTTP request path will be trimmed from the left when forwarded to the component. For example, a component with `path=/api` will have requests to `/api/list` trimmed to `/list`. If this value is `true`, the path will remain `/api/list`. Note: this is not applicable for Functions Components and is mutually exclusive with `rewrite`.
+	PreservePathPrefix bool `json:"preserve_path_prefix,omitempty"`
+	// An optional field that will rewrite the path of the component to be what is specified here. By default, the HTTP request path will be trimmed from the left when forwarded to the component. For example, a component with `path=/api` will have requests to `/api/list` trimmed to `/list`. If you specified the rewrite to be `/v1/`, requests to `/api/list` would be rewritten to `/v1/list`. Note: this is mutually exclusive with `preserve_path_prefix`.
+	Rewrite string `json:"rewrite,omitempty"`
+}
+
+// AppIngressSpecRuleRoutingRedirect The redirect routing configuration.
+type AppIngressSpecRuleRoutingRedirect struct {
+	// An optional URI path to redirect to. Note: if this is specified the whole URI of the original request will be overwritten to this value, irrespective of the original request URI being matched.
+	Uri string `json:"uri,omitempty"`
+	// The authority/host to redirect to. This can be a hostname or IP address. Note: use `port` to set the port.
+	Authority string `json:"authority,omitempty"`
+	// The port to redirect to.
+	Port int64 `json:"port,omitempty"`
+	// The scheme to redirect to. Supported values are `http` or `https`. Default: `https`.
+	Scheme string `json:"scheme,omitempty"`
+	// The redirect code to use. Defaults to `302`. Supported values are 300, 301, 302, 303, 304, 305, 307, 308.
+	RedirectCode int64 `json:"redirect_code,omitempty"`
+}
+
+// AppIngressSpecRuleStringMatch The string match configuration.
+type AppIngressSpecRuleStringMatch struct {
+	// Prefix-based match. For example, `/api` will match `/api`, `/api/`, and any nested paths such as `/api/v1/endpoint`.
+	Prefix string `json:"prefix,omitempty"`
+}
 
 // AppJobSpec struct for AppJobSpec
 type AppJobSpec struct {
@@ -594,6 +642,7 @@ type Deployment struct {
 	PreviousDeploymentID string                  `json:"previous_deployment_id,omitempty"`
 	CauseDetails         *DeploymentCauseDetails `json:"cause_details,omitempty"`
 	LoadBalancerID       string                  `json:"load_balancer_id,omitempty"`
+	Timing               *DeploymentTiming       `json:"timing,omitempty"`
 }
 
 // DeploymentCauseDetails struct for DeploymentCauseDetails
@@ -708,6 +757,30 @@ type DeploymentStaticSite struct {
 	SourceCommitHash string `json:"source_commit_hash,omitempty"`
 	// The list of resolved buildpacks used for a given deployment component.
 	Buildpacks []*Buildpack `json:"buildpacks,omitempty"`
+}
+
+// DeploymentTiming struct for DeploymentTiming
+type DeploymentTiming struct {
+	// Pending describes the time spent waiting for the build to begin. This may include delays related to build concurrency limits.
+	Pending string `json:"pending,omitempty"`
+	// BuildTotal describes total time between the start of the build and its completion.
+	BuildTotal string `json:"build_total,omitempty"`
+	// BuildBillable describes the time spent executing the build. As builds may run concurrently  this may be greater than the build total.
+	BuildBillable string `json:"build_billable,omitempty"`
+	// Components breaks down billable build time by component.
+	Components []*DeploymentTimingComponent `json:"components,omitempty"`
+	// DatabaseProvision describes the time spent creating databases.
+	DatabaseProvision string `json:"database_provision,omitempty"`
+	// Deploying is time spent starting containers and waiting for health checks to pass.
+	Deploying string `json:"deploying,omitempty"`
+}
+
+// DeploymentTimingComponent struct for DeploymentTimingComponent
+type DeploymentTimingComponent struct {
+	// Name of the component.
+	Name string `json:"name,omitempty"`
+	// BuildBillable is the billable build time for this component.
+	BuildBillable string `json:"build_billable,omitempty"`
 }
 
 // DeploymentWorker struct for DeploymentWorker
@@ -947,6 +1020,12 @@ const (
 	AppInstanceSizeCPUType_Dedicated   AppInstanceSizeCPUType = "DEDICATED"
 )
 
+// ListBuildpacksResponse struct for ListBuildpacksResponse
+type ListBuildpacksResponse struct {
+	// List of the available buildpacks on App Platform.
+	Buildpacks []*Buildpack `json:"buildpacks,omitempty"`
+}
+
 // AppProposeRequest struct for AppProposeRequest
 type AppProposeRequest struct {
 	Spec *AppSpec `json:"spec"`
@@ -956,22 +1035,22 @@ type AppProposeRequest struct {
 
 // AppProposeResponse struct for AppProposeResponse
 type AppProposeResponse struct {
-	// Deprecated. Please use AppIsStarter instead.
+	// Deprecated. Please use app_is_starter instead.
 	AppIsStatic bool `json:"app_is_static,omitempty"`
 	// Indicates whether the app name is available.
 	AppNameAvailable bool `json:"app_name_available,omitempty"`
 	// If the app name is unavailable, this will be set to a suggested available name.
 	AppNameSuggestion string `json:"app_name_suggestion,omitempty"`
-	// Deprecated. Please use ExistingStarterApps instead.
+	// Deprecated. Please use existing_starter_apps instead.
 	ExistingStaticApps string `json:"existing_static_apps,omitempty"`
-	// Deprecated. Please use MaxFreeStarterApps instead.
+	// Deprecated. Please use max_free_starter_apps instead.
 	MaxFreeStaticApps string   `json:"max_free_static_apps,omitempty"`
 	Spec              *AppSpec `json:"spec,omitempty"`
 	// The monthly cost of the proposed app in USD.
 	AppCost float32 `json:"app_cost,omitempty"`
-	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `AppTierUpgradeCost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
+	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `app_tier_upgrade_cost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
 	AppTierUpgradeCost float32 `json:"app_tier_upgrade_cost,omitempty"`
-	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `AppTierDowngradeCost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
+	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `app_tier_downgrade_cost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
 	AppTierDowngradeCost float32 `json:"app_tier_downgrade_cost,omitempty"`
 	// The number of existing starter tier apps the account has.
 	ExistingStarterApps string `json:"existing_starter_apps,omitempty"`

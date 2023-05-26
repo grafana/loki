@@ -42,7 +42,7 @@ Once the distributor has performed all of its validation duties, it forwards dat
 
 In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication_factor_ of them. Generally, this is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will error if less than a _quorum_ of writes succeed. A quorum is defined as `floor(replication_factor / 2) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write can be retried.
 
-**Caveat: There's also an edge case where we acknowledge a write if 2 of the three ingesters do which means that in the case where 2 writes succeed, we can only lose one ingester before suffering data loss.**
+**Caveat: If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.**
 
 Replication factor isn't the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts & restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
 
@@ -224,7 +224,7 @@ Caching log (filter, regexp) queries are under active development.
 
 ## Querier
 
-The **querier** service handles queries using the [LogQL]({{<relref "../../../logql/">}}) query
+The **querier** service handles queries using the [LogQL]({{<relref "../../../query/">}}) query
 language, fetching logs both from the ingesters and from long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to
@@ -232,4 +232,6 @@ running the same query against the backend store. Because of the replication
 factor, it is possible that the querier may receive duplicate data. To resolve
 this, the querier internally **deduplicates** data that has the same nanosecond
 timestamp, label set, and log message.
+
+At read path, [replication factor]({{< relref "#replication-factor" >}}) also plays a role here. For example with `replication-factor` of `3`, we require that two queries to be running. 
 

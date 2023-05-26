@@ -229,11 +229,10 @@ func main() {
 		// 1. Query with stream selector(e.g: `{foo="bar"}|="error"`)
 		// 2. Query without stream selector (e.g: `|="error"`)
 
-		qs := rangeQuery.QueryString
-		if strings.HasPrefix(strings.TrimSpace(qs), "|") {
+		qs := strings.TrimSpace(rangeQuery.QueryString)
+		if strings.HasPrefix(qs, "|") || strings.HasPrefix(qs, "!") {
 			// inject the dummy stream selector
-			qs = `{source="logcli"}` + qs
-			rangeQuery.QueryString = qs
+			rangeQuery.QueryString = `{source="logcli"}` + rangeQuery.QueryString
 		}
 
 		// `--limit` doesn't make sense when using `--stdin` flag.
