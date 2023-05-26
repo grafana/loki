@@ -27,6 +27,10 @@ type TenantPage struct {
 
 // IsEmpty determines whether or not a page of Tenants contains any results.
 func (r TenantPage) IsEmpty() (bool, error) {
+	if r.StatusCode == 204 {
+		return true, nil
+	}
+
 	tenants, err := ExtractTenants(r)
 	return len(tenants) == 0, err
 }

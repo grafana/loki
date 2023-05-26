@@ -52,6 +52,10 @@ type GetConsumerResult struct {
 
 // IsEmpty determines whether or not a page of Consumers contains any results.
 func (c ConsumersPage) IsEmpty() (bool, error) {
+	if c.StatusCode == 204 {
+		return true, nil
+	}
+
 	consumers, err := ExtractConsumers(c)
 	return len(consumers) == 0, err
 }
@@ -208,6 +212,10 @@ type AccessTokensPage struct {
 
 // IsEmpty determines whether or not a an AccessTokensPage contains any results.
 func (r AccessTokensPage) IsEmpty() (bool, error) {
+	if r.StatusCode == 204 {
+		return true, nil
+	}
+
 	accessTokens, err := ExtractAccessTokens(r)
 	return len(accessTokens) == 0, err
 }
@@ -251,6 +259,10 @@ type AccessTokenRolesPage struct {
 
 // IsEmpty determines whether or not a an AccessTokensPage contains any results.
 func (r AccessTokenRolesPage) IsEmpty() (bool, error) {
+	if r.StatusCode == 204 {
+		return true, nil
+	}
+
 	accessTokenRoles, err := ExtractAccessTokenRoles(r)
 	return len(accessTokenRoles) == 0, err
 }

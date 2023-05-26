@@ -186,9 +186,15 @@ func (c *S3) CompleteMultipartUploadRequest(input *CompleteMultipartUploadInput)
 // to complete. After Amazon S3 begins processing the request, it sends an HTTP
 // response header that specifies a 200 OK response. While processing is in
 // progress, Amazon S3 periodically sends white space characters to keep the
-// connection from timing out. Because a request could fail after the initial
-// 200 OK response has been sent, it is important that you check the response
-// body to determine whether the request succeeded.
+// connection from timing out. A request could fail after the initial 200 OK
+// response has been sent. This means that a 200 OK response can contain either
+// a success or an error. If you call the S3 API directly, make sure to design
+// your application to parse the contents of the response and handle it appropriately.
+// If you use Amazon Web Services SDKs, SDKs handle this condition. The SDKs
+// detect the embedded error and apply error handling per your configuration
+// settings (including automatically retrying the request as appropriate). If
+// the condition persists, the SDKs throws an exception (or, for the SDKs that
+// don't use exceptions, they return the error).
 //
 // Note that if CompleteMultipartUpload fails, applications should be prepared
 // to retry the failed requests. For more information, see Amazon S3 Error Best
@@ -324,8 +330,13 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // action starts, you receive a standard Amazon S3 error. If the error occurs
 // during the copy operation, the error response is embedded in the 200 OK response.
 // This means that a 200 OK response can contain either a success or an error.
-// Design your application to parse the contents of the response and handle
-// it appropriately.
+// If you call the S3 API directly, make sure to design your application to
+// parse the contents of the response and handle it appropriately. If you use
+// Amazon Web Services SDKs, SDKs handle this condition. The SDKs detect the
+// embedded error and apply error handling per your configuration settings (including
+// automatically retrying the request as appropriate). If the condition persists,
+// the SDKs throws an exception (or, for the SDKs that don't use exceptions,
+// they return the error).
 //
 // If the copy is successful, you receive a response with information about
 // the copied object.
@@ -359,6 +370,9 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // Conditions in a Policy (https://docs.aws.amazon.com/AmazonS3/latest/dev/amazon-s3-policy-keys.html)
 // in the Amazon S3 User Guide. For a complete list of Amazon S3-specific condition
 // keys, see Actions, Resources, and Condition Keys for Amazon S3 (https://docs.aws.amazon.com/AmazonS3/latest/dev/list_amazons3.html).
+//
+// x-amz-website-redirect-location is unique to each object and must be specified
+// in the request headers to copy the value.
 //
 // x-amz-copy-source-if Headers
 //
@@ -395,13 +409,27 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 //
 // # Server-side encryption
 //
-// When you perform a CopyObject operation, you can optionally use the appropriate
-// encryption-related headers to encrypt the object using server-side encryption
-// with Amazon Web Services managed encryption keys (SSE-S3 or SSE-KMS) or a
-// customer-provided encryption key. With server-side encryption, Amazon S3
-// encrypts your data as it writes it to disks in its data centers and decrypts
-// the data when you access it. For more information about server-side encryption,
-// see Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html).
+// Amazon S3 automatically encrypts all new objects that are copied to an S3
+// bucket. When copying an object, if you don't specify encryption information
+// in your copy request, the encryption setting of the target object is set
+// to the default encryption configuration of the destination bucket. By default,
+// all buckets have a base level of encryption configuration that uses server-side
+// encryption with Amazon S3 managed keys (SSE-S3). If the destination bucket
+// has a default encryption configuration that uses server-side encryption with
+// an Key Management Service (KMS) key (SSE-KMS), or a customer-provided encryption
+// key (SSE-C), Amazon S3 uses the corresponding KMS key, or a customer-provided
+// key to encrypt the target object copy. When you perform a CopyObject operation,
+// if you want to use a different type of encryption setting for the target
+// object, you can use other appropriate encryption-related headers to encrypt
+// the target object with a KMS key, an Amazon S3 managed key, or a customer-provided
+// key. With server-side encryption, Amazon S3 encrypts your data as it writes
+// it to disks in its data centers and decrypts the data when you access it.
+// If the encryption setting in your request is different from the default encryption
+// configuration of the destination bucket, the encryption setting in your request
+// takes precedence. If the source object for the copy is stored in Amazon S3
+// using SSE-C, you must provide the necessary encryption information in your
+// request so that Amazon S3 can decrypt the object for copying. For more information
+// about server-side encryption, see Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html).
 //
 // If a target object uses SSE-KMS, you can enable an S3 Bucket Key for the
 // object. For more information, see Amazon S3 Bucket Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-key.html)
@@ -763,22 +791,40 @@ func (c *S3) CreateMultipartUploadRequest(input *CreateMultipartUploadInput) (re
 // parts and stop charging you for storing them only after you either complete
 // or abort a multipart upload.
 //
-// You can optionally request server-side encryption. For server-side encryption,
-// Amazon S3 encrypts your data as it writes it to disks in its data centers
-// and decrypts it when you access it. You can provide your own encryption key,
-// or use Amazon Web Services KMS keys or Amazon S3-managed encryption keys.
+// Server-side encryption is for data encryption at rest. Amazon S3 encrypts
+// your data as it writes it to disks in its data centers and decrypts it when
+// you access it. Amazon S3 automatically encrypts all new objects that are
+// uploaded to an S3 bucket. When doing a multipart upload, if you don't specify
+// encryption information in your request, the encryption setting of the uploaded
+// parts is set to the default encryption configuration of the destination bucket.
+// By default, all buckets have a base level of encryption configuration that
+// uses server-side encryption with Amazon S3 managed keys (SSE-S3). If the
+// destination bucket has a default encryption configuration that uses server-side
+// encryption with an Key Management Service (KMS) key (SSE-KMS), or a customer-provided
+// encryption key (SSE-C), Amazon S3 uses the corresponding KMS key, or a customer-provided
+// key to encrypt the uploaded parts. When you perform a CreateMultipartUpload
+// operation, if you want to use a different type of encryption setting for
+// the uploaded parts, you can request that Amazon S3 encrypts the object with
+// a KMS key, an Amazon S3 managed key, or a customer-provided key. If the encryption
+// setting in your request is different from the default encryption configuration
+// of the destination bucket, the encryption setting in your request takes precedence.
 // If you choose to provide your own encryption key, the request headers you
 // provide in UploadPart (https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html)
 // and UploadPartCopy (https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html)
 // requests must match the headers you used in the request to initiate the upload
-// by using CreateMultipartUpload.
+// by using CreateMultipartUpload. you can request that Amazon S3 save the uploaded
+// parts encrypted with server-side encryption with an Amazon S3 managed key
+// (SSE-S3), an Key Management Service (KMS) key (SSE-KMS), or a customer-provided
+// encryption key (SSE-C).
 //
-// To perform a multipart upload with encryption using an Amazon Web Services
+// To perform a multipart upload with encryption by using an Amazon Web Services
 // KMS key, the requester must have permission to the kms:Decrypt and kms:GenerateDataKey*
 // actions on the key. These permissions are required because Amazon S3 must
 // decrypt and read data from the encrypted file parts before it completes the
 // multipart upload. For more information, see Multipart upload API and permissions
 // (https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html#mpuAndPermissions)
+// and Protecting data using server-side encryption with Amazon Web Services
+// KMS (https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html)
 // in the Amazon S3 User Guide.
 //
 // If your Identity and Access Management (IAM) user or role is in the same
@@ -808,32 +854,35 @@ func (c *S3) CreateMultipartUploadRequest(input *CreateMultipartUploadInput) (re
 //
 // # Server-Side- Encryption-Specific Request Headers
 //
-// You can optionally tell Amazon S3 to encrypt data at rest using server-side
-// encryption. Server-side encryption is for data encryption at rest. Amazon
-// S3 encrypts your data as it writes it to disks in its data centers and decrypts
-// it when you access it. The option you use depends on whether you want to
-// use Amazon Web Services managed encryption keys or provide your own encryption
-// key.
+// Amazon S3 encrypts data by using server-side encryption with an Amazon S3
+// managed key (SSE-S3) by default. Server-side encryption is for data encryption
+// at rest. Amazon S3 encrypts your data as it writes it to disks in its data
+// centers and decrypts it when you access it. You can request that Amazon S3
+// encrypts data at rest by using server-side encryption with other key options.
+// The option you use depends on whether you want to use KMS keys (SSE-KMS)
+// or provide your own encryption keys (SSE-C).
 //
-//   - Use encryption keys managed by Amazon S3 or customer managed key stored
-//     in Amazon Web Services Key Management Service (Amazon Web Services KMS)
-//     – If you want Amazon Web Services to manage the keys used to encrypt
+//   - Use KMS keys (SSE-KMS) that include the Amazon Web Services managed
+//     key (aws/s3) and KMS customer managed keys stored in Key Management Service
+//     (KMS) – If you want Amazon Web Services to manage the keys used to encrypt
 //     data, specify the following headers in the request. x-amz-server-side-encryption
 //     x-amz-server-side-encryption-aws-kms-key-id x-amz-server-side-encryption-context
 //     If you specify x-amz-server-side-encryption:aws:kms, but don't provide
 //     x-amz-server-side-encryption-aws-kms-key-id, Amazon S3 uses the Amazon
-//     Web Services managed key in Amazon Web Services KMS to protect the data.
-//     All GET and PUT requests for an object protected by Amazon Web Services
-//     KMS fail if you don't make them with SSL or by using SigV4. For more information
-//     about server-side encryption with KMS key (SSE-KMS), see Protecting Data
-//     Using Server-Side Encryption with KMS keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
+//     Web Services managed key (aws/s3 key) in KMS to protect the data. All
+//     GET and PUT requests for an object protected by KMS fail if you don't
+//     make them by using Secure Sockets Layer (SSL), Transport Layer Security
+//     (TLS), or Signature Version 4. For more information about server-side
+//     encryption with KMS keys (SSE-KMS), see Protecting Data Using Server-Side
+//     Encryption with KMS keys (https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html).
 //
-//   - Use customer-provided encryption keys – If you want to manage your
-//     own encryption keys, provide all the following headers in the request.
+//   - Use customer-provided encryption keys (SSE-C) – If you want to manage
+//     your own encryption keys, provide all the following headers in the request.
 //     x-amz-server-side-encryption-customer-algorithm x-amz-server-side-encryption-customer-key
 //     x-amz-server-side-encryption-customer-key-MD5 For more information about
-//     server-side encryption with KMS keys (SSE-KMS), see Protecting Data Using
-//     Server-Side Encryption with KMS keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
+//     server-side encryption with customer-provided encryption keys (SSE-C),
+//     see Protecting data using server-side encryption with customer-provided
+//     encryption keys (SSE-C) (https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html).
 //
 // # Access-Control-List (ACL)-Specific Request Headers
 //
@@ -1217,9 +1266,10 @@ func (c *S3) DeleteBucketEncryptionRequest(input *DeleteBucketEncryptionInput) (
 
 // DeleteBucketEncryption API operation for Amazon Simple Storage Service.
 //
-// This implementation of the DELETE action removes default encryption from
-// the bucket. For information about the Amazon S3 default encryption feature,
-// see Amazon S3 Default Bucket Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
+// This implementation of the DELETE action resets the default encryption for
+// the bucket as server-side encryption with Amazon S3 managed keys (SSE-S3).
+// For information about the bucket default encryption feature, see Amazon S3
+// Bucket Default Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
 // in the Amazon S3 User Guide.
 //
 // To use this operation, you must have permissions to perform the s3:PutEncryptionConfiguration
@@ -2141,10 +2191,10 @@ func (c *S3) DeleteObjectRequest(input *DeleteObjectInput) (req *request.Request
 // null version, Amazon S3 does not remove any objects but will still respond
 // that the command was successful.
 //
-// To remove a specific version, you must be the bucket owner and you must use
-// the version Id subresource. Using this subresource permanently deletes the
-// version. If the object deleted is a delete marker, Amazon S3 sets the response
-// header, x-amz-delete-marker, to true.
+// To remove a specific version, you must use the version Id subresource. Using
+// this subresource permanently deletes the version. If the object deleted is
+// a delete marker, Amazon S3 sets the response header, x-amz-delete-marker,
+// to true.
 //
 // If the object you want to delete is in a bucket where the bucket versioning
 // configuration is MFA Delete enabled, you must include the x-amz-mfa request
@@ -2246,7 +2296,7 @@ func (c *S3) DeleteObjectTaggingRequest(input *DeleteObjectTaggingInput) (req *r
 // in the request. You will need permission for the s3:DeleteObjectVersionTagging
 // action.
 //
-// The following operations are related to DeleteBucketMetricsConfiguration:
+// The following operations are related to DeleteObjectTagging:
 //
 //   - PutObjectTagging (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html)
 //
@@ -2634,6 +2684,9 @@ func (c *S3) GetBucketAclRequest(input *GetBucketAclInput) (req *request.Request
 // is granted to the anonymous user, you can return the ACL of the bucket without
 // using an authorization header.
 //
+// To use this API against an access point, provide the alias of the access
+// point in place of the bucket name.
+//
 // If your bucket uses the bucket owner enforced setting for S3 Object Ownership,
 // requests to read ACLs are still supported and return the bucket-owner-full-control
 // ACL with the owner being the account that created the bucket. For more information,
@@ -2815,6 +2868,9 @@ func (c *S3) GetBucketCorsRequest(input *GetBucketCorsInput) (req *request.Reque
 // action. By default, the bucket owner has this permission and can grant it
 // to others.
 //
+// To use this API against an access point, provide the alias of the access
+// point in place of the bucket name.
+//
 // For more information about CORS, see Enabling Cross-Origin Resource Sharing
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html).
 //
@@ -2895,12 +2951,12 @@ func (c *S3) GetBucketEncryptionRequest(input *GetBucketEncryptionInput) (req *r
 
 // GetBucketEncryption API operation for Amazon Simple Storage Service.
 //
-// Returns the default encryption configuration for an Amazon S3 bucket. If
-// the bucket does not have a default encryption configuration, GetBucketEncryption
-// returns ServerSideEncryptionConfigurationNotFoundError.
-//
-// For information about the Amazon S3 default encryption feature, see Amazon
-// S3 Default Bucket Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html).
+// Returns the default encryption configuration for an Amazon S3 bucket. By
+// default, all buckets have a default encryption configuration that uses server-side
+// encryption with Amazon S3 managed keys (SSE-S3). For information about the
+// bucket default encryption feature, see Amazon S3 Bucket Default Encryption
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
+// in the Amazon S3 User Guide.
 //
 // To use this operation, you must have permission to perform the s3:GetEncryptionConfiguration
 // action. The bucket owner has this permission by default. The bucket owner
@@ -3393,6 +3449,10 @@ func (c *S3) GetBucketLocationRequest(input *GetBucketLocationInput) (req *reque
 // To use this API against an access point, provide the alias of the access
 // point in place of the bucket name.
 //
+// For requests made using Amazon Web Services Signature Version 4 (SigV4),
+// we recommend that you use HeadBucket (https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html)
+// to return the bucket Region instead of GetBucketLocation.
+//
 // The following operations are related to GetBucketLocation:
 //
 //   - GetObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
@@ -3471,7 +3531,7 @@ func (c *S3) GetBucketLoggingRequest(input *GetBucketLoggingInput) (req *request
 // GetBucketLogging API operation for Amazon Simple Storage Service.
 //
 // Returns the logging status of a bucket and the permissions users have to
-// view and modify that status. To use GET, you must be the bucket owner.
+// view and modify that status.
 //
 // The following operations are related to GetBucketLogging:
 //
@@ -3735,6 +3795,9 @@ func (c *S3) GetBucketNotificationConfigurationRequest(input *GetBucketNotificat
 // to other users to read this configuration with the s3:GetBucketNotification
 // permission.
 //
+// To use this API against an access point, provide the alias of the access
+// point in place of the bucket name.
+//
 // For more information about setting and reading the notification configuration
 // on a bucket, see Setting Up Notification of Bucket Events (https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html).
 // For more information about bucket policies, see Using Bucket Policies (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-iam-policies.html).
@@ -3911,6 +3974,9 @@ func (c *S3) GetBucketPolicyRequest(input *GetBucketPolicyInput) (req *request.R
 // As a security precaution, the root user of the Amazon Web Services account
 // that owns a bucket can always use this operation, even if the policy explicitly
 // denies the root user the ability to perform this action.
+//
+// To use this API against an access point, provide the alias of the access
+// point in place of the bucket name.
 //
 // For more information about bucket policies, see Using Bucket Policies and
 // User Policies (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-iam-policies.html).
@@ -4542,7 +4608,7 @@ func (c *S3) GetObjectRequest(input *GetObjectInput) (req *request.Request, outp
 // Deep Archive storage class, or S3 Intelligent-Tiering Archive or S3 Intelligent-Tiering
 // Deep Archive tiers, before you can retrieve the object you must first restore
 // a copy using RestoreObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html).
-// Otherwise, this action returns an InvalidObjectStateError error. For information
+// Otherwise, this action returns an InvalidObjectState error. For information
 // about restoring archived objects, see Restoring Archived Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html).
 //
 // Encryption request headers, like x-amz-server-side-encryption, should not
@@ -4589,7 +4655,9 @@ func (c *S3) GetObjectRequest(input *GetObjectInput) (req *request.Request, outp
 //
 //   - If you supply a versionId, you need the s3:GetObjectVersion permission
 //     to access a specific version of an object. If you request a specific version,
-//     you do not need to have the s3:GetObject permission.
+//     you do not need to have the s3:GetObject permission. If you request the
+//     current version without a specific version ID, only s3:GetObject permission
+//     is required. s3:GetObjectVersion permission won't be required.
 //
 //   - If the current version of the object is a delete marker, Amazon S3 behaves
 //     as if the object was deleted and includes x-amz-delete-marker: true in
@@ -4835,10 +4903,9 @@ func (c *S3) GetObjectAttributesRequest(input *GetObjectAttributesInput) (req *r
 // This action is useful if you're interested only in an object's metadata.
 // To use GetObjectAttributes, you must have READ access to the object.
 //
-// GetObjectAttributes combines the functionality of GetObjectAcl, GetObjectLegalHold,
-// GetObjectLockConfiguration, GetObjectRetention, GetObjectTagging, HeadObject,
-// and ListParts. All of the data returned with each of those individual calls
-// can be returned with a single call to GetObjectAttributes.
+// GetObjectAttributes combines the functionality of HeadObject and ListParts.
+// All of the data returned with each of those individual calls can be returned
+// with a single call to GetObjectAttributes.
 //
 // If you encrypt an object by using server-side encryption with customer-provided
 // encryption keys (SSE-C) when you store the object in Amazon S3, then when
@@ -4857,9 +4924,9 @@ func (c *S3) GetObjectAttributesRequest(input *GetObjectAttributesInput) (req *r
 //   - Encryption request headers, such as x-amz-server-side-encryption, should
 //     not be sent for GET requests if your object uses server-side encryption
 //     with Amazon Web Services KMS keys stored in Amazon Web Services Key Management
-//     Service (SSE-KMS) or server-side encryption with Amazon S3 managed encryption
-//     keys (SSE-S3). If your object does use these types of keys, you'll get
-//     an HTTP 400 Bad Request error.
+//     Service (SSE-KMS) or server-side encryption with Amazon S3 managed keys
+//     (SSE-S3). If your object does use these types of keys, you'll get an HTTP
+//     400 Bad Request error.
 //
 //   - The last modified property in this case is the creation date of the
 //     object.
@@ -5326,8 +5393,7 @@ func (c *S3) GetObjectTorrentRequest(input *GetObjectTorrentInput) (req *request
 // GetObjectTorrent API operation for Amazon Simple Storage Service.
 //
 // Returns torrent files from a bucket. BitTorrent can save you bandwidth when
-// you're distributing large files. For more information about BitTorrent, see
-// Using BitTorrent with Amazon S3 (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3Torrent.html).
+// you're distributing large files.
 //
 // You can get torrent only for objects that are less than 5 GB in size, and
 // that are not encrypted using server-side encryption with a customer-provided
@@ -5514,9 +5580,9 @@ func (c *S3) HeadBucketRequest(input *HeadBucketInput) (req *request.Request, ou
 // permission to access it.
 //
 // If the bucket does not exist or you do not have permission to access it,
-// the HEAD request returns a generic 404 Not Found or 403 Forbidden code. A
-// message body is not included, so you cannot determine the exception beyond
-// these error codes.
+// the HEAD request returns a generic 400 Bad Request, 403 Forbidden or 404
+// Not Found code. A message body is not included, so you cannot determine the
+// exception beyond these error codes.
 //
 // To use this operation, you must have permissions to perform the s3:ListBucket
 // action. The bucket owner has this permission by default and can grant this
@@ -5613,9 +5679,9 @@ func (c *S3) HeadObjectRequest(input *HeadObjectInput) (req *request.Request, ou
 //
 // A HEAD request has the same options as a GET action on an object. The response
 // is identical to the GET response except that there is no response body. Because
-// of this, if the HEAD request generates an error, it returns a generic 404
-// Not Found or 403 Forbidden code. It is not possible to retrieve the exact
-// exception beyond these error codes.
+// of this, if the HEAD request generates an error, it returns a generic 400
+// Bad Request, 403 Forbidden or 404 Not Found code. It is not possible to retrieve
+// the exact exception beyond these error codes.
 //
 // If you encrypt an object by using server-side encryption with customer-provided
 // encryption keys (SSE-C) when you store the object in Amazon S3, then when
@@ -6147,6 +6213,9 @@ func (c *S3) ListBucketsRequest(input *ListBucketsInput) (req *request.Request, 
 //
 // Returns a list of all buckets owned by the authenticated sender of the request.
 // To use this operation, you must have the s3:ListAllMyBuckets permission.
+//
+// For information about Amazon S3 buckets, see Creating, configuring, and working
+// with Amazon S3 buckets (https://docs.aws.amazon.com/AmazonS3/latest/userguide/creating-buckets-s3.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7208,7 +7277,7 @@ func (c *S3) PutBucketAclRequest(input *PutBucketAclInput) (req *request.Request
 //     xsi:type="Group"><URI><>http://acs.amazonaws.com/groups/global/AuthenticatedUsers<></URI></Grantee>
 //
 //   - By Email address: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-//     xsi:type="AmazonCustomerByEmail"><EmailAddress><>Grantees@email.com<></EmailAddress>lt;/Grantee>
+//     xsi:type="AmazonCustomerByEmail"><EmailAddress><>Grantees@email.com<></EmailAddress>&</Grantee>
 //     The grantee is resolved to the CanonicalUser and, in a response to a GET
 //     Object acl request, appears as the CanonicalUser. Using email addresses
 //     to specify a grantee is only supported in the following Amazon Web Services
@@ -7541,15 +7610,15 @@ func (c *S3) PutBucketEncryptionRequest(input *PutBucketEncryptionInput) (req *r
 // PutBucketEncryption API operation for Amazon Simple Storage Service.
 //
 // This action uses the encryption subresource to configure default encryption
-// and Amazon S3 Bucket Key for an existing bucket.
+// and Amazon S3 Bucket Keys for an existing bucket.
 //
-// Default encryption for a bucket can use server-side encryption with Amazon
-// S3-managed keys (SSE-S3) or customer managed keys (SSE-KMS). If you specify
-// default encryption using SSE-KMS, you can also configure Amazon S3 Bucket
-// Key. When the default encryption is SSE-KMS, if you upload an object to the
-// bucket and do not specify the KMS key to use for encryption, Amazon S3 uses
-// the default Amazon Web Services managed KMS key for your account. For information
-// about default encryption, see Amazon S3 default bucket encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
+// By default, all buckets have a default encryption configuration that uses
+// server-side encryption with Amazon S3 managed keys (SSE-S3). You can optionally
+// configure default encryption for a bucket by using server-side encryption
+// with an Amazon Web Services KMS key (SSE-KMS) or a customer-provided key
+// (SSE-C). If you specify default encryption by using SSE-KMS, you can also
+// configure Amazon S3 Bucket Keys. For information about bucket default encryption,
+// see Amazon S3 bucket default encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
 // in the Amazon S3 User Guide. For more information about S3 Bucket Keys, see
 // Amazon S3 Bucket Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-key.html)
 // in the Amazon S3 User Guide.
@@ -7780,11 +7849,26 @@ func (c *S3) PutBucketInventoryConfigurationRequest(input *PutBucketInventoryCon
 // an example policy, see Granting Permissions for Amazon S3 Inventory and Storage
 // Class Analysis (https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html#example-bucket-policies-use-case-9).
 //
-// To use this operation, you must have permissions to perform the s3:PutInventoryConfiguration
+// # Permissions
+//
+// To use this operation, you must have permission to perform the s3:PutInventoryConfiguration
 // action. The bucket owner has this permission by default and can grant this
-// permission to others. For more information about permissions, see Permissions
-// Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
-// and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html)
+// permission to others.
+//
+// The s3:PutInventoryConfiguration permission allows a user to create an S3
+// Inventory (https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-inventory.html)
+// report that includes all object metadata fields available and to specify
+// the destination bucket to store the inventory. A user with read access to
+// objects in the destination bucket can also access all object metadata fields
+// that are available in the inventory report.
+//
+// To restrict access to an inventory report, see Restricting access to an Amazon
+// S3 Inventory report (https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies.html#example-bucket-policies-use-case-10)
+// in the Amazon S3 User Guide. For more information about the metadata fields
+// available in S3 Inventory, see Amazon S3 Inventory lists (https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-inventory.html#storage-inventory-contents)
+// in the Amazon S3 User Guide. For more information about permissions, see
+// Permissions related to bucket subresource operations (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
+// and Identity and access management in Amazon S3 (https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html)
 // in the Amazon S3 User Guide.
 //
 // Special Errors
@@ -9393,12 +9477,14 @@ func (c *S3) PutObjectRequest(input *PutObjectInput) (req *request.Request, outp
 // add an object to it.
 //
 // Amazon S3 never adds partial objects; if you receive a success response,
-// Amazon S3 added the entire object to the bucket.
+// Amazon S3 added the entire object to the bucket. You cannot use PutObject
+// to only update a single piece of metadata for an existing object. You must
+// put the entire object with updated metadata if you want to update some values.
 //
 // Amazon S3 is a distributed system. If it receives multiple write requests
 // for the same object simultaneously, it overwrites all but the last object
-// written. Amazon S3 does not provide object locking; if you need this, make
-// sure to build it into your application layer or use versioning instead.
+// written. To prevent objects from being deleted or overwritten, you can use
+// Amazon S3 Object Lock (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html).
 //
 // To ensure that data is not corrupted traversing the network, use the Content-MD5
 // header. When you use this header, Amazon S3 checks the object against the
@@ -9412,34 +9498,29 @@ func (c *S3) PutObjectRequest(input *PutObjectInput) (req *request.Request, outp
 //   - To successfully change the objects acl of your PutObject request, you
 //     must have the s3:PutObjectAcl in your IAM permissions.
 //
+//   - To successfully set the tag-set with your PutObject request, you must
+//     have the s3:PutObjectTagging in your IAM permissions.
+//
 //   - The Content-MD5 header is required for any request to upload an object
 //     with a retention period configured using Amazon S3 Object Lock. For more
 //     information about Amazon S3 Object Lock, see Amazon S3 Object Lock Overview
 //     (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock-overview.html)
 //     in the Amazon S3 User Guide.
 //
-// # Server-side Encryption
+// You have three mutually exclusive options to protect data using server-side
+// encryption in Amazon S3, depending on how you choose to manage the encryption
+// keys. Specifically, the encryption key options are Amazon S3 managed keys
+// (SSE-S3), Amazon Web Services KMS keys (SSE-KMS), and customer-provided keys
+// (SSE-C). Amazon S3 encrypts data with server-side encryption by using Amazon
+// S3 managed keys (SSE-S3) by default. You can optionally tell Amazon S3 to
+// encrypt data at by rest using server-side encryption with other key options.
+// For more information, see Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html).
 //
-// You can optionally request server-side encryption. With server-side encryption,
-// Amazon S3 encrypts your data as it writes it to disks in its data centers
-// and decrypts the data when you access it. You have the option to provide
-// your own encryption key or use Amazon Web Services managed encryption keys
-// (SSE-S3 or SSE-KMS). For more information, see Using Server-Side Encryption
-// (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html).
-//
-// If you request server-side encryption using Amazon Web Services Key Management
-// Service (SSE-KMS), you can enable an S3 Bucket Key at the object-level. For
-// more information, see Amazon S3 Bucket Keys (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-key.html)
-// in the Amazon S3 User Guide.
-//
-// # Access Control List (ACL)-Specific Request Headers
-//
-// You can use headers to grant ACL- based permissions. By default, all objects
-// are private. Only the owner has full access control. When adding a new object,
-// you can grant permissions to individual Amazon Web Services accounts or to
-// predefined groups defined by Amazon S3. These permissions are then added
-// to the ACL on the object. For more information, see Access Control List (ACL)
-// Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html)
+// When adding a new object, you can use headers to grant ACL-based permissions
+// to individual Amazon Web Services accounts or to predefined groups defined
+// by Amazon S3. These permissions are then added to the ACL on the object.
+// By default, all objects are private. Only the owner has full access control.
+// For more information, see Access Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html)
 // and Managing ACLs Using the REST API (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-using-rest-api.html).
 //
 // If the bucket that you're uploading objects to uses the bucket owner enforced
@@ -9449,17 +9530,14 @@ func (c *S3) PutObjectRequest(input *PutObjectInput) (req *request.Request, outp
 // as the bucket-owner-full-control canned ACL or an equivalent form of this
 // ACL expressed in the XML format. PUT requests that contain other ACLs (for
 // example, custom grants to certain Amazon Web Services accounts) fail and
-// return a 400 error with the error code AccessControlListNotSupported.
-//
-// For more information, see Controlling ownership of objects and disabling
-// ACLs (https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html)
+// return a 400 error with the error code AccessControlListNotSupported. For
+// more information, see Controlling ownership of objects and disabling ACLs
+// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html)
 // in the Amazon S3 User Guide.
 //
 // If your bucket uses the bucket owner enforced setting for Object Ownership,
 // all objects written to the bucket by any account will be owned by the bucket
 // owner.
-//
-// # Storage Class Options
 //
 // By default, Amazon S3 uses the STANDARD Storage Class to store newly created
 // objects. The STANDARD storage class provides high durability and high availability.
@@ -9468,20 +9546,16 @@ func (c *S3) PutObjectRequest(input *PutObjectInput) (req *request.Request, outp
 // see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html)
 // in the Amazon S3 User Guide.
 //
-// # Versioning
-//
 // If you enable versioning for a bucket, Amazon S3 automatically generates
 // a unique version ID for the object being stored. Amazon S3 returns this ID
 // in the response. When you enable versioning for a bucket, if Amazon S3 receives
 // multiple write requests for the same object simultaneously, it stores all
-// of the objects.
-//
-// For more information about versioning, see Adding Objects to Versioning Enabled
-// Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/AddingObjectstoVersioningEnabledBuckets.html).
+// of the objects. For more information about versioning, see Adding Objects
+// to Versioning Enabled Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/AddingObjectstoVersioningEnabledBuckets.html).
 // For information about returning the versioning state of a bucket, see GetBucketVersioning
 // (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketVersioning.html).
 //
-// Related Resources
+// For more information about related Amazon S3 APIs, see the following:
 //
 //   - CopyObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html)
 //
@@ -10218,27 +10292,10 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 // and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html)
 // in the Amazon S3 User Guide.
 //
-// # Querying Archives with Select Requests
+// For more information about the S3 structure in the request body, see the
+// following:
 //
-// You use a select type of request to perform SQL queries on archived objects.
-// The archived objects that are being queried by the select request must be
-// formatted as uncompressed comma-separated values (CSV) files. You can run
-// queries and custom analytics on your archived data without having to restore
-// your data to a hotter Amazon S3 tier. For an overview about select requests,
-// see Querying Archived Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/querying-glacier-archives.html)
-// in the Amazon S3 User Guide.
-//
-// When making a select request, do the following:
-//
-//   - Define an output location for the select query's output. This must be
-//     an Amazon S3 bucket in the same Amazon Web Services Region as the bucket
-//     that contains the archive object that is being queried. The Amazon Web
-//     Services account that initiates the job must have permissions to write
-//     to the S3 bucket. You can specify the storage class and encryption for
-//     the output objects stored in the bucket. For more information about output,
-//     see Querying Archived Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/querying-glacier-archives.html)
-//     in the Amazon S3 User Guide. For more information about the S3 structure
-//     in the request body, see the following: PutObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
+//   - PutObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
 //     Managing Access with ACLs (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html)
 //     in the Amazon S3 User Guide Protecting Data Using Server-Side Encryption
 //     (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html)
@@ -10256,10 +10313,6 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //     the query.) You cannot mix ordinal positions with header column names.
 //     SELECT s.Id, s.FirstName, s.SSN FROM S3Object s
 //
-// For more information about using SQL with S3 Glacier Select restore, see
-// SQL Reference for Amazon S3 Select and S3 Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
-// in the Amazon S3 User Guide.
-//
 // When making a select request, you can also do the following:
 //
 //   - To expedite your queries, specify the Expedited tier. For more information
@@ -10276,56 +10329,61 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //     policy.
 //
 //   - You can issue more than one select request on the same Amazon S3 object.
-//     Amazon S3 doesn't deduplicate requests, so avoid issuing duplicate requests.
+//     Amazon S3 doesn't duplicate requests, so avoid issuing duplicate requests.
 //
 //   - Amazon S3 accepts a select request even if the object has already been
 //     restored. A select request doesn’t return error response 409.
 //
 // # Restoring objects
 //
-// Objects that you archive to the S3 Glacier or S3 Glacier Deep Archive storage
-// class, and S3 Intelligent-Tiering Archive or S3 Intelligent-Tiering Deep
-// Archive tiers are not accessible in real time. For objects in Archive Access
-// or Deep Archive Access tiers you must first initiate a restore request, and
-// then wait until the object is moved into the Frequent Access tier. For objects
-// in S3 Glacier or S3 Glacier Deep Archive storage classes you must first initiate
-// a restore request, and then wait until a temporary copy of the object is
-// available. To access an archived object, you must restore the object for
-// the duration (number of days) that you specify.
+// Objects that you archive to the S3 Glacier Flexible Retrieval or S3 Glacier
+// Deep Archive storage class, and S3 Intelligent-Tiering Archive or S3 Intelligent-Tiering
+// Deep Archive tiers, are not accessible in real time. For objects in the S3
+// Glacier Flexible Retrieval or S3 Glacier Deep Archive storage classes, you
+// must first initiate a restore request, and then wait until a temporary copy
+// of the object is available. If you want a permanent copy of the object, create
+// a copy of it in the Amazon S3 Standard storage class in your S3 bucket. To
+// access an archived object, you must restore the object for the duration (number
+// of days) that you specify. For objects in the Archive Access or Deep Archive
+// Access tiers of S3 Intelligent-Tiering, you must first initiate a restore
+// request, and then wait until the object is moved into the Frequent Access
+// tier.
 //
 // To restore a specific object version, you can provide a version ID. If you
 // don't provide a version ID, Amazon S3 restores the current version.
 //
-// When restoring an archived object (or using a select request), you can specify
-// one of the following data access tier options in the Tier element of the
-// request body:
+// When restoring an archived object, you can specify one of the following data
+// access tier options in the Tier element of the request body:
 //
 //   - Expedited - Expedited retrievals allow you to quickly access your data
-//     stored in the S3 Glacier storage class or S3 Intelligent-Tiering Archive
-//     tier when occasional urgent requests for a subset of archives are required.
-//     For all but the largest archived objects (250 MB+), data accessed using
-//     Expedited retrievals is typically made available within 1–5 minutes.
-//     Provisioned capacity ensures that retrieval capacity for Expedited retrievals
-//     is available when you need it. Expedited retrievals and provisioned capacity
-//     are not available for objects stored in the S3 Glacier Deep Archive storage
-//     class or S3 Intelligent-Tiering Deep Archive tier.
+//     stored in the S3 Glacier Flexible Retrieval storage class or S3 Intelligent-Tiering
+//     Archive tier when occasional urgent requests for a subset of archives
+//     are required. For all but the largest archived objects (250 MB+), data
+//     accessed using Expedited retrievals is typically made available within
+//     1–5 minutes. Provisioned capacity ensures that retrieval capacity for
+//     Expedited retrievals is available when you need it. Expedited retrievals
+//     and provisioned capacity are not available for objects stored in the S3
+//     Glacier Deep Archive storage class or S3 Intelligent-Tiering Deep Archive
+//     tier.
 //
 //   - Standard - Standard retrievals allow you to access any of your archived
 //     objects within several hours. This is the default option for retrieval
 //     requests that do not specify the retrieval option. Standard retrievals
 //     typically finish within 3–5 hours for objects stored in the S3 Glacier
-//     storage class or S3 Intelligent-Tiering Archive tier. They typically finish
-//     within 12 hours for objects stored in the S3 Glacier Deep Archive storage
-//     class or S3 Intelligent-Tiering Deep Archive tier. Standard retrievals
-//     are free for objects stored in S3 Intelligent-Tiering.
-//
-//   - Bulk - Bulk retrievals are the lowest-cost retrieval option in S3 Glacier,
-//     enabling you to retrieve large amounts, even petabytes, of data inexpensively.
-//     Bulk retrievals typically finish within 5–12 hours for objects stored
-//     in the S3 Glacier storage class or S3 Intelligent-Tiering Archive tier.
-//     They typically finish within 48 hours for objects stored in the S3 Glacier
+//     Flexible Retrieval storage class or S3 Intelligent-Tiering Archive tier.
+//     They typically finish within 12 hours for objects stored in the S3 Glacier
 //     Deep Archive storage class or S3 Intelligent-Tiering Deep Archive tier.
-//     Bulk retrievals are free for objects stored in S3 Intelligent-Tiering.
+//     Standard retrievals are free for objects stored in S3 Intelligent-Tiering.
+//
+//   - Bulk - Bulk retrievals free for objects stored in the S3 Glacier Flexible
+//     Retrieval and S3 Intelligent-Tiering storage classes, enabling you to
+//     retrieve large amounts, even petabytes, of data at no cost. Bulk retrievals
+//     typically finish within 5–12 hours for objects stored in the S3 Glacier
+//     Flexible Retrieval storage class or S3 Intelligent-Tiering Archive tier.
+//     Bulk retrievals are also the lowest-cost retrieval option when restoring
+//     objects from S3 Glacier Deep Archive. They typically finish within 48
+//     hours for objects stored in the S3 Glacier Deep Archive storage class
+//     or S3 Intelligent-Tiering Deep Archive tier.
 //
 // For more information about archive retrieval options and provisioned capacity
 // for Expedited data access, see Restoring Archived Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html)
@@ -10385,9 +10443,6 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //   - PutBucketLifecycleConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html)
 //
 //   - GetBucketNotificationConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketNotificationConfiguration.html)
-//
-//   - SQL Reference for Amazon S3 Select and S3 Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
-//     in the Amazon S3 User Guide
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -10489,10 +10544,6 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 // and SELECT Command (https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-glacier-select-sql-reference-select.html)
 // in the Amazon S3 User Guide.
 //
-// For more information about using SQL with Amazon S3 Select, see SQL Reference
-// for Amazon S3 Select and S3 Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
-// in the Amazon S3 User Guide.
-//
 // # Permissions
 //
 // You must have s3:GetObject permission for this operation. Amazon S3 Select
@@ -10522,10 +10573,10 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 //     For more information about SSE-C, see Server-Side Encryption (Using Customer-Provided
 //     Encryption Keys) (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
 //     in the Amazon S3 User Guide. For objects that are encrypted with Amazon
-//     S3 managed encryption keys (SSE-S3) and Amazon Web Services KMS keys (SSE-KMS),
-//     server-side encryption is handled transparently, so you don't need to
-//     specify anything. For more information about server-side encryption, including
-//     SSE-S3 and SSE-KMS, see Protecting Data Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html)
+//     S3 managed keys (SSE-S3) and Amazon Web Services KMS keys (SSE-KMS), server-side
+//     encryption is handled transparently, so you don't need to specify anything.
+//     For more information about server-side encryption, including SSE-S3 and
+//     SSE-KMS, see Protecting Data Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html)
 //     in the Amazon S3 User Guide.
 //
 // # Working with the Response Body
@@ -10847,24 +10898,32 @@ func (c *S3) UploadPartRequest(input *UploadPartInput) (req *request.Request, ou
 // go to Multipart Upload and Permissions (https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuAndPermissions.html)
 // in the Amazon S3 User Guide.
 //
-// You can optionally request server-side encryption where Amazon S3 encrypts
-// your data as it writes it to disks in its data centers and decrypts it for
-// you when you access it. You have the option of providing your own encryption
-// key, or you can use the Amazon Web Services managed encryption keys. If you
-// choose to provide your own encryption key, the request headers you provide
-// in the request must match the headers you used in the request to initiate
-// the upload by using CreateMultipartUpload (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html).
+// Server-side encryption is for data encryption at rest. Amazon S3 encrypts
+// your data as it writes it to disks in its data centers and decrypts it when
+// you access it. You have three mutually exclusive options to protect data
+// using server-side encryption in Amazon S3, depending on how you choose to
+// manage the encryption keys. Specifically, the encryption key options are
+// Amazon S3 managed keys (SSE-S3), Amazon Web Services KMS keys (SSE-KMS),
+// and Customer-Provided Keys (SSE-C). Amazon S3 encrypts data with server-side
+// encryption using Amazon S3 managed keys (SSE-S3) by default. You can optionally
+// tell Amazon S3 to encrypt data at rest using server-side encryption with
+// other key options. The option you use depends on whether you want to use
+// KMS keys (SSE-KMS) or provide your own encryption key (SSE-C). If you choose
+// to provide your own encryption key, the request headers you provide in the
+// request must match the headers you used in the request to initiate the upload
+// by using CreateMultipartUpload (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html).
 // For more information, go to Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html)
 // in the Amazon S3 User Guide.
 //
 // Server-side encryption is supported by the S3 Multipart Upload actions. Unless
-// you are using a customer-provided encryption key, you don't need to specify
-// the encryption parameters in each UploadPart request. Instead, you only need
-// to specify the server-side encryption parameters in the initial Initiate
-// Multipart request. For more information, see CreateMultipartUpload (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html).
+// you are using a customer-provided encryption key (SSE-C), you don't need
+// to specify the encryption parameters in each UploadPart request. Instead,
+// you only need to specify the server-side encryption parameters in the initial
+// Initiate Multipart request. For more information, see CreateMultipartUpload
+// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html).
 //
 // If you requested server-side encryption using a customer-provided encryption
-// key in your initiate multipart upload request, you must provide identical
+// key (SSE-C) in your initiate multipart upload request, you must provide identical
 // encryption information in each part upload using the following headers.
 //
 //   - x-amz-server-side-encryption-customer-algorithm
@@ -11251,12 +11310,12 @@ type AbortMultipartUploadInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -12261,7 +12320,9 @@ type CSVInput struct {
 
 	// A single character used to indicate that a row should be ignored when the
 	// character is present at the start of that row. You can specify any character
-	// to indicate a comment line.
+	// to indicate a comment line. The default character is #.
+	//
+	// Default: #
 	Comments *string `type:"string"`
 
 	// A single character used to separate individual fields in a record. You can
@@ -12638,12 +12699,12 @@ type CompleteMultipartUploadInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -12900,12 +12961,12 @@ type CompleteMultipartUploadOutput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	Bucket *string `type:"string"`
 
@@ -12970,18 +13031,16 @@ type CompleteMultipartUploadOutput struct {
 	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by CompleteMultipartUploadOutput's
 	// String and GoString methods.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
-	// If you specified server-side encryption either with an Amazon S3-managed
-	// encryption key or an Amazon Web Services KMS key in your initiate multipart
-	// upload request, the response includes this header. It confirms the encryption
-	// algorithm that Amazon S3 used to encrypt the object.
+	// The server-side encryption algorithm used when storing this object in Amazon
+	// S3 (for example, AES256, aws:kms).
 	ServerSideEncryption *string `location:"header" locationName:"x-amz-server-side-encryption" type:"string" enum:"ServerSideEncryption"`
 
 	// Version ID of the newly created object, in case the bucket has versioning
@@ -13347,12 +13406,12 @@ type CopyObjectInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -13580,7 +13639,9 @@ type CopyObjectInput struct {
 
 	// If the bucket is configured as a website, redirects requests for this object
 	// to another object in the same bucket or to an external URL. Amazon S3 stores
-	// the value of this header in the object metadata.
+	// the value of this header in the object metadata. This value is unique to
+	// each object and is not copied when using the x-amz-metadata-directive header.
+	// Instead, you may opt to provide this header in combination with the directive.
 	WebsiteRedirectLocation *string `location:"header" locationName:"x-amz-website-redirect-location" type:"string"`
 }
 
@@ -13961,8 +14022,8 @@ type CopyObjectOutput struct {
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by CopyObjectOutput's
@@ -14491,12 +14552,12 @@ type CreateMultipartUploadInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -14614,12 +14675,12 @@ type CreateMultipartUploadInput struct {
 	// String and GoString methods.
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
-	// Specifies the ID of the symmetric customer managed key to use for object
-	// encryption. All GET and PUT requests for an object protected by Amazon Web
-	// Services KMS will fail if not made via SSL or using SigV4. For information
-	// about configuring using any of the officially supported Amazon Web Services
-	// SDKs and Amazon Web Services CLI, see Specifying the Signature Version in
-	// Request Authentication (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version)
+	// Specifies the ID of the symmetric encryption customer managed key to use
+	// for object encryption. All GET and PUT requests for an object protected by
+	// Amazon Web Services KMS will fail if not made via SSL or using SigV4. For
+	// information about configuring using any of the officially supported Amazon
+	// Web Services SDKs and Amazon Web Services CLI, see Specifying the Signature
+	// Version in Request Authentication (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version)
 	// in the Amazon S3 User Guide.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
@@ -14938,12 +14999,12 @@ type CreateMultipartUploadOutput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	Bucket *string `locationName:"Bucket" type:"string"`
 
@@ -14981,8 +15042,8 @@ type CreateMultipartUploadOutput struct {
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by CreateMultipartUploadOutput's
@@ -16062,7 +16123,8 @@ type DeleteBucketMetricsConfigurationInput struct {
 	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// The ID used to identify the metrics configuration.
+	// The ID used to identify the metrics configuration. The ID has a 64 character
+	// limit and can only contain letters, numbers, periods, dashes, and underscores.
 	//
 	// Id is a required field
 	Id *string `location:"querystring" locationName:"id" type:"string" required:"true"`
@@ -16908,12 +16970,12 @@ type DeleteObjectInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -17131,12 +17193,12 @@ type DeleteObjectTaggingInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -17298,12 +17360,12 @@ type DeleteObjectsInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -17871,9 +17933,9 @@ type Encryption struct {
 	KMSContext *string `type:"string"`
 
 	// If the encryption type is aws:kms, this optional value specifies the ID of
-	// the symmetric customer managed key to use for encryption of job results.
-	// Amazon S3 only supports symmetric keys. For more information, see Using symmetric
-	// and asymmetric keys (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+	// the symmetric encryption customer managed key to use for encryption of job
+	// results. Amazon S3 only supports symmetric encryption KMS keys. For more
+	// information, see Asymmetric keys in Amazon Web Services KMS (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
 	// in the Amazon Web Services Key Management Service Developer Guide.
 	//
 	// KMSKeyId is a sensitive parameter and its value will be
@@ -17939,8 +18001,8 @@ type EncryptionConfiguration struct {
 	// Specifies the ID (Key ARN or Alias ARN) of the customer managed Amazon Web
 	// Services KMS key stored in Amazon Web Services Key Management Service (KMS)
 	// for the destination bucket. Amazon S3 uses this key to encrypt replica objects.
-	// Amazon S3 only supports symmetric, customer managed KMS keys. For more information,
-	// see Using symmetric and asymmetric keys (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+	// Amazon S3 only supports symmetric encryption KMS keys. For more information,
+	// see Asymmetric keys in Amazon Web Services KMS (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
 	// in the Amazon Web Services Key Management Service Developer Guide.
 	ReplicaKmsKeyID *string `type:"string"`
 }
@@ -18341,8 +18403,8 @@ type Error struct {
 	//    and SOAP Authentication (https://docs.aws.amazon.com/AmazonS3/latest/dev/SOAPAuthentication.html)
 	//    for details. HTTP Status Code: 403 Forbidden SOAP Fault Code Prefix: Client
 	//
-	//    * Code: ServiceUnavailable Description: Reduce your request rate. HTTP
-	//    Status Code: 503 Service Unavailable SOAP Fault Code Prefix: Server
+	//    * Code: ServiceUnavailable Description: Service is unable to handle request.
+	//    HTTP Status Code: 503 Service Unavailable SOAP Fault Code Prefix: Server
 	//
 	//    * Code: SlowDown Description: Reduce your request rate. HTTP Status Code:
 	//    503 Slow Down SOAP Fault Code Prefix: Server
@@ -18510,6 +18572,8 @@ func (s EventBridgeConfiguration) GoString() string {
 type ExistingObjectReplication struct {
 	_ struct{} `type:"structure"`
 
+	// Specifies whether Amazon S3 replicates existing source bucket objects.
+	//
 	// Status is a required field
 	Status *string `type:"string" required:"true" enum:"ExistingObjectReplicationStatus"`
 }
@@ -20033,7 +20097,8 @@ type GetBucketMetricsConfigurationInput struct {
 	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// The ID used to identify the metrics configuration.
+	// The ID used to identify the metrics configuration. The ID has a 64 character
+	// limit and can only contain letters, numbers, periods, dashes, and underscores.
 	//
 	// Id is a required field
 	Id *string `location:"querystring" locationName:"id" type:"string" required:"true"`
@@ -21498,12 +21563,12 @@ type GetObjectAttributesInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -21917,12 +21982,12 @@ type GetObjectInput struct {
 	//
 	// When using an Object Lambda access point the hostname takes the form AccessPointName-AccountId.s3-object-lambda.Region.amazonaws.com.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -21966,8 +22031,8 @@ type GetObjectInput struct {
 	PartNumber *int64 `location:"querystring" locationName:"partNumber" type:"integer"`
 
 	// Downloads the specified range bytes of an object. For more information about
-	// the HTTP Range header, see https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
-	// (https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35).
+	// the HTTP Range header, see https://www.rfc-editor.org/rfc/rfc9110.html#name-range
+	// (https://www.rfc-editor.org/rfc/rfc9110.html#name-range).
 	//
 	// Amazon S3 doesn't support retrieving multiple ranges of data per GET request.
 	Range *string `location:"header" locationName:"Range" type:"string"`
@@ -22669,8 +22734,8 @@ type GetObjectOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by GetObjectOutput's
@@ -23115,12 +23180,12 @@ type GetObjectTaggingInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -23807,12 +23872,12 @@ type HeadBucketInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -23938,12 +24003,12 @@ type HeadObjectInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -23988,8 +24053,9 @@ type HeadObjectInput struct {
 	// object.
 	PartNumber *int64 `location:"querystring" locationName:"partNumber" type:"integer"`
 
-	// Because HeadObject returns only the metadata for an object, this parameter
-	// has no effect.
+	// HeadObject returns only the metadata for an object. If the Range is satisfiable,
+	// only the ContentLength is affected in the response. If the Range is not satisfiable,
+	// S3 returns a 416 - Requested Range Not Satisfiable error.
 	Range *string `location:"header" locationName:"Range" type:"string"`
 
 	// Confirms that the requester knows that they will be charged for the request.
@@ -24377,18 +24443,16 @@ type HeadObjectOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by HeadObjectOutput's
 	// String and GoString methods.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
-	// If the object is stored using server-side encryption either with an Amazon
-	// Web Services KMS key or an Amazon S3-managed encryption key, the response
-	// includes this header with the value of the server-side encryption algorithm
-	// used when storing this object in Amazon S3 (for example, AES256, aws:kms).
+	// The server-side encryption algorithm used when storing this object in Amazon
+	// S3 (for example, AES256, aws:kms).
 	ServerSideEncryption *string `location:"header" locationName:"x-amz-server-side-encryption" type:"string" enum:"ServerSideEncryption"`
 
 	// Provides storage class information of the object. Amazon S3 returns this
@@ -25670,6 +25734,9 @@ func (s *LambdaFunctionConfiguration) SetLambdaFunctionArn(v string) *LambdaFunc
 }
 
 // Container for lifecycle rules. You can add as many as 1000 rules.
+//
+// For more information see, Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+// in the Amazon S3 User Guide.
 type LifecycleConfiguration struct {
 	_ struct{} `type:"structure"`
 
@@ -25727,6 +25794,9 @@ func (s *LifecycleConfiguration) SetRules(v []*Rule) *LifecycleConfiguration {
 }
 
 // Container for the expiration for the lifecycle of the object.
+//
+// For more information see, Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+// in the Amazon S3 User Guide.
 type LifecycleExpiration struct {
 	_ struct{} `type:"structure"`
 
@@ -25782,6 +25852,9 @@ func (s *LifecycleExpiration) SetExpiredObjectDeleteMarker(v bool) *LifecycleExp
 }
 
 // A lifecycle rule for individual objects in an Amazon S3 bucket.
+//
+// For more information see, Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+// in the Amazon S3 User Guide.
 type LifecycleRule struct {
 	_ struct{} `type:"structure"`
 
@@ -26842,12 +26915,12 @@ type ListMultipartUploadsInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -27515,12 +27588,12 @@ type ListObjectsInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -27826,12 +27899,12 @@ type ListObjectsV2Input struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -28052,8 +28125,8 @@ type ListObjectsV2Output struct {
 	IsTruncated *bool `type:"boolean"`
 
 	// KeyCount is the number of keys returned with this request. KeyCount will
-	// always be less than or equals to MaxKeys field. Say you ask for 50 keys,
-	// your result will include less than equals 50 keys
+	// always be less than or equal to the MaxKeys field. Say you ask for 50 keys,
+	// your result will include 50 keys or fewer.
 	KeyCount *int64 `type:"integer"`
 
 	// Sets the maximum number of keys returned in the response. By default the
@@ -28070,12 +28143,12 @@ type ListObjectsV2Output struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	Name *string `type:"string"`
 
@@ -28194,12 +28267,12 @@ type ListPartsInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -29006,7 +29079,8 @@ type MetricsConfiguration struct {
 	// prefix, an object tag, an access point ARN, or a conjunction (MetricsAndOperator).
 	Filter *MetricsFilter `type:"structure"`
 
-	// The ID used to identify the metrics configuration.
+	// The ID used to identify the metrics configuration. The ID has a 64 character
+	// limit and can only contain letters, numbers, periods, dashes, and underscores.
 	//
 	// Id is a required field
 	Id *string `type:"string" required:"true"`
@@ -30153,7 +30227,24 @@ func (s *OutputSerialization) SetJSON(v *JSONOutput) *OutputSerialization {
 type Owner struct {
 	_ struct{} `type:"structure"`
 
-	// Container for the display name of the owner.
+	// Container for the display name of the owner. This value is only supported
+	// in the following Amazon Web Services Regions:
+	//
+	//    * US East (N. Virginia)
+	//
+	//    * US West (N. California)
+	//
+	//    * US West (Oregon)
+	//
+	//    * Asia Pacific (Singapore)
+	//
+	//    * Asia Pacific (Sydney)
+	//
+	//    * Asia Pacific (Tokyo)
+	//
+	//    * Europe (Ireland)
+	//
+	//    * South America (São Paulo)
 	DisplayName *string `type:"string"`
 
 	// Container for the ID of the owner.
@@ -31364,9 +31455,12 @@ type PutBucketEncryptionInput struct {
 	_ struct{} `locationName:"PutBucketEncryptionRequest" type:"structure" payload:"ServerSideEncryptionConfiguration"`
 
 	// Specifies default encryption for a bucket using server-side encryption with
-	// Amazon S3-managed keys (SSE-S3) or customer managed keys (SSE-KMS). For information
-	// about the Amazon S3 default encryption feature, see Amazon S3 Default Bucket
-	// Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
+	// different key options. By default, all buckets have a default encryption
+	// configuration that uses server-side encryption with Amazon S3 managed keys
+	// (SSE-S3). You can optionally configure default encryption for a bucket by
+	// using server-side encryption with an Amazon Web Services KMS key (SSE-KMS)
+	// or a customer-provided key (SSE-C). For information about the bucket default
+	// encryption feature, see Amazon S3 Bucket Default Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -32004,6 +32098,9 @@ type PutBucketLifecycleInput struct {
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// Container for lifecycle rules. You can add as many as 1000 rules.
+	//
+	// For more information see, Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+	// in the Amazon S3 User Guide.
 	LifecycleConfiguration *LifecycleConfiguration `locationName:"LifecycleConfiguration" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 }
 
@@ -32301,7 +32398,8 @@ type PutBucketMetricsConfigurationInput struct {
 	// (access denied).
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
-	// The ID used to identify the metrics configuration.
+	// The ID used to identify the metrics configuration. The ID has a 64 character
+	// limit and can only contain letters, numbers, periods, dashes, and underscores.
 	//
 	// Id is a required field
 	Id *string `location:"querystring" locationName:"id" type:"string" required:"true"`
@@ -33953,12 +34051,12 @@ type PutObjectAclInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Key is a required field
@@ -34185,12 +34283,12 @@ type PutObjectInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -34256,21 +34354,21 @@ type PutObjectInput struct {
 	ChecksumSHA256 *string `location:"header" locationName:"x-amz-checksum-sha256" type:"string"`
 
 	// Specifies presentational information for the object. For more information,
-	// see http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.5.1 (http://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.5.1).
+	// see https://www.rfc-editor.org/rfc/rfc6266#section-4 (https://www.rfc-editor.org/rfc/rfc6266#section-4).
 	ContentDisposition *string `location:"header" locationName:"Content-Disposition" type:"string"`
 
 	// Specifies what content encodings have been applied to the object and thus
 	// what decoding mechanisms must be applied to obtain the media-type referenced
-	// by the Content-Type header field. For more information, see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.11
-	// (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.11).
+	// by the Content-Type header field. For more information, see https://www.rfc-editor.org/rfc/rfc9110.html#field.content-encoding
+	// (https://www.rfc-editor.org/rfc/rfc9110.html#field.content-encoding).
 	ContentEncoding *string `location:"header" locationName:"Content-Encoding" type:"string"`
 
 	// The language the content is in.
 	ContentLanguage *string `location:"header" locationName:"Content-Language" type:"string"`
 
 	// Size of the body in bytes. This parameter is useful when the size of the
-	// body cannot be determined automatically. For more information, see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.13
-	// (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.13).
+	// body cannot be determined automatically. For more information, see https://www.rfc-editor.org/rfc/rfc9110.html#name-content-length
+	// (https://www.rfc-editor.org/rfc/rfc9110.html#name-content-length).
 	ContentLength *int64 `location:"header" locationName:"Content-Length" type:"long"`
 
 	// The base64-encoded 128-bit MD5 digest of the message (without the headers)
@@ -34282,7 +34380,7 @@ type PutObjectInput struct {
 	ContentMD5 *string `location:"header" locationName:"Content-MD5" type:"string"`
 
 	// A standard MIME type describing the format of the contents. For more information,
-	// see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.17 (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.17).
+	// see https://www.rfc-editor.org/rfc/rfc9110.html#name-content-type (https://www.rfc-editor.org/rfc/rfc9110.html#name-content-type).
 	ContentType *string `location:"header" locationName:"Content-Type" type:"string"`
 
 	// The account ID of the expected bucket owner. If the bucket is owned by a
@@ -34291,7 +34389,7 @@ type PutObjectInput struct {
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The date and time at which the object is no longer cacheable. For more information,
-	// see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.21 (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.21).
+	// see https://www.rfc-editor.org/rfc/rfc7234#section-5.3 (https://www.rfc-editor.org/rfc/rfc7234#section-5.3).
 	Expires *time.Time `location:"header" locationName:"Expires" type:"timestamp"`
 
 	// Gives the grantee READ, READ_ACP, and WRITE_ACP permissions on the object.
@@ -34362,16 +34460,18 @@ type PutObjectInput struct {
 
 	// Specifies the Amazon Web Services KMS Encryption Context to use for object
 	// encryption. The value of this header is a base64-encoded UTF-8 string holding
-	// JSON with the encryption context key-value pairs.
+	// JSON with the encryption context key-value pairs. This value is stored as
+	// object metadata and automatically gets passed on to Amazon Web Services KMS
+	// for future GetObject or CopyObject operations on this object.
 	//
 	// SSEKMSEncryptionContext is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by PutObjectInput's
 	// String and GoString methods.
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
-	// If x-amz-server-side-encryption is present and has the value of aws:kms,
-	// this header specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetrical customer managed key that was used
+	// If x-amz-server-side-encryption has a valid value of aws:kms, this header
+	// specifies the ID of the Amazon Web Services Key Management Service (Amazon
+	// Web Services KMS) symmetric encryption customer managed key that was used
 	// for the object. If you specify x-amz-server-side-encryption:aws:kms, but
 	// do not providex-amz-server-side-encryption-aws-kms-key-id, Amazon S3 uses
 	// the Amazon Web Services managed key to protect the data. If the KMS key does
@@ -35182,27 +35282,27 @@ type PutObjectOutput struct {
 
 	// If present, specifies the Amazon Web Services KMS Encryption Context to use
 	// for object encryption. The value of this header is a base64-encoded UTF-8
-	// string holding JSON with the encryption context key-value pairs.
+	// string holding JSON with the encryption context key-value pairs. This value
+	// is stored as object metadata and automatically gets passed on to Amazon Web
+	// Services KMS for future GetObject or CopyObject operations on this object.
 	//
 	// SSEKMSEncryptionContext is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by PutObjectOutput's
 	// String and GoString methods.
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
-	// If x-amz-server-side-encryption is present and has the value of aws:kms,
-	// this header specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// If x-amz-server-side-encryption is has a valid value of aws:kms, this header
+	// specifies the ID of the Amazon Web Services Key Management Service (Amazon
+	// Web Services KMS) symmetric encryption customer managed key that was used
+	// for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by PutObjectOutput's
 	// String and GoString methods.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
-	// If you specified server-side encryption either with an Amazon Web Services
-	// KMS key or Amazon S3-managed encryption key in your PUT request, the response
-	// includes this header. It confirms the encryption algorithm that Amazon S3
-	// used to encrypt the object.
+	// The server-side encryption algorithm used when storing this object in Amazon
+	// S3 (for example, AES256, aws:kms).
 	ServerSideEncryption *string `location:"header" locationName:"x-amz-server-side-encryption" type:"string" enum:"ServerSideEncryption"`
 
 	// Version of the object.
@@ -35543,12 +35643,12 @@ type PutObjectTaggingInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -36929,12 +37029,12 @@ type RestoreObjectInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -37470,8 +37570,8 @@ type SSEKMS struct {
 	_ struct{} `locationName:"SSE-KMS" type:"structure"`
 
 	// Specifies the ID of the Amazon Web Services Key Management Service (Amazon
-	// Web Services KMS) symmetric customer managed key to use for encrypting inventory
-	// reports.
+	// Web Services KMS) symmetric encryption customer managed key to use for encrypting
+	// inventory reports.
 	//
 	// KeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by SSEKMS's
@@ -38167,8 +38267,8 @@ type ServerSideEncryptionByDefault struct {
 	//
 	//    * Key ARN: arn:aws:kms:us-east-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab
 	//
-	// Amazon S3 only supports symmetric KMS keys and not asymmetric KMS keys. For
-	// more information, see Using symmetric and asymmetric keys (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+	// Amazon S3 only supports symmetric encryption KMS keys. For more information,
+	// see Asymmetric keys in Amazon Web Services KMS (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
 	// in the Amazon Web Services Key Management Service Developer Guide.
 	//
 	// KMSMasterKeyID is a sensitive parameter and its value will be
@@ -39173,12 +39273,12 @@ type UploadPartCopyInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -39550,8 +39650,8 @@ type UploadPartCopyOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// the object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by UploadPartCopyOutput's
@@ -39644,12 +39744,12 @@ type UploadPartInput struct {
 	// information about access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
 	// in the Amazon S3 User Guide.
 	//
-	// When using this action with Amazon S3 on Outposts, you must direct requests
+	// When you use this action with Amazon S3 on Outposts, you must direct requests
 	// to the S3 on Outposts hostname. The S3 on Outposts hostname takes the form
 	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When
-	// using this action with S3 on Outposts through the Amazon Web Services SDKs,
-	// you provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// you use this action with S3 on Outposts through the Amazon Web Services SDKs,
+	// you provide the Outposts access point ARN in place of the bucket name. For
+	// more information about S3 on Outposts ARNs, see What is S3 on Outposts (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
 	// in the Amazon S3 User Guide.
 	//
 	// Bucket is a required field
@@ -40008,8 +40108,8 @@ type UploadPartOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key was used for the
-	// object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key was used
+	// for the object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by UploadPartOutput's
@@ -40428,8 +40528,8 @@ type WriteGetObjectResponseInput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-fwd-header-x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the Amazon Web Services Key Management Service
-	// (Amazon Web Services KMS) symmetric customer managed key that was used for
-	// stored in Amazon S3 object.
+	// (Amazon Web Services KMS) symmetric encryption customer managed key that
+	// was used for stored in Amazon S3 object.
 	//
 	// SSEKMSKeyId is a sensitive parameter and its value will be
 	// replaced with "sensitive" in string returned by WriteGetObjectResponseInput's
