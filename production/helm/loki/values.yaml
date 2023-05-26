@@ -50,6 +50,8 @@ loki:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Common annotations for all deployments/StatefulSets
+  annotations: {}
   # -- Common annotations for all pods
   podAnnotations: {}
   # -- Common labels for all pods
@@ -73,6 +75,12 @@ loki:
   enableServiceLinks: true
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
+  # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
+  # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).
+  # Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
+  configStorageType: ConfigMap
+  # -- Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).
+  externalConfigSecretName: '{{ include "loki.name" . }}'
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
@@ -645,6 +653,31 @@ monitoring:
 write:
   # -- Number of replicas for the write
   replicas: 3
+  autoscaling:
+    # -- Enable autoscaling for the write.
+    enabled: false
+    # -- Minimum autoscaling replicas for the write.
+    minReplicas: 1
+    # -- Maximum autoscaling replicas for the write.
+    maxReplicas: 3
+    # -- Target CPU utilisation percentage for the write.
+    targetCPUUtilizationPercentage: 60
+    # -- Target memory utilization percentage for the write.
+    targetMemoryUtilizationPercentage:
+    # -- Behavior policies while scaling.
+    behavior:
+    # -- see https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown for scaledown details
+      scaleUp:
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 900
+      scaleDown:
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 1800
+      stabilizationWindowSeconds: 3600
   image:
     # -- The Docker registry for the write image. Overrides `loki.image.registry`
     registry: null
@@ -654,6 +687,8 @@ write:
     tag: null
   # -- The name of the PriorityClass for write pods
   priorityClassName: null
+  # -- Annotations for write StatefulSet
+  annotations: {}
   # -- Annotations for write pods
   podAnnotations: {}
   # -- Additional labels for each `write` pod
@@ -672,6 +707,11 @@ write:
   extraEnvFrom: []
   # -- Lifecycle for the write container
   lifecycle: {}
+  # -- The default /flush_shutdown preStop hook is recommended as part of the ingester
+  # scaledown process so it's added to the template by default when autoscaling is enabled,
+  # but it's disabled to optimize rolling restarts in instances that will never be scaled
+  # down or when using chunks storage with WAL disabled.
+  # https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown
   # -- Init containers to add to the write pods
   initContainers: []
   # -- Volume mounts to add to the write pods
@@ -699,6 +739,8 @@ write:
   nodeSelector: {}
   # -- Tolerations for write pods
   tolerations: []
+  # -- The default is to deploy all pods in parallel.
+  podManagementPolicy: "Parallel"
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
@@ -729,6 +771,8 @@ tableManager:
   priorityClassName: null
   # -- Labels for table-manager pods
   podLabels: {}
+  # -- Annotations for table-manager deployment
+  annotations: {}
   # -- Annotations for table-manager pods
   podAnnotations: {}
   # -- Labels for table-manager service
@@ -784,6 +828,20 @@ read:
     targetCPUUtilizationPercentage: 60
     # -- Target memory utilisation percentage for the read
     targetMemoryUtilizationPercentage:
+    # -- Behavior policies while scaling.
+    behavior: {}
+      #  scaleUp:
+      #   stabilizationWindowSeconds: 300
+      #   policies:
+      #   - type: Pods
+      #     value: 1
+      #     periodSeconds: 60
+      #  scaleDown:
+      #   stabilizationWindowSeconds: 300
+      #   policies:
+      #   - type: Pods
+      #     value: 1
+      #     periodSeconds: 180
   image:
     # -- The Docker registry for the read image. Overrides `loki.image.registry`
     registry: null
@@ -793,6 +851,8 @@ read:
     tag: null
   # -- The name of the PriorityClass for read pods
   priorityClassName: null
+  # -- Annotations for read deployment
+  annotations: {}
   # -- Annotations for read pods
   podAnnotations: {}
   # -- Additional labels for each `read` pod
@@ -836,6 +896,8 @@ read:
   nodeSelector: {}
   # -- Tolerations for read pods
   tolerations: []
+  # -- The default is to deploy all pods in parallel.
+  podManagementPolicy: "Parallel"
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
@@ -853,6 +915,31 @@ read:
 backend:
   # -- Number of replicas for the backend
   replicas: 3
+  autoscaling:
+    # -- Enable autoscaling for the backend.
+    enabled: false
+    # -- Minimum autoscaling replicas for the backend.
+    minReplicas: 1
+    # -- Maximum autoscaling replicas for the backend.
+    maxReplicas: 3
+    # -- Target CPU utilization percentage for the backend.
+    targetCPUUtilizationPercentage: 60
+    # -- Target memory utilization percentage for the backend.
+    targetMemoryUtilizationPercentage:
+    # -- Behavior policies while scaling.
+    behavior: {}
+    #    scaleUp:
+    #     stabilizationWindowSeconds: 300
+    #     policies:
+    #     - type: Pods
+    #       value: 1
+    #       periodSeconds: 60
+    #    scaleDown:
+    #     stabilizationWindowSeconds: 300
+    #     policies:
+    #     - type: Pods
+    #       value: 1
+    #       periodSeconds: 180
   image:
     # -- The Docker registry for the backend image. Overrides `loki.image.registry`
     registry: null
@@ -862,6 +949,8 @@ backend:
     tag: null
   # -- The name of the PriorityClass for backend pods
   priorityClassName: null
+  # -- Annotations for backend StatefulSet
+  annotations: {}
   # -- Annotations for backend pods
   podAnnotations: {}
   # -- Additional labels for each `backend` pod
@@ -903,6 +992,8 @@ backend:
   nodeSelector: {}
   # -- Tolerations for backend pods
   tolerations: []
+  # -- The default is to deploy all pods in parallel.
+  podManagementPolicy: "Parallel"
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
@@ -940,6 +1031,8 @@ singleBinary:
     tag: null
   # -- The name of the PriorityClass for single binary pods
   priorityClassName: null
+  # -- Annotations for single binary StatefulSet
+  annotations: {}
   # -- Annotations for single binary pods
   podAnnotations: {}
   # -- Additional labels for each `single binary` pod
@@ -1060,6 +1153,20 @@ gateway:
     targetMemoryUtilizationPercentage:
   # -- See `kubectl explain deployment.spec.strategy` for more
   # -- ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+    # -- Behavior policies while scaling.
+    behavior: {}
+    #    scaleUp:
+    #     stabilizationWindowSeconds: 300
+    #     policies:
+    #     - type: Pods
+    #       value: 1
+    #       periodSeconds: 60
+    #    scaleDown:
+    #     stabilizationWindowSeconds: 300
+    #     policies:
+    #     - type: Pods
+    #       value: 1
+    #       periodSeconds: 180
   deploymentStrategy:
     type: RollingUpdate
   image:
@@ -1075,6 +1182,8 @@ gateway:
     pullPolicy: IfNotPresent
   # -- The name of the PriorityClass for gateway pods
   priorityClassName: null
+  # -- Annotations for gateway deployment
+  annotations: {}
   # -- Annotations for gateway pods
   podAnnotations: {}
   # -- Additional labels for gateway pods
