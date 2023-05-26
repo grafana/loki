@@ -30,7 +30,7 @@ type Config struct {
 	queryrangebase.Config  `yaml:",inline"`
 	Transformer            UserIDTransformer     `yaml:"-"`
 	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
-	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache"`
+	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
