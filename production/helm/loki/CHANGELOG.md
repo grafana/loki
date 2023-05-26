@@ -43,14 +43,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.5.3
 
-- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
 - [BUGFIX] Fix issue in distribution of queries to available read pods by using k8s service for discovering query-scheduler replicas
 
 ## 5.5.2
 
 - [BUGFIX] Use $.Release.Namespace consistently
 - [CHANGE] Add clusterLabelOverride for alert label overrides.
-- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
 - [BUGFIX] Use $.Release.Namespace consistently
 
 ## 5.5.1
