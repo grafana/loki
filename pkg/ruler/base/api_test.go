@@ -10,12 +10,16 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
@@ -175,22 +179,183 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 	tc := []struct {
 		name     string
 		URLQuery string
-		output   string
+		output   map[string][]rulefmt.RuleGroup
 		err      error
 	}{
 		{
-			name:   "query with no filters",
-			output: "test:\n    - name: group1\n      interval: 1m\n      rules:\n        - record: UP_RULE\n          expr: up\n        - alert: UP_ALERT\n          expr: up < 1\n          labels:\n            foo: bar\n        - alert: DOWN_ALERT\n          expr: down < 1\n          labels:\n            namespace: delta\n",
+			name: "query with no filters",
+			output: map[string][]rulefmt.RuleGroup{
+				"test": {
+					{
+						Name: "group1",
+						Rules: []rulefmt.RuleNode{
+							{
+								Record: yaml.Node{
+									Value:  "UP_RULE",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   5,
+									Column: 19,
+								},
+								Expr: yaml.Node{
+									Value:  "up",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   6,
+									Column: 17,
+								},
+							},
+							{
+								Alert: yaml.Node{
+									Value:  "UP_ALERT",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   7,
+									Column: 18,
+								},
+								Expr: yaml.Node{
+									Value:  "up < 1",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   8,
+									Column: 17,
+								},
+								Labels: map[string]string{"foo": "bar"},
+							},
+							{
+								Alert: yaml.Node{
+									Value:  "DOWN_ALERT",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   11,
+									Column: 18,
+								},
+								Expr: yaml.Node{
+									Value:  "down < 1",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   12,
+									Column: 17,
+								},
+								Labels: map[string]string{"namespace": "delta"},
+							},
+						},
+						Interval: model.Duration(1 * time.Minute),
+					},
+				},
+			},
 		},
 		{
 			name:     "query with a valid filter found",
 			URLQuery: "labels=namespace:delta,foo:bar",
-			output:   "test:\n    - name: group1\n      interval: 1m\n      rules:\n        - alert: UP_ALERT\n          expr: up < 1\n          labels:\n            foo: bar\n        - alert: DOWN_ALERT\n          expr: down < 1\n          labels:\n            namespace: delta\n",
+			output: map[string][]rulefmt.RuleGroup{
+				"test": {
+					{
+						Name: "group1",
+						Rules: []rulefmt.RuleNode{
+							{
+								Alert: yaml.Node{
+									Value:  "UP_ALERT",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   5,
+									Column: 18,
+								},
+								Expr: yaml.Node{
+									Value:  "up < 1",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   6,
+									Column: 17,
+								},
+								Labels: map[string]string{"foo": "bar"},
+							},
+							{
+								Alert: yaml.Node{
+									Value:  "DOWN_ALERT",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   9,
+									Column: 18,
+								},
+								Expr: yaml.Node{
+									Value:  "down < 1",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   10,
+									Column: 17,
+								},
+								Labels: map[string]string{"namespace": "delta"},
+							},
+						},
+						Interval: model.Duration(1 * time.Minute),
+					},
+				},
+			},
 		},
 		{
 			name:     "query with an invalid query param",
 			URLQuery: "test=namespace:delta,foo|bar",
-			output:   "test:\n    - name: group1\n      interval: 1m\n      rules:\n        - record: UP_RULE\n          expr: up\n        - alert: UP_ALERT\n          expr: up < 1\n          labels:\n            foo: bar\n        - alert: DOWN_ALERT\n          expr: down < 1\n          labels:\n            namespace: delta\n",
+			output: map[string][]rulefmt.RuleGroup{
+				"test": {
+					{
+						Name: "group1",
+						Rules: []rulefmt.RuleNode{
+							{
+								Record: yaml.Node{
+									Value:  "UP_RULE",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   5,
+									Column: 19,
+								},
+								Expr: yaml.Node{
+									Value:  "up",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   6,
+									Column: 17,
+								},
+							},
+							{
+								Alert: yaml.Node{
+									Value:  "UP_ALERT",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   7,
+									Column: 18,
+								},
+								Expr: yaml.Node{
+									Value:  "up < 1",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   8,
+									Column: 17,
+								},
+								Labels: map[string]string{"foo": "bar"},
+							},
+							{
+								Alert: yaml.Node{
+									Value:  "DOWN_ALERT",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   11,
+									Column: 18,
+								},
+								Expr: yaml.Node{
+									Value:  "down < 1",
+									Tag:    "!!str",
+									Kind:   8,
+									Line:   12,
+									Column: 17,
+								},
+								Labels: map[string]string{"namespace": "delta"},
+							},
+						},
+						Interval: model.Duration(1 * time.Minute),
+					},
+				},
+			},
 		},
 	}
 
@@ -204,9 +369,13 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			a.ListRules(w, req)
-
 			require.Equal(t, 200, w.Code)
-			require.Equal(t, tt.output, w.Body.String())
+
+			var res map[string][]rulefmt.RuleGroup
+			err := yaml.Unmarshal(w.Body.Bytes(), &res)
+
+			require.Nil(t, err)
+			require.Equal(t, tt.output, res)
 		})
 	}
 }

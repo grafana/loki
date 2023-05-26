@@ -356,6 +356,27 @@ func parseGroupName(params map[string]string) (string, error) {
 	return groupName, nil
 }
 
+func parseLabels(queryLabels string) []labels.Label {
+	var ls []labels.Label
+	if queryLabels == "" {
+		return ls
+	}
+
+	labelStrings := strings.Split(queryLabels, ",")
+	ls = make([]labels.Label, len(labelStrings))
+	for i, l := range labelStrings {
+		kv := strings.Split(l, ":")
+		if len(kv) != 0 {
+			ls[i] = labels.Label{
+				Name:  kv[0],
+				Value: kv[1],
+			}
+		}
+	}
+
+	return ls
+}
+
 type Request struct {
 	UserID    string
 	Namespace string
@@ -366,15 +387,15 @@ type Request struct {
 // parseRequest parses the incoming request to parse out the userID, rules namespace, and rule group name
 // and returns them in that order. It also allows users to require a namespace or group name and return
 // an error if it they can not be parsed.
-func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (Request, error) {
+func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (*Request, error) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
-		return Request{}, user.ErrNoOrgID
+		return nil, user.ErrNoOrgID
 	}
 
 	err = req.ParseForm()
 	if err != nil {
-		return Request{}, err
+		return nil, err
 	}
 
 	vars := mux.Vars(req)
@@ -382,35 +403,20 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (Reque
 	namespace, err := parseNamespace(vars)
 	if err != nil {
 		if err != ErrNoNamespace || requireNamespace {
-			return Request{}, err
+			return nil, err
 		}
 	}
 
 	group, err := parseGroupName(vars)
 	if err != nil {
 		if err != ErrNoGroupName || requireGroup {
-			return Request{}, err
+			return nil, err
 		}
 	}
 
-	var ls []labels.Label
-	ql := req.Form.Get("labels")
-	if ql != "" {
-		labelStrings := strings.Split(ql, ",")
-		ls = make([]labels.Label, len(labelStrings))
+	ls := parseLabels(req.Form.Get("labels"))
 
-		for i, l := range labelStrings {
-			kv := strings.Split(l, ":")
-			if len(kv) != 0 {
-				ls[i] = labels.Label{
-					Name:  kv[0],
-					Value: kv[1],
-				}
-			}
-		}
-	}
-
-	return Request{
+	return &Request{
 		UserID:    userID,
 		Namespace: namespace,
 		Group:     group,
@@ -484,7 +490,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", pr.UserID, "num_namespaces", len(rgs))
 
 	if len(pr.Labels) > 0 {
-		level.Info(logger).Log("msg", "filtering rule groups with labels", "abels", pr.Labels, "userID", pr.UserID, "namespace", pr.Namespace)
+		level.Debug(logger).Log("msg", "filtering rule groups with labels", "labels", pr.Labels, "userID", pr.UserID, "namespace", pr.Namespace)
 		rgs = fitlerRuleGroups(rgs, pr.Labels)
 	}
 
