@@ -33,6 +33,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
@@ -51,6 +52,7 @@ import (
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
@@ -64,7 +66,6 @@ import (
 	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -108,7 +109,7 @@ const (
 	Read                     string = "read"
 	Write                    string = "write"
 	Backend                  string = "backend"
-	UsageReport              string = "usage-report"
+	Analytics                string = "analytics"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -334,7 +335,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
+	store := t.Store
+	if !t.Cfg.Querier.QueryStoreOnly {
+		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
+	}
+
+	q, err := querier.New(t.Cfg.Querier, store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -591,8 +597,6 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}
 
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		var asyncStore bool
-
 		shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
 		iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
 		if iTy != config.BoltDBShipperType && iTy != config.TSDBType {
@@ -622,9 +626,6 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			if t.Cfg.Querier.QueryStoreOnly {
 				break
 			}
-			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
-			// Only queriers should use the AsyncStore, it should never be used in ingesters.
-			asyncStore = true
 
 			// The legacy Read target includes the index gateway, so disable the index-gateway client in that configuration.
 			if t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read) {
@@ -653,15 +654,12 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			t.Cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 		}
 
-		if asyncStore {
-			t.Cfg.StorageConfig.EnableAsyncStore = true
-			t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
-				IngesterQuerier: t.ingesterQuerier,
-				QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
-					t.Cfg.Querier.QueryIngestersWithin,
-					minIngesterQueryStoreDuration,
-				),
-			}
+		t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
+			IngesterQuerier: t.ingesterQuerier,
+			QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
+				t.Cfg.Querier.QueryIngestersWithin,
+				minIngesterQueryStoreDuration,
+			),
 		}
 	}
 
@@ -1041,7 +1039,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
-		usagestats.JSONCodec,
+		analytics.JSONCodec,
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
@@ -1075,22 +1073,50 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
-		return nil, nil
-	}
-
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	objectClient, err := storage.NewObjectClient(t.Cfg.CompactorConfig.SharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
-	if err != nil {
-		return nil, err
+	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
+		return nil, nil
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClient, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
+	objectClients := make(map[string]client.ObjectClient)
+	if sharedStoreType := t.Cfg.CompactorConfig.SharedStoreType; sharedStoreType != "" {
+		objectClient, err := storage.NewObjectClient(sharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create object client: %w", err)
+		}
+
+		objectClients[sharedStoreType] = objectClient
+	} else {
+		for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
+			if !config.IsObjectStorageIndex(periodConfig.IndexType) {
+				continue
+			}
+
+			if objectClients[periodConfig.ObjectType] != nil {
+				continue
+			}
+
+			objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create object client: %w", err)
+			}
+
+			objectClients[periodConfig.ObjectType] = objectClient
+		}
+
+		stores := make([]string, 0, len(objectClients))
+		for store := range objectClients {
+			stores = append(stores, store)
+		}
+		level.Info(util_log.Logger).Log("msg", "-boltdb.shipper.compactor.shared-store not specified, initializing compactor to operator on the following object stores", "stores", strings.Join(stores, ", "))
+	}
+
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -1237,16 +1263,16 @@ func (t *Loki) initQueryLimitsTripperware() (services.Service, error) {
 	return nil, nil
 }
 
-func (t *Loki) initUsageReport() (services.Service, error) {
-	if !t.Cfg.UsageReport.Enabled {
+func (t *Loki) initAnalytics() (services.Service, error) {
+	if !t.Cfg.Analytics.Enabled {
 		return nil, nil
 	}
-	t.Cfg.UsageReport.Leader = false
+	t.Cfg.Analytics.Leader = false
 	if t.isModuleActive(Ingester) {
-		t.Cfg.UsageReport.Leader = true
+		t.Cfg.Analytics.Leader = true
 	}
 
-	usagestats.Target(t.Cfg.Target.String())
+	analytics.Target(t.Cfg.Target.String())
 	period, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, err
@@ -1257,7 +1283,7 @@ func (t *Loki) initUsageReport() (services.Service, error) {
 		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
 		return nil, nil
 	}
-	ur, err := usagestats.NewReporter(t.Cfg.UsageReport, t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore, objectClient, util_log.Logger, prometheus.DefaultRegisterer)
+	ur, err := analytics.NewReporter(t.Cfg.Analytics, t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore, objectClient, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
 		return nil, nil
@@ -1304,7 +1330,12 @@ func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err
 		return nil, fmt.Errorf("could not create delete requests store: %w", err)
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+	store := t.Store
+	if !t.Cfg.Querier.QueryStoreOnly {
+		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
+	}
+
+	q, err := querier.New(t.Cfg.Querier, store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

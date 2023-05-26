@@ -4,6 +4,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
 spec:

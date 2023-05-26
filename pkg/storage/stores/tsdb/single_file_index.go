@@ -2,16 +2,23 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"io"
+	"math"
+	"path/filepath"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
@@ -22,6 +29,49 @@ func OpenShippableTSDB(p string) (index_shipper.Index, error) {
 		return nil, err
 	}
 
+	return NewShippableTSDBFile(id)
+}
+
+func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index_shipper.Index, error) {
+	indexFile, err := OpenShippableTSDB(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err := indexFile.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close index file", "err", err)
+		}
+	}()
+
+	currVer := indexFile.(*TSDBFile).Index.(*TSDBIndex).reader.(*index.Reader).Version()
+	if currVer == desiredVer {
+		return nil, ErrAlreadyOnDesiredVersion
+	}
+
+	builder := NewBuilder()
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		builder.AddSeries(lbls.Copy(), fp, chks)
+	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	if err != nil {
+		return nil, err
+	}
+
+	parentDir := filepath.Dir(path)
+
+	id, err := builder.BuildWithVersion(ctx, desiredVer, parentDir, func(from, through model.Time, checksum uint32) Identifier {
+		id := SingleTenantTSDBIdentifier{
+			TS:       time.Now(),
+			From:     from,
+			Through:  through,
+			Checksum: checksum,
+		}
+		return NewPrefixedIdentifier(id, parentDir, "")
+	})
+
+	if err != nil {
+		return nil, err
+	}
 	return NewShippableTSDBFile(id)
 }
 
@@ -152,14 +202,8 @@ func (i *TSDBIndex) forPostings(
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	if res == nil {
-		res = ChunkRefsPool.Get()
-	}
-	res = res[:0]
-
 	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		for _, chk := range chks {
-
 			res = append(res, ChunkRef{
 				User:        userID, // assumed to be the same, will be enforced by caller.
 				Fingerprint: fp,

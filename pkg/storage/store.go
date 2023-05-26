@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -32,15 +33,14 @@ import (
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 )
 
 var (
-	indexTypeStats  = usagestats.NewString("store_index_type")
-	objectTypeStats = usagestats.NewString("store_object_type")
-	schemaStats     = usagestats.NewString("store_schema")
+	indexTypeStats  = analytics.NewString("store_index_type")
+	objectTypeStats = analytics.NewString("store_object_type")
+	schemaStats     = analytics.NewString("store_schema")
 
 	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
@@ -170,9 +170,6 @@ func (s *store) init() error {
 		s.composite.AddStore(p.From.Time, f, idx, w, stop)
 	}
 
-	if s.cfg.EnableAsyncStore {
-		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
-	}
 	return nil
 }
 

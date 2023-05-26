@@ -260,7 +260,7 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
 		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		case *LineFilterExpr, *LabelFilterExpr, *DistinctFilterExpr:
 			return true
 		default:
 			continue
@@ -631,6 +631,37 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
+type DistinctFilterExpr struct {
+	labels []string
+	implicit
+}
+
+func newDistinctFilterExpr(labels []string) *DistinctFilterExpr {
+	return &DistinctFilterExpr{
+		labels: labels,
+	}
+}
+
+func (e *DistinctFilterExpr) Shardable() bool { return false }
+
+func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
+
+func (e *DistinctFilterExpr) Stage() (log.Stage, error) {
+	return log.NewDistinctFilter(e.labels)
+}
+
+func (e *DistinctFilterExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFilterDistinct))
+	for i, label := range e.labels {
+		sb.WriteString(label)
+		if i+1 != len(e.labels) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 type internedStringSet map[string]struct {
 	s  string
 	ok bool
@@ -904,6 +935,8 @@ const (
 	// function filters
 	OpFilterIP = "ip"
 
+	OpFilterDistinct = "distinct"
+
 	// drop labels
 	OpDrop = "drop"
 )
@@ -1068,9 +1101,14 @@ type Grouping struct {
 // impls Stringer
 func (g Grouping) String() string {
 	var sb strings.Builder
+
+	if g.Groups == nil {
+		return ""
+	}
+
 	if g.Without {
 		sb.WriteString(" without ")
-	} else if len(g.Groups) > 0 {
+	} else {
 		sb.WriteString(" by ")
 	}
 
@@ -1078,6 +1116,9 @@ func (g Grouping) String() string {
 		sb.WriteString("(")
 		sb.WriteString(strings.Join(g.Groups, ","))
 		sb.WriteString(")")
+	}
+	if len(g.Groups) == 0 {
+		sb.WriteString("()")
 	}
 
 	return sb.String()

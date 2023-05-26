@@ -3352,6 +3352,10 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
 		},
+		{
+			in:  `count without (rate({namespace="apps"}[15s]))`,
+			err: logqlmodel.NewParseError("syntax error: unexpected RATE, expecting IDENTIFIER or )", 1, 16),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			_, err := ParseSampleExpr(tc.in)

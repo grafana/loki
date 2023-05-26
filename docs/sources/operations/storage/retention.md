@@ -8,7 +8,7 @@ Retention in Grafana Loki is achieved either through the [Table Manager](#table-
 
 By default, when `table_manager.retention_deletes_enabled` or `compactor.retention_enabled` flags are not set, then logs sent to Loki live forever.
 
-Retention through the [Table Manager]({{<relref "table-manager">}}) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper]({{<relref "boltdb-shipper">}}) store and chunk/index store. However retention through the [Compactor]({{<relref "boltdb-shipper#compactor">}}) is supported only with the [boltdb-shipper]({{<relref "boltdb-shipper">}}) store.
+Retention through the [Table Manager]({{<relref "table-manager">}}) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper]({{<relref "boltdb-shipper">}}) store and chunk/index store. However retention through the [Compactor]({{<relref "boltdb-shipper#compactor">}}) is supported only with the [boltdb-shipper]({{<relref "boltdb-shipper">}}) and tsdb store.
 
 The Compactor retention will become the default and have long term support. It supports more granular retention policies on per tenant and per stream use cases.
 
@@ -16,13 +16,13 @@ The Compactor retention will become the default and have long term support. It s
 
 The [Compactor]({{<relref "boltdb-shipper#compactor">}}) can deduplicate index entries. It can also apply granular retention. When applying retention with the Compactor, the [Table Manager]({{<relref "table-manager">}}) is unnecessary.
 
-> Run the compactor as a singleton (a single instance).
+> Run the Compactor as a singleton (a single instance).
 
-Compaction and retention are idempotent. If the compactor restarts, it will continue from where it left off.
+Compaction and retention are idempotent. If the Compactor restarts, it will continue from where it left off.
 
 The Compactor loops to apply compaction and retention at every `compaction_interval`, or as soon as possible if running behind.
 
-The compactor's algorithm to update the index:
+The Compactor's algorithm to update the index:
 
 - For each table within each day:
   - Compact the table into a single index file.
@@ -30,7 +30,7 @@ The compactor's algorithm to update the index:
   - Remove marked chunks from the index and save their reference in a file on disk.
   - Upload the new modified index files.
 
-The retention algorithm is applied to the index. Chunks are not deleted while applying the retention algorithm. The chunks will be deleted by the compactor asynchronously when swept.
+The retention algorithm is applied to the index. Chunks are not deleted while applying the retention algorithm. The chunks will be deleted by the Compactor asynchronously when swept.
 
 Marked chunks will only  be deleted after `retention_delete_delay` configured is expired because:
 
@@ -42,7 +42,7 @@ Marker files (containing chunks to delete) should be stored on a persistent disk
 
 ### Retention Configuration
 
-This compactor configuration example activates retention.
+This Compactor configuration example activates retention.
 
 ```yaml
 compactor:
@@ -82,7 +82,7 @@ The index period must be 24h.
 
 `compaction_interval` dictates how often compaction and/or retention is applied. If the Compactor falls behind, compaction and/or retention occur as soon as possible.
 
-`retention_delete_delay` is the delay after which the compactor will delete marked chunks.
+`retention_delete_delay` is the delay after which the Compactor will delete marked chunks.
 
 `retention_delete_worker_count` specifies the maximum quantity of goroutine workers instantiated to delete chunks.
 

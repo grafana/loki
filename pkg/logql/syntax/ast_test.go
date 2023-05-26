@@ -42,6 +42,8 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
+		{`{foo="bar"} | distinct id`, true},
+		{`{foo="bar"} | distinct id,time`, true},
 	}
 
 	for _, tt := range tests {
@@ -372,6 +374,13 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
 		},
+		{
+			`{app="foo"} | logfmt | distinct id`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"id=foo", true}, {"id=foo", false}, {"id=bar", true}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
@@ -671,4 +680,42 @@ func TestParseLargeQuery(t *testing.T) {
 
 	_, err := ParseExpr(line)
 	require.NoError(t, err)
+}
+
+func TestGroupingString(t *testing.T) {
+	g := Grouping{
+		Groups:  []string{"a", "b"},
+		Without: false,
+	}
+	require.Equal(t, " by (a,b)", g.String())
+
+	g = Grouping{
+		Groups:  []string{},
+		Without: false,
+	}
+	require.Equal(t, " by ()", g.String())
+
+	g = Grouping{
+		Groups:  nil,
+		Without: false,
+	}
+	require.Equal(t, "", g.String())
+
+	g = Grouping{
+		Groups:  []string{"a", "b"},
+		Without: true,
+	}
+	require.Equal(t, " without (a,b)", g.String())
+
+	g = Grouping{
+		Groups:  []string{},
+		Without: true,
+	}
+	require.Equal(t, " without ()", g.String())
+
+	g = Grouping{
+		Groups:  nil,
+		Without: true,
+	}
+	require.Equal(t, "", g.String())
 }

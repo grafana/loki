@@ -11,3 +11,4 @@ Fixes #<issue number>
 - [ ] Tests updated
 - [ ] `CHANGELOG.md` updated
 - [ ] Changes that require user attention or interaction to upgrade are documented in `docs/sources/upgrading/_index.md`
+- [ ] For Helm chart changes bump the Helm chart version in `production/helm/loki/Chart.yaml` and update `production/helm/loki/CHANGELOG.md` and `production/helm/loki/README.md`. [Example PR](https://github.com/grafana/loki/commit/d10549e3ece02120974929894ee333d07755d213)
