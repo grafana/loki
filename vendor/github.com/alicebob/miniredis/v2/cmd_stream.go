@@ -50,6 +50,7 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 
 		maxlen := -1
+		minID := ""
 		if strings.ToLower(args[0]) == "maxlen" {
 			args = args[1:]
 			// we don't treat "~" special
@@ -66,6 +67,14 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 				return
 			}
 			maxlen = n
+			args = args[1:]
+		} else if strings.ToLower(args[0]) == "minid" {
+			args = args[1:]
+			// we don't treat "~" special
+			if args[0] == "~" {
+				args = args[1:]
+			}
+			minID = args[0]
 			args = args[1:]
 		}
 		if len(args) < 1 {
@@ -109,6 +118,9 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 		}
 		if maxlen >= 0 {
 			s.trim(maxlen)
+		}
+		if minID != "" {
+			s.trimBefore(minID)
 		}
 		db.keyVersion[key]++
 
@@ -932,7 +944,12 @@ parsing:
 					return
 				} else if id == "$" {
 					db := m.DB(getCtx(c).selectedDB)
-					opts.ids[i] = db.streamKeys[opts.streams[i]].lastID()
+					stream, ok := db.streamKeys[opts.streams[i]]
+					if ok {
+						opts.ids[i] = stream.lastID()
+					} else {
+						opts.ids[i] = "0-0"
+					}
 				}
 			}
 			args = nil
@@ -1329,16 +1346,8 @@ func (m *Miniredis) cmdXtrim(c *server.Peer, cmd string, args []string) {
 			s.trim(opts.maxLen)
 			c.WriteInt(entriesBefore - len(s.entries))
 		case "MINID":
-			var delete []string
-			for _, entry := range s.entries {
-				if entry.ID < opts.threshold {
-					delete = append(delete, entry.ID)
-				} else {
-					break
-				}
-			}
-			s.delete(delete)
-			c.WriteInt(len(delete))
+			n := s.trimBefore(opts.threshold)
+			c.WriteInt(n)
 		}
 	})
 }
