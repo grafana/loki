@@ -3,14 +3,14 @@
 GopherLua: VM and compiler for Lua in Go.
 ===============================================================================
 
-.. image:: https://godoc.org/github.com/yuin/gopher-lua?status.svg
-    :target: http://godoc.org/github.com/yuin/gopher-lua
+.. image:: https://pkg.go.dev/badge/github.com/yuin/gopher-lua.svg
+    :target: https://pkg.go.dev/github.com/yuin/gopher-lua
 
-.. image:: https://travis-ci.org/yuin/gopher-lua.svg
-    :target: https://travis-ci.org/yuin/gopher-lua
+.. image:: https://github.com/yuin/gopher-lua/workflows/test/badge.svg?branch=master&event=push
+    :target: https://github.com/yuin/gopher-lua/actions?query=workflow:test
 
-.. image:: https://coveralls.io/repos/yuin/gopher-lua/badge.svg
-    :target: https://coveralls.io/r/yuin/gopher-lua
+.. image:: https://coveralls.io/repos/github/yuin/gopher-lua/badge.svg?branch=master
+    :target: https://coveralls.io/github/yuin/gopher-lua
 
 .. image:: https://badges.gitter.im/Join%20Chat.svg
     :alt: Join the chat at https://gitter.im/yuin/gopher-lua
@@ -19,7 +19,7 @@ GopherLua: VM and compiler for Lua in Go.
 |
 
 
-GopherLua is a Lua5.1 VM and compiler written in Go. GopherLua has a same goal
+GopherLua is a Lua5.1(+ `goto` statement in Lua5.2) VM and compiler written in Go. GopherLua has a same goal
 with Lua: **Be a scripting language with extensible semantics** . It provides
 Go APIs that allow you to easily embed a scripting language to your Go host
 programs.
@@ -830,6 +830,8 @@ Miscellaneous notes
 - ``file:setvbuf`` does not support a line buffering.
 - Daylight saving time is not supported.
 - GopherLua has a function to set an environment variable : ``os.setenv(name, value)``
+- GopherLua support ``goto`` and ``::label::`` statement in Lua5.2.
+    - `goto` is a keyword and not a valid variable name.
 
 ----------------------------------------------------------------
 Standalone interpreter

@@ -1,16 +1,18 @@
 package analytics
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/build"
-
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 func Test_BuildReport(t *testing.T) {
@@ -63,6 +65,27 @@ func Test_BuildReport(t *testing.T) {
 
 	out, _ := jsoniter.MarshalIndent(r, "", " ")
 	t.Log(string(out))
+}
+
+func TestCounterRace(t *testing.T) {
+	counterName := "test_counter_" + t.TempDir()
+	g, _ := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		c := NewCounter(counterName)
+		c.Inc(100)
+		return nil
+	})
+
+	g.Go(func() error {
+		c := NewCounter(counterName)
+		c.Inc(200)
+		return nil
+	})
+
+	require.NoError(t, g.Wait())
+
+	require.Equal(t, NewCounter(counterName).total.Load(), int64(300))
 }
 
 func TestCounter(t *testing.T) {
