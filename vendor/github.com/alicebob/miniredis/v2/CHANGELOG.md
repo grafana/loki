@@ -1,6 +1,19 @@
 ## Changelog
 
 
+### v2.30.2
+
+- support MINID in XADD  (thanks @nathan-cormier)
+- support BLMOVE (thanks @sevein)
+- fix COMMAND (thanks @pje)
+- fix 'XREAD ... $' on a non-existing stream
+
+
+### v2.30.1
+
+- support SET NX GET special case
+
+
 ### v2.30.0
 
 - implement redis 7.0.x (from 6.X). Main changes:

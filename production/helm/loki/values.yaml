@@ -729,6 +729,8 @@ write:
   nodeSelector: {}
   # -- Tolerations for write pods
   tolerations: []
+  # -- The default is to deploy all pods in parallel.
+  podManagementPolicy: "Parallel"
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
@@ -880,6 +882,8 @@ read:
   nodeSelector: {}
   # -- Tolerations for read pods
   tolerations: []
+  # -- The default is to deploy all pods in parallel.
+  podManagementPolicy: "Parallel"
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
@@ -972,6 +976,8 @@ backend:
   nodeSelector: {}
   # -- Tolerations for backend pods
   tolerations: []
+  # -- The default is to deploy all pods in parallel.
+  podManagementPolicy: "Parallel"
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true

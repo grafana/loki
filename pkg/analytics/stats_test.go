@@ -83,7 +83,7 @@ func TestCounterRace(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(g.Wait())
+	require.NoError(t, g.Wait())
 
 	require.Equal(t, NewCounter(counterName).total.Load(), int64(300))
 }

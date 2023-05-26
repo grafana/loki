@@ -13,7 +13,7 @@ spec:
 {{- if not .Values.backend.autoscaling.enabled }}
   replicas: {{ .Values.backend.replicas }}
 {{- end }}
-  podManagementPolicy: Parallel
+  podManagementPolicy: {{ .Values.backend.podManagementPolicy }}
   updateStrategy:
     rollingUpdate:
       partition: 0
