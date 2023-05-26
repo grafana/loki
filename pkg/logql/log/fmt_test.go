@@ -675,8 +675,17 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			},
 		},
 		{
-			"toEpoch",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpoch | date "2006-01-02" }}`)}),
+			"unixToTime days",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
+			labels.Labels{
+				{Name: "foo", Value: "2023-05-26"},
+				{Name: "bar", Value: "19503"},
+			},
+		},
+		{
+			"unixToTime seconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
 			labels.Labels{
 				{Name: "foo", Value: "2023-03-23"},
@@ -684,8 +693,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			},
 		},
 		{
-			"toEpochMillis",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpochMillis | date "2006-01-02" }}`)}),
+			"unixToTime milliseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
 			labels.Labels{
 				{Name: "foo", Value: "2009-11-10"},
@@ -693,8 +702,17 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			},
 		},
 		{
-			"toEpochNanos",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | toEpochNanos | date "Jan 2, 2006" }}`)}),
+			"unixToTime microseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
+			labels.Labels{
+				{Name: "foo", Value: "2023-01-15"},
+				{Name: "bar", Value: "1673798889902000"},
+			},
+		},
+		{
+			"unixToTime nanoseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "Jan 2, 2006" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
 			labels.Labels{
 				{Name: "foo", Value: "Sep 9, 2001"},
@@ -865,4 +883,12 @@ func TestDecolorizer(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestInvalidUnixTimes(t *testing.T) {
+	_, err := unixToTime("abc")
+	require.Error(t, err)
+
+	_, err = unixToTime("464")
+	require.Error(t, err)
 }

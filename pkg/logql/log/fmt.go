@@ -67,9 +67,7 @@ var (
 		"unixEpochMillis":  unixEpochMillis,
 		"unixEpochNanos":   unixEpochNanos,
 		"toDateInZone":     toDateInZone,
-		"toEpoch":          toEpoch,
-		"toEpochMillis":    toEpochMillis,
-		"toEpochNanos":     toEpochNanos,
+		"unixToTime":       unixToTime,
 	}
 
 	// sprig template functions
@@ -134,32 +132,32 @@ func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() i
 }
 
 // toEpoch converts a string with Unix time to an time Value
-func toEpoch(epoch string) (int64, error) {
+func unixToTime(epoch string) (time.Time, error) {
+	var ct time.Time
+	l := len(epoch)
 	i, err := strconv.ParseInt(epoch, 10, 64)
 	if err != nil {
-		return 0, err
+		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
 	}
-	return i, nil
-}
-
-// toEpochMillis converts a string with Unix time in milliseconds to an time Value
-func toEpochMillis(epoch string) (time.Time, error) {
-	i, err := strconv.ParseInt(epoch, 10, 64)
-	if err != nil {
-		return time.Time{}, err
+	switch l {
+	case 5:
+		// days 19373
+		return time.Unix(i*86400, 0), nil
+	case 10:
+		// seconds 1673798889
+		return time.Unix(i, 0), nil
+	case 13:
+		// milliseconds 1673798889902
+		return time.Unix(0, i*1000*1000), nil
+	case 16:
+		// microseconds 1673798889902000
+		return time.Unix(0, i*1000), nil
+	case 19:
+		// nanoseconds 1673798889902000000
+		return time.Unix(0, i), nil
+	default:
+		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
 	}
-	tm := time.UnixMilli(i)
-	return tm, nil
-}
-
-// toEpochNanos converts a string with Unix time in nanoseconds to an time Value
-func toEpochNanos(epoch string) (time.Time, error) {
-	i, err := strconv.ParseInt(epoch, 10, 64)
-	if err != nil {
-		return time.Time{}, err
-	}
-	tm := time.Unix(0, i)
-	return tm, nil
 }
 
 func unixEpochMillis(date time.Time) string {
