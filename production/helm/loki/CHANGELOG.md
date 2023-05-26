@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.5.10
+
+- [CHANGE] Make the gateway listen on IPv6 as well as IPv4
+
 ## 5.5.9
 
 - [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
