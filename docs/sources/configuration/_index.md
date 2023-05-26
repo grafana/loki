@@ -802,6 +802,11 @@ index_stats_results_cache:
   # (disable compression).
   # CLI flag: -frontend.index-stats-results-cache.compression
   [compression: <string> | default = ""]
+
+  # Do not cache requests with an end time that falls within Now minus this
+  # duration. 0 disables this feature.
+  # CLI flag: -frontend.index-stats-results-cache.do-not-cache-request-within
+  [do_not_cache_request_within: <duration> | default = 0s]
 ```
 
 ### ruler
