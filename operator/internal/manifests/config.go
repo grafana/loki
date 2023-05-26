@@ -32,6 +32,10 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	_, err = s.Write(rc)
+	if err != nil {
+		return nil, "", err
+	}
 	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
