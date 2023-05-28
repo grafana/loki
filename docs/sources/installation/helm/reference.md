@@ -3883,7 +3883,8 @@ Hard node and soft zone anti-affinity
         "type": "Pods",
         "value": 1
       }
-    ]
+    ],
+    "stabilizationWindowSeconds": 3600
   },
   "scaleUp": {
     "policies": [
@@ -3893,8 +3894,7 @@ Hard node and soft zone anti-affinity
         "value": 1
       }
     ]
-  },
-  "stabilizationWindowSeconds": 3600
+  }
 }
 </pre>
 </td>
