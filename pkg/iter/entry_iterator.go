@@ -138,9 +138,10 @@ func (i *mergeEntryIterator) fillBuffer() {
 				!i.buffer[0].Entry.Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
+		previous := i.buffer[:len(i.buffer)-1]
 
 		var dupe bool
-		for _, t := range i.buffer[:len(i.buffer)-1] {
+		for _, t := range previous {
 			if t.Entry.Line == entry.Line {
 				i.stats.AddDuplicates(1)
 				dupe = true
@@ -148,7 +149,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 			}
 		}
 		if dupe {
-			i.buffer = i.buffer[:len(i.buffer)-1]
+			i.buffer = previous
 		}
 		if !i.tree.Next() {
 			break
