@@ -4,6 +4,7 @@ type Config struct {
 	LogStreamCreation     bool `yaml:"log_stream_creation"`
 	LogPushRequest        bool `yaml:"log_push_request"`
 	LogPushRequestStreams bool `yaml:"log_push_request_streams"`
+	LogWriteFailures      bool `yaml:"log_write_failures"`
 }
 
 // TenantConfig is a function that returns configs for given tenant, or
@@ -53,4 +54,8 @@ func (o *TenantConfigs) LogPushRequest(userID string) bool {
 
 func (o *TenantConfigs) LogPushRequestStreams(userID string) bool {
 	return o.getOverridesForUser(userID).LogPushRequestStreams
+}
+
+func (o *TenantConfigs) LogWriteFailures(userID string) bool {
+	return o.getOverridesForUser(userID).LogWriteFailures
 }

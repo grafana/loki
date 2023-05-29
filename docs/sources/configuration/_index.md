@@ -482,6 +482,11 @@ rate_store:
   # If enabled, detailed logs and spans will be emitted.
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
+
+write_failures_logging:
+  [add_insights_label: <boolean>]
+
+  [logging_rate: <int>]
 ```
 
 ### querier
