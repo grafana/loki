@@ -21,6 +21,7 @@ package clusterresolver
 import (
 	"fmt"
 
+	"google.golang.org/grpc/internal/testutils"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 )
@@ -50,7 +51,7 @@ func newDNSResolver(target string, topLevelResolver *resourceResolver) *dnsDisco
 		target:           target,
 		topLevelResolver: topLevelResolver,
 	}
-	r, err := newDNS(resolver.Target{Scheme: "dns", Endpoint: target}, ret, resolver.BuildOptions{})
+	r, err := newDNS(resolver.Target{Scheme: "dns", URL: *testutils.MustParseURL("dns:///" + target)}, ret, resolver.BuildOptions{})
 	if err != nil {
 		select {
 		case <-topLevelResolver.updateChannel:

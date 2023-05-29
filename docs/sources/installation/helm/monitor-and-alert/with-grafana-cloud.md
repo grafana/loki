@@ -74,7 +74,7 @@ Walking through this installation will create two Grafana Agent configurations, 
      selfMonitoring:
        logsInstance:
          clients:
-           - url: <CLOUD_METRICS_URL>
+           - url: <CLOUD_LOGS_URL>
              basicAuth:
                username:
                  name: grafana-cloud-logs-credentials
@@ -85,7 +85,7 @@ Walking through this installation will create two Grafana Agent configurations, 
      serviceMonitor:
        metricsInstance:
          remoteWrite:
-           - url: <CLOUD_LOGS_URL>
+           - url: <CLOUD_METRICS_URL>
              basicAuth:
                username:
                  name: grafana-cloud-metrics-credentials

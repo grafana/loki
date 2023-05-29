@@ -10,7 +10,7 @@ After this tutorial you will able to query all your logs in one place using Graf
 
 <!-- TOC -->
 
-- [Sending Logs From AWS Elastic Container Service (ECS)](#ecs)
+- [ECS](#ecs)
   - [Requirements](#requirements)
   - [Setting up the ECS cluster](#setting-up-the-ecs-cluster)
   - [Creating your task definition](#creating-your-task-definition)
@@ -242,4 +242,4 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
 [grafanacloud account]: https://grafana.com/login
 [grafana logs firelens]: ./ecs-grafana.png
-[logql]: ../../../logql
+[logql]: ../../../query

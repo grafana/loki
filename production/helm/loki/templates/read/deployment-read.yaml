@@ -5,9 +5,17 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.readFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.read.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   {{- if not .Values.read.autoscaling.enabled }}
   replicas: {{ .Values.read.replicas }}
@@ -23,7 +31,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -127,8 +135,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         - name: runtime-config
           configMap:

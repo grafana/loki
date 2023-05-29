@@ -8,7 +8,6 @@ import (
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
@@ -37,6 +36,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 					},
 				},
 			},
+			Timeouts: defaultTimeoutConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -79,6 +79,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 					},
 				},
 			},
+			Timeouts: defaultTimeoutConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -233,6 +234,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -251,6 +253,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -293,6 +296,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -310,6 +314,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: true,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -350,6 +355,7 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		Gates: configv1.FeatureGates{
 			HTTPEncryption: true,
 		},
+		Timeouts: defaultTimeoutConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -423,6 +429,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			HTTPEncryption:             true,
 			ServiceMonitorTLSEndpoints: true,
 		},
+		Timeouts: defaultTimeoutConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -527,6 +534,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -569,6 +577,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -693,6 +702,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					RuntimeSeccompProfile: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -735,6 +745,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					RuntimeSeccompProfile: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -798,6 +809,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -836,6 +848,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -874,6 +887,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: false,
 					LokiStackAlerts: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -888,6 +902,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: true,
 					LokiStackAlerts: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -903,68 +918,6 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
-			}
-		})
-	}
-}
-
-func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
-	tt := []struct {
-		desc             string
-		nodeAffinity     bool
-		wantNodeAffinity *corev1.NodeAffinity
-	}{
-		{
-			desc:             "disabled",
-			nodeAffinity:     false,
-			wantNodeAffinity: nil,
-		},
-		{
-			desc:             "enabled",
-			nodeAffinity:     true,
-			wantNodeAffinity: defaultNodeAffinity(true),
-		},
-	}
-
-	for _, tc := range tt {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-
-			opts := &Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1.LokiStackSpec{
-					Size: lokiv1.SizeOneXSmall,
-				},
-				Gates: configv1.FeatureGates{
-					DefaultNodeAffinity: tc.nodeAffinity,
-				},
-			}
-
-			err := ApplyDefaultSettings(opts)
-			require.NoError(t, err)
-
-			objects, err := BuildAll(*opts)
-			require.NoError(t, err)
-
-			for _, raw := range objects {
-				gotAffinity, skip, err := extractAffinity(raw)
-				require.NoError(t, err)
-
-				if skip {
-					// Object with no affinity
-					continue
-				}
-
-				var gotNodeAffinity *corev1.NodeAffinity
-				if gotAffinity != nil {
-					gotNodeAffinity = gotAffinity.NodeAffinity
-				}
-
-				require.Equal(t, tc.wantNodeAffinity, gotNodeAffinity,
-					"kind", raw.GetObjectKind().GroupVersionKind(),
-					"name", raw.GetName())
 			}
 		})
 	}
@@ -988,18 +941,4 @@ func checkGatewayDeployed(objects []client.Object, stackName string) bool {
 		}
 	}
 	return false
-}
-
-func extractAffinity(raw client.Object) (*corev1.Affinity, bool, error) {
-	switch obj := raw.(type) {
-	case *appsv1.Deployment:
-		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *appsv1.StatefulSet:
-		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *corev1.ConfigMap, *corev1.Service, *policyv1.PodDisruptionBudget:
-		return nil, true, nil
-	default:
-	}
-
-	return nil, false, fmt.Errorf("unknown kind: %s", raw.GetObjectKind().GroupVersionKind())
 }

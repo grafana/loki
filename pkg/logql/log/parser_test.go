@@ -532,6 +532,19 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			noParserHints,
 		},
+		{
+			"nested escaped object",
+			[]byte(`{"app":"{ \"key\": \"value\", \"key2\":\"value2\"}"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.Labels{{Name: "foo", Value: "bar"}},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "app", Value: `{ "key": "value", "key2":"value2"}`},
+			},
+			noParserHints,
+		},
 	}
 	for _, tt := range tests {
 		j, err := NewJSONExpressionParser(tt.expressions)

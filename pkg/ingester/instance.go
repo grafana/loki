@@ -253,7 +253,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
 
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
@@ -575,7 +575,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
 			s.chunkMtx.RLock()
-			res.Streams++
+			var hasChunkOverlap bool
 			for _, chk := range s.chunks {
 				// Consider chunks which overlap our time range
 				// and haven't been flushed.
@@ -584,11 +584,16 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
 				if !chk.flushed.Equal(zeroValueTime) && from.Before(chkThrough) && through.After(chkFrom) {
+					hasChunkOverlap = true
 					res.Chunks++
-					res.Entries += uint64(chk.chunk.Size())
-					res.Bytes += uint64(chk.chunk.UncompressedSize())
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					res.Entries += uint64(factor * float64(chk.chunk.Size()))
+					res.Bytes += uint64(factor * float64(chk.chunk.UncompressedSize()))
 				}
 
+			}
+			if hasChunkOverlap {
+				res.Streams++
 			}
 			s.chunkMtx.RUnlock()
 		}

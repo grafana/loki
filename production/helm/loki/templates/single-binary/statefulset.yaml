@@ -5,9 +5,17 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.singleBinaryFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.singleBinary.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   replicas: {{ include "loki.singleBinaryReplicas" . }}
   podManagementPolicy: Parallel

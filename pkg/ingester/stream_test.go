@@ -78,13 +78,13 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s',\n",
 					time.Unix(int64(i), 0).String(),
 					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
-			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d", numLogs, numLogs)
+			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
 			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false)

@@ -1,4 +1,4 @@
-package manifests_test
+package manifests
 
 import (
 	"testing"
@@ -6,13 +6,13 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func TestNewIndexGatewayStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewIndexGatewayStatefulSet(manifests.Options{
+	ss := NewIndexGatewayStatefulSet(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
@@ -33,7 +33,7 @@ func TestNewIndexGatewayStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T
 }
 
 func TestNewIndexGatewayStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
-	ss := manifests.NewIndexGatewayStatefulSet(manifests.Options{
+	ss := NewIndexGatewayStatefulSet(Options{
 		Name:                   "abcd",
 		Namespace:              "efgh",
 		CertRotationRequiredAt: "deadbeef",
@@ -59,7 +59,7 @@ func TestNewIndexGatewayStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	// failing to specify a matching Pod Selector will result in a validation error
 	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	ss := manifests.NewIndexGatewayStatefulSet(manifests.Options{
+	ss := NewIndexGatewayStatefulSet(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -80,7 +80,7 @@ func TestNewIndexGatewayStatefulSet_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestBuildIndexGateway_PodDisruptionBudget(t *testing.T) {
-	opts := manifests.Options{
+	opts := Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -91,7 +91,7 @@ func TestBuildIndexGateway_PodDisruptionBudget(t *testing.T) {
 			},
 		},
 	}
-	objs, err := manifests.BuildIndexGateway(opts)
+	objs, err := BuildIndexGateway(opts)
 
 	require.NoError(t, err)
 	require.Len(t, objs, 4)
@@ -102,12 +102,12 @@ func TestBuildIndexGateway_PodDisruptionBudget(t *testing.T) {
 	require.Equal(t, "efgh", pdb.Namespace)
 	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
-	require.EqualValues(t, manifests.ComponentLabels(manifests.LabelIndexGatewayComponent, opts.Name),
+	require.EqualValues(t, ComponentLabels(LabelIndexGatewayComponent, opts.Name),
 		pdb.Spec.Selector.MatchLabels)
 }
 
 func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
-	depl := manifests.NewIndexGatewayStatefulSet(manifests.Options{
+	depl := NewIndexGatewayStatefulSet(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -137,11 +137,23 @@ func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
 			MaxSkew:           3,
 			TopologyKey:       "zone",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "index-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 		{
 			MaxSkew:           2,
 			TopologyKey:       "region",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "index-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
 }
