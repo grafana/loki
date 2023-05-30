@@ -5,7 +5,7 @@ weight: 20
 ---
 # Lambda Promtail
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{<relref "../promtail/configuration#loki_push_api">}}).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{<relref "../promtail/configuration#loki_push_api">}}).
 
 ## Deployment
 
@@ -104,6 +104,10 @@ One thing to be aware of with this is that the default flow log format doesn't h
 ### Loadbalancer logs
 
 This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
+
+### Cloudtrail logs
+
+This workflow allows ingesting AWS Cloudtrail logs stored on S3 to Loki.
 
 ### Cloudfront real-time logs
 

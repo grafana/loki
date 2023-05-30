@@ -684,7 +684,7 @@ write:
           - type: Pods
             value: 1
             periodSeconds: 1800
-      stabilizationWindowSeconds: 3600
+        stabilizationWindowSeconds: 3600
   image:
     # -- The Docker registry for the write image. Overrides `loki.image.registry`
     registry: null

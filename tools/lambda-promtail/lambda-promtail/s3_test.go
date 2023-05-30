@@ -50,7 +50,7 @@ func Test_getLabels(t *testing.T) {
 				"month":         "01",
 				"region":        "us-east-1",
 				"src":           "my-loadbalancer",
-				"type":          "elasticloadbalancing",
+				"type":          LB_LOG_TYPE,
 				"year":          "2022",
 			},
 			wantErr: false,
@@ -62,7 +62,7 @@ func Test_getLabels(t *testing.T) {
 					AWSRegion: "us-east-1",
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
-							Name: "elb_logs_test",
+							Name: "vpc_logs_test",
 							OwnerIdentity: events.S3UserIdentity{
 								PrincipalID: "test",
 							},
@@ -75,7 +75,7 @@ func Test_getLabels(t *testing.T) {
 			},
 			want: map[string]string{
 				"account_id":    "123456789012",
-				"bucket":        "elb_logs_test",
+				"bucket":        "vpc_logs_test",
 				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
@@ -83,7 +83,40 @@ func Test_getLabels(t *testing.T) {
 				"month":         "01",
 				"region":        "us-east-1",
 				"src":           "fl-1234abcd",
-				"type":          "vpcflowlogs",
+				"type":          FLOW_LOG_TYPE,
+				"year":          "2022",
+			},
+			wantErr: false,
+		},
+		{
+			name: "cloudtrail_logs",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "cloudtrail_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "my-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "cloudtrail_logs_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"day":           "24",
+				"key":           "my-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
+				"month":         "01",
+				"region":        "us-east-1",
+				"src":           "4jhzXFO2Jlvu2b3y",
+				"type":          CLOUDTRAIL_LOG_TYPE,
 				"year":          "2022",
 			},
 			wantErr: false,
@@ -151,6 +184,23 @@ func Test_parseS3Log(t *testing.T) {
 			expectedStream: `{__aws_log_type="s3_lb", __aws_s3_lb="source", __aws_s3_lb_owner="123456789"}`,
 			wantErr:        false,
 		},
+		{
+			name: "cloudtraillogs",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/cloudtrail-log-file.json.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"type":       CLOUDTRAIL_LOG_TYPE,
+					"src":        "source",
+					"account_id": "123456789",
+				},
+			},
+			expectedStream: `{__aws_log_type="s3_cloudtrail", __aws_s3_cloudtrail="source", __aws_s3_cloudtrail_owner="123456789"}`,
+			wantErr:        false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,11 +210,9 @@ func Test_parseS3Log(t *testing.T) {
 			if err != nil {
 				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
 			}
-
 			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
 			require.Len(t, tt.args.b.streams, 1)
 			stream, ok := tt.args.b.streams[tt.expectedStream]
 			require.True(t, ok, "batch does not contain stream: %s", tt.expectedStream)
