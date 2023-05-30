@@ -160,14 +160,7 @@ loki:
             period: 24h
     {{- end }}
 
-    {{ include "loki.rulerConfig:
-                              loki:
-                                rulerConfig:
-                                    configOverrides:
-                                            ruler.yaml:
-                                                    storage:
-                                                        enable_sharding: true
-                                                                           " . }}
+    {{ include "loki.rulerConfig". }}
 
     table_manager:
       retention_deletes_enabled: false
