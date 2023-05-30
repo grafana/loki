@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
@@ -28,7 +29,8 @@ const (
 
 type Table interface {
 	Close()
-	ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
@@ -144,7 +146,35 @@ func (t *table) Close() {
 	t.indexSets = map[string]IndexSet{}
 }
 
-func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
+func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+	g, ctx := errgroup.WithContext(ctx)
+
+	// iterate through both user and common index
+	users := []string{userID, ""}
+
+	for i := range users {
+		// bind locally within iteration before
+		// sending to goroutine
+		uid := users[i]
+
+		g.Go(func() error {
+			indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
+			if err != nil {
+				return err
+			}
+
+			if indexSet.Err() != nil {
+				t.cleanupBrokenIndexSet(ctx, uid)
+				return indexSet.Err()
+			}
+
+			return indexSet.ForEachConcurrent(ctx, callback)
+		})
+	}
+	return g.Wait()
+}
+
+func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	// iterate through both user and common index
 	for _, uid := range []string{userID, ""} {
 		indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
@@ -157,7 +187,7 @@ func (t *table) ForEach(ctx context.Context, userID string, doneChan <-chan stru
 			return indexSet.Err()
 		}
 
-		err = indexSet.ForEach(ctx, doneChan, callback)
+		err = indexSet.ForEach(ctx, callback)
 		if err != nil {
 			return err
 		}

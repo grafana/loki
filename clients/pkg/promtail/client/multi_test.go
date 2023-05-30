@@ -22,12 +22,12 @@ import (
 )
 
 var (
-	nilMetrics = NewMetrics(nil, nil)
-	metrics    = NewMetrics(prometheus.DefaultRegisterer, nil)
+	nilMetrics = NewMetrics(nil)
+	metrics    = NewMetrics(prometheus.DefaultRegisterer)
 )
 
 func TestNewMulti(t *testing.T) {
-	_, err := NewMulti(nilMetrics, nil, util_log.Logger, 0, []Config{}...)
+	_, err := NewMulti(nilMetrics, util_log.Logger, 0, 0, false, []Config{}...)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}
@@ -46,7 +46,7 @@ func TestNewMulti(t *testing.T) {
 		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"hi": "there"}},
 	}
 
-	clients, err := NewMulti(metrics, nil, util_log.Logger, 0, cc1, cc2)
+	clients, err := NewMulti(metrics, util_log.Logger, 0, 0, false, cc1, cc2)
 	if err != nil {
 		t.Fatalf("expected err: nil got:%v", err)
 	}
@@ -69,7 +69,7 @@ func TestNewMulti(t *testing.T) {
 }
 
 func TestNewMulti_BlockDuplicates(t *testing.T) {
-	_, err := NewMulti(nilMetrics, nil, util_log.Logger, 0, []Config{}...)
+	_, err := NewMulti(nilMetrics, util_log.Logger, 0, 0, false, []Config{}...)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}
@@ -82,11 +82,11 @@ func TestNewMulti_BlockDuplicates(t *testing.T) {
 	}
 	cc1Copy := cc1
 
-	_, err = NewMulti(metrics, nil, util_log.Logger, 0, cc1, cc1Copy)
+	_, err = NewMulti(metrics, util_log.Logger, 0, 0, false, cc1, cc1Copy)
 	require.Error(t, err, "expected NewMulti to reject duplicate client configs")
 
 	cc1Copy.Name = "copy"
-	clients, err := NewMulti(metrics, nil, util_log.Logger, 0, cc1, cc1Copy)
+	clients, err := NewMulti(metrics, util_log.Logger, 0, 0, false, cc1, cc1Copy)
 	require.NoError(t, err, "expected NewMulti to reject duplicate client configs")
 
 	multi := clients.(*MultiClient)
@@ -148,9 +148,9 @@ func TestMultiClient_Handle(t *testing.T) {
 func TestMultiClient_Handle_Race(t *testing.T) {
 	u := flagext.URLValue{}
 	require.NoError(t, u.Set("http://localhost"))
-	c1, err := New(nilMetrics, Config{URL: u, BackoffConfig: backoff.Config{MaxRetries: 1}, Timeout: time.Microsecond}, nil, 0, log.NewNopLogger())
+	c1, err := New(nilMetrics, Config{URL: u, BackoffConfig: backoff.Config{MaxRetries: 1}, Timeout: time.Microsecond}, 0, 0, false, log.NewNopLogger())
 	require.NoError(t, err)
-	c2, err := New(nilMetrics, Config{URL: u, BackoffConfig: backoff.Config{MaxRetries: 1}, Timeout: time.Microsecond}, nil, 0, log.NewNopLogger())
+	c2, err := New(nilMetrics, Config{URL: u, BackoffConfig: backoff.Config{MaxRetries: 1}, Timeout: time.Microsecond}, 0, 0, false, log.NewNopLogger())
 	require.NoError(t, err)
 	clients := []Client{c1, c2}
 	m := &MultiClient{

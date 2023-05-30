@@ -68,9 +68,9 @@ func TestBlocksInclusive(t *testing.T) {
 
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
-
 			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 			cases := []struct {
 				ts  int64
@@ -180,6 +180,7 @@ func TestBlock(t *testing.T) {
 
 func TestCorruptChunk(t *testing.T) {
 	for _, enc := range testEncoding {
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
@@ -251,6 +252,8 @@ func TestRoundtripV2(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
 			for _, version := range []byte{chunkFormatV2, chunkFormatV3} {
+				enc := enc
+				version := version
 				t.Run(enc.String(), func(t *testing.T) {
 					t.Parallel()
 
@@ -308,6 +311,7 @@ func TestRoundtripV2(t *testing.T) {
 func TestRoundtripV3(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(fmt.Sprintf("%v-%v", f, enc), func(t *testing.T) {
 				t.Parallel()
 
@@ -331,6 +335,7 @@ func TestRoundtripV3(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(enc.String(), func(t *testing.T) {
 				t.Parallel()
 
@@ -382,6 +387,7 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(enc.String(), func(t *testing.T) {
 				t.Parallel()
 
@@ -893,34 +899,26 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		expect     []bool // array of expected values for next call in sequence
 	}{
 		{time.Unix(0, 0), time.Unix(0, 1), logproto.FORWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 1), logproto.FORWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 2), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 3), logproto.FORWARD, []bool{true, true, false}},
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 3), time.Unix(0, 3), logproto.FORWARD, []bool{false}},
 
 		{time.Unix(0, 0), time.Unix(0, 1), logproto.BACKWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 1), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 2), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 3), logproto.BACKWARD, []bool{true, true, false}},
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
 	} {
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
-				t.Parallel()
-
 				tt := tt
 				c := createChunk()
 
 				// testing headchunk
 				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
 				require.NoError(t, err)
-				for i := range tt.expect {
-					require.Equal(t, tt.expect[i], it.Next())
+				for idx, expected := range tt.expect {
+					require.Equal(t, expected, it.Next(), "idx: %s", idx)
 				}
 				require.NoError(t, it.Close())
 
@@ -938,6 +936,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 func TestMemchunkLongLine(t *testing.T) {
 	for _, enc := range testEncoding {
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
@@ -1253,7 +1252,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	chkThrough := chkFrom.Add(10 * time.Second)
 	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
 
-	filterFunc := func(in string) bool {
+	filterFunc := func(_ time.Time, in string) bool {
 		return strings.HasPrefix(in, "matching")
 	}
 

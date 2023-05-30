@@ -1,5 +1,6 @@
 ---
 title: Labels
+description: Labels
 weight: 300
 aliases:
     - /docs/loki/latest/getting-started/labels/
@@ -8,7 +9,7 @@ aliases:
 
 Labels are key value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and I will use those in the coming examples.
 
-The scrape configs we provide with Grafana Loki define these labels, too. If you are using Prometheus, having consistent labels between Loki and Prometheus is one of Loki's superpowers, making it incredibly [easy to correlate your application metrics with your log data](https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/).
+The scrape configs we provide with Grafana Loki define these labels, too. If you are using Prometheus, having consistent labels between Loki and Prometheus is one of Loki's superpowers, making it incredibly [easy to correlate your application metrics with your log data](/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/).
 
 ## How Loki uses labels
 
@@ -145,7 +146,7 @@ The two previous examples use statically defined labels with a single value; how
       __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines](../../clients/promtail/pipelines/) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{<relref "../clients/promtail/pipelines">}}) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 
@@ -201,7 +202,7 @@ Now let's talk about Loki, where the index is typically an order of magnitude sm
 
 Loki will effectively keep your static costs as low as possible (index size and memory requirements as well as static log storage) and make the query performance something you can control at runtime with horizontal scaling.
 
-To see how this works, let's look back at our example of querying your access log data for a specific IP address. We don't want to use a label to store the IP address. Instead we use a [filter expression](../../logql/log_queries#line-filter-expression) to query for it:
+To see how this works, let's look back at our example of querying your access log data for a specific IP address. We don't want to use a label to store the IP address. Instead we use a [filter expression]({{<relref "../query/log_queries#line-filter-expression">}}) to query for it:
 
 ```
 {job="apache"} |= "11.11.11.11"

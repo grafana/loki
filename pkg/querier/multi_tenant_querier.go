@@ -192,7 +192,11 @@ func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (
 	if err != nil {
 		return nil, nil, err
 	}
-	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, expr.Selector().Matchers()...)
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, nil, err
+	}
+	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
 	updatedExpr := replaceMatchers(expr, filteredMatchers)
 	return matchedTenants, updatedExpr, nil
 }
@@ -280,7 +284,7 @@ func (r relabel) relabel(original string) string {
 	}
 	builder.Set(defaultTenantLabel, r.tenantID)
 
-	lbls = builder.Labels(nil)
+	lbls = builder.Labels()
 	r.cache[original] = lbls
 	return lbls.String()
 }

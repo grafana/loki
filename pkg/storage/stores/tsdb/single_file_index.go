@@ -2,16 +2,23 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"io"
+	"math"
+	"path/filepath"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
+
+var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
@@ -22,6 +29,49 @@ func OpenShippableTSDB(p string) (index_shipper.Index, error) {
 		return nil, err
 	}
 
+	return NewShippableTSDBFile(id)
+}
+
+func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index_shipper.Index, error) {
+	indexFile, err := OpenShippableTSDB(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err := indexFile.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close index file", "err", err)
+		}
+	}()
+
+	currVer := indexFile.(*TSDBFile).Index.(*TSDBIndex).reader.(*index.Reader).Version()
+	if currVer == desiredVer {
+		return nil, ErrAlreadyOnDesiredVersion
+	}
+
+	builder := NewBuilder()
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		builder.AddSeries(lbls.Copy(), fp, chks)
+	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	if err != nil {
+		return nil, err
+	}
+
+	parentDir := filepath.Dir(path)
+
+	id, err := builder.BuildWithVersion(ctx, desiredVer, parentDir, func(from, through model.Time, checksum uint32) Identifier {
+		id := SingleTenantTSDBIdentifier{
+			TS:       time.Now(),
+			From:     from,
+			Through:  through,
+			Checksum: checksum,
+		}
+		return NewPrefixedIdentifier(id, parentDir, "")
+	})
+
+	if err != nil {
+		return nil, err
+	}
 	return NewShippableTSDBFile(id)
 }
 
@@ -102,16 +152,8 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
-func (i *TSDBIndex) forSeries(
-	ctx context.Context,
-	shard *index.ShardAnnotation,
-	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta),
-	matchers ...*labels.Matcher,
-) error {
-	p, err := PostingsForMatchers(i.reader, shard, matchers...)
-	if err != nil {
-		return err
-	}
+func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
+	// TODO(owen-d): use pool
 
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
@@ -122,53 +164,55 @@ func (i *TSDBIndex) forSeries(
 		filterer = i.chunkFilter.ForRequest(ctx)
 	}
 
-	for p.Next() {
-		hash, err := i.reader.Series(p.At(), &ls, &chks)
-		if err != nil {
-			return err
-		}
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+		for p.Next() {
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			if err != nil {
+				return err
+			}
 
-		// skip series that belong to different shards
-		if shard != nil && !shard.Match(model.Fingerprint(hash)) {
-			continue
-		}
+			// skip series that belong to different shards
+			if shard != nil && !shard.Match(model.Fingerprint(hash)) {
+				continue
+			}
 
-		if filterer != nil && filterer.ShouldFilter(ls) {
-			continue
-		}
+			if filterer != nil && filterer.ShouldFilter(ls) {
+				continue
+			}
 
-		fn(ls, model.Fingerprint(hash), chks)
+			fn(ls, model.Fingerprint(hash), chks)
+		}
+		return p.Err()
+	})
+
+}
+
+func (i *TSDBIndex) forPostings(
+	ctx context.Context,
+	shard *index.ShardAnnotation,
+	from, through model.Time,
+	matchers []*labels.Matcher,
+	fn func(index.Postings) error,
+) error {
+	p, err := PostingsForMatchers(i.reader, shard, matchers...)
+	if err != nil {
+		return err
 	}
-	return p.Err()
+	return fn(p)
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	queryBounds := newBounds(from, through)
-	if res == nil {
-		res = ChunkRefsPool.Get()
-	}
-	res = res[:0]
-
-	if err := i.forSeries(ctx, shard,
-		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-			// TODO(owen-d): use logarithmic approach
-			for _, chk := range chks {
-
-				// current chunk is outside the range of this request
-				if !Overlap(queryBounds, chk) {
-					continue
-				}
-
-				res = append(res, ChunkRef{
-					User:        userID, // assumed to be the same, will be enforced by caller.
-					Fingerprint: fp,
-					Start:       chk.From(),
-					End:         chk.Through(),
-					Checksum:    chk.Checksum,
-				})
-			}
-		},
-		matchers...); err != nil {
+	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		for _, chk := range chks {
+			res = append(res, ChunkRef{
+				User:        userID, // assumed to be the same, will be enforced by caller.
+				Fingerprint: fp,
+				Start:       chk.From(),
+				End:         chk.Through(),
+				Checksum:    chk.Checksum,
+			})
+		}
+	}, matchers...); err != nil {
 		return nil, err
 	}
 
@@ -176,27 +220,20 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 }
 
 func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	queryBounds := newBounds(from, through)
 	if res == nil {
 		res = SeriesPool.Get()
 	}
 	res = res[:0]
 
-	if err := i.forSeries(ctx, shard,
-		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-			// TODO(owen-d): use logarithmic approach
-			for _, chk := range chks {
-				if Overlap(queryBounds, chk) {
-					// this series has at least one chunk in the desired range
-					res = append(res, Series{
-						Labels:      ls.Copy(),
-						Fingerprint: fp,
-					})
-					break
-				}
-			}
-		},
-		matchers...); err != nil {
+	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		if len(chks) == 0 {
+			return
+		}
+		res = append(res, Series{
+			Labels:      ls.Copy(),
+			Fingerprint: fp,
+		})
+	}, matchers...); err != nil {
 		return nil, err
 	}
 
@@ -233,23 +270,36 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	if err := i.forSeries(ctx, shard,
-		func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-			// TODO(owen-d): use logarithmic approach
-			var addedStream bool
-			for _, chk := range chks {
-				if shouldIncludeChunk(chk) {
-					if !addedStream {
-						acc.AddStream(fp)
-						addedStream = true
-					}
-					acc.AddChunk(fp, chk)
-				}
-			}
-		},
-		matchers...); err != nil {
-		return err
-	}
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+		// TODO(owen-d): use pool
+		var ls labels.Labels
+		var filterer chunk.Filterer
+		if i.chunkFilter != nil {
+			filterer = i.chunkFilter.ForRequest(ctx)
+		}
 
-	return nil
+		for p.Next() {
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			if err != nil {
+				return err
+			}
+
+			// skip series that belong to different shards
+			if shard != nil && !shard.Match(model.Fingerprint(fp)) {
+				continue
+			}
+
+			if filterer != nil && filterer.ShouldFilter(ls) {
+				continue
+			}
+
+			if stats.Entries > 0 {
+				// need to add stream
+				acc.AddStream(model.Fingerprint(fp))
+				acc.AddChunkStats(stats)
+			}
+		}
+		return p.Err()
+	})
+
 }

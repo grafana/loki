@@ -1,5 +1,80 @@
 # Change Log
 
+## [v1.98.0] - 2023-03-09
+
+- #608 - @anitgandhi - client: don't process body upon 204 response
+- #607 - @gregmankes - add apps rewrites/redirects to app spec
+
+## [v1.97.0] - 2023-02-10
+
+- #601 - @jcodybaker - APPS-6813: update app platform - pending_deployment + timing
+- #602 - @jcodybaker - Use App Platform active deployment for GetLogs if not specified
+
+## [v1.96.0] - 2023-01-23
+
+- #599 - @markpaulson - Adding PromoteReplicaToPrimary to client interface.
+
+## [v1.95.0] - 2023-01-23
+
+- #595 - @dweinshenker - Add UpgradeMajorVersion to godo
+
+## [v1.94.0] - 2022-01-23
+
+- #596 - @DMW2151 - DBAAS-3906: Include updatePool for DB Clusters
+- #593 - @danaelhe - Add Uptime Checks and Alerts Support
+
+## [v1.93.0] - 2022-12-15
+
+- #591 - @andrewsomething - tokens: Add initial support for new API.
+
+## [v1.92.0] - 2022-12-14
+
+- #589 - @wez470 - load-balancers: Minor doc fixup
+- #585 - @StephenVarela - Add firewall support for load balancers
+- #587 - @StephenVarela - Support new http alerts for load balancers
+- #586 - @andrewsomething - godo.go: Sort service lists.
+- #583 - @ddebarros - Adds support for functions trigger API
+
+## [v1.91.1] - 2022-11-23
+
+- #582 - @StephenVarela - Load Balancers: Support new endpoints for http alerts
+
+## [v1.90.0] - 2022-11-16
+
+- #571 - @kraai - Add WaitForAvailable
+- #579 - @bentranter - Deprecate old pointer helpers, use generic one
+- #580 - @StephenVarela - LBAAS Fixup default http idle timeout behaviour
+- #578 - @StephenVarela - LBAAS-2430 Add support for HTTP idle timeout seconds
+- #577 - @ddebarros - Functions api support
+
+## [v1.89.0] - 2022-11-02
+
+- #575 - @ghostlandr - apps: add option to get projects data from Apps List endpoint
+
+## [v1.88.0] - 2022-10-31
+
+- #573 - @kamaln7 - apps: add ListBuildpacks, UpgradeBuildpack
+- #572 - @ghostlandr - Apps: add project id as a parameter to CreateApp and to the App struct
+- #570 - @kraai - Fix copy-and-paste error in comment
+- #568 - @StephenVarela - LBAAS-2321 Add project_id to load balancers structs
+
+## [v1.87.0] - 2022-10-12
+
+- #564 - @DWizGuy58 - Add public monitoring alert policies for dbaas
+- #565 - @dylanrhysscott - CON-5657 (Re-)expose public HA enablement flags in godo
+- #563 - @andrewsomething - Add option to configure a rate.Limiter for the client.
+
+## [v1.86.0] - 2022-09-23
+
+- #561 - @jonfriesen - apps: add docr image deploy on push
+
+## [v1.85.0] - 2022-09-21
+
+- #560 - @andrewsomething - Bump golang.org/x/net (fixes: #557).
+- #559 - @kamaln7 - apps: update component spec interfaces
+- #555 - @kamaln7 - apps: add accessor methods and spec helpers
+- #556 - @kamaln7 - update CI for go 1.18 & 1.19
+
 ## [v1.84.1] - 2022-09-16
 
 - #554 - @andrewsomething - reserved IPs: project_id should have omitempty in create req.
@@ -504,16 +579,19 @@
 ## [v1.1.0] - 2017-06-06
 
 ### Added
+
 - #145 Add FirewallsService for managing Firewalls with the DigitalOcean API. - @viola
 - #139 Add TTL field to the Domains. - @xmudrii
 
 ### Fixed
+
 - #143 Fix oauth2.NoContext depreciation. - @jbowens
 - #141 Fix DropletActions on tagged resources. - @xmudrii
 
 ## [v1.0.0] - 2017-03-10
 
 ### Added
+
 - #130 Add Convert to ImageActionsService. - @xmudrii
 - #126 Add CertificatesService for managing certificates with the DigitalOcean API. - @viola
 - #125 Add LoadBalancersService for managing load balancers with the DigitalOcean API. - @viola

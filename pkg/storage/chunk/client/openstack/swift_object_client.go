@@ -80,6 +80,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
 		AuthUrl:        cfg.AuthURL,
+		Internal:       cfg.Internal,
 		ApiKey:         cfg.Password,
 		UserName:       cfg.Username,
 		UserId:         cfg.UserID,
@@ -153,7 +154,7 @@ func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) 
 		opts.Delimiter = []rune(delimiter)[0]
 	}
 
-	objs, err := s.conn.Objects(s.cfg.ContainerName, opts)
+	objs, err := s.conn.ObjectsAll(s.cfg.ContainerName, opts)
 	if err != nil {
 		return nil, nil, err
 	}

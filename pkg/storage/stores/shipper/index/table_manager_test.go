@@ -2,20 +2,26 @@ package index
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
+
+const indexTablePeriod = 24 * time.Hour
 
 func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFunc) {
 	defer func() {
@@ -29,7 +35,15 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFun
 		Uploader: "test-table-manager",
 		IndexDir: indexPath,
 	}
-	tm, err := NewTableManager(cfg, mockIndexShipper, nil)
+
+	tableRange := config.TableRange{
+		End: math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_",
+			Period: indexTablePeriod,
+		}},
+	}
+	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	return tm, tm.Stop
@@ -42,11 +56,12 @@ func TestLoadTables(t *testing.T) {
 	indexPath := filepath.Join(testDir, indexDirName)
 	require.NoError(t, util.EnsureDirectory(indexPath))
 
-	// add a legacy db which is outside of table specific folder
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table0"), 0, 10, nil)
+	// add a legacy db which is outside of table specific folder
+	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table1"), 0, 10, nil)
 
-	// table1 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table1"), map[string]testutil.DBConfig{
+	// table2 with 2 dbs
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
 				Start:      10,
@@ -61,8 +76,8 @@ func TestLoadTables(t *testing.T) {
 		},
 	}, nil)
 
-	// table2 with 2 dbs
-	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table2"), map[string]testutil.DBConfig{
+	// table3 with 2 dbs
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table3"), map[string]testutil.DBConfig{
 		"db1": {
 			DBRecords: testutil.DBRecords{
 				Start:      30,
@@ -77,12 +92,28 @@ func TestLoadTables(t *testing.T) {
 		},
 	}, nil)
 
+	// table4 with 2 dbs
+	testutil.SetupDBsAtPath(t, filepath.Join(indexPath, "table4"), map[string]testutil.DBConfig{
+		"db1": {
+			DBRecords: testutil.DBRecords{
+				Start:      50,
+				NumRecords: 10,
+			},
+		},
+		"db2": {
+			DBRecords: testutil.DBRecords{
+				Start:      60,
+				NumRecords: 10,
+			},
+		},
+	}, nil)
+
 	expectedTables := map[string]struct {
 		start, numRecords int
 	}{
-		"table0": {start: 0, numRecords: 10},
-		"table1": {start: 10, numRecords: 20},
-		"table2": {start: 30, numRecords: 20},
+		"table1": {start: 0, numRecords: 10},
+		"table2": {start: 10, numRecords: 20},
+		"table3": {start: 30, numRecords: 20},
 	}
 
 	cfg := Config{
@@ -90,13 +121,21 @@ func TestLoadTables(t *testing.T) {
 		IndexDir: indexPath,
 	}
 
-	tm, err := NewTableManager(cfg, mockIndexShipper, nil)
+	tableRange := config.TableRange{
+		Start: 1,
+		End:   3,
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
+			Prefix: "table",
+			Period: indexTablePeriod,
+		}},
+	}
+	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	defer tm.Stop()
 
 	require.Len(t, tm.tables, len(expectedTables))
 
-	stat, err := os.Stat(filepath.Join(indexPath, "table0", "table0"))
+	stat, err := os.Stat(filepath.Join(indexPath, "table1", "table1"))
 	require.NoError(t, err)
 	require.True(t, !stat.IsDir())
 
@@ -111,7 +150,7 @@ func TestLoadTables(t *testing.T) {
 		// see if index shipper has the index files
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
 			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
-				return tm.indexShipper.ForEach(ctx, table, userID, nil, func(_ bool, index index_shipper.Index) error {
+				return tm.indexShipper.ForEach(ctx, table, userID, func(_ bool, index index_shipper.Index) error {
 					return callback(index.(*indexfile.IndexFile).GetBoltDB())
 				})
 			},

@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -15,6 +16,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
@@ -25,33 +27,31 @@ const (
 	tlsSecretVolume = "tls-secret"
 )
 
+var logsEndpointRe = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
+
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
-	cm, sha1C, err := gatewayConfigMap(opts)
+	cm, tenantSecret, sha1C, err := gatewayConfigObjs(opts)
 	if err != nil {
 		return nil, err
 	}
 
 	dpl := NewGatewayDeployment(opts, sha1C)
+	sa := NewServiceAccount(opts)
+	saToken := NewServiceAccountTokenSecret(opts)
 	svc := NewGatewayHTTPService(opts)
+	pdb := NewGatewayPodDisruptionBudget(opts)
 
 	ing, err := NewGatewayIngress(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	objs := []client.Object{cm, dpl, svc, ing}
+	objs := []client.Object{cm, tenantSecret, dpl, sa, saToken, svc, ing, pdb}
 
 	minTLSVersion := opts.TLSProfile.MinTLSVersion
 	ciphersList := opts.TLSProfile.Ciphers
 	ciphers := strings.Join(ciphersList, `,`)
-
-	if opts.Gates.HTTPEncryption {
-		serviceName := serviceNameGatewayHTTP(opts.Name)
-		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName, minTLSVersion, ciphers); err != nil {
-			return nil, err
-		}
-	}
 
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
 		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
@@ -59,10 +59,19 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.HTTPEncryption {
+		serviceName := serviceNameGatewayHTTP(opts.Name)
+		serverCAName := gatewaySigningCABundleName(GatewayName(opts.Name))
+		upstreamCAName := signingCABundleName(opts.Name)
+		upstreamClientName := gatewayClientSecretName(opts.Name)
+		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers); err != nil {
+			return nil, err
+		}
+	}
+
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, opts.Name, opts.Namespace, minTLSVersion, ciphers); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers); err != nil {
 			return nil, err
 		}
 
@@ -80,8 +89,12 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		ServiceAccountName:        GatewayName(opts.Name),
+		Affinity:                  configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
+		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelGatewayComponent, opts.Name),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -96,10 +109,8 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			{
 				Name: "tenants",
 				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: GatewayName(opts.Name),
-						},
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: GatewayName(opts.Name),
 					},
 				},
 			},
@@ -131,8 +142,11 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.write.endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
+					fmt.Sprintf("--logs.write-timeout=%s", opts.Timeouts.Gateway.UpstreamWriteTimeout),
 					fmt.Sprintf("--rbac.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRbacFileName)),
 					fmt.Sprintf("--tenants.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName)),
+					fmt.Sprintf("--server.read-timeout=%s", opts.Timeouts.Gateway.ReadTimeout),
+					fmt.Sprintf("--server.write-timeout=%s", opts.Timeouts.Gateway.WriteTimeout),
 				},
 				Ports: []corev1.ContainerPort{
 					{
@@ -192,8 +206,10 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		},
 	}
 
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := commonAnnotations(sha1C)
+	if opts.Stack.Template != nil && opts.Stack.Template.Gateway != nil {
+		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
+	}
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -205,7 +221,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(1),
+			Replicas: pointer.Int32(opts.Stack.Template.Gateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
@@ -301,36 +317,113 @@ func NewGatewayIngress(opts Options) (*networkingv1.Ingress, error) {
 	}, nil
 }
 
-// gatewayConfigMap creates a configMap for rbac.yaml and tenants.yaml
-func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
+// NewServiceAccount returns a k8s object for the LokiStack Gateway
+// serviceaccount.
+func NewServiceAccount(opts Options) client.Object {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	return &corev1.ServiceAccount{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ServiceAccount",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      GatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		AutomountServiceAccountToken: pointer.Bool(true),
+	}
+}
+
+// NewServiceAccountTokenSecret returns a k8s object for the LokiStack
+// Gateway secret. This secret represents the ServiceAccountToken.
+func NewServiceAccountTokenSecret(opts Options) client.Object {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+
+	return &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				corev1.ServiceAccountNameKey: GatewayName(opts.Name),
+			},
+			Labels:    l,
+			Name:      gatewayTokenSecretName(GatewayName(opts.Name)),
+			Namespace: opts.Namespace,
+		},
+		Type: corev1.SecretTypeServiceAccountToken,
+	}
+}
+
+// NewGatewayPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// Gateway pods.
+func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	mu := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      GatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &mu,
+		},
+	}
+}
+
+// gatewayConfigObjs creates a configMap for rbac.yaml and a secret for tenants.yaml
+func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, error) {
 	cfg := gatewayConfigOptions(opt)
 	rbacConfig, tenantsConfig, regoConfig, err := gateway.Build(cfg)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 
 	s := sha1.New()
 	_, err = s.Write(tenantsConfig)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: corev1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   GatewayName(opt.Name),
-			Labels: commonLabels(opt.Name),
-		},
-		BinaryData: map[string][]byte{
-			gateway.LokiGatewayRbacFileName:   rbacConfig,
-			gateway.LokiGatewayTenantFileName: tenantsConfig,
-			gateway.LokiGatewayRegoFileName:   regoConfig,
-		},
-	}, sha1C, nil
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: corev1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   GatewayName(opt.Name),
+				Labels: commonLabels(opt.Name),
+			},
+			BinaryData: map[string][]byte{
+				gateway.LokiGatewayRbacFileName: rbacConfig,
+				gateway.LokiGatewayRegoFileName: regoConfig,
+			},
+		}, &corev1.Secret{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Secret",
+				APIVersion: corev1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      GatewayName(opt.Name),
+				Labels:    ComponentLabels(LabelGatewayComponent, opt.Name),
+				Namespace: opt.Namespace,
+			},
+			Data: map[string][]byte{
+				gateway.LokiGatewayTenantFileName: tenantsConfig,
+			},
+			Type: corev1.SecretTypeOpaque,
+		}, sha1C, nil
 }
 
 // gatewayConfigOptions converts Options to gateway.Options
@@ -355,7 +448,12 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	}
 }
 
-func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName, minTLSVersion, ciphers string) error {
+func configureGatewayServerPKI(
+	podSpec *corev1.PodSpec,
+	namespace, serviceName, serverCAName string,
+	upstreamCAName, upstreamClientName string,
+	minTLSVersion, ciphers string,
+) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
 		if c.Name == gatewayContainerName {
@@ -364,63 +462,115 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName, minTLSVers
 		}
 	}
 
-	certFile := path.Join(httpTLSDir, tlsCertFile)
-	keyFile := path.Join(httpTLSDir, tlsKeyFile)
+	gwContainer := podSpec.Containers[gwIndex].DeepCopy()
+	gwArgs := gwContainer.Args
+	gwVolumes := podSpec.Volumes
 
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: tlsSecretVolume,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: serviceName,
+	for i, a := range gwArgs {
+		if strings.HasPrefix(a, "--web.healthchecks.url=") {
+			gwArgs[i] = fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort)
+		}
+
+		if logsEndpointRe.MatchString(a) {
+			gwArgs[i] = strings.Replace(a, "http", "https", 1)
+		}
+	}
+
+	serverName := fqdn(serviceName, namespace)
+	gwArgs = append(gwArgs,
+		"--tls.client-auth-type=NoClientCert",
+		"--tls.min-version=VersionTLS12",
+		fmt.Sprintf("--tls.server.cert-file=%s", gatewayServerHTTPTLSCert()),
+		fmt.Sprintf("--tls.server.key-file=%s", gatewayServerHTTPTLSKey()),
+		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", gatewaySigningCAPath()),
+		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName),
+		fmt.Sprintf("--tls.internal.server.cert-file=%s", gatewayServerHTTPTLSCert()),
+		fmt.Sprintf("--tls.internal.server.key-file=%s", gatewayServerHTTPTLSKey()),
+		fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
+		fmt.Sprintf("--tls.cipher-suites=%s", ciphers),
+		fmt.Sprintf("--logs.tls.ca-file=%s", gatewayUpstreamCAPath()),
+		fmt.Sprintf("--logs.tls.cert-file=%s", gatewayUpstreamHTTPTLSCert()),
+		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
+	)
+
+	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.Args = gwArgs
+
+	gwVolumes = append(gwVolumes,
+		corev1.Volume{
+			Name: tlsSecretVolume,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: serviceName,
+				},
+			},
+		},
+		corev1.Volume{
+			Name: upstreamClientName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: upstreamClientName,
+				},
+			},
+		},
+		corev1.Volume{
+			Name: upstreamCAName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: upstreamCAName,
 					},
 				},
 			},
 		},
-	}
-	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      tlsSecretVolume,
-				ReadOnly:  true,
-				MountPath: httpTLSDir,
-			},
-		},
-		Args: []string{
-			fmt.Sprintf("--tls.internal.server.cert-file=%s", certFile),
-			fmt.Sprintf("--tls.internal.server.key-file=%s", keyFile),
-			fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
-			fmt.Sprintf("--tls.cipher-suites=%s", ciphers),
-		},
-	}
-	uriSchemeContainerSpec := corev1.Container{
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
+		corev1.Volume{
+			Name: serverCAName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: serverCAName,
+					},
 				},
 			},
 		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Scheme: corev1.URISchemeHTTPS,
-				},
-			},
+	)
+
+	gwContainer.VolumeMounts = append(
+		gwContainer.VolumeMounts,
+		corev1.VolumeMount{
+			Name:      tlsSecretVolume,
+			ReadOnly:  true,
+			MountPath: gatewayServerHTTPTLSDir(),
 		},
+		corev1.VolumeMount{
+			Name:      upstreamClientName,
+			ReadOnly:  true,
+			MountPath: gatewayUpstreamHTTPTLSDir(),
+		},
+		corev1.VolumeMount{
+			Name:      upstreamCAName,
+			ReadOnly:  true,
+			MountPath: gatewayUpstreamCADir(),
+		},
+		corev1.VolumeMount{
+			Name:      serverCAName,
+			ReadOnly:  true,
+			MountPath: gatewaySigningCADir(),
+		},
+	)
+
+	p := corev1.PodSpec{
+		Containers: []corev1.Container{
+			*gwContainer,
+		},
+		Volumes: gwVolumes,
 	}
 
-	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[gwIndex], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	if err := mergo.Merge(&podSpec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
+	if err := mergo.Merge(podSpec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge server pki into container spec ")
 	}
 
 	return nil

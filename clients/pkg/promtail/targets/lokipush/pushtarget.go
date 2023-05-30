@@ -89,6 +89,7 @@ func (t *PushTarget) run() error {
 	t.server = srv
 	t.server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(http.HandlerFunc(t.handleLoki))
 	t.server.HTTP.Path("/promtail/api/v1/raw").Methods("POST").Handler(http.HandlerFunc(t.handlePlaintext))
+	t.server.HTTP.Path("/ready").Methods("GET").Handler(http.HandlerFunc(t.ready))
 
 	go func() {
 		err := srv.Run()
@@ -126,8 +127,8 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Apply relabeling
-		processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
-		if len(processed) == 0 {
+		processed, keep := relabel.Process(lb.Labels(), t.relabelConfig...)
+		if !keep || len(processed) == 0 {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -233,4 +234,12 @@ func (t *PushTarget) Stop() error {
 	t.server.Shutdown()
 	t.handler.Stop()
 	return nil
+}
+
+// ready function serves the ready endpoint
+func (t *PushTarget) ready(w http.ResponseWriter, r *http.Request) {
+	resp := "ready"
+	if _, err := w.Write([]byte(resp)); err != nil {
+		level.Error(t.logger).Log("msg", "failed to respond to ready endoint", "err", err)
+	}
 }

@@ -1,3 +1,5 @@
 package filter
 
-type Func func(string) bool
+import "time"
+
+type Func func(ts time.Time, s string) bool

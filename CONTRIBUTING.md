@@ -6,6 +6,12 @@ Loki uses GitHub to manage reviews of pull requests:
 - If you plan to do something more involved, discuss your ideas on the relevant GitHub issue.
 - Make sure to follow the prerequisites below before marking your PR as ready for review.
 
+## Loki Improvement Documents (LIDs)
+
+Before creating a large pull request to change or add functionality, please create a _Loki Improvement Document (LID)_. We use LIDs to discuss and vet ideas submitted by maintainers or the community in an open and transparent way. As of Jan 2023, we are starting with a lightweight LID process and we may add more structure, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) approaches.
+
+LIDs must be created as a pull request using [this template](docs/sources/lids/template.md).
+
 ## Pull Request Prerequisites/Checklist
 
 1. Your PR title is in the form `<Feature Area>: Your change`.
@@ -19,11 +25,11 @@ Loki uses GitHub to manage reviews of pull requests:
    * It adds an important feature
    * It fixes an issue present in a previous release
    * It causes a change in operation that would be useful for an operator of Loki to know
-   * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with most relevant and important changes that end users of Loki care about.
+   * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with the most relevant and important changes that end users of Loki care about.
 1. Your PR documents upgrading steps under `docs/sources/upgrading/_index.md` if it changes:
    * Default configuration values
    * Metric names or label names
-   * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be getting used in building dashboards or alerts.
+   * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.
    * Configuration parameters
    * Any breaking changes to HTTP or gRPC API endpoints
    * Any other change that would require special attention or extra steps to upgrade
@@ -124,3 +130,23 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 ```
+
+## Contribute to documentation
+
+We're glad you're here to help make our technical documentation even better for Loki users.
+
+The Grafana docs team has created a [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/writing-guide/contribute-documentation/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/style-guide/), and templates to help you contribute to the Loki documentation. 
+
+The Loki documentation is written using the CommonMark flavor of markdown, including some extended features. For more information about markdown, you can see the [CommonMark specification](https://spec.commonmark.org/), and a [quick reference guide](https://commonmark.org/help/) for CommonMark.
+
+Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the [Grafana website](https://grafana.com/docs/loki/latest). The CI is triggered on every merge to main in the `docs` subfolder.
+
+You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).  
+
+To get a local preview of the documentation:
+1. Run Docker (or Podman).
+2. Navigate to the directory with the makefile, `/loki/docs`.
+3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
+4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
+
+> Note that `make docs` uses a lot of memory.  If it crashes, increase the memory allocated to Docker and try again.

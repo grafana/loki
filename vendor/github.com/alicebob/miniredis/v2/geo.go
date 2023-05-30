@@ -21,12 +21,10 @@ func hsin(theta float64) float64 {
 }
 
 // distance function returns the distance (in meters) between two points of
-//     a given longitude and latitude relatively accurately (using a spherical
-//     approximation of the Earth) through the Haversin Distance Formula for
-//     great arc distance on a sphere with accuracy for small distances
-//
+// a given longitude and latitude relatively accurately (using a spherical
+// approximation of the Earth) through the Haversin Distance Formula for
+// great arc distance on a sphere with accuracy for small distances
 // point coordinates are supplied in degrees and converted into rad. in the func
-//
 // distance returned is meters
 // http://en.wikipedia.org/wiki/Haversine_formula
 // Source: https://gist.github.com/cdipaolo/d3f8db3848278b49db68

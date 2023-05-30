@@ -20,7 +20,7 @@ type AlertManagerConfig struct {
 	// Enables the ruler notifier to use the Alertmananger V2 API.
 	AlertmanangerEnableV2API bool `yaml:"enable_alertmanager_v2"`
 	// Configuration for alert relabeling.
-	AlertRelabelConfigs []*relabel.Config `yaml:"alert_relabel_configs,omitempty"`
+	AlertRelabelConfigs []*relabel.Config `yaml:"alert_relabel_configs,omitempty" doc:"description=List of alert relabel configs."`
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.

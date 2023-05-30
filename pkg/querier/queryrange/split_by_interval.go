@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/dskit/tenant"
@@ -16,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -46,6 +49,7 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
+	configs  []config.PeriodConfig
 	next     queryrangebase.Handler
 	limits   Limits
 	merger   queryrangebase.Merger
@@ -56,9 +60,14 @@ type splitByInterval struct {
 type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+	if metrics == nil {
+		metrics = NewSplitByMetrics(nil)
+	}
+
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
+			configs:  configs,
 			next:     next,
 			limits:   limits,
 			merger:   merger,
@@ -105,8 +114,9 @@ func (h *splitByInterval) Process(
 		unlimited = true
 	}
 
+	// Parallelism will be at least 1
+	p := math.Max(parallelism, 1)
 	// don't spawn unnecessary goroutines
-	p := parallelism
 	if len(input) < parallelism {
 		p = len(input)
 	}
@@ -177,6 +187,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
+
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
@@ -201,8 +212,8 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LokiLabelNamesRequest:
-		// Set this to 0 since this is not used in Series/Labels Request.
+	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest:
+		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "unknown request type")
@@ -216,8 +227,9 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		})
 	}
 
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
-	maxParallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQueryParallelism)
+	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err
@@ -264,6 +276,17 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:    r.Path,
 				StartTs: start,
 				EndTs:   end,
+				Query:   r.Query,
+			})
+		})
+	case *logproto.IndexStatsRequest:
+		startTS := model.Time(r.GetStart()).Time()
+		endTS := model.Time(r.GetEnd()).Time()
+		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
+			reqs = append(reqs, &logproto.IndexStatsRequest{
+				From:     model.TimeFromUnix(start.Unix()),
+				Through:  model.TimeFromUnix(end.Unix()),
+				Matchers: r.GetMatchers(),
 			})
 		})
 	default:
@@ -272,25 +295,35 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 	return reqs, nil
 }
 
-// maxRangeVectorDuration returns the maximum range vector duration within a LogQL query.
-func maxRangeVectorDuration(q string) (time.Duration, error) {
-	expr, err := syntax.ParseSampleExpr(q)
+// maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
+func maxRangeVectorAndOffsetDuration(q string) (time.Duration, time.Duration, error) {
+	expr, err := syntax.ParseExpr(q)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	var max time.Duration
+
+	if _, ok := expr.(syntax.SampleExpr); !ok {
+		return 0, 0, nil
+	}
+
+	var maxRVDuration, maxOffset time.Duration
 	expr.Walk(func(e interface{}) {
-		if r, ok := e.(*syntax.LogRange); ok && r.Interval > max {
-			max = r.Interval
+		if r, ok := e.(*syntax.LogRange); ok {
+			if r.Interval > maxRVDuration {
+				maxRVDuration = r.Interval
+			}
+			if r.Offset > maxOffset {
+				maxOffset = r.Offset
+			}
 		}
 	})
-	return max, nil
+	return maxRVDuration, maxOffset, nil
 }
 
 // reduceSplitIntervalForRangeVector reduces the split interval for a range query based on the duration of the range vector.
 // Large range vector durations will not be split into smaller intervals because it can cause the queries to be slow by over-processing data.
 func reduceSplitIntervalForRangeVector(r queryrangebase.Request, interval time.Duration) (time.Duration, error) {
-	maxRange, err := maxRangeVectorDuration(r.GetQuery())
+	maxRange, _, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
 	if err != nil {
 		return 0, err
 	}

@@ -80,7 +80,8 @@ func Load(s string, expandExternalLabels bool, logger log.Logger) (*Config, erro
 		return cfg, nil
 	}
 
-	for i, v := range cfg.GlobalConfig.ExternalLabels {
+	b := labels.ScratchBuilder{}
+	cfg.GlobalConfig.ExternalLabels.Range(func(v labels.Label) {
 		newV := os.Expand(v.Value, func(s string) string {
 			if s == "$" {
 				return "$"
@@ -93,10 +94,10 @@ func Load(s string, expandExternalLabels bool, logger log.Logger) (*Config, erro
 		})
 		if newV != v.Value {
 			level.Debug(logger).Log("msg", "External label replaced", "label", v.Name, "input", v.Value, "output", newV)
-			v.Value = newV
-			cfg.GlobalConfig.ExternalLabels[i] = v
 		}
-	}
+		b.Add(v.Name, newV)
+	})
+	cfg.GlobalConfig.ExternalLabels = b.Labels()
 	return cfg, nil
 }
 
@@ -112,10 +113,6 @@ func LoadFile(filename string, agentMode, expandExternalLabels bool, logger log.
 	}
 
 	if agentMode {
-		if len(cfg.RemoteWriteConfigs) == 0 {
-			return nil, errors.New("at least one remote_write target must be specified in agent mode")
-		}
-
 		if len(cfg.AlertingConfig.AlertmanagerConfigs) > 0 || len(cfg.AlertingConfig.AlertRelabelConfigs) > 0 {
 			return nil, errors.New("field alerting is not allowed in agent mode")
 		}
@@ -176,16 +173,16 @@ var (
 
 	// DefaultQueueConfig is the default remote queue configuration.
 	DefaultQueueConfig = QueueConfig{
-		// With a maximum of 200 shards, assuming an average of 100ms remote write
-		// time and 500 samples per batch, we will be able to push 1M samples/s.
-		MaxShards:         200,
+		// With a maximum of 50 shards, assuming an average of 100ms remote write
+		// time and 2000 samples per batch, we will be able to push 1M samples/s.
+		MaxShards:         50,
 		MinShards:         1,
-		MaxSamplesPerSend: 500,
+		MaxSamplesPerSend: 2000,
 
-		// Each shard will have a max of 2500 samples pending in its channel, plus the pending
-		// samples that have been enqueued. Theoretically we should only ever have about 3000 samples
-		// per shard pending. At 200 shards that's 600k.
-		Capacity:          2500,
+		// Each shard will have a max of 10,000 samples pending in its channel, plus the pending
+		// samples that have been enqueued. Theoretically we should only ever have about 12,000 samples
+		// per shard pending. At 50 shards that's 600k.
+		Capacity:          10000,
 		BatchSendDeadline: model.Duration(5 * time.Second),
 
 		// Backoff times for retrying a batch of samples on recoverable errors.
@@ -197,7 +194,7 @@ var (
 	DefaultMetadataConfig = MetadataConfig{
 		Send:              true,
 		SendInterval:      model.Duration(1 * time.Minute),
-		MaxSamplesPerSend: 500,
+		MaxSamplesPerSend: 2000,
 	}
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
@@ -219,12 +216,13 @@ var (
 
 // Config is the top-level configuration for Prometheus's config files.
 type Config struct {
-	GlobalConfig   GlobalConfig    `yaml:"global"`
-	AlertingConfig AlertingConfig  `yaml:"alerting,omitempty"`
-	RuleFiles      []string        `yaml:"rule_files,omitempty"`
-	ScrapeConfigs  []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
-	StorageConfig  StorageConfig   `yaml:"storage,omitempty"`
-	TracingConfig  TracingConfig   `yaml:"tracing,omitempty"`
+	GlobalConfig      GlobalConfig    `yaml:"global"`
+	AlertingConfig    AlertingConfig  `yaml:"alerting,omitempty"`
+	RuleFiles         []string        `yaml:"rule_files,omitempty"`
+	ScrapeConfigFiles []string        `yaml:"scrape_config_files,omitempty"`
+	ScrapeConfigs     []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
+	StorageConfig     StorageConfig   `yaml:"storage,omitempty"`
+	TracingConfig     TracingConfig   `yaml:"tracing,omitempty"`
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
@@ -237,6 +235,9 @@ func (c *Config) SetDirectory(dir string) {
 	c.TracingConfig.SetDirectory(dir)
 	for i, file := range c.RuleFiles {
 		c.RuleFiles[i] = config.JoinDir(dir, file)
+	}
+	for i, file := range c.ScrapeConfigFiles {
+		c.ScrapeConfigFiles[i] = config.JoinDir(dir, file)
 	}
 	for _, c := range c.ScrapeConfigs {
 		c.SetDirectory(dir)
@@ -255,6 +256,58 @@ func (c Config) String() string {
 		return fmt.Sprintf("<error creating config string: %s>", err)
 	}
 	return string(b)
+}
+
+// ScrapeConfigs returns the scrape configurations.
+func (c *Config) GetScrapeConfigs() ([]*ScrapeConfig, error) {
+	scfgs := make([]*ScrapeConfig, len(c.ScrapeConfigs))
+
+	jobNames := map[string]string{}
+	for i, scfg := range c.ScrapeConfigs {
+		// We do these checks for library users that would not call Validate in
+		// Unmarshal.
+		if err := scfg.Validate(c.GlobalConfig.ScrapeInterval, c.GlobalConfig.ScrapeTimeout); err != nil {
+			return nil, err
+		}
+
+		if _, ok := jobNames[scfg.JobName]; ok {
+			return nil, fmt.Errorf("found multiple scrape configs with job name %q", scfg.JobName)
+		}
+		jobNames[scfg.JobName] = "main config file"
+		scfgs[i] = scfg
+	}
+	for _, pat := range c.ScrapeConfigFiles {
+		fs, err := filepath.Glob(pat)
+		if err != nil {
+			// The only error can be a bad pattern.
+			return nil, fmt.Errorf("error retrieving scrape config files for %q: %w", pat, err)
+		}
+		for _, filename := range fs {
+			cfg := ScrapeConfigs{}
+			content, err := os.ReadFile(filename)
+			if err != nil {
+				return nil, fileErr(filename, err)
+			}
+			err = yaml.UnmarshalStrict(content, &cfg)
+			if err != nil {
+				return nil, fileErr(filename, err)
+			}
+			for _, scfg := range cfg.ScrapeConfigs {
+				if err := scfg.Validate(c.GlobalConfig.ScrapeInterval, c.GlobalConfig.ScrapeTimeout); err != nil {
+					return nil, fileErr(filename, err)
+				}
+
+				if f, ok := jobNames[scfg.JobName]; ok {
+					return nil, fileErr(filename, fmt.Errorf("found multiple scrape configs with job name %q, first found in %s", scfg.JobName, f))
+				}
+				jobNames[scfg.JobName] = fmt.Sprintf("%q", filePath(filename))
+
+				scfg.SetDirectory(filepath.Dir(filename))
+				scfgs = append(scfgs, scfg)
+			}
+		}
+	}
+	return scfgs, nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -279,26 +332,18 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return fmt.Errorf("invalid rule file path %q", rf)
 		}
 	}
+
+	for _, sf := range c.ScrapeConfigFiles {
+		if !patRulePath.MatchString(sf) {
+			return fmt.Errorf("invalid scrape config file path %q", sf)
+		}
+	}
+
 	// Do global overrides and validate unique names.
 	jobNames := map[string]struct{}{}
 	for _, scfg := range c.ScrapeConfigs {
-		if scfg == nil {
-			return errors.New("empty or null scrape config section")
-		}
-		// First set the correct scrape interval, then check that the timeout
-		// (inferred or explicit) is not greater than that.
-		if scfg.ScrapeInterval == 0 {
-			scfg.ScrapeInterval = c.GlobalConfig.ScrapeInterval
-		}
-		if scfg.ScrapeTimeout > scfg.ScrapeInterval {
-			return fmt.Errorf("scrape timeout greater than scrape interval for scrape config with job name %q", scfg.JobName)
-		}
-		if scfg.ScrapeTimeout == 0 {
-			if c.GlobalConfig.ScrapeTimeout > scfg.ScrapeInterval {
-				scfg.ScrapeTimeout = scfg.ScrapeInterval
-			} else {
-				scfg.ScrapeTimeout = c.GlobalConfig.ScrapeTimeout
-			}
+		if err := scfg.Validate(c.GlobalConfig.ScrapeInterval, c.GlobalConfig.ScrapeTimeout); err != nil {
+			return err
 		}
 
 		if _, ok := jobNames[scfg.JobName]; ok {
@@ -361,13 +406,16 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	for _, l := range gc.ExternalLabels {
+	if err := gc.ExternalLabels.Validate(func(l labels.Label) error {
 		if !model.LabelName(l.Name).IsValid() {
 			return fmt.Errorf("%q is not a valid label name", l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
 			return fmt.Errorf("%q is not a valid label value", l.Value)
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// First set the correct scrape interval, then check that the timeout
@@ -394,11 +442,15 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // isZero returns true iff the global config is the zero value.
 func (c *GlobalConfig) isZero() bool {
-	return c.ExternalLabels == nil &&
+	return c.ExternalLabels.IsEmpty() &&
 		c.ScrapeInterval == 0 &&
 		c.ScrapeTimeout == 0 &&
 		c.EvaluationInterval == 0 &&
 		c.QueryLogFile == ""
+}
+
+type ScrapeConfigs struct {
+	ScrapeConfigs []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
 }
 
 // ScrapeConfig configures a scraping unit for Prometheus.
@@ -491,6 +543,28 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *ScrapeConfig) Validate(defaultInterval, defaultTimeout model.Duration) error {
+	if c == nil {
+		return errors.New("empty or null scrape config section")
+	}
+	// First set the correct scrape interval, then check that the timeout
+	// (inferred or explicit) is not greater than that.
+	if c.ScrapeInterval == 0 {
+		c.ScrapeInterval = defaultInterval
+	}
+	if c.ScrapeTimeout > c.ScrapeInterval {
+		return fmt.Errorf("scrape timeout greater than scrape interval for scrape config with job name %q", c.JobName)
+	}
+	if c.ScrapeTimeout == 0 {
+		if defaultTimeout > c.ScrapeInterval {
+			c.ScrapeTimeout = c.ScrapeInterval
+		} else {
+			c.ScrapeTimeout = defaultTimeout
+		}
+	}
 	return nil
 }
 
@@ -776,12 +850,13 @@ func CheckTargetAddress(address model.LabelValue) error {
 
 // RemoteWriteConfig is the configuration for writing to remote storage.
 type RemoteWriteConfig struct {
-	URL                 *config.URL       `yaml:"url"`
-	RemoteTimeout       model.Duration    `yaml:"remote_timeout,omitempty"`
-	Headers             map[string]string `yaml:"headers,omitempty"`
-	WriteRelabelConfigs []*relabel.Config `yaml:"write_relabel_configs,omitempty"`
-	Name                string            `yaml:"name,omitempty"`
-	SendExemplars       bool              `yaml:"send_exemplars,omitempty"`
+	URL                  *config.URL       `yaml:"url"`
+	RemoteTimeout        model.Duration    `yaml:"remote_timeout,omitempty"`
+	Headers              map[string]string `yaml:"headers,omitempty"`
+	WriteRelabelConfigs  []*relabel.Config `yaml:"write_relabel_configs,omitempty"`
+	Name                 string            `yaml:"name,omitempty"`
+	SendExemplars        bool              `yaml:"send_exemplars,omitempty"`
+	SendNativeHistograms bool              `yaml:"send_native_histograms,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -934,4 +1009,16 @@ func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
 	// Thus we just do its validation here.
 	return c.HTTPClientConfig.Validate()
+}
+
+func filePath(filename string) string {
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		return filename
+	}
+	return absPath
+}
+
+func fileErr(filename string, err error) error {
+	return fmt.Errorf("%q: %w", filePath(filename), err)
 }

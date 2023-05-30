@@ -5,13 +5,11 @@ apiVersion: monitoring.grafana.com/v1alpha1
 kind: PodLogs
 metadata:
   name: {{ include "loki.fullname" $ }}
-  namespace: {{ .namespace | default $.Release.Namespace }}
   {{- with .annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    instance: primary
     {{- include "loki.labels" $ | nindent 4 }}
     {{- with .labels }}
     {{- toYaml . | nindent 4 }}
@@ -26,9 +24,18 @@ spec:
     - action: labelmap
       regex: __meta_kubernetes_pod_label_(.+)
     - action: replace
-      replacement: "{{ $.Release.Namespace }}/$1"
+      replacement: "$1"
+      separator: "-"
       sourceLabels:
-        - __meta_kubernetes_pod_controller_name
+        - __meta_kubernetes_pod_label_app_kubernetes_io_name
+        - __meta_kubernetes_pod_label_app_kubernetes_io_component
+      targetLabel: __service__
+    - action: replace
+      replacement: "$1"
+      separator: "/"
+      sourceLabels:
+        - __meta_kubernetes_namespace
+        - __service__
       targetLabel: job
     - action: replace
       sourceLabels:
@@ -37,7 +44,7 @@ spec:
     - replacement: "{{ include "loki.fullname" $ }}"
       targetLabel: cluster
     {{- with .relabelings }}
-    {{- toYaml . | nindent 8 }}
+    {{- toYaml . | nindent 4 }}
     {{- end }}
   namespaceSelector:
     matchNames:

@@ -3,6 +3,8 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -35,18 +37,42 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
-		"regexReplaceAll": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllString(s, repl)
+		"regexReplaceAll": func(regex string, s string, repl string) (string, error) {
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return "", err
+			}
+			return r.ReplaceAllString(s, repl), nil
 		},
-		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllLiteralString(s, repl)
+		"regexReplaceAllLiteral": func(regex string, s string, repl string) (string, error) {
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return "", err
+			}
+			return r.ReplaceAllLiteralString(s, repl), nil
 		},
+		"count": func(regexsubstr string, s string) (int, error) {
+			r, err := regexp.Compile(regexsubstr)
+			if err != nil {
+				return 0, err
+			}
+			matches := r.FindAllStringIndex(s, -1)
+			return len(matches), nil
+		},
+		"urldecode":        url.QueryUnescape,
+		"urlencode":        url.QueryEscape,
+		"bytes":            convertBytes,
+		"duration":         convertDuration,
+		"duration_seconds": convertDuration,
+		"unixEpochMillis":  unixEpochMillis,
+		"unixEpochNanos":   unixEpochNanos,
+		"toDateInZone":     toDateInZone,
 	}
 
 	// sprig template functions
 	templateFunctions = []string{
+		"b64enc",
+		"b64dec",
 		"lower",
 		"upper",
 		"title",
@@ -102,6 +128,23 @@ func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() i
 		return time.Unix(0, currTimestamp())
 	}
 	return functions
+}
+
+func unixEpochMillis(date time.Time) string {
+	return strconv.FormatInt(date.UnixMilli(), 10)
+}
+
+func unixEpochNanos(date time.Time) string {
+	return strconv.FormatInt(date.UnixNano(), 10)
+}
+
+func toDateInZone(fmt, zone, str string) time.Time {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		loc, _ = time.LoadLocation("UTC")
+	}
+	t, _ := time.ParseInLocation(fmt, str, loc)
+	return t
 }
 
 func init() {
@@ -352,6 +395,22 @@ func trunc(c int, s string) string {
 	}
 	return s
 }
+
+type Decolorizer struct{}
+
+// RegExp to select ANSI characters courtesy of https://github.com/acarl005/stripansi
+const ansiPattern = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+
+var ansiRegex = regexp.MustCompile(ansiPattern)
+
+func NewDecolorizer() (*Decolorizer, error) {
+	return &Decolorizer{}, nil
+}
+
+func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return ansiRegex.ReplaceAll(line, []byte{}), true
+}
+func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 
 // substring creates a substring of the given string.
 //

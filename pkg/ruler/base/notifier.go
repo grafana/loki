@@ -10,7 +10,6 @@ import (
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/imdario/mergo"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
@@ -76,40 +75,21 @@ func (rn *rulerNotifier) stop() {
 	rn.wg.Wait()
 }
 
-func getAlertmanagerTenantConfig(amConfig ruler_config.AlertManagerConfig, amOverrides ruler_config.AlertManagerConfig) (ruler_config.AlertManagerConfig, error) {
-	if amOverrides.AlertmanagerURL != "" {
-		amConfig.AlertmanagerURL = amOverrides.AlertmanagerURL
+func applyAlertmanagerDefaults(config ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
+	// Use default value if the override values are zero
+	if config.AlertmanagerRefreshInterval == 0 {
+		config.AlertmanagerRefreshInterval = alertmanagerRefreshIntervalDefault
 	}
 
-	if len(amOverrides.AlertRelabelConfigs) > 0 {
-		amConfig.AlertRelabelConfigs = amOverrides.AlertRelabelConfigs
+	if config.NotificationQueueCapacity <= 0 {
+		config.NotificationQueueCapacity = alertmanagerNotificationQueueCapacityDefault
 	}
 
-	if amOverrides.AlertmanagerDiscovery {
-		amConfig.AlertmanagerDiscovery = amOverrides.AlertmanagerDiscovery
+	if config.NotificationTimeout == 0 {
+		config.NotificationTimeout = alertmanagerNotificationTimeoutDefault
 	}
 
-	if amOverrides.AlertmanangerEnableV2API {
-		amConfig.AlertmanangerEnableV2API = amOverrides.AlertmanangerEnableV2API
-	}
-
-	if amOverrides.AlertmanagerRefreshInterval > 0 {
-		amConfig.AlertmanagerRefreshInterval = amOverrides.AlertmanagerRefreshInterval
-	}
-
-	if amOverrides.NotificationQueueCapacity > 0 {
-		amConfig.NotificationQueueCapacity = amOverrides.NotificationQueueCapacity
-	}
-
-	if amOverrides.NotificationTimeout > 0 {
-		amConfig.NotificationTimeout = amOverrides.NotificationTimeout
-	}
-
-	if err := mergo.Merge(&amConfig.Notifier, amOverrides.Notifier, mergo.WithOverride); err != nil {
-		return amConfig, fmt.Errorf("failed to apply alertmanager notifier limits config: %w", err)
-	}
-
-	return amConfig, nil
+	return config
 }
 
 // Builds a Prometheus config.Config from a ruler.Config with just the required

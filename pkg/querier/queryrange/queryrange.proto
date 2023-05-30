@@ -2,10 +2,11 @@ syntax = "proto3";
 
 package queryrange;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
@@ -104,6 +105,7 @@ message LokiLabelNamesRequest {
     (gogoproto.nullable) = false
   ];
   string path = 3;
+  string query = 4;
 }
 
 message LokiLabelNamesResponse {
@@ -125,7 +127,7 @@ message LokiData {
   repeated logproto.StreamAdapter Result = 2 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "result",
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.Stream"
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream"
   ];
 }
 

@@ -5,19 +5,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/rulefmt"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/util"
-)
-
-var (
-	NilMetrics = newMemstoreMetrics(nil)
-	NilLogger  = log.NewNopLogger()
 )
 
 const ruleName = "testrule"
@@ -29,29 +27,24 @@ func labelsToMatchers(ls labels.Labels) (res []*labels.Matcher) {
 	return res
 }
 
-type MockRuleIter []*rules.AlertingRule
+type MockRuleIter []rulefmt.Rule
 
-func (xs MockRuleIter) AlertingRules() []*rules.AlertingRule { return xs }
+func (xs MockRuleIter) AlertingRules() []rulefmt.Rule { return xs }
 
 func testStore(queryFunc rules.QueryFunc) *MemStore {
-	return NewMemStore("test", queryFunc, NilMetrics, time.Minute, NilLogger)
+	return NewMemStore("test", queryFunc, newMemstoreMetrics(nil), time.Minute, log.NewNopLogger())
 
 }
 
 func TestSelectRestores(t *testing.T) {
 	forDuration := time.Minute
-	ars := []*rules.AlertingRule{
-		rules.NewAlertingRule(
-			ruleName,
-			&parser.StringLiteral{Val: "unused"},
-			forDuration,
-			labels.FromMap(map[string]string{"foo": "bar"}),
-			nil,
-			nil,
-			"",
-			false,
-			NilLogger,
-		),
+	ars := []rulefmt.Rule{
+		{
+			Alert:  ruleName,
+			Expr:   "unused",
+			For:    model.Duration(forDuration),
+			Labels: map[string]string{"foo": "bar"},
+		},
 	}
 
 	callCount := 0
@@ -64,10 +57,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "buzz", // an extra label
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 			promql.Sample{
 				Metric: labels.FromMap(map[string]string{
@@ -75,10 +66,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "bork", // an extra label (second variant)
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 		}, nil
 	})
@@ -102,12 +91,12 @@ func TestSelectRestores(t *testing.T) {
 
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
-	iter := sset.At().Iterator()
-	require.Equal(t, true, iter.Next())
+	iter := sset.At().Iterator(nil)
+	require.Equal(t, chunkenc.ValFloat, iter.Next())
 	ts, v := iter.At()
 	require.Equal(t, now, ts)
 	require.Equal(t, float64(tNow.Add(-forDuration).Unix()), v)
-	require.Equal(t, false, iter.Next())
+	require.Equal(t, chunkenc.ValNone, iter.Next())
 	require.Equal(t, false, sset.Next())
 
 	// Second call uses cache
@@ -119,12 +108,12 @@ func TestSelectRestores(t *testing.T) {
 	sset = q.Select(false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
-	iter = sset.At().Iterator()
-	require.Equal(t, true, iter.Next())
+	iter = sset.At().Iterator(iter)
+	require.Equal(t, chunkenc.ValFloat, iter.Next())
 	ts, v = iter.At()
 	require.Equal(t, now, ts)
 	require.Equal(t, float64(tNow.Add(-forDuration).Unix()), v)
-	require.Equal(t, false, iter.Next())
+	require.Equal(t, chunkenc.ValNone, iter.Next())
 	require.Equal(t, false, sset.Next())
 	require.Equal(t, 1, callCount)
 
@@ -140,18 +129,13 @@ func TestSelectRestores(t *testing.T) {
 }
 
 func TestMemstoreStart(t *testing.T) {
-	ars := []*rules.AlertingRule{
-		rules.NewAlertingRule(
-			ruleName,
-			&parser.StringLiteral{Val: "unused"},
-			time.Minute,
-			labels.FromMap(map[string]string{"foo": "bar"}),
-			nil,
-			nil,
-			"",
-			false,
-			NilLogger,
-		),
+	ars := []rulefmt.Rule{
+		{
+			Alert:  ruleName,
+			Expr:   "unused",
+			For:    model.Duration(time.Minute),
+			Labels: map[string]string{"foo": "bar"},
+		},
 	}
 
 	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
@@ -178,18 +162,13 @@ func TestMemStoreStopBeforeStart(t *testing.T) {
 }
 
 func TestMemstoreBlocks(t *testing.T) {
-	ars := []*rules.AlertingRule{
-		rules.NewAlertingRule(
-			ruleName,
-			&parser.StringLiteral{Val: "unused"},
-			time.Minute,
-			labels.FromMap(map[string]string{"foo": "bar"}),
-			nil,
-			nil,
-			"",
-			false,
-			NilLogger,
-		),
+	ars := []rulefmt.Rule{
+		{
+			Alert:  ruleName,
+			Expr:   "unused",
+			For:    model.Duration(time.Minute),
+			Labels: map[string]string{"foo": "bar"},
+		},
 	}
 
 	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
@@ -216,5 +195,4 @@ func TestMemstoreBlocks(t *testing.T) {
 	case <-time.After(time.Millisecond):
 		t.FailNow()
 	}
-
 }

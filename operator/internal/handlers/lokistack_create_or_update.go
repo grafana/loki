@@ -8,11 +8,11 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
+	"github.com/grafana/loki/operator/internal/handlers/internal/serviceaccounts"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
@@ -29,6 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+)
+
+const (
+	defaultCAKey = "service-ca.crt"
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
@@ -100,8 +105,18 @@ func CreateOrUpdateLokiStack(
 	objStore.Schemas = storageSchemas
 
 	if stack.Spec.Storage.TLS != nil {
+		tlsConfig := stack.Spec.Storage.TLS
+
+		if tlsConfig.CA == "" {
+			return &status.DegradedError{
+				Message: "Missing object storage CA config map",
+				Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
 		var cm corev1.ConfigMap
-		key := client.ObjectKey{Name: stack.Spec.Storage.TLS.CA, Namespace: stack.Namespace}
+		key := client.ObjectKey{Name: tlsConfig.CA, Namespace: stack.Namespace}
 		if err = k.Get(ctx, key, &cm); err != nil {
 			if apierrors.IsNotFound(err) {
 				return &status.DegradedError{
@@ -113,7 +128,12 @@ func CreateOrUpdateLokiStack(
 			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
 		}
 
-		if !storage.IsValidCAConfigMap(&cm, stack.Spec.Storage.TLS.CAKey) {
+		caKey := defaultCAKey
+		if tlsConfig.CAKey != "" {
+			caKey = tlsConfig.CAKey
+		}
+
+		if !storage.IsValidCAConfigMap(&cm, caKey) {
 			return &status.DegradedError{
 				Message: "Invalid object storage CA configmap contents: missing key or no contents",
 				Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
@@ -121,7 +141,7 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
-		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: stack.Spec.Storage.TLS.CAKey}
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: caKey}
 	}
 
 	var (
@@ -150,6 +170,17 @@ func CreateOrUpdateLokiStack(
 			if err != nil {
 				return err
 			}
+
+			if stack.Spec.Proxy == nil {
+				// If the LokiStack has no proxy set but there is a cluster-wide proxy setting,
+				// set the LokiStack proxy to that.
+				ocpProxy, proxyErr := openshift.GetProxy(ctx, k)
+				if proxyErr != nil {
+					return proxyErr
+				}
+
+				stack.Spec.Proxy = ocpProxy
+			}
 		default:
 			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
 			if err != nil {
@@ -158,18 +189,19 @@ func CreateOrUpdateLokiStack(
 		}
 
 		// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-		tenantConfigs, err = gateway.GetTenantConfigMapData(ctx, k, req)
+		tenantConfigs, err = gateway.GetTenantConfigSecretData(ctx, k, req)
 		if err != nil {
-			ll.Error(err, "error in getting tenant config map data")
+			ll.Error(err, "error in getting tenant secret data")
 		}
 	}
 
 	var (
-		alertingRules  []lokiv1beta1.AlertingRule
-		recordingRules []lokiv1beta1.RecordingRule
-		rulerConfig    *lokiv1beta1.RulerConfigSpec
+		alertingRules  []lokiv1.AlertingRule
+		recordingRules []lokiv1.RecordingRule
+		rulerConfig    *lokiv1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
 		ocpAmEnabled   bool
+		ocpUWAmEnabled bool
 	)
 	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
@@ -212,31 +244,67 @@ func CreateOrUpdateLokiStack(
 			return err
 		}
 
+		ocpUWAmEnabled, err = openshift.UserWorkloadAlertManagerSVCExists(ctx, stack.Spec, k)
+		if err != nil {
+			ll.Error(err, "failed to check OCP User Workload AlertManager")
+			return err
+		}
+	} else {
+		// Clean up ruler resources
+		err = rules.RemoveRulesConfigMap(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove rules ConfigMap")
+			return err
+		}
+
+		err = rules.RemoveRuler(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove ruler StatefulSet")
+			return err
+		}
+	}
+
+	certRotationRequiredAt := ""
+	if stack.Annotations != nil {
+		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
+	}
+
+	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	if err != nil {
+		ll.Error(err, "failed to parse query timeout")
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
+			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
+		}
 	}
 
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
-		Name:              req.Name,
-		Namespace:         req.Namespace,
-		Image:             img,
-		GatewayImage:      gwImg,
-		GatewayBaseDomain: baseDomain,
-		Stack:             stack.Spec,
-		Gates:             fg,
-		ObjectStorage:     *objStore,
-		AlertingRules:     alertingRules,
-		RecordingRules:    recordingRules,
+		Name:                   req.Name,
+		Namespace:              req.Namespace,
+		Image:                  img,
+		GatewayImage:           gwImg,
+		GatewayBaseDomain:      baseDomain,
+		Stack:                  stack.Spec,
+		Gates:                  fg,
+		ObjectStorage:          *objStore,
+		CertRotationRequiredAt: certRotationRequiredAt,
+		AlertingRules:          alertingRules,
+		RecordingRules:         recordingRules,
 		Ruler: manifests.Ruler{
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
 		},
+		Timeouts: timeoutConfig,
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
 		},
 		OpenShiftOptions: manifests_openshift.Options{
 			BuildOpts: manifests_openshift.BuildOptions{
-				AlertManagerEnabled: ocpAmEnabled,
+				AlertManagerEnabled:             ocpAmEnabled,
+				UserWorkloadAlertManagerEnabled: ocpUWAmEnabled,
 			},
 		},
 	}
@@ -308,8 +376,14 @@ func CreateOrUpdateLokiStack(
 			}
 		}
 
+		depAnnotations, err := dependentAnnotations(ctx, k, obj)
+		if err != nil {
+			l.Error(err, "failed to set dependent annotations")
+			return err
+		}
+
 		desired := obj.DeepCopyObject().(client.Object)
-		mutateFn := manifests.MutateFuncFor(obj, desired)
+		mutateFn := manifests.MutateFuncFor(obj, desired, depAnnotations)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {
@@ -318,7 +392,13 @@ func CreateOrUpdateLokiStack(
 			continue
 		}
 
-		l.Info(fmt.Sprintf("Resource has been %s", op))
+		msg := fmt.Sprintf("Resource has been %s", op)
+		switch op {
+		case ctrlutil.OperationResultNone:
+			l.V(1).Info(msg)
+		default:
+			l.Info(msg)
+		}
 	}
 
 	if errCount > 0 {
@@ -327,11 +407,29 @@ func CreateOrUpdateLokiStack(
 
 	// 1x.extra-small is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall {
+	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 
 	return nil
+}
+
+func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {
+	a := obj.GetAnnotations()
+	saName, ok := a[corev1.ServiceAccountNameKey]
+	if !ok || saName == "" {
+		return nil, nil
+	}
+
+	key := client.ObjectKey{Name: saName, Namespace: obj.GetNamespace()}
+	uid, err := serviceaccounts.GetUID(ctx, k, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{
+		corev1.ServiceAccountUIDKey: uid,
+	}, nil
 }
 
 func isNamespaceScoped(obj client.Object) bool {

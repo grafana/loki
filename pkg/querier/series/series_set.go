@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -84,7 +85,7 @@ func (c *ConcreteSeries) Labels() labels.Labels {
 }
 
 // Iterator implements storage.Series
-func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
+func (c *ConcreteSeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
@@ -102,11 +103,14 @@ func NewConcreteSeriesIterator(series *ConcreteSeries) chunkenc.Iterator {
 	}
 }
 
-func (c *concreteSeriesIterator) Seek(t int64) bool {
+func (c *concreteSeriesIterator) Seek(t int64) chunkenc.ValueType {
 	c.cur = sort.Search(len(c.series.samples), func(n int) bool {
 		return c.series.samples[n].Timestamp >= model.Time(t)
 	})
-	return c.cur < len(c.series.samples)
+	if c.cur < len(c.series.samples) {
+		return chunkenc.ValFloat
+	}
+	return chunkenc.ValNone
 }
 
 func (c *concreteSeriesIterator) At() (t int64, v float64) {
@@ -114,9 +118,29 @@ func (c *concreteSeriesIterator) At() (t int64, v float64) {
 	return int64(s.Timestamp), float64(s.Value)
 }
 
-func (c *concreteSeriesIterator) Next() bool {
+func (c *concreteSeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+	// TODO: support native histograms.
+	// This method is called when Next() returns ValHistogram
+	return 0, nil
+}
+
+func (c *concreteSeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+	// TODO: support native histograms.
+	// This method may be called when Next() returns ValHistogram or ValFloatHistogram
+	return 0, nil
+}
+
+func (c *concreteSeriesIterator) AtT() (t int64) {
+	s := c.series.samples[c.cur]
+	return int64(s.Timestamp)
+}
+
+func (c *concreteSeriesIterator) Next() chunkenc.ValueType {
 	c.cur++
-	return c.cur < len(c.series.samples)
+	if c.cur < len(c.series.samples) {
+		return chunkenc.ValFloat
+	}
+	return chunkenc.ValNone
 }
 
 func (c *concreteSeriesIterator) Err() error {
@@ -133,16 +157,28 @@ type errIterator struct {
 	err error
 }
 
-func (errIterator) Seek(int64) bool {
-	return false
+func (errIterator) Seek(int64) chunkenc.ValueType {
+	return chunkenc.ValNone
 }
 
-func (errIterator) Next() bool {
-	return false
+func (errIterator) Next() chunkenc.ValueType {
+	return chunkenc.ValNone
 }
 
 func (errIterator) At() (t int64, v float64) {
 	return 0, 0
+}
+
+func (errIterator) AtHistogram() (int64, *histogram.Histogram) {
+	return 0, nil
+}
+
+func (errIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+	return 0, nil
+}
+
+func (errIterator) AtT() (t int64) {
+	return 0
 }
 
 func (e errIterator) Err() error {
@@ -155,7 +191,7 @@ func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(ss.Metric),
+			labels:  MetricToLabels(ss.Metric),
 			samples: ss.Values,
 		})
 	}
@@ -167,14 +203,14 @@ func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(m.Metric),
+			labels:  MetricToLabels(m.Metric),
 			samples: nil,
 		})
 	}
 	return NewConcreteSeriesSet(series)
 }
 
-func metricToLabels(m model.Metric) labels.Labels {
+func MetricToLabels(m model.Metric) labels.Labels {
 	ls := make(labels.Labels, 0, len(m))
 	for k, v := range m {
 		ls = append(ls, labels.Label{
@@ -210,8 +246,8 @@ func (d DeletedSeries) Labels() labels.Labels {
 	return d.series.Labels()
 }
 
-func (d DeletedSeries) Iterator() chunkenc.Iterator {
-	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
+func (d DeletedSeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
+	return NewDeletedSeriesIterator(d.series.Iterator(nil), d.deletedIntervals)
 }
 
 type DeletedSeriesIterator struct {
@@ -226,9 +262,10 @@ func NewDeletedSeriesIterator(itr chunkenc.Iterator, deletedIntervals []model.In
 	}
 }
 
-func (d DeletedSeriesIterator) Seek(t int64) bool {
-	if found := d.itr.Seek(t); !found {
-		return false
+func (d DeletedSeriesIterator) Seek(t int64) chunkenc.ValueType {
+	ty := d.itr.Seek(t)
+	if ty == chunkenc.ValNone {
+		return chunkenc.ValNone
 	}
 
 	seekedTs, _ := d.itr.At()
@@ -237,23 +274,45 @@ func (d DeletedSeriesIterator) Seek(t int64) bool {
 		return d.Next()
 	}
 
-	return true
+	return ty
 }
 
 func (d DeletedSeriesIterator) At() (t int64, v float64) {
 	return d.itr.At()
 }
 
-func (d DeletedSeriesIterator) Next() bool {
-	for d.itr.Next() {
-		ts, _ := d.itr.At()
+func (d DeletedSeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+	// TODO: support native histograms.
+	// This method is called when Next() returns ValHistogram
+	return 0, nil
+}
 
+func (d DeletedSeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+	// TODO: support native histograms.
+	// This method may be called when Next() returns ValHistogram or ValFloatHistogram
+	return 0, nil
+}
+
+func (d DeletedSeriesIterator) AtT() (t int64) {
+	ts, _ := d.itr.At()
+	return ts
+}
+
+func (d DeletedSeriesIterator) Next() chunkenc.ValueType {
+	for {
+		ty := d.itr.Next()
+		if ty == chunkenc.ValNone {
+			break
+		}
+
+		ts, _ := d.itr.At()
 		if d.isDeleted(ts) {
 			continue
 		}
-		return true
+
+		return ty
 	}
-	return false
+	return chunkenc.ValNone
 }
 
 func (d DeletedSeriesIterator) Err() error {
@@ -290,7 +349,7 @@ func (e emptySeries) Labels() labels.Labels {
 	return e.labels
 }
 
-func (emptySeries) Iterator() chunkenc.Iterator {
+func (emptySeries) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
 	return NewEmptySeriesIterator()
 }
 
@@ -301,16 +360,28 @@ func NewEmptySeriesIterator() chunkenc.Iterator {
 	return emptySeriesIterator{}
 }
 
-func (emptySeriesIterator) Seek(t int64) bool {
-	return false
+func (emptySeriesIterator) Seek(t int64) chunkenc.ValueType {
+	return chunkenc.ValNone
 }
 
 func (emptySeriesIterator) At() (t int64, v float64) {
 	return 0, 0
 }
 
-func (emptySeriesIterator) Next() bool {
-	return false
+func (emptySeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+	return 0, nil
+}
+
+func (emptySeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+	return 0, nil
+}
+
+func (emptySeriesIterator) AtT() (t int64) {
+	return 0
+}
+
+func (emptySeriesIterator) Next() chunkenc.ValueType {
+	return chunkenc.ValNone
 }
 
 func (emptySeriesIterator) Err() error {

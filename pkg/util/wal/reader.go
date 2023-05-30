@@ -4,22 +4,22 @@ import (
 	"errors"
 	"io"
 
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 )
 
 // If startSegment is <0, it means all the segments.
-func NewWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) {
+func NewWalReader(dir string, startSegment int) (*wlog.Reader, io.Closer, error) {
 	var (
 		segmentReader io.ReadCloser
 		err           error
 	)
 	if startSegment < 0 {
-		segmentReader, err = wal.NewSegmentsReader(dir)
+		segmentReader, err = wlog.NewSegmentsReader(dir)
 		if err != nil {
 			return nil, nil, err
 		}
 	} else {
-		first, last, err := wal.Segments(dir)
+		first, last, err := wlog.Segments(dir)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -29,7 +29,7 @@ func NewWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) 
 		if first > startSegment {
 			startSegment = first
 		}
-		segmentReader, err = wal.NewSegmentsRangeReader(wal.SegmentRange{
+		segmentReader, err = wlog.NewSegmentsRangeReader(wlog.SegmentRange{
 			Dir:   dir,
 			First: startSegment,
 			Last:  -1, // Till the end.
@@ -38,5 +38,5 @@ func NewWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) 
 			return nil, nil, err
 		}
 	}
-	return wal.NewReader(segmentReader), segmentReader, nil
+	return wlog.NewReader(segmentReader), segmentReader, nil
 }

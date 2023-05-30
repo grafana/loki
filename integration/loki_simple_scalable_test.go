@@ -12,23 +12,31 @@ import (
 	"github.com/grafana/loki/integration/cluster"
 )
 
-func TestSimpleScalableIngestQuery(t *testing.T) {
-	clu := cluster.New()
+func TestSimpleScalable_IngestQuery(t *testing.T) {
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
 
 	var (
-		tRead = clu.AddComponent(
-			"read",
-			"-target=read",
-		)
 		tWrite = clu.AddComponent(
 			"write",
 			"-target=write",
 		)
+		tBackend = clu.AddComponent(
+			"backend",
+			"-target=backend",
+			"-legacy-read-mode=false",
+		)
 	)
+	require.NoError(t, clu.Run())
 
+	tRead := clu.AddComponent(
+		"read",
+		"-target=read",
+		"-common.compactor-address="+tBackend.HTTPURL(),
+		"-legacy-read-mode=false",
+	)
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
@@ -38,6 +46,8 @@ func TestSimpleScalableIngestQuery(t *testing.T) {
 	cliWrite.Now = now
 	cliRead := client.New(tenantID, "", tRead.HTTPURL())
 	cliRead.Now = now
+	cliBackend := client.New(tenantID, "", tBackend.HTTPURL())
+	cliBackend.Now = now
 
 	t.Run("ingest logs", func(t *testing.T) {
 		// ingest some log lines

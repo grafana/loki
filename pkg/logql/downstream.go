@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
@@ -15,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
@@ -69,7 +68,6 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.E
 		logger:    ng.logger,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
-		timeout:   ng.opts.Timeout,
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
@@ -217,6 +215,14 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		// TODO(owen-d/ewelch): Shard counts should be set by the querier
+		// so we don't have to do it in tricky ways in multiple places.
+		// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
+		// for another example
+		if res.Statistics.Summary.Shards == 0 {
+			res.Statistics.Summary.Shards = 1
+		}
+
 		stats.JoinResults(ctx, res.Statistics)
 	}
 
@@ -356,7 +362,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			return nil, err
 		}
 
-		xs := make([]iter.EntryIterator, 0, len(queries))
+		xs := make([]iter.EntryIterator, 0, len(results))
 		for i, res := range results {
 			iter, err := ResultIterator(res, params)
 			if err != nil {

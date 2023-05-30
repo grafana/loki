@@ -1,5 +1,6 @@
 ---
 title: Pipelines
+description: Pipelines
 ---
 # Pipelines
 
@@ -25,13 +26,13 @@ stages:
    condition.
 
 Typical pipelines will start with a parsing stage (such as a
-[regex](../stages/regex/) or [json](../stages/json/) stage) to extract data
+[regex]({{<relref "stages/regex/">}}) or [json]({{<relref "stages/json/">}}) stage) to extract data
 from the log line. Then, a series of action stages will be present to do
 something with that extracted data. The most common action stage will be a
-[labels](../stages/labels/) stage to turn extracted data into a label.
+[labels]({{<relref "stages/labels/">}}) stage to turn extracted data into a label.
 
-A common stage will also be the [match](../stages/match/) stage to selectively
-apply stages or drop entries based on a [LogQL stream selector and filter expressions](../../../logql/).
+A common stage will also be the [match]({{<relref "stages/match/">}}) stage to selectively
+apply stages or drop entries based on a [LogQL stream selector and filter expressions]({{<relref "../../query/">}}).
 
 Note that pipelines can not currently be used to deduplicate logs; Grafana Loki will
 receive the same log line multiple times if, for example:
@@ -199,26 +200,27 @@ given log entry.
 
 Parsing stages:
 
-  - [docker](../stages/docker/): Extract data by parsing the log line using the standard Docker format.
-  - [cri](../stages/cri/): Extract data by parsing the log line using the standard CRI format.
-  - [regex](../stages/regex/): Extract data using a regular expression.
-  - [json](../stages/json/): Extract data by parsing the log line as JSON.
+  - [docker]({{<relref "stages/docker/">}}): Extract data by parsing the log line using the standard Docker format.
+  - [cri]({{<relref "stages/cri/">}}): Extract data by parsing the log line using the standard CRI format.
+  - [regex]({{<relref "stages/regex/">}}): Extract data using a regular expression.
+  - [json]({{<relref "stages/json/">}}): Extract data by parsing the log line as JSON.
+  - [eventlogmessage]({{<relref "stages/eventlogmessage/">}}): Extract data by parsing the Message field from the Windows Event Log.
 
 Transform stages:
 
-  - [multiline](../stages/multiline/): Merges multiple lines, e.g. stack traces, into multiline blocks.
-  - [template](../stages/template/): Use Go templates to modify extracted data.
+  - [multiline]({{<relref "stages/multiline/">}}): Merges multiple lines, e.g. stack traces, into multiline blocks.
+  - [template]({{<relref "stages/template/">}}): Use Go templates to modify extracted data.
 
 Action stages:
 
-  - [timestamp](../stages/timestamp/): Set the timestamp value for the log entry.
-  - [output](../stages/output/): Set the log line text.
-  - [labels](../stages/labels/): Update the label set for the log entry.
-  - [metrics](../stages/metrics/): Calculate metrics based on extracted data.
-  - [tenant](../stages/tenant/): Set the tenant ID value to use for the log entry.
+  - [timestamp]({{<relref "stages/timestamp/">}}): Set the timestamp value for the log entry.
+  - [output]({{<relref "stages/output/">}}): Set the log line text.
+  - [labels]({{<relref "stages/labels/">}}): Update the label set for the log entry.
+  - [metrics]({{<relref "stages/metrics/">}}): Calculate metrics based on extracted data.
+  - [tenant]({{<relref "stages/tenant/">}}): Set the tenant ID value to use for the log entry.
 
 Filtering stages:
 
-  - [match](../stages/match/): Conditionally run stages based on the label set.
-  - [drop](../stages/drop/): Conditionally drop log lines based on several options.
-  - [limit](../stages/limit/): Conditionally rate limit log lines based on several options.
+  - [match]({{<relref "stages/match/">}}): Conditionally run stages based on the label set.
+  - [drop]({{<relref "stages/drop/">}}): Conditionally drop log lines based on several options.
+  - [limit]({{<relref "stages/limit/">}}): Conditionally rate limit log lines based on several options.

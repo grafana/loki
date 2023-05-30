@@ -4,6 +4,8 @@ package log_test
 import (
 	"testing"
 
+	"github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -231,4 +233,53 @@ func Test_ParserHints(t *testing.T) {
 			require.Equal(t, tt.expectLbs, lbsResString)
 		})
 	}
+}
+
+func TestRecordingExtractedLabels(t *testing.T) {
+	p := log.NewParserHint([]string{"1", "2", "3"}, nil, false, true, "", nil)
+	p.RecordExtracted("1")
+	p.RecordExtracted("2")
+
+	require.False(t, p.AllRequiredExtracted())
+	require.False(t, p.NoLabels())
+
+	p.RecordExtracted("3")
+
+	require.True(t, p.AllRequiredExtracted())
+	require.True(t, p.NoLabels())
+
+	p.Reset()
+	require.False(t, p.AllRequiredExtracted())
+	require.False(t, p.NoLabels())
+}
+
+func TestLabelFiltersInParseHints(t *testing.T) {
+	t.Run("it rejects the line when label matchers don't match the label", func(t *testing.T) {
+		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "protocol", Value: "HTTP/2.0"}}, 0)
+		require.False(t, h.ShouldContinueParsingLine("protocol", lb))
+	})
+
+	t.Run("it returns true when the label doesn't have a matcher", func(t *testing.T) {
+		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "response", Value: "200"}}, 0)
+		require.True(t, h.ShouldContinueParsingLine("response", lb))
+	})
+
+	t.Run("it ignores BinaryMatchers", func(t *testing.T) {
+		s := []log.Stage{
+			log.ReduceAndLabelFilter([]log.LabelFilterer{
+				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing")),
+				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "something")),
+			}),
+		}
+
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "protocol", Value: "HTTP/2.0"}}, 0)
+		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
+	})
 }

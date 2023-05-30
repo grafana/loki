@@ -1,8 +1,9 @@
 package manifests
 
 import (
-	"fmt"
+	"path"
 	"testing"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,61 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 			},
 		},
 		{
+			desc: "static mode on openshift",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:        "lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
+						RulerName:            "lokistack-ocp-ruler",
+						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+					},
+				},
+			},
+		},
+		{
 			desc: "dynamic mode",
 			opts: &Options{
 				Stack: lokiv1.LokiStackSpec{
@@ -60,14 +116,79 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 			},
 		},
 		{
+			desc: "dynamic mode on openshift",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:        "lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
+						RulerName:            "lokistack-ocp-ruler",
+						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+					},
+				},
+			},
+		},
+		{
 			desc: "openshift-logging mode",
 			opts: &Options{
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -94,9 +215,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -125,6 +256,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
 						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
@@ -160,9 +292,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -179,9 +321,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -200,6 +352,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
 						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
@@ -280,26 +433,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
 								},
 							},
 						},
@@ -316,40 +449,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.client-auth-type=NoClientCert",
-										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
-										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
 								},
 								{
 									Name:  "opa",
@@ -405,23 +504,13 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									},
 								},
 							},
-							Volumes: []corev1.Volume{
-								{
-									Name: tlsSecretVolume,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
-										},
-									},
-								},
-							},
 						},
 					},
 				},
 			},
 		},
 		{
-			desc:      "openshift-logging mode with-tls-service-monitor-config",
+			desc:      "openshift-logging mode with http encryption",
 			mode:      lokiv1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
@@ -431,6 +520,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-gateway",
 					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
@@ -439,229 +529,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: tlsSecretVolume,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test-ns",
-				},
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-										"--tls.client-auth-type=NoClientCert",
-										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
-										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-								},
-								{
-									Name:  "opa",
-									Image: "quay.io/observatorium/opa-openshift:latest",
-									Args: []string{
-										"--log.level=warn",
-										"--opa.skip-tenants=audit,infrastructure",
-										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--web.listen=:8082",
-										"--web.internal.listen=:8083",
-										"--web.healthchecks.url=http://localhost:8082",
-										"--opa.package=lokistack",
-										"--opa.matcher=kubernetes_namespace_name",
-										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-										`--openshift.mappings=application=loki.grafana.com`,
-										`--openshift.mappings=infrastructure=loki.grafana.com`,
-										`--openshift.mappings=audit=loki.grafana.com`,
-									},
-									Ports: []corev1.ContainerPort{
-										{
-											Name:          openshift.GatewayOPAHTTPPortName,
-											ContainerPort: openshift.GatewayOPAHTTPPort,
-											Protocol:      corev1.ProtocolTCP,
-										},
-										{
-											Name:          openshift.GatewayOPAInternalPortName,
-											ContainerPort: openshift.GatewayOPAInternalPort,
-											Protocol:      corev1.ProtocolTCP,
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Path:   "/live",
-												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-										TimeoutSeconds:   2,
-										PeriodSeconds:    30,
-										FailureThreshold: 10,
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Path:   "/ready",
-												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-										TimeoutSeconds:   1,
-										PeriodSeconds:    5,
-										FailureThreshold: 12,
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: tlsSecretVolume,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc:      "openshift-logging mode with-cert-signing-service",
-			mode:      lokiv1.OpenshiftLogging,
-			stackName: "test",
-			stackNs:   "test-ns",
-			featureGates: configv1.FeatureGates{
-				HTTPEncryption:             true,
-				ServiceMonitorTLSEndpoints: true,
-				OpenShift: configv1.OpenShiftFeatureGates{
-					ServingCertsService: true,
-				},
-			},
-			dpl: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "gateway",
-					Namespace: "test-ns",
-				},
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: gatewayContainerName,
-									Args: []string{
-										"--other.args=foo-bar",
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "tls-secret",
-											ReadOnly:  true,
-											MountPath: "/var/run/tls/http",
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
 								},
 							},
 							Volumes: []corev1.Volume{
@@ -675,57 +542,16 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "gateway",
+					Name:      "test-gateway",
 					Namespace: "test-ns",
 				},
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
-							ServiceAccountName: "gateway",
+							ServiceAccountName: "test-gateway",
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--other.args=foo-bar",
-										"--logs.read.endpoint=https://example.com",
-										"--logs.tail.endpoint=https://example.com",
-										"--logs.write.endpoint=https://example.com",
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
-										"--tls.client-auth-type=NoClientCert",
-										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
-										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "tls-secret",
-											ReadOnly:  true,
-											MountPath: "/var/run/tls/http",
-										},
-										{
-											Name:      "test-ca-bundle",
-											ReadOnly:  true,
-											MountPath: "/var/run/ca",
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
 								},
 								{
 									Name:  "opa",
@@ -739,8 +565,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.package=lokistack",
 										"--opa.matcher=kubernetes_namespace_name",
-										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
+										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
 										"--tls.cipher-suites=cipher1,cipher2",
 										`--openshift.mappings=application=loki.grafana.com`,
@@ -787,7 +613,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: httpTLSDir,
+											MountPath: gatewayServerHTTPTLSDir(),
 										},
 									},
 								},
@@ -795,17 +621,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Volumes: []corev1.Volume{
 								{
 									Name: "tls-secret-volume",
-								},
-								{
-									Name: "test-ca-bundle",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "test-ca-bundle",
-											},
-										},
-									},
 								},
 							},
 						},
@@ -828,26 +643,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "tls-secret-volume",
 								},
 							},
 						},
@@ -864,40 +664,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.client-auth-type=NoClientCert",
-										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
-										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
 								},
 								{
 									Name:  "opa",
@@ -910,6 +676,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.package=lokistack",
+										"--opa.matcher=SrcK8S_Namespace,DstK8S_Namespace",
+										"--opa.matcher-op=or",
 										`--openshift.mappings=network=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
@@ -952,12 +720,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: tlsSecretVolume,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
-										},
-									},
+									Name: "tls-secret-volume",
 								},
 							},
 						},
@@ -966,7 +729,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc:      "openshift-network mode with-tls-service-monitor-config",
+			desc:      "openshift-network mode with http encryption",
 			mode:      lokiv1.OpenshiftNetwork,
 			stackName: "test",
 			stackNs:   "test-ns",
@@ -984,45 +747,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
 								},
 							},
 							Volumes: []corev1.Volume{
 								{
-									Name: tlsSecretVolume,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
-										},
-									},
+									Name: "tls-secret-volume",
 								},
 							},
 						},
@@ -1039,40 +768,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
-									Args: []string{
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-										"--tls.client-auth-type=NoClientCert",
-										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
-										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
 								},
 								{
 									Name:  "opa",
@@ -1085,8 +780,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.package=lokistack",
-										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
+										"--opa.matcher=SrcK8S_Namespace,DstK8S_Namespace",
+										"--opa.matcher-op=or",
+										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
 										"--tls.cipher-suites=cipher1,cipher2",
 										`--openshift.mappings=network=loki.grafana.com`,
@@ -1131,77 +828,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										{
 											Name:      tlsSecretVolume,
 											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: tlsSecretVolume,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test-gateway-http-tls",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc:      "openshift-network mode with-cert-signing-service",
-			mode:      lokiv1.OpenshiftNetwork,
-			stackName: "test",
-			stackNs:   "test-ns",
-			featureGates: configv1.FeatureGates{
-				HTTPEncryption:             true,
-				ServiceMonitorTLSEndpoints: true,
-				OpenShift: configv1.OpenShiftFeatureGates{
-					ServingCertsService: true,
-				},
-			},
-			dpl: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "gateway",
-					Namespace: "test-ns",
-				},
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: gatewayContainerName,
-									Args: []string{
-										"--other.args=foo-bar",
-										"--logs.read.endpoint=http://example.com",
-										"--logs.tail.endpoint=http://example.com",
-										"--logs.write.endpoint=http://example.com",
-										fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "tls-secret",
-											ReadOnly:  true,
-											MountPath: "/var/run/tls/http",
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTP,
-											},
+											MountPath: path.Join(httpTLSDir, "server"),
 										},
 									},
 								},
@@ -1209,142 +836,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Volumes: []corev1.Volume{
 								{
 									Name: "tls-secret-volume",
-								},
-							},
-						},
-					},
-				},
-			},
-			want: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "gateway",
-					Namespace: "test-ns",
-				},
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							ServiceAccountName: "gateway",
-							Containers: []corev1.Container{
-								{
-									Name: gatewayContainerName,
-									Args: []string{
-										"--other.args=foo-bar",
-										"--logs.read.endpoint=https://example.com",
-										"--logs.tail.endpoint=https://example.com",
-										"--logs.write.endpoint=https://example.com",
-										fmt.Sprintf("--web.healthchecks.url=https://localhost:%d", gatewayHTTPPort),
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
-										"--tls.client-auth-type=NoClientCert",
-										"--tls.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.healthchecks.server-ca-file=/var/run/ca/service-ca.crt",
-										fmt.Sprintf("--tls.healthchecks.server-name=%s", "test-gateway-http.test-ns.svc.cluster.local"),
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "tls-secret",
-											ReadOnly:  true,
-											MountPath: "/var/run/tls/http",
-										},
-										{
-											Name:      "test-ca-bundle",
-											ReadOnly:  true,
-											MountPath: "/var/run/ca",
-										},
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-									},
-								},
-								{
-									Name:  "opa",
-									Image: "quay.io/observatorium/opa-openshift:latest",
-									Args: []string{
-										"--log.level=warn",
-										"--opa.skip-tenants=audit,infrastructure",
-										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--web.listen=:8082",
-										"--web.internal.listen=:8083",
-										"--web.healthchecks.url=http://localhost:8082",
-										"--opa.package=lokistack",
-										"--tls.internal.server.cert-file=/var/run/tls/http/tls.crt",
-										"--tls.internal.server.key-file=/var/run/tls/http/tls.key",
-										"--tls.min-version=min-version",
-										"--tls.cipher-suites=cipher1,cipher2",
-										`--openshift.mappings=network=loki.grafana.com`,
-									},
-									Ports: []corev1.ContainerPort{
-										{
-											Name:          openshift.GatewayOPAHTTPPortName,
-											ContainerPort: openshift.GatewayOPAHTTPPort,
-											Protocol:      corev1.ProtocolTCP,
-										},
-										{
-											Name:          openshift.GatewayOPAInternalPortName,
-											ContainerPort: openshift.GatewayOPAInternalPort,
-											Protocol:      corev1.ProtocolTCP,
-										},
-									},
-									LivenessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Path:   "/live",
-												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-										TimeoutSeconds:   2,
-										PeriodSeconds:    30,
-										FailureThreshold: 10,
-									},
-									ReadinessProbe: &corev1.Probe{
-										ProbeHandler: corev1.ProbeHandler{
-											HTTPGet: &corev1.HTTPGetAction{
-												Path:   "/ready",
-												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-												Scheme: corev1.URISchemeHTTPS,
-											},
-										},
-										TimeoutSeconds:   1,
-										PeriodSeconds:    5,
-										FailureThreshold: 12,
-									},
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      tlsSecretVolume,
-											ReadOnly:  true,
-											MountPath: httpTLSDir,
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "tls-secret-volume",
-								},
-								{
-									Name: "test-ca-bundle",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											DefaultMode: &defaultConfigMapMode,
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "test-ca-bundle",
-											},
-										},
-									},
 								},
 							},
 						},
@@ -1358,7 +849,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "test", "test-ns", "min-version", "cipher1,cipher2")
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "min-version", "cipher1,cipher2")
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -1427,6 +918,7 @@ func TestConfigureServiceForMode(t *testing.T) {
 func TestConfigureServiceMonitorForMode(t *testing.T) {
 	type tt struct {
 		desc         string
+		opts         Options
 		mode         lokiv1.ModeType
 		featureGates configv1.FeatureGates
 		sm           *monitoringv1.ServiceMonitor
@@ -1436,20 +928,38 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 	tc := []tt{
 		{
 			desc: "static mode",
-			mode: lokiv1.Static,
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+			},
 			sm:   &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{},
 		},
 		{
 			desc: "dynamic mode",
-			mode: lokiv1.Dynamic,
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+			},
 			sm:   &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{},
 		},
 		{
 			desc: "openshift-logging mode",
-			mode: lokiv1.OpenshiftLogging,
-			sm:   &monitoringv1.ServiceMonitor{},
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+			},
+			sm: &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
@@ -1464,8 +974,14 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		},
 		{
 			desc: "openshift-network mode",
-			mode: lokiv1.OpenshiftNetwork,
-			sm:   &monitoringv1.ServiceMonitor{},
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+			},
+			sm: &monitoringv1.ServiceMonitor{},
 			want: &monitoringv1.ServiceMonitor{
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
@@ -1480,10 +996,18 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		},
 		{
 			desc: "openshift-logging mode with-tls-service-monitor-config",
-			mode: lokiv1.OpenshiftLogging,
-			featureGates: configv1.FeatureGates{
-				HTTPEncryption:             true,
-				ServiceMonitorTLSEndpoints: true,
+			opts: Options{
+				Name:      "abcd",
+				Namespace: "ns",
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Gates: configv1.FeatureGates{
+					HTTPEncryption:             true,
+					ServiceMonitorTLSEndpoints: true,
+				},
 			},
 			sm: &monitoringv1.ServiceMonitor{
 				Spec: monitoringv1.ServiceMonitorSpec{
@@ -1493,6 +1017,12 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CAFile:   "/path/to/ca/file",
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
+							},
+							BearerTokenSecret: corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-token",
+								},
+								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1507,12 +1037,94 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
+							BearerTokenSecret: corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-token",
+								},
+								Key: corev1.ServiceAccountTokenKey,
+							},
 						},
 						{
-							Port:            openshift.GatewayOPAInternalPortName,
-							Path:            "/metrics",
-							Scheme:          "https",
-							BearerTokenFile: BearerTokenFile,
+							Port:   openshift.GatewayOPAInternalPortName,
+							Path:   "/metrics",
+							Scheme: "https",
+							BearerTokenSecret: corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-token",
+								},
+								Key: corev1.ServiceAccountTokenKey,
+							},
+							TLSConfig: &monitoringv1.TLSConfig{
+								CAFile:   "/path/to/ca/file",
+								CertFile: "/path/to/cert/file",
+								KeyFile:  "/path/to/key/file",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-network mode with-tls-service-monitor-config",
+			mode: lokiv1.OpenshiftNetwork,
+			opts: Options{
+				Name:      "abcd",
+				Namespace: "ns",
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				Gates: configv1.FeatureGates{
+					HTTPEncryption:             true,
+					ServiceMonitorTLSEndpoints: true,
+				},
+			},
+			sm: &monitoringv1.ServiceMonitor{
+				Spec: monitoringv1.ServiceMonitorSpec{
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							TLSConfig: &monitoringv1.TLSConfig{
+								CAFile:   "/path/to/ca/file",
+								CertFile: "/path/to/cert/file",
+								KeyFile:  "/path/to/key/file",
+							},
+							BearerTokenSecret: corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-token",
+								},
+								Key: corev1.ServiceAccountTokenKey,
+							},
+						},
+					},
+				},
+			},
+			want: &monitoringv1.ServiceMonitor{
+				Spec: monitoringv1.ServiceMonitorSpec{
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							TLSConfig: &monitoringv1.TLSConfig{
+								CAFile:   "/path/to/ca/file",
+								CertFile: "/path/to/cert/file",
+								KeyFile:  "/path/to/key/file",
+							},
+							BearerTokenSecret: corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-token",
+								},
+								Key: corev1.ServiceAccountTokenKey,
+							},
+						},
+						{
+							Port:   openshift.GatewayOPAInternalPortName,
+							Path:   "/metrics",
+							Scheme: "https",
+							BearerTokenSecret: corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-token",
+								},
+								Key: corev1.ServiceAccountTokenKey,
+							},
 							TLSConfig: &monitoringv1.TLSConfig{
 								CAFile:   "/path/to/ca/file",
 								CertFile: "/path/to/cert/file",
@@ -1528,7 +1140,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayServiceMonitorForMode(tc.sm, tc.mode, tc.featureGates)
+			err := configureGatewayServiceMonitorForMode(tc.sm, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sm)
 		})

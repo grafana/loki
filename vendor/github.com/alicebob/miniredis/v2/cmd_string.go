@@ -131,16 +131,27 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
+		readonly := false
 		if opts.nx {
 			if db.exists(opts.key) {
-				c.WriteNull()
-				return
+				if opts.get {
+					// special case for SET NX GET
+					readonly = true
+				} else {
+					c.WriteNull()
+					return
+				}
 			}
 		}
 		if opts.xx {
 			if !db.exists(opts.key) {
-				c.WriteNull()
-				return
+				if opts.get {
+					// special case for SET XX GET
+					readonly = true
+				} else {
+					c.WriteNull()
+					return
+				}
 			}
 		}
 		if opts.keepttl {
@@ -154,14 +165,17 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 				return
 			}
 		}
+
 		old, existed := db.stringKeys[opts.key]
-		db.del(opts.key, true) // be sure to remove existing values of other type keys.
-		// a vanilla SET clears the expire
-		if opts.ttl >= 0 { // EXAT/PXAT can expire right away
-			db.stringSet(opts.key, opts.value)
-		}
-		if opts.ttl != 0 {
-			db.ttl[opts.key] = opts.ttl
+		if !readonly {
+			db.del(opts.key, true) // be sure to remove existing values of other type keys.
+			// a vanilla SET clears the expire
+			if opts.ttl >= 0 { // EXAT/PXAT can expire right away
+				db.stringSet(opts.key, opts.value)
+			}
+			if opts.ttl != 0 {
+				db.ttl[opts.key] = opts.ttl
+			}
 		}
 		if opts.get {
 			if !existed {
@@ -227,26 +241,29 @@ func (m *Miniredis) cmdPsetex(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	ttl, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		key   string
+		ttl   int
+		value string
+	}
+
+	opts.key = args[0]
+	if ok := optInt(c, args[1], &opts.ttl); !ok {
 		return
 	}
-	if ttl <= 0 {
+	if opts.ttl <= 0 {
 		setDirty(c)
 		c.WriteError(msgInvalidPSETEXTime)
 		return
 	}
-	value := args[2]
+	opts.value = args[2]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		db.del(key, true) // Clear any existing keys.
-		db.stringSet(key, value)
-		db.ttl[key] = time.Duration(ttl) * time.Millisecond
+		db.del(opts.key, true) // Clear any existing keys.
+		db.stringSet(opts.key, opts.value)
+		db.ttl[opts.key] = time.Duration(opts.ttl) * time.Millisecond
 		c.WriteOK()
 	})
 }
@@ -634,23 +651,24 @@ func (m *Miniredis) cmdIncrby(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	delta, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		key   string
+		delta int
+	}
+	opts.key = args[0]
+	if ok := optInt(c, args[1], &opts.delta); !ok {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		v, err := db.stringIncr(key, delta)
+		v, err := db.stringIncr(opts.key, opts.delta)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
@@ -746,23 +764,24 @@ func (m *Miniredis) cmdDecrby(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	delta, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		key   string
+		delta int
+	}
+	opts.key = args[0]
+	if ok := optInt(c, args[1], &opts.delta); !ok {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		v, err := db.stringIncr(key, -delta)
+		v, err := db.stringIncr(opts.key, -opts.delta)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
@@ -845,30 +864,29 @@ func (m *Miniredis) cmdGetrange(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	start, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		key   string
+		start int
+		end   int
+	}
+	opts.key = args[0]
+	if ok := optInt(c, args[1], &opts.start); !ok {
 		return
 	}
-	end, err := strconv.Atoi(args[2])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	if ok := optInt(c, args[2], &opts.end); !ok {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		v := db.stringKeys[key]
-		c.WriteBulk(withRange(v, start, end))
+		v := db.stringKeys[opts.key]
+		c.WriteBulk(withRange(v, opts.start, opts.end))
 	})
 }
 
@@ -886,36 +904,39 @@ func (m *Miniredis) cmdSetrange(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	pos, err := strconv.Atoi(args[1])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidInt)
+	var opts struct {
+		key   string
+		pos   int
+		subst string
+	}
+	opts.key = args[0]
+	if ok := optInt(c, args[1], &opts.pos); !ok {
 		return
 	}
-	if pos < 0 {
+	if opts.pos < 0 {
 		setDirty(c)
 		c.WriteError("ERR offset is out of range")
 		return
 	}
-	subst := args[2]
+	opts.subst = args[2]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
 
-		v := []byte(db.stringKeys[key])
-		if len(v) < pos+len(subst) {
-			newV := make([]byte, pos+len(subst))
+		v := []byte(db.stringKeys[opts.key])
+		end := opts.pos + len(opts.subst)
+		if len(v) < end {
+			newV := make([]byte, end)
 			copy(newV, v)
 			v = newV
 		}
-		copy(v[pos:pos+len(subst)], subst)
-		db.stringSet(key, string(v))
+		copy(v[opts.pos:end], opts.subst)
+		db.stringSet(opts.key, string(v))
 		c.WriteInt(len(v))
 	})
 }
@@ -935,28 +956,20 @@ func (m *Miniredis) cmdBitcount(c *server.Peer, cmd string, args []string) {
 	}
 
 	var opts struct {
-		useRange   bool
-		start, end int
-		key        string
+		useRange bool
+		start    int
+		end      int
+		key      string
 	}
 	opts.key, args = args[0], args[1:]
 	if len(args) >= 2 {
 		opts.useRange = true
-		var err error
-		n, err := strconv.Atoi(args[0])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
+		if ok := optInt(c, args[0], &opts.start); !ok {
 			return
 		}
-		opts.start = n
-		n, err = strconv.Atoi(args[1])
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
+		if ok := optInt(c, args[1], &opts.end); !ok {
 			return
 		}
-		opts.end = n
 		args = args[2:]
 	}
 
@@ -1001,25 +1014,28 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	var (
-		op     = strings.ToUpper(args[0])
-		target = args[1]
-		input  = args[2:]
-	)
+	var opts struct {
+		op     string
+		target string
+		input  []string
+	}
+	opts.op = strings.ToUpper(args[0])
+	opts.target = args[1]
+	opts.input = args[2:]
 
 	// 'op' is tested when the transaction is executed.
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		switch op {
+		switch opts.op {
 		case "AND", "OR", "XOR":
-			first := input[0]
+			first := opts.input[0]
 			if t, ok := db.keys[first]; ok && t != "string" {
 				c.WriteError(msgWrongType)
 				return
 			}
 			res := []byte(db.stringKeys[first])
-			for _, vk := range input[1:] {
+			for _, vk := range opts.input[1:] {
 				if t, ok := db.keys[vk]; ok && t != "string" {
 					c.WriteError(msgWrongType)
 					return
@@ -1029,23 +1045,23 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 					"AND": func(a, b byte) byte { return a & b },
 					"OR":  func(a, b byte) byte { return a | b },
 					"XOR": func(a, b byte) byte { return a ^ b },
-				}[op]
+				}[opts.op]
 				res = sliceBinOp(cb, res, []byte(v))
 			}
-			db.del(target, false) // Keep TTL
+			db.del(opts.target, false) // Keep TTL
 			if len(res) == 0 {
-				db.del(target, true)
+				db.del(opts.target, true)
 			} else {
-				db.stringSet(target, string(res))
+				db.stringSet(opts.target, string(res))
 			}
 			c.WriteInt(len(res))
 		case "NOT":
 			// NOT only takes a single argument.
-			if len(input) != 1 {
+			if len(opts.input) != 1 {
 				c.WriteError("ERR BITOP NOT must be called with a single source key.")
 				return
 			}
-			key := input[0]
+			key := opts.input[0]
 			if t, ok := db.keys[key]; ok && t != "string" {
 				c.WriteError(msgWrongType)
 				return
@@ -1054,11 +1070,11 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 			for i := range value {
 				value[i] = ^value[i]
 			}
-			db.del(target, false) // Keep TTL
+			db.del(opts.target, false) // Keep TTL
 			if len(value) == 0 {
-				db.del(target, true)
+				db.del(opts.target, true)
 			} else {
-				db.stringSet(target, string(value))
+				db.stringSet(opts.target, string(value))
 			}
 			c.WriteInt(len(value))
 		default:
@@ -1182,9 +1198,15 @@ func (m *Miniredis) cmdGetbit(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	bit, err := strconv.Atoi(args[1])
-	if err != nil {
+	var opts struct {
+		key string
+		bit int
+	}
+	opts.key = args[0]
+	if ok := optIntErr(c, args[1], &opts.bit, "ERR bit offset is not an integer or out of range"); !ok {
+		return
+	}
+	if opts.bit < 0 {
 		setDirty(c)
 		c.WriteError("ERR bit offset is not an integer or out of range")
 		return
@@ -1193,13 +1215,13 @@ func (m *Miniredis) cmdGetbit(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
-		value := db.stringKeys[key]
+		value := db.stringKeys[opts.key]
 
-		ourByteNr := bit / 8
+		ourByteNr := opts.bit / 8
 		var ourByte byte
 		if ourByteNr > len(value)-1 {
 			ourByte = '\x00'
@@ -1207,7 +1229,7 @@ func (m *Miniredis) cmdGetbit(c *server.Peer, cmd string, args []string) {
 			ourByte = value[ourByteNr]
 		}
 		res := 0
-		if toBits(ourByte)[bit%8] {
+		if toBits(ourByte)[opts.bit%8] {
 			res = 1
 		}
 		c.WriteInt(res)
@@ -1228,15 +1250,24 @@ func (m *Miniredis) cmdSetbit(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	bit, err := strconv.Atoi(args[1])
-	if err != nil || bit < 0 {
+	var opts struct {
+		key    string
+		bit    int
+		newBit int
+	}
+	opts.key = args[0]
+	if ok := optIntErr(c, args[1], &opts.bit, "ERR bit offset is not an integer or out of range"); !ok {
+		return
+	}
+	if opts.bit < 0 {
 		setDirty(c)
 		c.WriteError("ERR bit offset is not an integer or out of range")
 		return
 	}
-	newBit, err := strconv.Atoi(args[2])
-	if err != nil || (newBit != 0 && newBit != 1) {
+	if ok := optIntErr(c, args[2], &opts.newBit, "ERR bit is not an integer or out of range"); !ok {
+		return
+	}
+	if opts.newBit != 0 && opts.newBit != 1 {
 		setDirty(c)
 		c.WriteError("ERR bit is not an integer or out of range")
 		return
@@ -1245,14 +1276,14 @@ func (m *Miniredis) cmdSetbit(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != "string" {
 			c.WriteError(msgWrongType)
 			return
 		}
-		value := []byte(db.stringKeys[key])
+		value := []byte(db.stringKeys[opts.key])
 
-		ourByteNr := bit / 8
-		ourBitNr := bit % 8
+		ourByteNr := opts.bit / 8
+		ourBitNr := opts.bit % 8
 		if ourByteNr > len(value)-1 {
 			// Too short. Expand.
 			newValue := make([]byte, ourByteNr+1)
@@ -1263,12 +1294,12 @@ func (m *Miniredis) cmdSetbit(c *server.Peer, cmd string, args []string) {
 		if toBits(value[ourByteNr])[ourBitNr] {
 			old = 1
 		}
-		if newBit == 0 {
+		if opts.newBit == 0 {
 			value[ourByteNr] &^= 1 << uint8(7-ourBitNr)
 		} else {
 			value[ourByteNr] |= 1 << uint8(7-ourBitNr)
 		}
-		db.stringSet(key, string(value))
+		db.stringSet(opts.key, string(value))
 
 		c.WriteInt(old)
 	})

@@ -102,6 +102,7 @@ type GrantType struct {
 	Resource    []string      `json:"resource,omitempty"`
 	NotResource []string      `json:"notResource,omitempty"`
 	Condition   AclCondType   `json:"condition,omitempty"`
+	Effect      string        `json:"effect,omitempty"`
 }
 
 // PutBucketAclArgs defines the input args structure for putting bucket acl.
@@ -125,7 +126,7 @@ type PutBucketLoggingArgs struct {
 type GetBucketLoggingResult struct {
 	Status       string `json:"status"`
 	TargetBucket string `json:"targetBucket,omitempty"`
-	TargetPrefix string `json:"targetPrefix, omitempty"`
+	TargetPrefix string `json:"targetPrefix,omitempty"`
 }
 
 // LifecycleConditionTimeType defines the structure of time condition
@@ -258,6 +259,7 @@ type PutObjectArgs struct {
 	ContentCrc32       string
 	StorageClass       string
 	Process            string
+	TrafficLimit       int64
 }
 
 // CopyObjectArgs defines the optional args structure for the copy object api.
@@ -268,6 +270,7 @@ type CopyObjectArgs struct {
 	IfNoneMatch       string
 	IfModifiedSince   string
 	IfUnmodifiedSince string
+	TrafficLimit       int64
 }
 
 type MultiCopyObjectArgs struct {
@@ -320,8 +323,8 @@ type SelectObjectResult struct {
 
 // selectObject request args
 type SelectObjectArgs struct {
-	SelectType    string               `json: "-"`
-	SelectRequest *SelectObjectRequest `json: "selectRequest"`
+	SelectType    string               `json:"-"`
+	SelectRequest *SelectObjectRequest `json:"selectRequest"`
 }
 
 type SelectObjectRequest struct {
@@ -396,6 +399,7 @@ type AppendObjectArgs struct {
 	ContentSha256      string
 	ContentCrc32       string
 	StorageClass       string
+	TrafficLimit       int64
 }
 
 // AppendObjectResult defines the result data structure for appending object.
@@ -448,6 +452,7 @@ type UploadPartArgs struct {
 	ContentMD5    string
 	ContentSha256 string
 	ContentCrc32  string
+	TrafficLimit  int64
 }
 
 // UploadPartCopyArgs defines the optional arguments of UploadPartCopy.
@@ -457,6 +462,7 @@ type UploadPartCopyArgs struct {
 	IfNoneMatch       string
 	IfModifiedSince   string
 	IfUnmodifiedSince string
+	TrafficLimit  int64
 }
 
 type PutSymlinkArgs struct {

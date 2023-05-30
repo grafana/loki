@@ -39,6 +39,7 @@ import (
 	jsonerror "github.com/googleapis/gax-go/v2/apierror/internal/proto"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -197,12 +198,12 @@ func (a *APIError) Unwrap() error {
 // Error returns a readable representation of the APIError.
 func (a *APIError) Error() string {
 	var msg string
-	if a.status != nil {
-		msg = a.err.Error()
-	} else if a.httpErr != nil {
+	if a.httpErr != nil {
 		// Truncate the googleapi.Error message because it dumps the Details in
 		// an ugly way.
 		msg = fmt.Sprintf("googleapi: Error %d: %s", a.httpErr.Code, a.httpErr.Message)
+	} else if a.status != nil {
+		msg = a.err.Error()
 	}
 	return strings.TrimSpace(fmt.Sprintf("%s\n%s", msg, a.details))
 }
@@ -233,30 +234,53 @@ func (a *APIError) Metadata() map[string]string {
 
 }
 
-// FromError parses a Status error or a googleapi.Error and builds an APIError.
-func FromError(err error) (*APIError, bool) {
-	if err == nil {
-		return nil, false
-	}
-
-	ae := APIError{err: err}
+// setDetailsFromError parses a Status error or a googleapi.Error
+// and sets status and details or httpErr and details, respectively.
+// It returns false if neither Status nor googleapi.Error can be parsed.
+// When err is a googleapi.Error, the status of the returned error will
+// be set to an Unknown error, rather than nil, since a nil code is
+// interpreted as OK in the gRPC status package.
+func (a *APIError) setDetailsFromError(err error) bool {
 	st, isStatus := status.FromError(err)
 	var herr *googleapi.Error
 	isHTTPErr := errors.As(err, &herr)
 
 	switch {
 	case isStatus:
-		ae.status = st
-		ae.details = parseDetails(st.Details())
+		a.status = st
+		a.details = parseDetails(st.Details())
 	case isHTTPErr:
-		ae.httpErr = herr
-		ae.details = parseHTTPDetails(herr)
+		a.httpErr = herr
+		a.details = parseHTTPDetails(herr)
+		a.status = status.New(codes.Unknown, herr.Message)
 	default:
+		return false
+	}
+	return true
+}
+
+// FromError parses a Status error or a googleapi.Error and builds an
+// APIError, wrapping the provided error in the new APIError. It
+// returns false if neither Status nor googleapi.Error can be parsed.
+func FromError(err error) (*APIError, bool) {
+	return ParseError(err, true)
+}
+
+// ParseError parses a Status error or a googleapi.Error and builds an
+// APIError. If wrap is true, it wraps the error in the new APIError.
+// It returns false if neither Status nor googleapi.Error can be parsed.
+func ParseError(err error, wrap bool) (*APIError, bool) {
+	if err == nil {
 		return nil, false
 	}
-
+	ae := APIError{}
+	if wrap {
+		ae = APIError{err: err}
+	}
+	if !ae.setDetailsFromError(err) {
+		return nil, false
+	}
 	return &ae, true
-
 }
 
 // parseDetails accepts a slice of interface{} that should be backed by some

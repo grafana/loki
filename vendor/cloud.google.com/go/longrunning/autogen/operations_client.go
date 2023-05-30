@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"time"
 
+	longrunningpb "cloud.google.com/go/longrunning/autogen/longrunningpb"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -33,7 +34,6 @@ import (
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
 	httptransport "google.golang.org/api/transport/http"
-	longrunningpb "google.golang.org/genproto/googleapis/longrunning"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -209,7 +209,8 @@ func (c *OperationsClient) setGoogleClientInfo(keyval ...string) {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *OperationsClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
@@ -338,7 +339,8 @@ func NewOperationsClient(ctx context.Context, opts ...option.ClientOption) (*Ope
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *operationsGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
 }
@@ -430,7 +432,7 @@ func (c *operationsRESTClient) Close() error {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: This method always returns nil.
 func (c *operationsRESTClient) Connection() *grpc.ClientConn {
 	return nil
 }
@@ -814,11 +816,12 @@ func (c *operationsRESTClient) WaitOperation(ctx context.Context, req *longrunni
 	if req.GetName() != "" {
 		params.Add("name", fmt.Sprintf("%v", req.GetName()))
 	}
-	if req.GetTimeout().GetNanos() != 0 {
-		params.Add("timeout.nanos", fmt.Sprintf("%v", req.GetTimeout().GetNanos()))
-	}
-	if req.GetTimeout().GetSeconds() != 0 {
-		params.Add("timeout.seconds", fmt.Sprintf("%v", req.GetTimeout().GetSeconds()))
+	if req.GetTimeout() != nil {
+		timeout, err := protojson.Marshal(req.GetTimeout())
+		if err != nil {
+			return nil, err
+		}
+		params.Add("timeout", string(timeout))
 	}
 
 	baseUrl.RawQuery = params.Encode()

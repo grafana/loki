@@ -73,6 +73,8 @@ func main() {
 		"also the frequency which queries for missing logs will be dispatched to loki")
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 
+	queryAppend := flag.String("query-append", "", "LogQL filters to be appended to the Canary query e.g. '| json | line_format `{{.log}}`'")
+
 	metricTestInterval := flag.Duration("metric-test-interval", 1*time.Hour, "The interval the metric test query should be run")
 	metricTestQueryRange := flag.Duration("metric-test-range", 24*time.Hour, "The range value [24h] used in the metric test instant-query."+
 		" Note: this value is truncated to the running time of the canary until this value is reached")
@@ -93,7 +95,11 @@ func main() {
 	}
 
 	if *addr == "" {
-		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr\n")
+		*addr = os.Getenv("LOKI_ADDRESS")
+	}
+
+	if *addr == "" {
+		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr or set the environment variable LOKI_ADDRESS\n")
 		os.Exit(1)
 	}
 
@@ -112,6 +118,16 @@ func main() {
 		tc.CAFile = *caFile
 		tc.CertFile = *certFile
 		tc.KeyFile = *keyFile
+		tc.InsecureSkipVerify = *insecureSkipVerify
+
+		var err error
+		tlsConfig, err = config.NewTLSConfig(&tc)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "TLS configuration error: %s\n", err.Error())
+			os.Exit(1)
+		}
+	} else if *useTLS && *insecureSkipVerify {
+		// Case where cert cannot be trusted but we are also not using mTLS.
 		tc.InsecureSkipVerify = *insecureSkipVerify
 
 		var err error
@@ -149,8 +165,9 @@ func main() {
 				config.DefaultHTTPClientConfig,
 				*lName, *lVal,
 				*sName, *sValue,
+				*useTLS,
 				tlsConfig,
-				*caFile,
+				*caFile, *certFile, *keyFile,
 				*user, *pass,
 				&backoffCfg,
 				log.NewLogfmtLogger(os.Stderr),
@@ -167,7 +184,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)

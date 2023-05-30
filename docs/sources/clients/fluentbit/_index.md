@@ -1,8 +1,9 @@
 ---
 title: Fluent Bit
+description: Fluent Bit Loki Output 
 weight: 50
 ---
-# Fluent Bit Loki Output
+# Fluent Bit
 
 [Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
@@ -43,7 +44,7 @@ helm upgrade --install loki-stack grafana/loki-stack \
 ### AWS Elastic Container Service (ECS)
 
 You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation](../aws/ecs)
+For more information about this see our [AWS documentation]({{<relref "../aws/ecs">}})
 
 ### Local
 
@@ -91,7 +92,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 
 ### Labels
 
-Labels are used to [query logs](../../logql) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs]({{<relref "../../query">}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
@@ -150,7 +151,7 @@ Buffering refers to the ability to store the records somewhere, and while they a
 
 The blocking state with some of the input plugins is not acceptable, because it can have an undesirable side effect on the part that generates the logs. Fluent Bit implements a buffering mechanism that is based on parallel processing. Therefore, it cannot send logs in order. There are two ways of handling the out-of-order logs: 
 
-- Configure Loki to [accept out-of-order writes](../../configuration/#accept-out-of-order-writes).
+- Configure Loki to [accept out-of-order writes]({{<relref "../../configuration/#accept-out-of-order-writes">}}).
 
 - Configure the Loki output plugin to use the buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque), which is compatible with the Loki server strict time ordering:
 
@@ -194,7 +195,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     RemoveKeys key1,key2
 ```
 
-A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
+A full [example configuration file](https://github.com/grafana/loki/blob/main/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
 
 ### Running multiple plugin instances
 

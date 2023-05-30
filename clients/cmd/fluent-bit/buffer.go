@@ -21,10 +21,10 @@ var defaultBufferConfig = bufferConfig{
 }
 
 // NewBuffer makes a new buffered Client.
-func NewBuffer(cfg *config, logger log.Logger, metrics *client.Metrics, streamLagLabels []string) (client.Client, error) {
+func NewBuffer(cfg *config, logger log.Logger, metrics *client.Metrics) (client.Client, error) {
 	switch cfg.bufferConfig.bufferType {
 	case "dque":
-		return newDque(cfg, logger, metrics, streamLagLabels)
+		return newDque(cfg, logger, metrics)
 	default:
 		return nil, fmt.Errorf("failed to parse bufferType: %s", cfg.bufferConfig.bufferType)
 	}

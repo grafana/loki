@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'production/helm/**'
+      - 'production/helm/loki/Chart.yaml'
 
 jobs:
   call-update-helm-repo:
@@ -17,5 +17,3 @@ jobs:
       helm_tag_prefix: helm
     secrets:
       helm_repo_token: ${{ secrets.GH_BOT_ACCESS_TOKEN }}
-      # See https://github.com/grafana/helm-charts/blob/main/INTERNAL.md about this key
-      gpg_key_base64: ${{ secrets.HELM_SIGN_KEY_BASE64 }}

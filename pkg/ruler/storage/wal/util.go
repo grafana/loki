@@ -8,31 +8,31 @@ import (
 	"sync"
 
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 )
 
 type walReplayer struct {
-	w wal.WriteTo
+	w wlog.WriteTo
 }
 
 func (r walReplayer) Replay(dir string) error {
-	w, err := wal.Open(nil, dir)
+	w, err := wlog.Open(nil, dir)
 	if err != nil {
 		return err
 	}
 
-	dir, startFrom, err := wal.LastCheckpoint(w.Dir())
+	dir, startFrom, err := wlog.LastCheckpoint(w.Dir())
 	if err != nil && err != record.ErrNotFound {
 		return err
 	}
 
 	if err == nil {
-		sr, err := wal.NewSegmentsReader(dir)
+		sr, err := wlog.NewSegmentsReader(dir)
 		if err != nil {
 			return err
 		}
 
-		err = r.replayWAL(wal.NewReader(sr))
+		err = r.replayWAL(wlog.NewReader(sr))
 		if closeErr := sr.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
@@ -43,19 +43,19 @@ func (r walReplayer) Replay(dir string) error {
 		startFrom++
 	}
 
-	_, last, err := wal.Segments(w.Dir())
+	_, last, err := wlog.Segments(w.Dir())
 	if err != nil {
 		return err
 	}
 
 	for i := startFrom; i <= last; i++ {
-		s, err := wal.OpenReadSegment(wal.SegmentName(w.Dir(), i))
+		s, err := wlog.OpenReadSegment(wlog.SegmentName(w.Dir(), i))
 		if err != nil {
 			return err
 		}
 
-		sr := wal.NewSegmentBufReader(s)
-		err = r.replayWAL(wal.NewReader(sr))
+		sr := wlog.NewSegmentBufReader(s)
+		err = r.replayWAL(wlog.NewReader(sr))
 		if closeErr := sr.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
@@ -67,7 +67,7 @@ func (r walReplayer) Replay(dir string) error {
 	return nil
 }
 
-func (r walReplayer) replayWAL(reader *wal.Reader) error {
+func (r walReplayer) replayWAL(reader *wlog.Reader) error {
 	var dec record.Decoder
 
 	for reader.Next() {
@@ -125,6 +125,16 @@ func (c *walDataCollector) StoreSeries(series []record.RefSeries, _ int) {
 	defer c.mut.Unlock()
 
 	c.series = append(c.series, series...)
+}
+
+func (c *walDataCollector) AppendHistograms(histograms []record.RefHistogramSample) bool {
+	// TODO: support native histograms
+	return true
+}
+
+func (c *walDataCollector) AppendFloatHistograms(histograms []record.RefFloatHistogramSample) bool {
+	// TODO: support native histograms
+	return true
 }
 
 func (c *walDataCollector) UpdateSeriesSegment(series []record.RefSeries, index int) {}

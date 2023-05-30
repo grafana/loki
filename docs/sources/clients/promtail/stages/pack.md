@@ -1,7 +1,8 @@
 ---
 title: pack
+description: pack stage
 ---
-# `pack` stage
+# pack
 
 The `pack` stage is a transform stage which lets you embed extracted values and labels into the log line by packing the log line and labels inside a JSON object.
 
@@ -57,7 +58,7 @@ This would create a log line
 }
 ```
 
-**Loki 2.2 also includes a new [`unpack` parser]({{< relref "../../../logql/log_queries.md#unpack" >}}) to work with the pack stage.**
+**Loki 2.2 also includes a new [`unpack` parser]({{< relref "../../../query/log_queries/#unpack" >}}) to work with the pack stage.**
 
 For example:
 

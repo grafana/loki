@@ -19,7 +19,9 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/ingester/index"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -29,7 +31,6 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -53,6 +54,11 @@ var (
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
+	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki",
+		Name:      "ingester_memory_streams_labels_bytes",
+		Help:      "Total bytes of labels of the streams in memory.",
+	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -64,7 +70,7 @@ var (
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
 
-	streamsCountStats = usagestats.NewInt("ingester_streams_count")
+	streamsCountStats = analytics.NewInt("ingester_streams_count")
 )
 
 type instance struct {
@@ -223,7 +229,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
@@ -247,7 +253,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
 
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
@@ -279,6 +285,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	}
 
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
@@ -300,6 +307,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.addTailersToNewStream(s)
 
 	return s
@@ -308,7 +316,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 // getOrCreateStream returns the stream or creates it.
 // It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
 // otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
 		return i.createStream(pushReqStream, record)
 	}, nil)
@@ -322,6 +330,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
+		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
 	}
 }
@@ -339,27 +348,6 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 		return nil
 	}
 	return s.labels
-}
-
-func (i *instance) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) []*logproto.StreamRate {
-	rates := make([]*logproto.StreamRate, 0, i.streams.Len())
-
-	buf := make([]byte, 256)
-	_ = i.streams.ForEach(func(s *stream) (bool, error) {
-		var streamHashNoShard uint64
-		streamHashNoShard, buf = s.labels.HashWithoutLabels(buf, ShardLbName)
-		streamHash := s.labels.Hash()
-
-		rates = append(rates, &logproto.StreamRate{
-			StreamHash:        streamHash,
-			StreamHashNoShard: streamHashNoShard,
-			Rate:              i.streamRateCalculator.RateFor(streamHash),
-		})
-
-		return true, nil
-	})
-
-	return rates
 }
 
 func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
@@ -437,11 +425,14 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	if len(shards) == 1 {
 		shard = &shards[0]
 	}
-
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
 	err = i.forMatchingStreams(
 		ctx,
 		req.Start,
-		expr.Selector().Matchers(),
+		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
 			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
@@ -544,7 +535,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
-					key := stream.labels.Hash()
+					key := stream.labelHash
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
@@ -584,7 +575,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
 			s.chunkMtx.RLock()
-			res.Streams++
+			var hasChunkOverlap bool
 			for _, chk := range s.chunks {
 				// Consider chunks which overlap our time range
 				// and haven't been flushed.
@@ -593,11 +584,16 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
 				if !chk.flushed.Equal(zeroValueTime) && from.Before(chkThrough) && through.After(chkFrom) {
+					hasChunkOverlap = true
 					res.Chunks++
-					res.Entries += uint64(chk.chunk.Size())
-					res.Bytes += uint64(chk.chunk.UncompressedSize())
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					res.Entries += uint64(factor * float64(chk.chunk.Size()))
+					res.Bytes += uint64(factor * float64(chk.chunk.UncompressedSize()))
 				}
 
+			}
+			if hasChunkOverlap {
+				res.Streams++
 			}
 			s.chunkMtx.RUnlock()
 		}
@@ -772,12 +768,7 @@ func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, erro
 }
 
 func isDone(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
+	return ctx.Err() != nil
 }
 
 // QuerierQueryServer is the GRPC server stream we use to send batch of entries.
@@ -811,7 +802,10 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 		stats.Reset()
@@ -832,8 +826,10 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
-
-		if err := queryServer.Send(batch); err != nil {
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
 

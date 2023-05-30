@@ -76,7 +76,8 @@ type Endpoint struct {
 	// according to the corresponding EndpointSlice addressType field. Consumers
 	// must handle different types of addresses in the context of their own
 	// capabilities. This must contain at least one address but no more than
-	// 100.
+	// 100. These are all assumed to be fungible and clients may choose to only
+	// use the first element. Refer to: https://issue.k8s.io/106267
 	// +listType=set
 	Addresses []string `json:"addresses" protobuf:"bytes,1,rep,name=addresses"`
 	// conditions contains information about the current status of the endpoint.
@@ -108,8 +109,7 @@ type Endpoint struct {
 	// +optional
 	Topology map[string]string `json:"topology,omitempty" protobuf:"bytes,5,opt,name=topology"`
 	// nodeName represents the name of the Node hosting this endpoint. This can
-	// be used to determine endpoints local to a Node. This field can be enabled
-	// with the EndpointSliceNodeName feature gate.
+	// be used to determine endpoints local to a Node.
 	// +optional
 	NodeName *string `json:"nodeName,omitempty" protobuf:"bytes,6,opt,name=nodeName"`
 	// hints contains information associated with how an endpoint should be
@@ -132,15 +132,13 @@ type EndpointConditions struct {
 	// serving is identical to ready except that it is set regardless of the
 	// terminating state of endpoints. This condition should be set to true for
 	// a ready endpoint that is terminating. If nil, consumers should defer to
-	// the ready condition. This field can be enabled with the
-	// EndpointSliceTerminatingCondition feature gate.
+	// the ready condition.
 	// +optional
 	Serving *bool `json:"serving,omitempty" protobuf:"bytes,2,name=serving"`
 
 	// terminating indicates that this endpoint is terminating. A nil value
 	// indicates an unknown state. Consumers should interpret this unknown state
-	// to mean that the endpoint is not terminating. This field can be enabled
-	// with the EndpointSliceTerminatingCondition feature gate.
+	// to mean that the endpoint is not terminating.
 	// +optional
 	Terminating *bool `json:"terminating,omitempty" protobuf:"bytes,3,name=terminating"`
 }
@@ -181,7 +179,7 @@ type EndpointPort struct {
 	// The application protocol for this port.
 	// This field follows standard Kubernetes label syntax.
 	// Un-prefixed names are reserved for IANA standard service names (as per
-	// RFC-6335 and http://www.iana.org/assignments/service-names).
+	// RFC-6335 and https://www.iana.org/assignments/service-names).
 	// Non-standard protocols should use prefixed names such as
 	// mycompany.com/my-custom-protocol.
 	// +optional

@@ -95,7 +95,12 @@ func (t *Target) processLoop(ctx context.Context) {
 		Timestamps: true,
 		Since:      strconv.FormatInt(t.since, 10),
 	}
-
+	inspectInfo, err := t.client.ContainerInspect(ctx, t.containerName)
+	if err != nil {
+		level.Error(t.logger).Log("msg", "could not inspect container info", "container", t.containerName, "err", err)
+		t.err = err
+		return
+	}
 	logs, err := t.client.ContainerLogs(ctx, t.containerName, opts)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "could not fetch logs for container", "container", t.containerName, "err", err)
@@ -114,8 +119,13 @@ func (t *Target) processLoop(ctx context.Context) {
 			wstderr.Close()
 			t.Stop()
 		}()
-
-		written, err := stdcopy.StdCopy(wstdout, wstderr, logs)
+		var written int64
+		var err error
+		if inspectInfo.Config.Tty {
+			written, err = io.Copy(wstdout, logs)
+		} else {
+			written, err = stdcopy.StdCopy(wstdout, wstderr, logs)
+		}
 		if err != nil {
 			level.Warn(t.logger).Log("msg", "could not transfer logs", "written", written, "container", t.containerName, "err", err)
 		} else {
@@ -193,7 +203,7 @@ func (t *Target) process(r io.Reader, logStream string) {
 			lb.Set(string(k), string(v))
 		}
 		lb.Set(dockerLabelLogStream, logStream)
-		processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
+		processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
 
 		filtered := make(model.LabelSet)
 		for _, lbl := range processed {
@@ -251,9 +261,13 @@ func (t *Target) Labels() model.LabelSet {
 
 // Details returns target-specific details.
 func (t *Target) Details() interface{} {
+	var errMsg string
+	if t.err != nil {
+		errMsg = t.err.Error()
+	}
 	return map[string]string{
 		"id":       t.containerName,
-		"error":    t.err.Error(),
+		"error":    errMsg,
 		"position": t.positions.GetString(positions.CursorKey(t.containerName)),
 		"running":  strconv.FormatBool(t.running.Load()),
 	}

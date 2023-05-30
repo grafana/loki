@@ -1,11 +1,10 @@
 {{- if .Values.ingress.enabled }}
-{{- $ingressApiIsStable := eq (include "loki.ingress.isStable" .) "true" -}}
 {{- $ingressSupportsIngressClassName := eq (include "loki.ingress.supportsIngressClassName" .) "true" -}}
-{{- $ingressSupportsPathType := eq (include "loki.ingress.supportsPathType" .) "true" -}}
 apiVersion: {{ include "loki.ingress.apiVersion" . }}
 kind: Ingress
 metadata:
   name: {{ include "loki.fullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
@@ -33,23 +32,6 @@ spec:
     - host: {{ . | quote }}
       http:
         paths:
-          {{- range $svcName, $paths := $.Values.ingress.paths }}
-            {{- range $paths }}
-          - path: {{ . }}
-            {{- if $ingressSupportsPathType }}
-            pathType: Prefix
-            {{- end }}
-            backend:
-              {{- if $ingressApiIsStable }}
-              service:
-                name: {{ include "loki.fullname" $ }}-{{ $svcName }}
-                port:
-                  number: 3100
-              {{- else }}
-              serviceName: {{ include "loki.fullname" $ }}-{{ $svcName }}
-              servicePort: 3100
-              {{- end }}
-              {{- end }}
-           {{- end }}
+          {{- include "loki.ingress.servicePaths" $ | indent 10}}
     {{- end }}
 {{- end }}

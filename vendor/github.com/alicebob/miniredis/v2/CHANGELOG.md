@@ -1,6 +1,45 @@
 ## Changelog
 
 
+### v2.30.2
+
+- support MINID in XADD  (thanks @nathan-cormier)
+- support BLMOVE (thanks @sevein)
+- fix COMMAND (thanks @pje)
+- fix 'XREAD ... $' on a non-existing stream
+
+
+### v2.30.1
+
+- support SET NX GET special case
+
+
+### v2.30.0
+
+- implement redis 7.0.x (from 6.X). Main changes:
+   - test against 7.0.7
+   - update error messages
+   - support nx|xx|gt|lt options in [P]EXPIRE[AT]
+   - update how deleted items are processed in pending queues in streams
+
+
+### v2.23.1
+
+- resolve $ to latest ID in XREAD (thanks @josh-hook)
+- handle disconnect in blocking functions (thanks @jgirtakovskis)
+- fix type conversion bug in redisToLua (thanks Sandy Harvie)
+- BRPOP{LPUSH} timeout can be float since 6.0
+
+
+### v2.23.0
+
+- basic INFO support (thanks @kirill-a-belov)
+- support COUNT in SSCAN (thanks @Abdi-dd)
+- test and support Go 1.19
+- support LPOS (thanks @ianstarz)
+- support XPENDING, XGROUP {CREATECONSUMER,DESTROY,DELCONSUMER}, XINFO {CONSUMERS,GROUPS}, XCLAIM (thanks @sandyharvie)
+
+
 ### v2.22.0
 
 - set miniredis.DumpMaxLineLen to get more Dump() info (thanks @afjoseph)

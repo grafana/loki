@@ -1,4 +1,4 @@
-{ pkgs, version, imageTag, gitBranch }:
+{ pkgs, version, imageTag }:
 pkgs.stdenv.mkDerivation {
   inherit version;
 
@@ -29,7 +29,10 @@ pkgs.stdenv.mkDerivation {
       --replace "SHELL = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail" \
       --replace "IMAGE_TAG := \$(shell ./tools/image-tag)" "IMAGE_TAG := ${imageTag}" \
       --replace "GIT_REVISION := \$(shell git rev-parse --short HEAD)" "GIT_REVISION := ${version}" \
-      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := ${gitBranch}" \
+      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := nix" \
+
+    substituteInPlace clients/cmd/fluentd/Makefile \
+      --replace "SHELL    = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail"
   '';
 
   buildPhase = ''

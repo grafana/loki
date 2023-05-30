@@ -30,7 +30,7 @@ func (m *Miniredis) cmdMulti(c *server.Peer, cmd string, args []string) {
 
 	ctx := getCtx(c)
 	if ctx.nested {
-		c.WriteError(msgNotFromScripts)
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 	if inTx(ctx) {
@@ -59,7 +59,7 @@ func (m *Miniredis) cmdExec(c *server.Peer, cmd string, args []string) {
 
 	ctx := getCtx(c)
 	if ctx.nested {
-		c.WriteError(msgNotFromScripts)
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 	if !inTx(ctx) {
@@ -137,7 +137,7 @@ func (m *Miniredis) cmdWatch(c *server.Peer, cmd string, args []string) {
 
 	ctx := getCtx(c)
 	if ctx.nested {
-		c.WriteError(msgNotFromScripts)
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 	if inTx(ctx) {

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ type streamKey struct {
 	entries         []StreamEntry
 	groups          map[string]*streamGroup
 	lastAllocatedID string
+	mu              sync.Mutex
 }
 
 // a StreamEntry is an entry in a stream. The ID is always of the form
@@ -31,10 +33,11 @@ type streamGroup struct {
 	stream    *streamKey
 	lastID    string
 	pending   []pendingEntry
-	consumers map[string]consumer
+	consumers map[string]*consumer
 }
 
 type consumer struct {
+	numPendingEntries int
 	// TODO: "last seen" timestamp
 }
 
@@ -51,6 +54,7 @@ func newStreamKey() *streamKey {
 	}
 }
 
+// generateID doesn't lock the mutex
 func (s *streamKey) generateID(now time.Time) string {
 	ts := uint64(now.UnixNano()) / 1_000_000
 
@@ -60,7 +64,7 @@ func (s *streamKey) generateID(now time.Time) string {
 		next = fmt.Sprintf("%d-%d", last[0], last[1]+1)
 	}
 
-	lastID := s.lastID()
+	lastID := s.lastIDUnlocked()
 	if streamCmp(lastID, next) >= 0 {
 		last, _ := parseStreamID(lastID)
 		next = fmt.Sprintf("%d-%d", last[0], last[1]+1)
@@ -70,7 +74,16 @@ func (s *streamKey) generateID(now time.Time) string {
 	return next
 }
 
+// lastID locks the mutex
 func (s *streamKey) lastID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.lastIDUnlocked()
+}
+
+// lastID doesn't lock the mutex
+func (s *streamKey) lastIDUnlocked() string {
 	if len(s.entries) == 0 {
 		return "0-0"
 	}
@@ -79,6 +92,9 @@ func (s *streamKey) lastID() string {
 }
 
 func (s *streamKey) copy() *streamKey {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	cpy := &streamKey{
 		entries: s.entries,
 	}
@@ -193,17 +209,20 @@ func reversedStreamEntries(o []StreamEntry) []StreamEntry {
 }
 
 func (s *streamKey) createGroup(group, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if _, ok := s.groups[group]; ok {
 		return errors.New("BUSYGROUP Consumer Group name already exists")
 	}
 
 	if id == "$" {
-		id = s.lastID()
+		id = s.lastIDUnlocked()
 	}
 	s.groups[group] = &streamGroup{
 		stream:    s,
 		lastID:    id,
-		consumers: map[string]consumer{},
+		consumers: map[string]*consumer{},
 	}
 	return nil
 }
@@ -212,6 +231,9 @@ func (s *streamKey) createGroup(group, id string) error {
 // If id is empty or "*" the ID will be generated automatically.
 // `values` should have an even length.
 func (s *streamKey) add(entryID string, values []string, now time.Time) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if entryID == "" || entryID == "*" {
 		entryID = s.generateID(now)
 	}
@@ -223,7 +245,7 @@ func (s *streamKey) add(entryID string, values []string, now time.Time) (string,
 	if entryID == "0-0" {
 		return "", errors.New(msgStreamIDZero)
 	}
-	if streamCmp(s.lastID(), entryID) != -1 {
+	if streamCmp(s.lastIDUnlocked(), entryID) != -1 {
 		return "", errors.New(msgStreamIDTooSmall)
 	}
 
@@ -235,13 +257,36 @@ func (s *streamKey) add(entryID string, values []string, now time.Time) (string,
 }
 
 func (s *streamKey) trim(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if len(s.entries) > n {
 		s.entries = s.entries[len(s.entries)-n:]
 	}
 }
 
+// trimBefore deletes entries with an id less than the provided id
+// and returns the number of entries deleted
+func (s *streamKey) trimBefore(id string) int {
+	s.mu.Lock()
+	var delete []string
+	for _, entry := range s.entries {
+		if entry.ID < id {
+			delete = append(delete, entry.ID)
+		} else {
+			break
+		}
+	}
+	s.mu.Unlock()
+	s.delete(delete)
+	return len(delete)
+}
+
 // all entries after "id"
 func (s *streamKey) after(id string) []StreamEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	pos := sort.Search(len(s.entries), func(i int) bool {
 		return streamCmp(id, s.entries[i].ID) < 0
 	})
@@ -251,6 +296,9 @@ func (s *streamKey) after(id string) []StreamEntry {
 // get a stream entry by ID
 // Also returns the position in the entries slice, if found.
 func (s *streamKey) get(id string) (int, *StreamEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	pos := sort.Search(len(s.entries), func(i int) bool {
 		return streamCmp(id, s.entries[i].ID) <= 0
 	})
@@ -279,16 +327,39 @@ func (g *streamGroup) readGroup(
 		}
 
 		if !noack {
+			shouldAppend := len(g.pending) == 0
 			for _, msg := range msgs {
-				g.pending = append(g.pending, pendingEntry{
+				if !shouldAppend {
+					shouldAppend = streamCmp(msg.ID, g.pending[len(g.pending)-1].id) == 1
+				}
+
+				var entry *pendingEntry
+				if shouldAppend {
+					g.pending = append(g.pending, pendingEntry{})
+					entry = &g.pending[len(g.pending)-1]
+				} else {
+					var pos int
+					pos, entry = g.searchPending(msg.ID)
+					if entry == nil {
+						g.pending = append(g.pending[:pos+1], g.pending[pos:]...)
+						entry = &g.pending[pos]
+					} else {
+						g.consumers[entry.consumer].numPendingEntries--
+					}
+				}
+
+				*entry = pendingEntry{
 					id:            msg.ID,
 					consumer:      consumerID,
 					deliveryCount: 1,
 					lastDelivery:  now,
-				})
+				}
 			}
 		}
-		g.consumers[consumerID] = consumer{}
+		if _, ok := g.consumers[consumerID]; !ok {
+			g.consumers[consumerID] = &consumer{}
+		}
+		g.consumers[consumerID].numPendingEntries += len(msgs)
 		g.lastID = msgs[len(msgs)-1].ID
 		return msgs
 	}
@@ -314,6 +385,16 @@ func (g *streamGroup) readGroup(
 	return res
 }
 
+func (g *streamGroup) searchPending(id string) (int, *pendingEntry) {
+	pos := sort.Search(len(g.pending), func(i int) bool {
+		return streamCmp(id, g.pending[i].id) <= 0
+	})
+	if pos >= len(g.pending) || g.pending[pos].id != id {
+		return pos, nil
+	}
+	return pos, &g.pending[pos]
+}
+
 func (g *streamGroup) ack(ids []string) (int, error) {
 	count := 0
 	for _, id := range ids {
@@ -321,14 +402,19 @@ func (g *streamGroup) ack(ids []string) (int, error) {
 			return 0, errors.New(msgInvalidStreamID)
 		}
 
-		pos := sort.Search(len(g.pending), func(i int) bool {
-			return streamCmp(id, g.pending[i].id) <= 0
-		})
-		if len(g.pending) <= pos || g.pending[pos].id != id {
+		pos, entry := g.searchPending(id)
+		if entry == nil {
 			continue
 		}
 
+		consumer := g.consumers[entry.consumer]
+		consumer.numPendingEntries--
+
 		g.pending = append(g.pending[:pos], g.pending[pos+1:]...)
+		// don't count deleted entries
+		if _, e := g.stream.get(id); e == nil {
+			continue
+		}
 		count++
 	}
 	return count, nil
@@ -361,7 +447,7 @@ func (g *streamGroup) pendingAfter(id string) []pendingEntry {
 
 func (g *streamGroup) pendingCount(consumer string) int {
 	n := 0
-	for _, p := range g.pending {
+	for _, p := range g.activePending() {
 		if p.consumer == consumer {
 			n++
 		}
@@ -369,10 +455,25 @@ func (g *streamGroup) pendingCount(consumer string) int {
 	return n
 }
 
+// pending entries without the entries deleted from the group
+func (g *streamGroup) activePending() []pendingEntry {
+	var pe []pendingEntry
+	for _, p := range g.pending {
+		// drop deleted ones
+		if _, e := g.stream.get(p.id); e == nil {
+			continue
+		}
+		p := p
+		pe = append(pe, p)
+	}
+	return pe
+}
+
 func (g *streamGroup) copy() *streamGroup {
-	cns := map[string]consumer{}
+	cns := map[string]*consumer{}
 	for k, v := range g.consumers {
-		cns[k] = v
+		c := *v
+		cns[k] = &c
 	}
 	return &streamGroup{
 		// don't copy stream

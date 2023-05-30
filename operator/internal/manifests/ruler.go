@@ -8,10 +8,9 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -35,27 +34,57 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	objs := []client.Object{}
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&statefulSet.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
 
+	objs := []client.Object{}
 	if opts.Stack.Tenants != nil {
-		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode, opts.Name); err != nil {
+		if err := configureRulerStatefulSetForMode(statefulSet, opts.Stack.Tenants.Mode); err != nil {
 			return nil, err
 		}
 
 		objs = configureRulerObjsForMode(opts)
 	}
 
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	return append(objs,
 		statefulSet,
 		NewRulerGRPCService(opts),
 		NewRulerHTTPService(opts),
+		NewRulerPodDisruptionBudget(opts),
 	), nil
 }
 
-// NewRulerStatefulSet creates a statefulset object for a ruler
+// NewRulerStatefulSet creates a StatefulSet object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
+	var volumeProjections []corev1.VolumeProjection
+
+	for _, name := range opts.RulesConfigMapNames {
+		volumeProjections = append(volumeProjections, corev1.VolumeProjection{
+			ConfigMap: &corev1.ConfigMapProjection{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: name,
+				},
+				Items: ruleVolumeItems(name, opts.Tenants.Configs),
+			},
+		})
+	}
+
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelRulerComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ruler),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -71,12 +100,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			{
 				Name: rulesStorageVolumeName,
 				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: RulesConfigMapName(opts.Name),
-						},
-						Items: ruleVolumeItems(opts.Tenants.Configs),
+					Projected: &corev1.ProjectedVolumeSource{
+						Sources: volumeProjections,
 					},
 				},
 			},
@@ -93,6 +118,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=ruler",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -120,11 +146,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						MountPath: config.LokiConfigMountDir,
 					},
 					{
-						Name:      rulesStorageVolumeName,
-						ReadOnly:  false,
-						MountPath: rulesStorageDirectory,
-					},
-					{
 						Name:      walVolumeName,
 						ReadOnly:  false,
 						MountPath: walDirectory,
@@ -133,6 +154,11 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						Name:      storageVolumeName,
 						ReadOnly:  false,
 						MountPath: dataDirectory,
+					},
+					{
+						Name:      rulesStorageVolumeName,
+						ReadOnly:  false,
+						MountPath: rulesStorageDirectory,
 					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
@@ -144,20 +170,10 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
-	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
-		podSpec.Containers[0].Args = append(podSpec.Containers[0].Args,
-			fmt.Sprintf("-server.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-server.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-		)
-	}
-
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ruler.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ruler.NodeSelector
 	}
-
-	l := ComponentLabels(LabelRulerComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -173,8 +189,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Ruler.Replicas),
+			RevisionHistoryLimit: pointer.Int32(10),
+			Replicas:             pointer.Int32(opts.Stack.Template.Ruler.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -202,7 +218,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.Ruler.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -221,50 +237,13 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
 			},
 		},
 	}
-}
-
-func configureRulerStatefulSetForMode(
-	ss *appsv1.StatefulSet, mode lokiv1.ModeType,
-	stackName string,
-) error {
-	switch mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		caBundleName := signingCABundleName(stackName)
-		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
-		return openshift.ConfigureRulerStatefulSet(
-			ss,
-			BearerTokenFile,
-			caBundleName,
-			caBundleDir,
-			caFile,
-			monitorServerName,
-			rulerContainerName,
-		)
-	}
-
-	return nil
-}
-
-func configureRulerObjsForMode(opts Options) []client.Object {
-	openShiftObjs := []client.Object{}
-
-	switch opts.Stack.Tenants.Mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		// nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
-	}
-
-	return openShiftObjs
 }
 
 // NewRulerGRPCService creates a k8s service for the ruler GRPC endpoint
@@ -278,9 +257,8 @@ func NewRulerGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -308,9 +286,8 @@ func NewRulerHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -332,75 +309,84 @@ func configureRulerHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Options)
 }
 
 func configureRulerGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
-	caBundleName := signingCABundleName(opts.Name)
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: caBundleName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: caBundleName,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      caBundleName,
-				ReadOnly:  false,
-				MountPath: caBundleDir,
-			},
-		},
-		Args: []string{
-			// Enable GRPC over TLS for ruler client
-			"-ruler.client.tls-enabled=true",
-			fmt.Sprintf("-ruler.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ruler.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ruler.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ruler.client.tls-server-name=%s", fqdn(serviceNameRulerGRPC(opts.Name), opts.Namespace)),
-			// Enable GRPC over TLS for ingester client
-			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-ingester.client.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(opts.Name), opts.Namespace)),
-			// Enable GRPC over TLS for boltb-shipper index-gateway client
-			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites=%s", opts.TLSCipherSuites()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-min-version=%s", opts.TLSProfile.MinTLSVersion),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(opts.Name), opts.Namespace)),
-		},
-	}
-
-	if err := mergo.Merge(&sts.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
-	}
-
-	if err := mergo.Merge(&sts.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
 	serviceName := serviceNameRulerGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 
-func ruleVolumeItems(tenants map[string]TenantConfig) []corev1.KeyToPath {
+func configureRulerStatefulSetForMode(ss *appsv1.StatefulSet, mode lokiv1.ModeType) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		bundleName := alertmanagerSigningCABundleName(ss.Name)
+		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
+		return openshift.ConfigureRulerStatefulSet(
+			ss,
+			bundleName,
+			BearerTokenFile,
+			alertmanagerUpstreamCADir(),
+			alertmanagerUpstreamCAPath(),
+			monitorServerName,
+			rulerContainerName,
+		)
+	}
+
+	return nil
+}
+
+func configureRulerObjsForMode(opts Options) []client.Object {
+	openShiftObjs := []client.Object{}
+
+	switch opts.Stack.Tenants.Mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// nothing to configure
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
+	}
+
+	return openShiftObjs
+}
+
+func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []corev1.KeyToPath {
 	var items []corev1.KeyToPath
 
-	for id, tenant := range tenants {
+	for tenantID, tenant := range tenants {
 		for _, rule := range tenant.RuleFiles {
-			items = append(items, corev1.KeyToPath{
-				Key:  rule,
-				Path: fmt.Sprintf("%s/%s", id, rule),
-			})
+			shardName := extractRuleNameComponents(rule).cmName
+			if shardName == configMapName {
+				filename := extractRuleNameComponents(rule).filename
+				items = append(items, corev1.KeyToPath{
+					Key:  filename,
+					Path: fmt.Sprintf("%s/%s", tenantID, filename),
+				})
+			}
 		}
 	}
 
 	return items
+}
+
+// NewRulerPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack ruler pods.
+func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+
+	ma := intstr.FromInt(1)
+
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      RulerName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
+		},
+	}
 }

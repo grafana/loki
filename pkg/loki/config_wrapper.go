@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,8 +39,9 @@ type ConfigWrapper struct {
 }
 
 func PrintVersion(args []string) bool {
+	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
 	for _, a := range args {
-		if a == "-"+versionFlag {
+		if pattern.MatchString(a) {
 			return true
 		}
 	}
@@ -164,9 +166,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
-		if r.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
-			r.Common.EmbeddedCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
-		}
+		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -175,9 +175,6 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		if r.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() {
-			r.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		}
 	}
 }
 
@@ -305,20 +302,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
-
-	// EmbeddedCache distributed ring.
-	if r.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed() &&
-		(mergeWithExisting || reflect.DeepEqual(r.Common.EmbeddedCacheConfig.Ring, defaults.Common.EmbeddedCacheConfig.Ring)) {
-		r.Common.EmbeddedCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.Common.EmbeddedCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.Common.EmbeddedCacheConfig.Ring.InstancePort = rc.InstancePort
-		r.Common.EmbeddedCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
-		r.Common.EmbeddedCacheConfig.Ring.InstanceID = rc.InstanceID
-		r.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Common.EmbeddedCacheConfig.Ring.InstanceZone = rc.InstanceZone
-		r.Common.EmbeddedCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.Common.EmbeddedCacheConfig.Ring.KVStore = rc.KVStore
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -349,11 +332,6 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
 
-	f, err = tokensFile(cfg, "groupcache.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.Common.EmbeddedCacheConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -431,10 +409,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
-
-	if reflect.DeepEqual(cfg.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames) {
-		cfg.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.EmbeddedCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
-	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -448,7 +422,6 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.Common.EmbeddedCacheConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -472,7 +445,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure
 			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
-			r.CompactorConfig.SharedStoreType = config.StorageTypeAzure
 		}
 	}
 
@@ -487,7 +459,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
 			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
-			r.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		}
 	}
 
@@ -498,7 +469,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "gcs"
 			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS
 			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
-			r.CompactorConfig.SharedStoreType = config.StorageTypeGCS
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -510,7 +480,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
 			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
-			r.CompactorConfig.SharedStoreType = config.StorageTypeS3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -521,7 +490,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "bos"
 			r.Ruler.StoreConfig.BOS = r.Common.Storage.BOS
 			r.StorageConfig.BOSStorageConfig = r.Common.Storage.BOS
-			r.CompactorConfig.SharedStoreType = config.StorageTypeBOS
 		}
 	}
 
@@ -532,7 +500,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "swift"
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
 			r.StorageConfig.Swift = r.Common.Storage.Swift
-			r.CompactorConfig.SharedStoreType = config.StorageTypeSwift
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -549,13 +516,8 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
-	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
-	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = period.ObjectType
+	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
+		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -572,13 +534,8 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
-	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
-	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = period.ObjectType
+	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
+		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {

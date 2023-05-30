@@ -85,6 +85,14 @@ type Version struct {
 	StorageClass string
 	VersionID    string `xml:"VersionId"`
 
+	// x-amz-meta-* headers stripped "x-amz-meta-" prefix containing the first value.
+	// Only returned by MinIO servers.
+	UserMetadata StringMap `json:"userMetadata,omitempty"`
+
+	// x-amz-tagging values in their k/v values.
+	// Only returned by MinIO servers.
+	UserTags URLMap `json:"userTags,omitempty" xml:"UserTags"`
+
 	isDeleteMarker bool
 }
 
@@ -110,7 +118,7 @@ type ListVersionsResult struct {
 // UnmarshalXML is a custom unmarshal code for the response of ListObjectVersions, the custom
 // code will unmarshal <Version> and <DeleteMarker> tags and save them in Versions field to
 // preserve the lexical order of the listing.
-func (l *ListVersionsResult) UnmarshalXML(d *xml.Decoder, start xml.StartElement) (err error) {
+func (l *ListVersionsResult) UnmarshalXML(d *xml.Decoder, _ xml.StartElement) (err error) {
 	for {
 		// Read tokens from the XML document in a stream.
 		t, err := d.Token()
@@ -261,6 +269,12 @@ type ObjectPart struct {
 
 	// Size of the uploaded part data.
 	Size int64
+
+	// Checksum values of each part.
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // ListObjectPartsResult container for ListObjectParts response.
@@ -299,16 +313,26 @@ type completeMultipartUploadResult struct {
 	Bucket   string
 	Key      string
 	ETag     string
+
+	// Checksum values, hash of hashes of parts.
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // CompletePart sub container lists individual part numbers and their
 // md5sum, part of completeMultipartUpload.
 type CompletePart struct {
-	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ Part" json:"-"`
-
 	// Part number identifies the part.
 	PartNumber int
 	ETag       string
+
+	// Checksum values
+	ChecksumCRC32  string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumSHA1   string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256 string `xml:"ChecksumSHA256,omitempty"`
 }
 
 // completeMultipartUpload container for completing multipart upload.

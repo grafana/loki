@@ -2,12 +2,14 @@ package status
 
 import (
 	"context"
+	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -15,56 +17,66 @@ import (
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
-func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	if err := SetComponentsStatus(ctx, k, req); err != nil {
-		return err
-	}
-
-	var s lokiv1.LokiStack
-	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
+func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time) error {
+	var stack lokiv1.LokiStack
+	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	cs := s.Status.Components
-
-	// Check for failed pods first
-	failed := len(cs.Compactor[corev1.PodFailed]) +
-		len(cs.Distributor[corev1.PodFailed]) +
-		len(cs.Ingester[corev1.PodFailed]) +
-		len(cs.Querier[corev1.PodFailed]) +
-		len(cs.QueryFrontend[corev1.PodFailed]) +
-		len(cs.Gateway[corev1.PodFailed]) +
-		len(cs.IndexGateway[corev1.PodFailed]) +
-		len(cs.Ruler[corev1.PodFailed])
-
-	unknown := len(cs.Compactor[corev1.PodUnknown]) +
-		len(cs.Distributor[corev1.PodUnknown]) +
-		len(cs.Ingester[corev1.PodUnknown]) +
-		len(cs.Querier[corev1.PodUnknown]) +
-		len(cs.QueryFrontend[corev1.PodUnknown]) +
-		len(cs.Gateway[corev1.PodUnknown]) +
-		len(cs.IndexGateway[corev1.PodUnknown]) +
-		len(cs.Ruler[corev1.PodUnknown])
-
-	if failed != 0 || unknown != 0 {
-		return SetFailedCondition(ctx, k, req)
+	cs, err := generateComponentStatus(ctx, k, &stack)
+	if err != nil {
+		return err
 	}
 
-	// Check for pending pods
-	pending := len(cs.Compactor[corev1.PodPending]) +
-		len(cs.Distributor[corev1.PodPending]) +
-		len(cs.Ingester[corev1.PodPending]) +
-		len(cs.Querier[corev1.PodPending]) +
-		len(cs.QueryFrontend[corev1.PodPending]) +
-		len(cs.Gateway[corev1.PodPending]) +
-		len(cs.IndexGateway[corev1.PodPending]) +
-		len(cs.Ruler[corev1.PodPending])
+	condition := generateCondition(cs)
 
-	if pending != 0 {
-		return SetPendingCondition(ctx, k, req)
+	condition.LastTransitionTime = metav1.NewTime(now)
+	condition.Status = metav1.ConditionTrue
+
+	statusUpdater := func(stack *lokiv1.LokiStack) {
+		stack.Status.Components = *cs
+
+		index := -1
+		for i := range stack.Status.Conditions {
+			// Reset all other conditions first
+			stack.Status.Conditions[i].Status = metav1.ConditionFalse
+			stack.Status.Conditions[i].LastTransitionTime = metav1.NewTime(now)
+
+			// Locate existing pending condition if any
+			if stack.Status.Conditions[i].Type == condition.Type {
+				index = i
+			}
+		}
+
+		if index == -1 {
+			stack.Status.Conditions = append(stack.Status.Conditions, condition)
+		} else {
+			stack.Status.Conditions[index] = condition
+		}
 	}
-	return SetReadyCondition(ctx, k, req)
+
+	statusUpdater(&stack)
+	err = k.Status().Update(ctx, &stack)
+	switch {
+	case err == nil:
+		return nil
+	case apierrors.IsConflict(err):
+		// break into retry-logic below on conflict
+		break
+	case err != nil:
+		// return non-conflict errors
+		return err
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
+			return err
+		}
+
+		statusUpdater(&stack)
+		return k.Status().Update(ctx, &stack)
+	})
 }

@@ -2,6 +2,7 @@ package hclog
 
 import (
 	"sync"
+	"time"
 )
 
 var (
@@ -14,17 +15,18 @@ var (
 	DefaultOptions = &LoggerOptions{
 		Level:  DefaultLevel,
 		Output: DefaultOutput,
+		TimeFn: time.Now,
 	}
 )
 
 // Default returns a globally held logger. This can be a good starting
-// place, and then you can use .With() and .Name() to create sub-loggers
+// place, and then you can use .With() and .Named() to create sub-loggers
 // to be used in more specific contexts.
 // The value of the Default logger can be set via SetDefault() or by
 // changing the options in DefaultOptions.
 //
 // This method is goroutine safe, returning a global from memory, but
-// cause should be used if SetDefault() is called it random times
+// care should be used if SetDefault() is called it random times
 // in the program as that may result in race conditions and an unexpected
 // Logger being returned.
 func Default() Logger {

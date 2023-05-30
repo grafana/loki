@@ -154,10 +154,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
     $.panel(title) +
     $.queryPanel([
       'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
+      'min(kube_pod_container_resource_requests{%s, %s, resource="cpu"} > 0)' % [$.namespaceMatcher(), matcher],
       'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s})' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
-    ], ['{{pod}}', 'limit']) +
+    ], ['{{pod}}', 'request', 'limit']) +
     {
       seriesOverrides: [
+        {
+          alias: 'request',
+          color: '#FFC000',
+          fill: 0,
+        },
         {
           alias: 'limit',
           color: '#E02F44',
@@ -167,7 +173,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
   containerCPUUsagePanel(title, containerName)::
-    self.CPUUsagePanel(title, 'container="%s"' % containerName),
+    self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
 
   memoryWorkingSetPanel(title, matcher)::
     $.panel(title) +
@@ -175,10 +181,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
       // We use "max" instead of "sum" otherwise during a rolling update of a statefulset we will end up
       // summing the memory of the old pod (whose metric will be stale for 5m) to the new pod.
       'max by(pod) (container_memory_working_set_bytes{%s, %s})' % [$.namespaceMatcher(), matcher],
+      'min(kube_pod_container_resource_requests{%s, %s, resource="memory"} > 0)' % [$.namespaceMatcher(), matcher],
       'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
-    ], ['{{pod}}', 'limit']) +
+    ], ['{{pod}}', 'request', 'limit']) +
     {
       seriesOverrides: [
+        {
+          alias: 'request',
+          color: '#FFC000',
+          fill: 0,
+        },
         {
           alias: 'limit',
           color: '#E02F44',
@@ -189,7 +201,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       tooltip: { sort: 2 },  // Sort descending.
     },
   containerMemoryWorkingSetPanel(title, containerName)::
-    self.memoryWorkingSetPanel(title, 'container="%s"' % containerName),
+    self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
   goHeapInUsePanel(title, jobName)::
     $.panel(title) +

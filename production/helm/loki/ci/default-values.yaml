@@ -2,7 +2,17 @@
 loki:
   commonConfig:
     replication_factor: 1
+  image:
+    tag: "main-5e53303"
 read:
   replicas: 1
 write:
   replicas: 1
+backend:
+  replicas: 1
+monitoring:
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+test:
+  prometheusAddress: "http://prometheus-kube-prometheus-prometheus.prometheus.svc.cluster.local.:9090"

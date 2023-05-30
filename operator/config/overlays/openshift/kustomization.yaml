@@ -40,7 +40,6 @@ patchesStrategicMerge:
 - manager_run_flags_patch.yaml
 - manager_webhook_patch.yaml
 - prometheus_service_monitor_patch.yaml
-- webhook_service_annotations_patch.yaml
 
 images:
 - name: controller

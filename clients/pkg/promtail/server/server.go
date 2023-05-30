@@ -18,6 +18,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
 	serverww "github.com/weaveworks/common/server"
 
@@ -54,6 +56,7 @@ type Config struct {
 	ExternalURL       string `yaml:"external_url"`
 	HealthCheckTarget *bool  `yaml:"health_check_target"`
 	Disable           bool   `yaml:"disable"`
+	ProfilingEnabled  bool   `yaml:"profiling_enabled"`
 	Reload            bool   `yaml:"enable_runtime_reload"`
 }
 
@@ -64,6 +67,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 
 	f.BoolVar(&cfg.Disable, prefix+"server.disable", false, "Disable the http and grpc server.")
+	f.BoolVar(&cfg.ProfilingEnabled, prefix+"server.profiling_enabled", false, "Enable the /debug/fgprof and /debug/pprof endpoints for profiling.")
 	f.BoolVar(&cfg.Reload, prefix+"server.enable-runtime-reload", false, "Enable reload via HTTP request.")
 }
 
@@ -77,6 +81,14 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	if cfg.Disable {
 		return newNoopServer(log), nil
 	}
+
+	// Don't let serverww.New() add /metrics and /debug/pprof routes when
+	// cfg.Debug is false. We'll add the former bellow if
+	// cfg.RegisterInstrumentation was true, and we'll add the latter only
+	// if cfg.Debug is true.
+	registerMetrics := cfg.RegisterInstrumentation && !cfg.ProfilingEnabled
+	cfg.RegisterInstrumentation = cfg.ProfilingEnabled
+
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err
@@ -103,16 +115,26 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 		promtailCfg:       promtailCfg,
 	}
 
+	// Register the /metrics route if cfg.RegisterInstrumentation was true
+	// initially.
+	if registerMetrics {
+		wws.HTTP.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+			EnableOpenMetrics: true,
+		}))
+	}
+
 	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
 	serv.HTTP.PathPrefix("/static/").Handler(http.StripPrefix(externalURL.Path, http.FileServer(ui.Assets)))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	serv.HTTP.Path("/config").Handler(http.HandlerFunc(serv.config))
+	if cfg.ProfilingEnabled {
+		serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
+	}
 	if cfg.Reload {
 		serv.HTTP.Path("/reload").Handler(http.HandlerFunc(serv.reload))
 	}
-	serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 	return serv, nil
 }
 

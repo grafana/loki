@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.24.2
+    - 0.28.3
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.24.2
+    - 0.28.3
     username:
       from_secret: docker_username
   when:
@@ -46,6 +46,46 @@ workspace:
   path: loki
 ---
 kind: pipeline
+name: helm-test-image
+steps:
+- image: plugins/docker
+  name: test-image
+  settings:
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
+    dry_run: true
+    repo: grafana/loki-helm-test
+  when:
+    event:
+    - pull_request
+    paths:
+    - production/helm/loki/src/helm-test/**
+- image: plugins/docker
+  name: push-image
+  settings:
+    dockerfile: production/helm/loki/src/helm-test/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-helm-test
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - production/helm/loki/src/helm-test/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: check
 steps:
 - commands:
@@ -53,51 +93,63 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: check-generated-files
 - commands:
   - cd ..
-  - git clone $CI_REPO_REMOTE loki-main
+  - 'echo "cloning "$DRONE_TARGET_BRANCH '
+  - git clone -b $DRONE_TARGET_BRANCH $CI_REPO_REMOTE loki-target-branch
   - cd -
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
-  name: clone-main
+  image: grafana/loki-build-image:0.28.3
+  name: clone-target-branch
+  when:
+    event:
+    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
-  - clone
-  - clone-main
+  - clone-target-branch
+  - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: test
 - commands:
-  - cd ../loki-main
+  - cd ../loki-target-branch
   - BUILD_IN_CONTAINER=false make test
   depends_on:
-  - clone-main
+  - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.24.1
-  name: test-main
+  image: grafana/loki-build-image:0.28.3
+  name: test-target-branch
+  when:
+    event:
+    - pull_request
 - commands:
-  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-main/test_results.txt
+  - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-target-branch/test_results.txt
     new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
     > diff.txt
   depends_on:
   - test
-  - test-main
+  - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: compare-coverage
+  when:
+    event:
+    - pull_request
 - commands:
+  - total_diff=$(sed 's/%//' diff.txt | awk '{sum+=$3;}END{print sum;}')
+  - if [ $total_diff = 0 ]; then exit 0; fi
   - pull=$(echo $CI_COMMIT_REF | awk -F '/' '{print $3}')
   - 'body=$(jq -Rs ''{body: . }'' diff.txt)'
   - 'curl -X POST -u $USER:$TOKEN -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/grafana/loki/issues/$pull/comments
@@ -108,24 +160,25 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: report-coverage
+  when:
+    event:
+    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
-  - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
-  - clone
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -134,25 +187,47 @@ steps:
 - commands:
   - make BUILD_IN_CONTAINER=false loki
   depends_on:
-  - clone
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: loki
+- commands:
+  - make BUILD_IN_CONTAINER=false check-doc
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.28.3
+  name: check-doc
+- commands:
+  - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.28.3
+  name: check-format
+  when:
+    event:
+    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: check-example-config-doc
+- commands:
+  - mkdir -p /hugo/content/docs/loki/latest
+  - cp -r docs/sources/* /hugo/content/docs/loki/latest/
+  - cd /hugo && make prod
+  image: grafana/docs-base:latest
+  name: build-docs-website
 trigger:
   ref:
   - refs/heads/main
@@ -178,8 +253,33 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: loki-mixin-check
+  when:
+    event:
+    - pull_request
+    paths:
+    - production/loki-mixin/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
+name: documentation-checks
+steps:
+- commands:
+  - make BUILD_IN_CONTAINER=false documentation-helm-reference-check
+  depends_on:
+  - clone
+  environment: {}
+  image: grafana/loki-build-image:0.28.3
+  name: documentation-helm-reference-check
 trigger:
   ref:
   - refs/heads/main
@@ -434,7 +534,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -449,7 +549,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
@@ -464,7 +564,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -479,7 +579,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
@@ -495,7 +595,7 @@ steps:
     - tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
@@ -511,7 +611,7 @@ steps:
     - tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -652,7 +752,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
@@ -667,7 +767,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-promtail-image
   settings:
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
@@ -812,7 +912,7 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: build-loki-operator-image
   settings:
     context: operator
@@ -828,7 +928,7 @@ steps:
     - pull_request
 - depends_on:
   - image-tag
-  image: plugins/docker
+  image: plugins/docker:linux-arm
   name: publish-loki-operator-image
   settings:
     context: operator
@@ -1074,7 +1174,7 @@ name: manifest
 steps:
 - depends_on:
   - clone
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-promtail
   settings:
     ignore_missing: false
@@ -1087,7 +1187,7 @@ steps:
 - depends_on:
   - clone
   - manifest-promtail
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki
   settings:
     ignore_missing: false
@@ -1100,7 +1200,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-canary
   settings:
     ignore_missing: false
@@ -1108,6 +1208,19 @@ steps:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
     target: loki-canary
+    username:
+      from_secret: docker_username
+- depends_on:
+  - clone
+  - manifest-loki-canary
+  image: plugins/manifest:1.4.0
+  name: manifest-loki-operator
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki-operator
     username:
       from_secret: docker_username
 trigger:
@@ -1130,19 +1243,20 @@ steps:
 - commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
-  - echo $(./tools/image-tag)
   - echo $(./tools/image-tag) > .tag
-  - export RELEASE_NAME=$([[ $DRONE_SOURCE_BRANCH =~ $RELEASE_BRANCH_REGEXP ]] &&
-    echo $DRONE_SOURCE_BRANCH | grep -oE "([0-9\.x]+)" | sed "s/\./-/g" || echo "next")
+  - export RELEASE_TAG=$(cat .tag)
+  - export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG
+    | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\./-/g" | sed "s/$/-x/" || echo
+    "next")
   - echo $RELEASE_NAME
-  - export RELEASE_TAG=$(cat .tag) && echo $RELEASE_TAG
   - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
   - sed -i "s/\"{{release}}\"/\"$RELEASE_NAME\"/g" updater-config.json
   - sed -i "s/{{version}}/$RELEASE_TAG/g" updater-config.json
   depends_on:
   - clone
   environment:
-    RELEASE_BRANCH_REGEXP: ^release-([0-9\.x]+)$
+    MAJOR_MINOR_VERSION_REGEXP: ([0-9]+\.[0-9]+)
+    RELEASE_TAG_REGEXP: ^([0-9]+\.[0-9]+\.[0-9]+)$
   image: alpine
   name: prepare-updater-config
   settings:
@@ -1150,7 +1264,7 @@ steps:
       from_secret: updater_config_template
 - depends_on:
   - prepare-updater-config
-  image: us.gcr.io/kubernetes-dev/drone/plugins/updater
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b
   name: trigger
   settings:
     config_file: updater-config.json
@@ -1162,9 +1276,53 @@ trigger:
   - tag
   ref:
   - refs/heads/main
-  - refs/heads/k???
   - refs/tags/v*
-  - refs/pull/*/head
+---
+depends_on:
+- manifest
+image_pull_secrets:
+- dockerconfigjson
+kind: pipeline
+name: update-loki-helm-chart-on-loki-release
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch --tags
+  - latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed
+    's/v//g')
+  - RELEASE_TAG=$(./tools/image-tag)
+  - if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG
+    is not the latest version of Loki. The latest version is $latest_version" && exit
+    78; fi
+  image: alpine
+  name: check-version-is-latest
+  when:
+    event:
+    - tag
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - RELEASE_TAG=$(./tools/image-tag)
+  - echo $PLUGIN_CONFIG_TEMPLATE > updater-config.json
+  - sed -i -E "s/\{\{release\}\}/$RELEASE_TAG/g" updater-config.json
+  depends_on:
+  - check-version-is-latest
+  image: alpine
+  name: prepare-helm-chart-update-config
+  settings:
+    config_template:
+      from_secret: helm-chart-update-config-template
+- depends_on:
+  - prepare-helm-chart-update-config
+  image: us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b
+  name: trigger-helm-chart-update
+  settings:
+    config_file: updater-config.json
+    github_token:
+      from_secret: github_token
+trigger:
+  ref:
+  - refs/tags/v*
 ---
 kind: pipeline
 name: promtail-windows
@@ -1175,11 +1333,11 @@ platform:
 steps:
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: identify-runner
 - commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:windowsservercore-1809
+  image: golang:1.19-windowsservercore-1809
   name: test
 trigger:
   ref:
@@ -1240,6 +1398,8 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
+depends_on:
+- check
 image_pull_secrets:
 - dockerconfigjson
 kind: pipeline
@@ -1259,12 +1419,27 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: gpg_private_key
+  image: alpine
+  name: skip pipeline if missing secret
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  image: alpine
+  name: fetch-tags
+- commands:
   - printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE
   environment:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1272,7 +1447,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1298,7 +1473,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.24.1
+  image: grafana/loki-build-image:0.28.3
   name: publish
   when:
     event:
@@ -1320,6 +1495,38 @@ volumes:
     path: /var/run/docker.sock
   name: docker
 ---
+kind: pipeline
+name: docker-driver
+steps:
+- commands:
+  - make docker-driver-push
+  depends_on:
+  - clone
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+  image: grafana/loki-build-image:0.28.3
+  name: build and push
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
+trigger:
+  event:
+  - push
+  - tag
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+volumes:
+- host:
+    path: /var/run/docker.sock
+  name: docker
+---
 depends_on:
 - check
 kind: pipeline
@@ -1334,8 +1541,19 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
+- commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: ecr_key
+  image: alpine
+  name: skip pipeline if missing secret
 - depends_on:
   - image-tag
+  - skip pipeline if missing secret
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -1392,8 +1610,19 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
+- commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: ecr_key
+  image: alpine
+  name: skip pipeline if missing secret
 - depends_on:
   - image-tag
+  - skip pipeline if missing secret
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -1461,7 +1690,7 @@ steps:
 - depends_on:
   - clone
   - ecr-login
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-lambda-promtail
   settings:
     ignore_missing: true
@@ -1525,6 +1754,12 @@ kind: secret
 name: updater_config_template
 ---
 get:
+  name: on-loki-release-config.json
+  path: secret/data/common/loki-helm-chart-auto-update
+kind: secret
+name: helm-chart-update-config-template
+---
+get:
   name: passphrase
   path: infra/data/ci/packages-publish/gpg
 kind: secret
@@ -1537,6 +1772,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 8738700b68f651859a25c2c9bd9f70efb8092aa1eca2ad35238a85ec19f9fe31
+hmac: 81437a4d7383dd556801f441c1510191471ae0349da15361a0b661bdc44bb8cd
 
 ...

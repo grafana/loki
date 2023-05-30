@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -109,7 +110,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, error) {
+func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, *gocql.ClusterConfig, error) {
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
@@ -133,24 +134,24 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
 	if err := cfg.setClusterConfig(cluster); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, nil, errors.WithStack(err)
 	}
 
 	session, err := cluster.CreateSession()
 	if err == nil {
-		return session, nil
+		return session, cluster, nil
 	}
 	// ErrNoConnectionsStarted will be returned if keyspace don't exist or is invalid.
 	// ref. https://github.com/gocql/gocql/blob/07ace3bab0f84bb88477bab5d79ba1f7e1da0169/cassandra_test.go#L85-L97
 	if err != gocql.ErrNoConnectionsStarted {
-		return nil, errors.WithStack(err)
+		return nil, nil, errors.WithStack(err)
 	}
 	// keyspace not exist
 	if err := cfg.createKeyspace(); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, nil, errors.WithStack(err)
 	}
 	session, err = cluster.CreateSession()
-	return session, errors.WithStack(err)
+	return session, cluster, errors.WithStack(err)
 }
 
 // apply config settings to a cassandra ClusterConfig
@@ -255,21 +256,25 @@ func (cfg *Config) createKeyspace() error {
 
 // StorageClient implements chunk.IndexClient and chunk.ObjectClient for Cassandra.
 type StorageClient struct {
-	cfg            Config
-	schemaCfg      config.SchemaConfig
-	readSession    *gocql.Session
-	writeSession   *gocql.Session
-	querySemaphore *semaphore.Weighted
+	cfg                Config
+	schemaCfg          config.SchemaConfig
+	readSession        *gocql.Session
+	writeSession       *gocql.Session
+	writeMtx           sync.Mutex
+	readMtx            sync.Mutex
+	readClusterConfig  *gocql.ClusterConfig
+	writeClusterConfig *gocql.ClusterConfig
+	querySemaphore     *semaphore.Weighted
 }
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg config.SchemaConfig, registerer prometheus.Registerer) (*StorageClient, error) {
-	readSession, err := cfg.session("index-read", registerer)
+	readSession, readClusterConfig, err := cfg.session("index-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("index-write", registerer)
+	writeSession, writeClusterConfig, err := cfg.session("index-write", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -280,11 +285,13 @@ func NewStorageClient(cfg Config, schemaCfg config.SchemaConfig, registerer prom
 	}
 
 	client := &StorageClient{
-		cfg:            cfg,
-		schemaCfg:      schemaCfg,
-		readSession:    readSession,
-		writeSession:   writeSession,
-		querySemaphore: querySemaphore,
+		cfg:                cfg,
+		schemaCfg:          schemaCfg,
+		readSession:        readSession,
+		writeSession:       writeSession,
+		readClusterConfig:  readClusterConfig,
+		writeClusterConfig: writeClusterConfig,
+		querySemaphore:     querySemaphore,
 	}
 	return client, nil
 }
@@ -326,6 +333,44 @@ func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
 
 // BatchWrite implement chunk.IndexClient.
 func (s *StorageClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
+	err := s.batchWrite(ctx, batch)
+	//
+	if errors.Cause(err) == gocql.ErrNoConnections {
+		connectErr := s.reconnectWriteSession()
+		if connectErr != nil {
+			return errors.Wrap(err, "StorageClient BatchWrite reconnect fail")
+		}
+		// retry after reconnect
+		err = s.batchWrite(ctx, batch)
+	}
+	return err
+}
+
+func (s *StorageClient) reconnectWriteSession() error {
+	s.writeMtx.Lock()
+	defer s.writeMtx.Unlock()
+	newSession, err := s.writeClusterConfig.CreateSession()
+	if err != nil {
+		return err
+	}
+	s.writeSession.Close()
+	s.writeSession = newSession
+	return nil
+}
+
+func (s *StorageClient) reconnectReadSession() error {
+	s.readMtx.Lock()
+	defer s.readMtx.Unlock()
+	newSession, err := s.readClusterConfig.CreateSession()
+	if err != nil {
+		return err
+	}
+	s.readSession.Close()
+	s.readSession = newSession
+	return nil
+}
+
+func (s *StorageClient) batchWrite(ctx context.Context, batch index.WriteBatch) error {
 	b := batch.(*writeBatch)
 
 	for _, entry := range b.entries {
@@ -353,6 +398,20 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []index.Query, c
 }
 
 func (s *StorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
+	err := s.queryExec(ctx, query, callback)
+	//
+	if errors.Cause(err) == gocql.ErrNoConnections {
+		connectErr := s.reconnectReadSession()
+		if connectErr != nil {
+			return errors.Wrap(err, "StorageClient query reconnect fail")
+		}
+		// retry after reconnect
+		err = s.queryExec(ctx, query, callback)
+	}
+	return err
+}
+
+func (s *StorageClient) queryExec(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	if s.querySemaphore != nil {
 		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
 			return err
@@ -443,22 +502,26 @@ func (b *readBatchIter) Value() []byte {
 
 // ObjectClient implements chunk.ObjectClient for Cassandra.
 type ObjectClient struct {
-	cfg            Config
-	schemaCfg      config.SchemaConfig
-	readSession    *gocql.Session
-	writeSession   *gocql.Session
-	querySemaphore *semaphore.Weighted
-	maxGetParallel int
+	cfg                Config
+	schemaCfg          config.SchemaConfig
+	readSession        *gocql.Session
+	writeSession       *gocql.Session
+	writeMtx           sync.Mutex
+	readMtx            sync.Mutex
+	readClusterConfig  *gocql.ClusterConfig
+	writeClusterConfig *gocql.ClusterConfig
+	querySemaphore     *semaphore.Weighted
+	maxGetParallel     int
 }
 
 // NewObjectClient returns a new ObjectClient.
 func NewObjectClient(cfg Config, schemaCfg config.SchemaConfig, registerer prometheus.Registerer, maxGetParallel int) (*ObjectClient, error) {
-	readSession, err := cfg.session("chunks-read", registerer)
+	readSession, readClusterConfig, err := cfg.session("chunks-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("chunks-write", registerer)
+	writeSession, writeClusterConfig, err := cfg.session("chunks-write", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -469,18 +532,57 @@ func NewObjectClient(cfg Config, schemaCfg config.SchemaConfig, registerer prome
 	}
 
 	client := &ObjectClient{
-		cfg:            cfg,
-		schemaCfg:      schemaCfg,
-		readSession:    readSession,
-		writeSession:   writeSession,
-		querySemaphore: querySemaphore,
-		maxGetParallel: maxGetParallel,
+		cfg:                cfg,
+		schemaCfg:          schemaCfg,
+		readSession:        readSession,
+		writeSession:       writeSession,
+		readClusterConfig:  readClusterConfig,
+		writeClusterConfig: writeClusterConfig,
+		querySemaphore:     querySemaphore,
+		maxGetParallel:     maxGetParallel,
 	}
 	return client, nil
+}
+func (s *ObjectClient) reconnectWriteSession() error {
+	s.writeMtx.Lock()
+	defer s.writeMtx.Unlock()
+	newSession, err := s.writeClusterConfig.CreateSession()
+	if err != nil {
+		return err
+	}
+	s.writeSession.Close()
+	s.writeSession = newSession
+	return nil
+}
+
+func (s *ObjectClient) reconnectReadSession() error {
+	s.readMtx.Lock()
+	defer s.readMtx.Unlock()
+	newSession, err := s.readClusterConfig.CreateSession()
+	if err != nil {
+		return err
+	}
+	s.readSession.Close()
+	s.readSession = newSession
+	return nil
 }
 
 // PutChunks implements chunk.ObjectClient.
 func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	err := s.putChunks(ctx, chunks)
+	//
+	if errors.Cause(err) == gocql.ErrNoConnections {
+		connectErr := s.reconnectWriteSession()
+		if connectErr != nil {
+			return errors.Wrap(err, "ObjectClient BatchWrite reconnect fail")
+		}
+		// retry after reconnect
+		err = s.putChunks(ctx, chunks)
+	}
+	return err
+}
+
+func (s *ObjectClient) putChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -509,6 +611,20 @@ func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]ch
 }
 
 func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+	result, err := s.getChunkExec(ctx, decodeContext, input)
+	//
+	if errors.Cause(err) == gocql.ErrNoConnections {
+		connectErr := s.reconnectReadSession()
+		if connectErr != nil {
+			return input, errors.Wrap(err, "ObjectClient getChunk reconnect fail")
+		}
+		// retry after reconnect
+		result, err = s.getChunkExec(ctx, decodeContext, input)
+	}
+	return result, err
+}
+
+func (s *ObjectClient) getChunkExec(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	if s.querySemaphore != nil {
 		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
 			return input, err

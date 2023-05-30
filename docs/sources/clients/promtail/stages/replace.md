@@ -1,7 +1,8 @@
 ---
 title: replace
+description: replace stage
 ---
-# `replace` stage
+# replace
 
 The `replace` stage is a parsing stage that parses a log line using a regular
 expression and replaces the log line. Named capture groups in the regex support adding data into the

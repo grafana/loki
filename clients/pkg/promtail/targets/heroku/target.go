@@ -117,13 +117,19 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			ts = message.Timestamp
 		}
 
+		// Create __heroku_drain_param_<name> labels from query parameters
+		params := r.URL.Query()
+		for k, v := range params {
+			lb.Set(fmt.Sprintf("__heroku_drain_param_%s", k), strings.Join(v, ","))
+		}
+
 		tenantIDHeaderValue := r.Header.Get("X-Scope-OrgID")
 		if tenantIDHeaderValue != "" {
 			// If present, first inject the tenant ID in, so it can be relabeled if necessary
 			lb.Set(lokiClient.ReservedLabelTenantID, tenantIDHeaderValue)
 		}
 
-		processed := relabel.Process(lb.Labels(nil), h.relabelConfigs...)
+		processed, _ := relabel.Process(lb.Labels(), h.relabelConfigs...)
 
 		// Start with the set of labels fixed in the configuration
 		filtered := h.Labels().Clone()

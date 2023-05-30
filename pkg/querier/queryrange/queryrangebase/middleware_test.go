@@ -31,3 +31,5 @@ type fakeGenNumberLoader struct {
 func (l *fakeGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
 	return l.genNumber
 }
+
+func (l *fakeGenNumberLoader) Stop() {}

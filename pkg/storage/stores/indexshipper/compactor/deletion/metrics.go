@@ -6,24 +6,24 @@ import (
 )
 
 type DeleteRequestClientMetrics struct {
-	deleteRequestsLookupsTotal       *prometheus.CounterVec
-	deleteRequestsLookupsFailedTotal *prometheus.CounterVec
+	deleteRequestsLookupsTotal       prometheus.Counter
+	deleteRequestsLookupsFailedTotal prometheus.Counter
 }
 
 func NewDeleteRequestClientMetrics(r prometheus.Registerer) *DeleteRequestClientMetrics {
 	m := DeleteRequestClientMetrics{}
 
-	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+	m.deleteRequestsLookupsTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_total",
 		Help:      "Number times the client has looked up delete requests",
-	}, []string{"client_type"})
+	})
 
-	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+	m.deleteRequestsLookupsFailedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "delete_request_lookups_failed_total",
 		Help:      "Number times the client has failed to look up delete requests",
-	}, []string{"client_type"})
+	})
 
 	return &m
 }

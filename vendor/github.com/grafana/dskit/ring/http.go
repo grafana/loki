@@ -18,7 +18,7 @@ var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"mod": func(i, j int) bool { return i%j == 0 },
 	"humanFloat": func(f float64) string {
-		return fmt.Sprintf("%.2g", f)
+		return fmt.Sprintf("%.3g", f)
 	},
 	"timeOrEmptyString": func(t time.Time) string {
 		if t.IsZero() {
@@ -93,7 +93,7 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ownedTokens := ringDesc.countTokens()
+	ownedTokens := ringDesc.CountTokens()
 
 	var ingesterIDs []string
 	for id := range ringDesc.Ingesters {

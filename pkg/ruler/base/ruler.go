@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
@@ -27,7 +29,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
@@ -39,15 +40,11 @@ import (
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
-
-	// Validation errors.
-	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+	supportedShardingAlgos      = []string{util.ShardingAlgoByGroup, util.ShardingAlgoByRule}
 )
 
 const (
@@ -68,14 +65,21 @@ const (
 
 	// errors
 	errListAllUser = "unable to list the ruler users"
+
+	// Alertmanager default values
+	alertmanagerRefreshIntervalDefault           = 1 * time.Minute
+	alertmanagerNotificationQueueCapacityDefault = 10000
+	alertmanagerNotificationTimeoutDefault       = 10 * time.Second
 )
 
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// This is used for template expansion in alerts, and represents the corresponding Grafana datasource UID.
+	DatasourceUID string `yaml:"datasource_uid"`
 	// Labels to add to all alerts
-	ExternalLabels labels.Labels `yaml:"external_labels,omitempty"`
+	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
 	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
@@ -83,7 +87,7 @@ type Config struct {
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
-	StoreConfig RuleStoreConfig `yaml:"storage" doc:"description=Deprecated. Use -ruler-storage.* CLI flags and their respective YAML config options instead."`
+	StoreConfig RuleStoreConfig `yaml:"storage" doc:"deprecated|description=Use -ruler-storage. CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 
@@ -100,8 +104,9 @@ type Config struct {
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`
 	ShardingStrategy string        `yaml:"sharding_strategy"`
+	ShardingAlgo     string        `yaml:"sharding_algo"`
 	SearchPendingFor time.Duration `yaml:"search_pending_for"`
-	Ring             RingConfig    `yaml:"ring"`
+	Ring             RingConfig    `yaml:"ring" doc:"description=Ring used by Loki ruler. The CLI flags prefix for this block configuration is 'ruler.ring'."`
 	FlushCheckPeriod time.Duration `yaml:"flush_period"`
 
 	EnableAPI bool `yaml:"enable_api"`
@@ -116,21 +121,25 @@ type Config struct {
 }
 
 // Validate config and returns error on failure
-func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
+func (cfg *Config) Validate(_ log.Logger) error {
+
+	if cfg.ShardingStrategy == "" {
+		cfg.ShardingStrategy = util.ShardingStrategyDefault
+	}
+
+	// whether using shuffle-sharding or not, by-group sharding algorithm is always applied by default
+	if cfg.ShardingAlgo == "" {
+		cfg.ShardingAlgo = util.ShardingAlgoByGroup
+	}
+
+	if !util.StringsContain(supportedShardingAlgos, cfg.ShardingAlgo) {
+		return fmt.Errorf("invalid sharding algorithm %q, supported algorithms are %v", cfg.ShardingAlgo, supportedShardingAlgos)
+	}
+
 	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
-		return errInvalidShardingStrategy
+		return fmt.Errorf("invalid sharding strategy %q, supported strategies are %v", cfg.ShardingStrategy, supportedShardingStrategies)
 	}
 
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.RulerTenantShardSize <= 0 {
-		return errInvalidTenantShardSize
-	}
-
-	if err := cfg.StoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
-	if err := cfg.ClientTLSConfig.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid ruler gRPC client config")
-	}
 	return nil
 }
 
@@ -151,32 +160,34 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
-	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
-	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
-	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "Base URL of the Grafana instance.")
+	f.StringVar(&cfg.DatasourceUID, "ruler.datasource-uid", "", "Datasource UID for the dashboard.")
+	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
+	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
 
-	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
+	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of Alertmanager URLs to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via '-ruler.alertmanager-discovery'.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
-	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
+	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", alertmanagerRefreshIntervalDefault, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
 	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to Alertmanager will utilize the V2 API.")
-	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
-	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", alertmanagerNotificationQueueCapacityDefault, "Capacity of the queue for notifications to be sent to the Alertmanager.")
+	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", alertmanagerNotificationTimeoutDefault, "HTTP timeout duration when sending notifications to the Alertmanager.")
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
-	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
+	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend.")
 	f.StringVar(&cfg.ShardingStrategy, "ruler.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.StringVar(&cfg.ShardingAlgo, "ruler.sharding-algo", util.ShardingAlgoByGroup, fmt.Sprintf("The sharding algorithm to use for deciding how rules & groups are sharded. Supported values are: %s.", strings.Join(supportedShardingAlgos, ", ")))
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
-	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
-	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
+	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "File path to store temporary rule files.")
+	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler API.")
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
-	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
+	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than the grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
-	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
+	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -252,6 +263,10 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 }
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
+	if err := cfg.Validate(logger); err != nil {
+		return nil, fmt.Errorf("invalid ruler config: %w", err)
+	}
+
 	ruler := &Ruler{
 		cfg:            cfg,
 		store:          ruleStore,
@@ -362,11 +377,41 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
+type query struct {
+	Expr       string      `json:"expr"`
+	QueryType  string      `json:"queryType"`
+	Datasource *datasource `json:"datasource,omitempty"`
+}
+
+type datasource struct {
+	Type string `json:"type"`
+	UID  string `json:"uid"`
+}
+
+func grafanaLinkForExpression(expr, datasourceUID string) string {
+	exprStruct := query{
+		Expr:      expr,
+		QueryType: "range",
+	}
+
+	if datasourceUID != "" {
+		exprStruct.Datasource = &datasource{
+			Type: "loki",
+			UID:  datasourceUID,
+		}
+	}
+
+	marshaledExpression, _ := json.Marshal(exprStruct)
+	escapedExpression := url.QueryEscape(string(marshaledExpression))
+	str := `/explore?left={"queries":[%s]}`
+	return fmt.Sprintf(str, escapedExpression)
+}
+
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -375,7 +420,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: externalURL + grafanaLinkForExpression(expr, datasourceUID),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt
@@ -406,8 +451,50 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
+func tokenForRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) uint32 {
+	ringHasher := fnv.New32a()
+
+	// Hasher never returns err.
+	_, _ = ringHasher.Write([]byte(g.User))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(g.Namespace))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(g.Name))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(getRuleIdentifier(r)))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(r.Expr))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(logproto.FromLabelAdaptersToLabels(r.Labels).String()))
+
+	return ringHasher.Sum32()
+}
+
+func getRuleIdentifier(r *rulespb.RuleDesc) string {
+	if r == nil {
+		return ""
+	}
+
+	if r.Alert == "" {
+		return r.Record
+	}
+
+	return r.Alert
+}
+
 func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
+
+	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
+	if err != nil {
+		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
+	}
+
+	return rlrs.Instances[0].Addr == instanceAddr, nil
+}
+
+func instanceOwnsRule(r ring.ReadRing, rg *rulespb.RuleGroupDesc, rd *rulespb.RuleDesc, instanceAddr string) (bool, error) {
+	hash := tokenForRule(rg, rd)
 
 	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
@@ -496,18 +583,10 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 }
 
 func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGroupList, err error) {
-	switch {
-	case !r.cfg.EnableSharding:
+	if r.cfg.EnableSharding {
+		result, err = r.listRulesSharding(ctx)
+	} else {
 		result, err = r.listRulesNoSharding(ctx)
-
-	case r.cfg.ShardingStrategy == util.ShardingStrategyDefault:
-		result, err = r.listRulesShardingDefault(ctx)
-
-	case r.cfg.ShardingStrategy == util.ShardingStrategyShuffle:
-		result, err = r.listRulesShuffleSharding(ctx)
-
-	default:
-		return nil, errors.New("invalid sharding configuration")
 	}
 
 	if err != nil {
@@ -527,6 +606,14 @@ func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.Rul
 	return r.store.ListAllRuleGroups(ctx)
 }
 
+func (r *Ruler) listRulesSharding(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	if r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		return r.listRulesShuffleSharding(ctx)
+	}
+
+	return r.listRulesShardingDefault(ctx)
+}
+
 func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
@@ -535,7 +622,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := filterRules(r.cfg.ShardingAlgo, userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -593,7 +680,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := filterRules(r.cfg.ShardingAlgo, userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
@@ -610,31 +697,99 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	return result, err
 }
 
-// filterRuleGroups returns map of rule groups that given instance "owns" based on supplied ring.
-// This function only uses User, Namespace, and Name fields of individual RuleGroups.
-//
-// Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
-// but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
-	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
-	var result []*rulespb.RuleGroupDesc
-	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
-		if err != nil {
-			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
-			continue
-		}
+// filterRules returns a list of rule groups, each with a single rule, ONLY for rules that are "owned" by the given ring instance.
+// the reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring, but only ring passed as parameter.
+func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, logger log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+	// Return one rule group per rule that is owned by this ring instance.
+	// One rule group is returned per rule because Prometheus executed rule groups concurrently but rules within a group sequentially;
+	// we are sharding by rule here to explicitly *avoid* sequential execution since Loki does not need this.
+	var result = make([]*rulespb.RuleGroupDesc, 0, len(ruleGroups))
 
-		if owned {
-			level.Debug(log).Log("msg", "rule group owned", "user", g.User, "namespace", g.Namespace, "name", g.Name)
-			result = append(result, g)
-		} else {
-			level.Debug(log).Log("msg", "rule group not owned, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+	for _, g := range ruleGroups {
+		glog := log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
+
+		switch shardingAlgo {
+
+		// if we are sharding by rule group, we can just add the entire group
+		case util.ShardingAlgoByGroup:
+			owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
+			if err != nil {
+				ringCheckErrors.Inc()
+				level.Error(glog).Log("msg", "failed to check if the ruler replica owns the rule group", "err", err)
+				continue
+			}
+
+			if owned {
+				level.Debug(glog).Log("msg", "rule group owned")
+				result = append(result, g)
+			} else {
+				level.Debug(glog).Log("msg", "rule group not owned, ignoring")
+			}
+
+			continue
+
+		// if we are sharding by rule, we need to create rule groups for each rule to comply with Prometheus' rule engine's expectations
+		case util.ShardingAlgoByRule:
+			for _, r := range g.Rules {
+				rlog := log.With(glog, "rule", getRuleIdentifier(r))
+
+				owned, err := instanceOwnsRule(ring, g, r, instanceAddr)
+				if err != nil {
+					ringCheckErrors.Inc()
+					level.Error(rlog).Log("msg", "failed to check if the ruler replica owns the rule", "err", err)
+					continue
+				}
+
+				if !owned {
+					level.Debug(rlog).Log("msg", "rule not owned, ignoring")
+					continue
+				}
+
+				level.Debug(rlog).Log("msg", "rule owned")
+
+				// clone the group and replace the rules
+				clone := cloneGroupWithRule(g, r)
+				if clone == nil {
+					level.Error(rlog).Log("msg", "failed to filter rules", "err", "failed to clone rule group; type coercion failed")
+					continue
+				}
+
+				result = append(result, clone)
+			}
 		}
 	}
 
 	return result
+}
+
+func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.RuleGroupDesc {
+	clone, ok := proto.Clone(g).(*rulespb.RuleGroupDesc)
+	if !ok {
+		return nil
+	}
+
+	// Prometheus relies on group names being unique, and this assumption is very deeply baked in
+	// so we append the rule token to make each group name unique.
+	// TODO(dannyk) this is all quite hacky, and we shoud look at forking Prometheus' rule evaluation engine at some point.
+	clone.Name = AddRuleTokenToGroupName(g, r)
+	clone.Rules = []*rulespb.RuleDesc{r}
+
+	return clone
+}
+
+// the delimiter is prefixed with ";" since that is what Prometheus uses for its group key
+const ruleTokenDelimiter = ";rule-shard-token"
+
+// AddRuleTokenToGroupName adds a rule shard token to a given group's name to make it unique.
+// Only relevant when using "by-rule" sharding strategy.
+func AddRuleTokenToGroupName(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) string {
+	return fmt.Sprintf("%s"+ruleTokenDelimiter+"%d", g.Name, tokenForRule(g, r))
+}
+
+// RemoveRuleTokenFromGroupName removes the rule shard token from the group name.
+// Only relevant when using "by-rule" sharding strategy.
+func RemoveRuleTokenFromGroupName(name string) string {
+	return strings.Split(name, ruleTokenDelimiter)[0]
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
@@ -758,7 +913,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 	var (
 		mergedMx sync.Mutex
-		merged   []*GroupStateDesc
+		merged   = make(map[string]*GroupStateDesc)
 	)
 
 	// Concurrently fetch rules from all rulers. Since rules are not replicated,
@@ -773,18 +928,41 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 		}
 
 		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
-		if err != nil {
-			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
+		if err != nil || newGrps == nil {
+			return fmt.Errorf("unable to retrieve rules from ruler %s: %w", addr, err)
 		}
 
 		mergedMx.Lock()
-		merged = append(merged, newGrps.Groups...)
+
+		for _, grp := range newGrps.Groups {
+			if grp == nil {
+				continue
+			}
+
+			name := RemoveRuleTokenFromGroupName(grp.Group.Name)
+			grp.Group.Name = name
+
+			_, found := merged[name]
+			if found {
+				merged[name].ActiveRules = append(merged[name].ActiveRules, grp.ActiveRules...)
+			} else {
+				merged[name] = grp
+			}
+		}
+
 		mergedMx.Unlock()
 
 		return nil
 	})
 
-	return merged, err
+	mergedMx.Lock()
+	descs := make([]*GroupStateDesc, 0, len(merged))
+	for _, desc := range merged {
+		descs = append(descs, desc)
+	}
+	mergedMx.Unlock()
+
+	return descs, err
 }
 
 // Rules implements the rules service

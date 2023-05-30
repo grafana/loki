@@ -4,20 +4,24 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"path"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/uploads"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Mode string
@@ -48,9 +52,8 @@ type IndexShipper interface {
 	// ForEach lets us iterates through each index file in a table for a specific user.
 	// On the write path, it would iterate on the files given to the shipper for uploading, until they eventually get dropped from local disk.
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
-	// Note: The index files would be locked until the passed done chan is closed to avoid making any changes to the index
-	// while it is being queried.
-	ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
+	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	Stop()
 }
 
@@ -70,12 +73,16 @@ type Config struct {
 	IngesterDBRetainPeriod time.Duration
 }
 
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
-	f.StringVar(&cfg.SharedStoreType, prefix+"shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, filesystem")
+	f.StringVar(&cfg.SharedStoreType, prefix+"shipper.shared-store", "", "Shared store for keeping index files. Supported types: gcs, s3, azure, cos, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
@@ -92,12 +99,42 @@ func (cfg *Config) Validate() error {
 	return storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
+// GetUniqueUploaderName builds a unique uploader name using IngesterName + `-` + <nanosecond-timestamp>.
+// The name is persisted in the configured ActiveIndexDirectory and reused when already exists.
+func (cfg *Config) GetUniqueUploaderName() (string, error) {
+	uploader := fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().UnixNano())
+
+	uploaderFilePath := path.Join(cfg.ActiveIndexDirectory, "uploader", "name")
+	if err := util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
+		return "", err
+	}
+
+	_, err := os.Stat(uploaderFilePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
+			return "", err
+		}
+	} else {
+		ub, err := os.ReadFile(uploaderFilePath)
+		if err != nil {
+			return "", err
+		}
+		uploader = string(ub)
+	}
+
+	return uploader, nil
+}
+
 type indexShipper struct {
 	cfg               Config
 	openIndexFileFunc index.OpenIndexFileFunc
 	uploadsManager    uploads.TableManager
 	downloadsManager  downloads.TableManager
 
+	logger   log.Logger
 	stopOnce sync.Once
 }
 
@@ -108,7 +145,7 @@ type indexShipper struct {
 // it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) (IndexShipper, error) {
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -117,20 +154,21 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 	shipper := indexShipper{
 		cfg:               cfg,
 		openIndexFileFunc: open,
+		logger:            logger,
 	}
 
-	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangesToHandle, reg)
+	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangeToHandle, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting index shipper in %s mode", cfg.Mode))
+	level.Info(shipper.logger).Log("msg", fmt.Sprintf("starting index shipper in %s mode", cfg.Mode))
 
 	return &shipper, nil
 }
 
 func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) error {
+	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -138,7 +176,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg)
+		uploadsManager, err := uploads.NewTableManager(cfg, indexStorageClient, reg, s.logger)
 		if err != nil {
 			return err
 		}
@@ -154,7 +192,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangesToHandle, reg)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangeToHandle, reg, s.logger)
 		if err != nil {
 			return err
 		}
@@ -169,20 +207,40 @@ func (s *indexShipper) AddIndex(tableName, userID string, index index.Index) err
 	return s.uploadsManager.AddIndex(tableName, userID, index)
 }
 
-func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
+func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 	if s.downloadsManager != nil {
-		if err := s.downloadsManager.ForEach(ctx, tableName, userID, doneChan, callback); err != nil {
+		if err := s.downloadsManager.ForEach(ctx, tableName, userID, callback); err != nil {
 			return err
 		}
 	}
 
 	if s.uploadsManager != nil {
-		if err := s.uploadsManager.ForEach(ctx, tableName, userID, doneChan, callback); err != nil {
+		if err := s.uploadsManager.ForEach(tableName, userID, callback); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	if s.downloadsManager != nil {
+		g.Go(func() error {
+			return s.downloadsManager.ForEachConcurrent(ctx, tableName, userID, callback)
+		})
+	}
+
+	if s.uploadsManager != nil {
+		g.Go(func() error {
+			// NB: uploadsManager doesn't yet implement ForEachConcurrent
+			return s.uploadsManager.ForEach(tableName, userID, callback)
+		})
+	}
+
+	return g.Wait()
 }
 
 func (s *indexShipper) Stop() {
@@ -198,3 +256,14 @@ func (s *indexShipper) stop() {
 		s.downloadsManager.Stop()
 	}
 }
+
+type Noop struct{}
+
+func (Noop) AddIndex(tableName, userID string, index index.Index) error { return nil }
+func (Noop) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	return nil
+}
+func (Noop) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+	return nil
+}
+func (Noop) Stop() {}

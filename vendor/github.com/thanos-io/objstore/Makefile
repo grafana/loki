@@ -5,7 +5,7 @@ MDOX_VALIDATE_CONFIG ?= .mdox.validate.yaml
 
 .PHONY: test-local
 test-local:
-	THANOS_TEST_OBJSTORE_SKIP=GCS,S3,AZURE,SWIFT,COS,ALIYUNOSS,BOS $(MAKE) test
+	THANOS_TEST_OBJSTORE_SKIP=GCS,S3,AZURE,SWIFT,COS,ALIYUNOSS,BOS,OCI $(MAKE) test
 
 .PHONY: test
 test:
@@ -39,7 +39,7 @@ check-docs: $(MDOX)
 
 .PHONY: deps
 deps: ## Ensures fresh go.mod and go.sum.
-	@go mod tidy -compat=1.17
+	@go mod tidy -compat=1.18
 	@go mod verify
 
 .PHONY: format

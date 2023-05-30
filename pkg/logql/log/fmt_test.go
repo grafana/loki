@@ -23,6 +23,28 @@ func Test_lineFormatter_Format(t *testing.T) {
 		in      []byte
 	}{
 		{
+			"count",
+			newMustLineFormatter(
+				`{{.foo | count "abc" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("3"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
+			"count regex",
+			newMustLineFormatter(
+				`{{.foo | count "a|b|c" }}`,
+			),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			0,
+			[]byte("9"),
+			labels.Labels{{Name: "foo", Value: "abc abc abc"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
@@ -87,6 +109,28 @@ func Test_lineFormatter_Format(t *testing.T) {
 			0,
 			[]byte("blip BLOP"),
 			labels.Labels{{Name: "foo", Value: "BLIp"}, {Name: "bar", Value: "blop"}},
+			nil,
+		},
+		{
+			"urlencode",
+			newMustLineFormatter(`{{.foo | urlencode }} {{ urlencode .foo }}`), // assert both syntax forms
+			labels.Labels{
+				{Name: "foo", Value: `/loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"}`},
+			},
+			0,
+			[]byte("%2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D %2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D"),
+			labels.Labels{{Name: "foo", Value: `/loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"}`}},
+			nil,
+		},
+		{
+			"urldecode",
+			newMustLineFormatter(`{{.foo | urldecode }} {{ urldecode .foo }}`), // assert both syntax forms
+			labels.Labels{
+				{Name: "foo", Value: `%2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D`},
+			},
+			0,
+			[]byte(`/loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"} /loki/api/v1/query?query=sum(count_over_time({stream_filter="some_stream",environment="prod", host=~"someec2.*"}`),
+			labels.Labels{{Name: "foo", Value: `%2Floki%2Fapi%2Fv1%2Fquery%3Fquery%3Dsum%28count_over_time%28%7Bstream_filter%3D%22some_stream%22%2Cenvironment%3D%22prod%22%2C+host%3D~%22someec2.%2A%22%7D`}},
 			nil,
 		},
 		{
@@ -341,6 +385,87 @@ func Test_lineFormatter_Format(t *testing.T) {
 			},
 			nil,
 		},
+		{
+			"bytes 1",
+			newMustLineFormatter("{{ .foo | bytes }}"),
+			labels.Labels{{Name: "foo", Value: "3 kB"}},
+			1656353124120000000,
+			[]byte("3000"),
+			labels.Labels{{Name: "foo", Value: "3 kB"}},
+			[]byte("1"),
+		},
+		{
+			"bytes 2",
+			newMustLineFormatter("{{ .foo | bytes }}"),
+			labels.Labels{{Name: "foo", Value: "3MB"}},
+			1656353124120000000,
+			[]byte("3e+06"),
+			labels.Labels{{Name: "foo", Value: "3MB"}},
+			[]byte("1"),
+		},
+		{
+			"duration 1",
+			newMustLineFormatter("{{ .foo | duration }}"),
+			labels.Labels{{Name: "foo", Value: "3ms"}},
+			1656353124120000000,
+			[]byte("0.003"),
+			labels.Labels{{Name: "foo", Value: "3ms"}},
+			[]byte("1"),
+		},
+		{
+			"duration 2",
+			newMustLineFormatter("{{ .foo | duration_seconds }}"),
+			labels.Labels{{Name: "foo", Value: "3m10s"}},
+			1656353124120000000,
+			[]byte("190"),
+			labels.Labels{{Name: "foo", Value: "3m10s"}},
+			[]byte("1"),
+		},
+		{
+			"toDateInZone",
+			newMustLineFormatter("{{ .foo | toDateInZone \"2006-01-02T15:04:05.999999999Z\" \"UTC\" | unixEpochMillis }}"),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}},
+			1656353124120000000,
+			[]byte("1678411960340"),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}},
+			[]byte("1"),
+		},
+		{
+			"unixEpochMillis",
+			newMustLineFormatter("{{ .foo | toDateInZone \"2006-01-02T15:04:05.999999999Z\" \"UTC\" | unixEpochMillis }}"),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}},
+			1656353124120000000,
+			[]byte("1678411960340"),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}},
+			[]byte("1"),
+		},
+		{
+			"unixEpochNanos",
+			newMustLineFormatter("{{ .foo | toDateInZone \"2006-01-02T15:04:05.999999999Z\" \"UTC\" | unixEpochNanos }}"),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}},
+			1656353124120000000,
+			[]byte("1678411960340485723"),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}},
+			[]byte("1"),
+		},
+		{
+			"base64encode",
+			newMustLineFormatter("{{ .foo | b64enc }}"),
+			labels.Labels{{Name: "foo", Value: "i'm a string, encode me!"}},
+			1656353124120000000,
+			[]byte("aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"),
+			labels.Labels{{Name: "foo", Value: "i'm a string, encode me!"}},
+			[]byte("1"),
+		},
+		{
+			"base64decode",
+			newMustLineFormatter("{{ .foo | b64dec }}"),
+			labels.Labels{{Name: "foo", Value: "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"}},
+			1656353124120000000,
+			[]byte("i'm a string, encode me!"),
+			labels.Labels{{Name: "foo", Value: "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"}},
+			[]byte("1"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -450,6 +575,105 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				{Name: "ts", Value: "1661518453"},
 			},
 		},
+		{
+			"count",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "test" }}`)}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "blip"},
+				{Name: "bar", Value: "blop"},
+				{Name: "count", Value: "1"},
+			},
+		},
+		{
+			"count regex no matches",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("count", `{{ __line__ | count "notmatching.*" }}`)}),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "count", Value: "0"},
+			},
+		},
+		{
+			"bytes 1",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | bytes }}")}),
+			labels.Labels{{Name: "foo", Value: "3 kB"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "3 kB"},
+				{Name: "bar", Value: "3000"},
+			},
+		},
+		{
+			"bytes 2",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | bytes }}")}),
+			labels.Labels{{Name: "foo", Value: "3MB"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "3MB"},
+				{Name: "bar", Value: "3e+06"},
+			},
+		},
+		{
+			"duration 1",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | duration }}")}),
+			labels.Labels{{Name: "foo", Value: "3ms"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "3ms"},
+				{Name: "bar", Value: "0.003"},
+			},
+		},
+		{
+			"duration 2",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | duration }}")}),
+			labels.Labels{{Name: "foo", Value: "3m10s"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "3m10s"},
+				{Name: "bar", Value: "190"},
+			},
+		},
+		{
+			"toDateInZone",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | toDateInZone \"2006-01-02T15:04:05.999999999Z\" \"UTC\" | unixEpochMillis }}")}),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"},
+				{Name: "bar", Value: "1678411960340"},
+			},
+		},
+		{
+			"unixEpochMillis",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | toDateInZone \"2006-01-02T15:04:05.999999999Z\" \"UTC\" | unixEpochMillis }}")}),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"},
+				{Name: "bar", Value: "1678411960340"},
+			},
+		},
+		{
+			"unixEpochNanos",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | toDateInZone \"2006-01-02T15:04:05.999999999Z\" \"UTC\" | unixEpochNanos }}")}),
+			labels.Labels{{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "2023-03-10T01:32:40.340485723Z"},
+				{Name: "bar", Value: "1678411960340485723"},
+			},
+		},
+		{
+			"base64encode",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | b64enc }}")}),
+			labels.Labels{{Name: "foo", Value: "i'm a string, encode me!"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "i'm a string, encode me!"},
+				{Name: "bar", Value: "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"},
+			},
+		},
+		{
+			"base64decode",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("bar", "{{ .foo | b64dec }}")}),
+			labels.Labels{{Name: "foo", Value: "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{
+				{Name: "foo", Value: "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"},
+				{Name: "bar", Value: "i'm a string, encode me!"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -469,6 +693,30 @@ func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 		panic(err)
 	}
 	return lf
+}
+
+func Test_InvalidRegex(t *testing.T) {
+	t.Run("regexReplaceAll", func(t *testing.T) {
+		cntFunc := functionMap["regexReplaceAll"]
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("a|b|\\q", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
+	t.Run("regexReplaceAllLiteral", func(t *testing.T) {
+		cntFunc := functionMap["regexReplaceAllLiteral"]
+		f := cntFunc.(func(string, string, string) (string, error))
+		ret, err := f("\\h", "input", "replacement")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
+	t.Run("count", func(t *testing.T) {
+		cntFunc := functionMap["count"]
+		f := cntFunc.(func(string, string) (int, error))
+		ret, err := f("a|b|\\K", "input")
+		require.Error(t, err)
+		require.Empty(t, ret)
+	})
 }
 
 func Test_validate(t *testing.T) {
@@ -570,6 +818,24 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, mustNewLabelsFormatter(tt.fmts).RequiredLabelNames())
+		})
+	}
+}
+
+func TestDecolorizer(t *testing.T) {
+	var decolorizer, _ = NewDecolorizer()
+	tests := []struct {
+		name     string
+		src      []byte
+		expected []byte
+	}{
+		{"uncolored text remains the same", []byte("sample text"), []byte("sample text")},
+		{"colored text loses color", []byte("\033[0;32mgreen\033[0m \033[0;31mred\033[0m"), []byte("green red")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var result, _ = decolorizer.Process(0, tt.src, nil)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

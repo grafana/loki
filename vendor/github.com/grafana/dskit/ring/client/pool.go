@@ -13,7 +13,8 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/dskit/ring/util"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/internal/slices"
 	"github.com/grafana/dskit/services"
 )
 
@@ -35,9 +36,10 @@ type PoolServiceDiscovery func() ([]string, error)
 
 // PoolConfig is config for creating a Pool.
 type PoolConfig struct {
-	CheckInterval      time.Duration
-	HealthCheckEnabled bool
-	HealthCheckTimeout time.Duration
+	CheckInterval             time.Duration
+	HealthCheckEnabled        bool
+	HealthCheckTimeout        time.Duration
+	MaxConcurrentHealthChecks int // defaults to 16
 }
 
 // Pool holds a cache of grpc_health_v1 clients.
@@ -58,6 +60,10 @@ type Pool struct {
 
 // NewPool creates a new Pool.
 func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, factory PoolFactory, clientsMetric prometheus.Gauge, logger log.Logger) *Pool {
+	if cfg.MaxConcurrentHealthChecks == 0 {
+		cfg.MaxConcurrentHealthChecks = 16
+	}
+
 	p := &Pool{
 		cfg:           cfg,
 		discovery:     discovery,
@@ -165,7 +171,7 @@ func (p *Pool) removeStaleClients() {
 	}
 
 	for _, addr := range p.RegisteredAddresses() {
-		if util.StringsContain(serviceAddrs, addr) {
+		if slices.Contains(serviceAddrs, addr) {
 			continue
 		}
 		level.Info(p.logger).Log("msg", "removing stale client", "addr", addr)
@@ -173,24 +179,30 @@ func (p *Pool) removeStaleClients() {
 	}
 }
 
-// cleanUnhealthy loops through all servers and deletes any that fails a healthcheck.
+// cleanUnhealthy loops through all servers and deletes any that fail a healthcheck.
+// The health checks are executed concurrently with p.cfg.MaxConcurrentHealthChecks.
 func (p *Pool) cleanUnhealthy() {
-	for _, addr := range p.RegisteredAddresses() {
+	addresses := p.RegisteredAddresses()
+	_ = concurrency.ForEachJob(context.Background(), len(addresses), p.cfg.MaxConcurrentHealthChecks, func(ctx context.Context, idx int) error {
+		addr := addresses[idx]
 		client, ok := p.fromCache(addr)
 		// not ok means someone removed a client between the start of this loop and now
 		if ok {
-			err := healthCheck(client, p.cfg.HealthCheckTimeout)
+			err := healthCheck(ctx, client, p.cfg.HealthCheckTimeout)
 			if err != nil {
 				level.Warn(p.logger).Log("msg", fmt.Sprintf("removing %s failing healthcheck", p.clientName), "addr", addr, "reason", err)
 				p.RemoveClientFor(addr)
 			}
 		}
-	}
+		// Never return an error, because otherwise the processing would stop and
+		// remaining health checks would not been executed.
+		return nil
+	})
 }
 
 // healthCheck will check if the client is still healthy, returning an error if it is not
-func healthCheck(client PoolClient, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func healthCheck(ctx context.Context, client PoolClient, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ctx = user.InjectOrgID(ctx, "0")
 

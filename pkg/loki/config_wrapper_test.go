@@ -239,7 +239,7 @@ memberlist:
 			assert.ErrorIs(t, err, ErrTooManyStorageConfigs)
 		})
 
-		t.Run("when common s3 storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+		t.Run("when common s3 storage config is provided (with empty session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
 			s3Config := `common:
   storage:
     s3:
@@ -271,6 +271,66 @@ memberlist:
 				assert.Equal(t, "us-east1", actual.Region)
 				assert.Equal(t, "abc123", actual.AccessKeyID)
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
+				assert.Equal(t, "", actual.SessionToken.String())
+				assert.Equal(t, true, actual.Insecure)
+				assert.Equal(t, false, actual.SSEEncryption)
+				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
+				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
+
+				assert.Equal(t, aws.SignatureVersionV4, actual.SignatureVersion,
+					"signature version should equal default value")
+				assert.Equal(t, 90*time.Second, actual.HTTPConfig.IdleConnTimeout,
+					"idle connection timeout should equal default value")
+			}
+
+			// should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			// should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+		})
+
+		t.Run("when common s3 storage config is provided (with session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
+			s3Config := `common:
+  storage:
+    s3:
+      s3: s3://foo-bucket/example
+      endpoint: s3://foo-bucket
+      region: us-east1
+      access_key_id: abc123
+      secret_access_key: def789
+      session_token: 456abc
+      insecure: true
+      http_config:
+        response_header_timeout: 5m`
+
+			config, defaults := testContext(s3Config, nil)
+
+			expected, err := url.Parse("s3://foo-bucket/example")
+			require.NoError(t, err)
+
+			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []aws.S3Config{
+				config.Ruler.StoreConfig.S3,
+				config.StorageConfig.AWSStorageConfig.S3Config,
+			} {
+				require.NotNil(t, actual.S3.URL)
+				assert.Equal(t, *expected, *actual.S3.URL)
+
+				assert.Equal(t, false, actual.S3ForcePathStyle)
+				assert.Equal(t, "s3://foo-bucket", actual.Endpoint)
+				assert.Equal(t, "us-east1", actual.Region)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, "def789", actual.SecretAccessKey.String())
+				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
@@ -579,6 +639,46 @@ storage_config:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 		})
 
+		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {
+			namedStoresConfig := `common:
+  storage:
+    s3:
+      endpoint: s3://common-bucket
+      region: us-east1
+      access_key_id: abc123
+      secret_access_key: def789
+storage_config:
+  named_stores:
+    aws:
+      store-1:
+        endpoint: s3://foo-bucket
+        region: us-west1
+        access_key_id: 123abc
+        secret_access_key: 789def
+      store-2:
+        endpoint: s3://bar-bucket
+        region: us-west2
+        access_key_id: 456def
+        secret_access_key: 789abc`
+			config, _ := testContext(namedStoresConfig, nil)
+
+			// should be set by common config
+			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
+
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Endpoint)
+			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Region)
+			assert.Equal(t, "123abc", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.AccessKeyID)
+			assert.Equal(t, "789def", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.SecretAccessKey.String())
+
+			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Endpoint)
+			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Region)
+			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.AccessKeyID)
+			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.SecretAccessKey.String())
+		})
+
 		t.Run("partial ruler config from file is honored for overriding things like bucket names", func(t *testing.T) {
 			specificRulerConfig := `common:
   storage:
@@ -620,58 +720,6 @@ storage_config:
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
 
-		t.Run("when common object store config is provided, compactor shared store is defaulted to use it", func(t *testing.T) {
-			for _, tt := range []struct {
-				configString string
-				expected     string
-			}{
-				{
-					configString: `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789`,
-					expected: config.StorageTypeS3,
-				},
-				{
-					configString: `common:
-  storage:
-    gcs:
-      bucket_name: foobar`,
-					expected: config.StorageTypeGCS,
-				},
-				{
-					configString: `common:
-  storage:
-    azure:
-      account_name: 3rd_planet
-      account_key: water`,
-					expected: config.StorageTypeAzure,
-				},
-				{
-					configString: `common:
-  storage:
-    swift:
-      username: steve
-      password: supersecret`,
-					expected: config.StorageTypeSwift,
-				},
-				{
-					configString: `common:
-  storage:
-    filesystem:
-      chunks_directory: /tmp/chunks
-      rules_directory: /tmp/rules`,
-					expected: config.StorageTypeFileSystem,
-				},
-			} {
-				config, _ := testContext(tt.configString, nil)
-
-				assert.Equal(t, tt.expected, config.CompactorConfig.SharedStoreType)
-			}
-		})
-
 		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
 			configString := `common:
   storage:
@@ -688,38 +736,6 @@ compactor:
 	})
 
 	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: s3
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-		})
-
-		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeGCS, cfg.CompactorConfig.SharedStoreType)
-		})
-
 		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:
@@ -824,20 +840,17 @@ ingester:
 		// ensure they are all false by default
 		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
 		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 
 		configFileString := `---
 query_range:
   results_cache:
     cache:
       embedded_cache:
-        enabled: true
-        distributed: true`
+        enabled: true`
 
 		config, _ = testContext(configFileString, nil)
 
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Distributed)
 	})
 }
 
@@ -865,20 +878,6 @@ chunk_store_config:
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
 			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
-		})
-
-		t.Run("if distributed cache is set for results cache, FIFO cache should be disabled.", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      embedded_cache:
-        enabled: true
-        distributed: true`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.True(t, config.QueryRange.CacheConfig.EmbeddedCache.IsEnabledWithDistributed())
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
@@ -1011,10 +1010,10 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 	t.Run("Attempt to catch changes to a RingConfig", func(t *testing.T) {
 		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
-		assert.Equal(t, 8,
+		assert.Equal(t, 9,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 12,
+		assert.Equal(t, 13,
 			reflect.TypeOf(util.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
 	})
@@ -1486,6 +1485,8 @@ func Test_instanceAddr(t *testing.T) {
 ingester:
   lifecycler:
     address: myingester
+memberlist:
+  advertise_addr: mymemberlist
 ruler:
   ring:
     instance_addr: myruler
@@ -1508,6 +1509,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "mydistributor", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "myingester", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "mymemberlist", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "myruler", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "myqueryfrontend", config.Frontend.FrontendV2.Addr)
@@ -1522,6 +1524,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "99.99.99.99", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
@@ -1539,6 +1542,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "22.22.22.22", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr) /// not a ring.
 		assert.Equal(t, "22.22.22.22", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr) // not a ring.

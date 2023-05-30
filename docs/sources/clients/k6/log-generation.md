@@ -1,5 +1,6 @@
 ---
 title: Log generation
+description: Log generation with K6
 weight: 10
 ---
 # Log generation

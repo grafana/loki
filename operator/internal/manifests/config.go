@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +32,10 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	_, err = s.Write(rc)
+	if err != nil {
+		return nil, "", err
+	}
 	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
@@ -54,11 +57,14 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 // ConfigOptions converts Options to config.Options
 func ConfigOptions(opt Options) config.Options {
 	rulerEnabled := opt.Stack.Rules != nil && opt.Stack.Rules.Enabled
+	stackLimitsEnabled := opt.Stack.Limits != nil && len(opt.Stack.Limits.Tenants) > 0
+	rulerLimitsEnabled := rulerEnabled && opt.Ruler.Spec != nil && len(opt.Ruler.Spec.Overrides) > 0
 
 	var (
 		evalInterval, pollInterval string
 		amConfig                   *config.AlertManagerConfig
 		rwConfig                   *config.RemoteWriteConfig
+		overrides                  map[string]config.LokiOverrides
 	)
 
 	if rulerEnabled {
@@ -75,28 +81,83 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
+	if stackLimitsEnabled || rulerLimitsEnabled {
+		overrides = map[string]config.LokiOverrides{}
+	}
+
+	if stackLimitsEnabled {
+		for tenant, limits := range opt.Stack.Limits.Tenants {
+			so := overrides[tenant]
+			so.Limits = limits
+			overrides[tenant] = so
+		}
+	}
+	if rulerLimitsEnabled {
+		for tenant, override := range opt.Ruler.Spec.Overrides {
+			so := overrides[tenant]
+			so.Ruler = config.RulerOverrides{
+				AlertManager: alertManagerConfig(override.AlertManagerOverrides),
+			}
+			overrides[tenant] = so
+		}
+	}
+
 	protocol := "http"
 	if opt.Gates.HTTPEncryption {
 		protocol = "https"
 	}
 
+	// nolint:staticcheck
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opt.Stack.Replication == nil || opt.Stack.Replication.Factor == 0) && opt.Stack.ReplicationFactor > 0 {
+		if opt.Stack.Replication == nil {
+			opt.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+
+		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
+	}
+
 	return config.Options{
-		Stack:     opt.Stack,
+		Stack: opt.Stack,
+		Gates: opt.Gates,
+		TLS: config.TLSOptions{
+			Ciphers:       opt.TLSProfile.Ciphers,
+			MinTLSVersion: opt.TLSProfile.MinTLSVersion,
+			Paths: config.TLSFilePaths{
+				CA: signingCAPath(),
+				GRPC: config.TLSCertPath{
+					Certificate: lokiServerGRPCTLSCert(),
+					Key:         lokiServerGRPCTLSKey(),
+				},
+				HTTP: config.TLSCertPath{
+					Certificate: lokiServerHTTPTLSCert(),
+					Key:         lokiServerHTTPTLSKey(),
+				},
+			},
+			ServerNames: config.TLSServerNames{
+				GRPC: config.GRPCServerNames{
+					Compactor:     fqdn(serviceNameCompactorGRPC(opt.Name), opt.Namespace),
+					IndexGateway:  fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),
+					Ingester:      fqdn(serviceNameIngesterGRPC(opt.Name), opt.Namespace),
+					QueryFrontend: fqdn(serviceNameQueryFrontendGRPC(opt.Name), opt.Namespace),
+					Ruler:         fqdn(serviceNameRulerGRPC(opt.Name), opt.Namespace),
+				},
+				HTTP: config.HTTPServerNames{
+					Querier: fqdn(serviceNameQuerierHTTP(opt.Name), opt.Namespace),
+				},
+			},
+		},
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		Compactor: config.Address{
-			FQDN:     fqdn(NewCompactorHTTPService(opt).GetName(), opt.Namespace),
-			Port:     httpPort,
-			Protocol: protocol,
+			FQDN: fqdn(NewCompactorGRPCService(opt).GetName(), opt.Namespace),
+			Port: grpcPort,
 		},
 		FrontendWorker: config.Address{
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: config.Address{
-			FQDN: fqdn(BuildLokiGossipRingService(opt.Name).GetName(), opt.Namespace),
-			Port: gossipPort,
-		},
+		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing),
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
@@ -115,6 +176,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
+		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
@@ -125,36 +187,37 @@ func ConfigOptions(opt Options) config.Options {
 			RemoteWrite:           rwConfig,
 		},
 		Retention: retentionConfig(&opt.Stack),
+		Overrides: overrides,
 	}
 }
 
-func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
-	if s == nil {
+func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfig {
+	if spec == nil {
 		return nil
 	}
 
-	c := &config.AlertManagerConfig{
-		ExternalURL:    s.ExternalURL,
-		ExternalLabels: s.ExternalLabels,
-		Hosts:          strings.Join(s.Endpoints, ","),
-		EnableV2:       s.EnableV2,
+	conf := &config.AlertManagerConfig{
+		ExternalURL:    spec.ExternalURL,
+		ExternalLabels: spec.ExternalLabels,
+		Hosts:          strings.Join(spec.Endpoints, ","),
+		EnableV2:       spec.EnableV2,
 	}
 
-	if d := s.DiscoverySpec; d != nil {
-		c.EnableDiscovery = d.EnableSRV
-		c.RefreshInterval = string(d.RefreshInterval)
+	if d := spec.DiscoverySpec; d != nil {
+		conf.EnableDiscovery = d.EnableSRV
+		conf.RefreshInterval = string(d.RefreshInterval)
 	}
 
-	if n := s.NotificationQueueSpec; n != nil {
-		c.QueueCapacity = n.Capacity
-		c.Timeout = string(n.Timeout)
-		c.ForOutageTolerance = string(n.ForOutageTolerance)
-		c.ForGracePeriod = string(n.ForGracePeriod)
-		c.ResendDelay = string(n.ResendDelay)
+	if n := spec.NotificationQueueSpec; n != nil {
+		conf.QueueCapacity = n.Capacity
+		conf.Timeout = string(n.Timeout)
+		conf.ForOutageTolerance = string(n.ForOutageTolerance)
+		conf.ForGracePeriod = string(n.ForGracePeriod)
+		conf.ResendDelay = string(n.ResendDelay)
 	}
 
-	for _, cfg := range s.RelabelConfigs {
-		c.RelabelConfigs = append(c.RelabelConfigs, config.RelabelConfig{
+	for _, cfg := range spec.RelabelConfigs {
+		conf.RelabelConfigs = append(conf.RelabelConfigs, config.RelabelConfig{
 			SourceLabels: cfg.SourceLabels,
 			Separator:    cfg.Separator,
 			TargetLabel:  cfg.TargetLabel,
@@ -165,10 +228,58 @@ func alertManagerConfig(s *lokiv1beta1.AlertManagerSpec) *config.AlertManagerCon
 		})
 	}
 
-	return c
+	if clt := spec.Client; clt != nil {
+		conf.Notifier = &config.NotifierConfig{}
+		if tls := clt.TLS; tls != nil {
+			conf.Notifier.TLS = config.TLSConfig{
+				CAPath:     tls.CAPath,
+				ServerName: tls.ServerName,
+				CertPath:   tls.CertPath,
+				KeyPath:    tls.KeyPath,
+			}
+		}
+
+		if ha := clt.HeaderAuth; ha != nil {
+			conf.Notifier.HeaderAuth = config.HeaderAuth{
+				Type:            ha.Type,
+				Credentials:     ha.Credentials,
+				CredentialsFile: ha.CredentialsFile,
+			}
+		}
+
+		if ba := clt.BasicAuth; ba != nil {
+			conf.Notifier.BasicAuth = config.BasicAuth{
+				Username: ba.Username,
+				Password: ba.Password,
+			}
+		}
+	}
+
+	return conf
 }
 
-func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
+func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
+	var instanceAddr string
+	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
+		switch spec.MemberList.InstanceAddrType {
+		case lokiv1.InstanceAddrPodIP:
+			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+		case lokiv1.InstanceAddrDefault:
+			// Do nothing use loki defaults
+		default:
+			// Do nothing use loki defaults
+		}
+	}
+
+	return config.GossipRing{
+		InstanceAddr:         instanceAddr,
+		InstancePort:         grpcPort,
+		BindPort:             gossipPort,
+		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+	}
+}
+
+func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
 	if s == nil || rs == nil {
 		return nil
 	}
@@ -189,10 +300,10 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		switch cls.AuthorizationType {
-		case lokiv1beta1.BasicAuthorization:
+		case lokiv1.BasicAuthorization:
 			c.Client.BasicAuthUsername = rs.Username
 			c.Client.BasicAuthPassword = rs.Password
-		case lokiv1beta1.BearerAuthorization:
+		case lokiv1.BearerAuthorization:
 			c.Client.BearerToken = rs.BearerToken
 		}
 
@@ -225,6 +336,7 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 }
 
 var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXDemo:       10,
 	lokiv1.SizeOneXExtraSmall: 10,
 	lokiv1.SizeOneXSmall:      150,
 	lokiv1.SizeOneXMedium:     150,

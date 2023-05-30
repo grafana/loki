@@ -23,13 +23,13 @@ import (
 	"net/url"
 	"time"
 
+	pubsubpb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
 	iampb "google.golang.org/genproto/googleapis/iam/v1"
-	pubsubpb "google.golang.org/genproto/googleapis/pubsub/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -236,7 +236,8 @@ func (c *PublisherClient) setGoogleClientInfo(keyval ...string) {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *PublisherClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
@@ -390,7 +391,8 @@ func NewPublisherClient(ctx context.Context, opts ...option.ClientOption) (*Publ
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *publisherGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
 }

@@ -2,17 +2,14 @@ package ring
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
-	"net"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/netutil"
 )
 
 // GenerateTokens make numTokens unique random tokens, none of which clash
@@ -50,12 +47,12 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 
 // GetInstanceAddr returns the address to use to register the instance
 // in the ring.
-func GetInstanceAddr(configAddr string, netInterfaces []string, logger log.Logger) (string, error) {
+func GetInstanceAddr(configAddr string, netInterfaces []string, logger log.Logger, enableInet6 bool) (string, error) {
 	if configAddr != "" {
 		return configAddr, nil
 	}
 
-	addr, err := getFirstAddressOf(netInterfaces, logger)
+	addr, err := netutil.GetFirstAddressOf(netInterfaces, logger, enableInet6)
 	if err != nil {
 		return "", err
 	}
@@ -95,7 +92,7 @@ func WaitInstanceState(ctx context.Context, r ReadRing, instanceID string, state
 
 // WaitRingStability monitors the ring topology for the provided operation and waits until it
 // keeps stable for at least minStability.
-func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+func WaitRingStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration) error {
 	return waitStability(ctx, r, op, minStability, maxWaiting, HasReplicationSetChanged)
 }
 
@@ -104,11 +101,11 @@ func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability,
 // allowed states (e.g. JOINING->ACTIVE if allowed by op).
 // This can be used to avoid wasting resources on moving data around
 // due to multiple changes in the Ring.
-func WaitRingTokensStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+func WaitRingTokensStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration) error {
 	return waitStability(ctx, r, op, minStability, maxWaiting, HasReplicationSetChangedWithoutState)
 }
 
-func waitStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration, isChanged func(ReplicationSet, ReplicationSet) bool) error {
+func waitStability(ctx context.Context, r ReadRing, op Operation, minStability, maxWaiting time.Duration, isChanged func(ReplicationSet, ReplicationSet) bool) error {
 	// Configure the max waiting time as a context deadline.
 	ctx, cancel := context.WithTimeout(ctx, maxWaiting)
 	defer cancel()
@@ -170,55 +167,4 @@ func searchToken(tokens []uint32, key uint32) int {
 		i = 0
 	}
 	return i
-}
-
-// GetFirstAddressOf returns the first IPv4 address of the supplied interface names, omitting any 169.254.x.x automatic private IPs if possible.
-func getFirstAddressOf(names []string, logger log.Logger) (string, error) {
-	var ipAddr string
-	for _, name := range names {
-		inf, err := net.InterfaceByName(name)
-		if err != nil {
-			level.Warn(logger).Log("msg", "error getting interface", "inf", name, "err", err)
-			continue
-		}
-		addrs, err := inf.Addrs()
-		if err != nil {
-			level.Warn(logger).Log("msg", "error getting addresses for interface", "inf", name, "err", err)
-			continue
-		}
-		if len(addrs) <= 0 {
-			level.Warn(logger).Log("msg", "no addresses found for interface", "inf", name, "err", err)
-			continue
-		}
-		if ip := filterIPs(addrs); ip != "" {
-			ipAddr = ip
-		}
-		if strings.HasPrefix(ipAddr, `169.254.`) || ipAddr == "" {
-			continue
-		}
-		return ipAddr, nil
-	}
-	if ipAddr == "" {
-		return "", fmt.Errorf("No address found for %s", names)
-	}
-	if strings.HasPrefix(ipAddr, `169.254.`) {
-		level.Warn(logger).Log("msg", "using automatic private ip", "address", ipAddr)
-	}
-	return ipAddr, nil
-}
-
-// filterIPs attempts to return the first non automatic private IP (APIPA / 169.254.x.x) if possible, only returning APIPA if available and no other valid IP is found.
-func filterIPs(addrs []net.Addr) string {
-	var ipAddr string
-	for _, addr := range addrs {
-		if v, ok := addr.(*net.IPNet); ok {
-			if ip := v.IP.To4(); ip != nil {
-				ipAddr = v.IP.String()
-				if !strings.HasPrefix(ipAddr, `169.254.`) {
-					return ipAddr
-				}
-			}
-		}
-	}
-	return ipAddr
 }

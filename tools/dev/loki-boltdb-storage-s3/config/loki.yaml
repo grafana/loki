@@ -1,4 +1,6 @@
 auth_enabled: true 
+common:
+    compactor_address: compactor:8006
 chunk_store_config:
     chunk_cache_config:
         memcached:
@@ -90,6 +92,7 @@ querier:
     query_ingesters_within: 2h
     query_timeout: 5m
     multi_tenant_queries_enabled: true
+    per_request_limits_enabled: true
 query_range:
     align_queries_with_step: true
     cache_results: true

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -315,9 +316,9 @@ func Test_PromQL(t *testing.T) {
 		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
 
-			baseQuery, err := engine.NewRangeQuery(shardAwareQueryable, nil, tt.normalQuery, start, end, step)
+			baseQuery, err := engine.NewRangeQuery(context.Background(), shardAwareQueryable, nil, tt.normalQuery, start, end, step)
 			require.Nil(t, err)
-			shardQuery, err := engine.NewRangeQuery(shardAwareQueryable, nil, tt.shardQuery, start, end, step)
+			shardQuery, err := engine.NewRangeQuery(context.Background(), shardAwareQueryable, nil, tt.shardQuery, start, end, step)
 			require.Nil(t, err)
 			baseResult := baseQuery.Exec(ctx)
 			shardResult := shardQuery.Exec(ctx)
@@ -521,6 +522,7 @@ func Test_FunctionParallelism(t *testing.T) {
 
 		t.Run(tc.fn, func(t *testing.T) {
 			baseQuery, err := engine.NewRangeQuery(
+				context.Background(),
 				shardAwareQueryable,
 				nil,
 				mkQuery(tpl, tc.fn, tc.isTestMatrix, tc.fArgs),
@@ -530,6 +532,7 @@ func Test_FunctionParallelism(t *testing.T) {
 			)
 			require.Nil(t, err)
 			shardQuery, err := engine.NewRangeQuery(
+				context.Background(),
 				shardAwareQueryable,
 				nil,
 				mkQuery(shardTpl, tc.fn, tc.isTestMatrix, tc.fArgs),
@@ -549,14 +552,14 @@ func Test_FunctionParallelism(t *testing.T) {
 				baseSeries := baseResult.Value.(promql.Matrix)[0]
 				shardSeries := shardResult.Value.(promql.Matrix)[0]
 
-				require.Equal(t, len(baseSeries.Points), len(shardSeries.Points))
-				for i, basePt := range baseSeries.Points {
-					shardPt := shardSeries.Points[i]
+				require.Equal(t, len(baseSeries.Floats), len(shardSeries.Floats))
+				for i, basePt := range baseSeries.Floats {
+					shardPt := shardSeries.Floats[i]
 					require.Equal(t, basePt.T, shardPt.T)
 					require.Equal(
 						t,
-						math.Round(basePt.V*1e6)/1e6,
-						math.Round(shardPt.V*1e6)/1e6,
+						math.Round(basePt.F*1e6)/1e6,
+						math.Round(shardPt.F*1e6)/1e6,
 					)
 				}
 
@@ -623,19 +626,19 @@ func (m *testMatrix) Close() error { return nil }
 
 func newSeries(metric labels.Labels, generator func(float64) float64) *promql.StorageSeries {
 	sort.Sort(metric)
-	var points []promql.Point
+	var points []promql.FPoint
 
 	for ts := start.Add(-step); ts.Unix() <= end.Unix(); ts = ts.Add(step) {
 		t := ts.Unix() * 1e3
-		points = append(points, promql.Point{
+		points = append(points, promql.FPoint{
 			T: t,
-			V: generator(float64(t)),
+			F: generator(float64(t)),
 		})
 	}
 
 	return promql.NewStorageSeries(promql.Series{
 		Metric: metric,
-		Points: points,
+		Floats: points,
 	})
 }
 
@@ -661,17 +664,18 @@ func factor(f float64) func(float64) float64 {
 // 2 series.
 func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMatrix {
 	res := &testMatrix{}
+	var it chunkenc.Iterator
 	for i, s := range testMatrices.series {
 		if i%shardTotal != shardIndex {
 			continue
 		}
-		var points []promql.Point
-		it := s.Iterator()
-		for it.Next() {
+		var points []promql.FPoint
+		it = s.Iterator(it)
+		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
-			points = append(points, promql.Point{
+			points = append(points, promql.FPoint{
 				T: t,
-				V: v,
+				F: v,
 			})
 
 		}
@@ -680,7 +684,7 @@ func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMat
 		sort.Sort(lbs)
 		res.series = append(res.series, promql.NewStorageSeries(promql.Series{
 			Metric: lbs,
-			Points: points,
+			Floats: points,
 		}))
 	}
 	return res

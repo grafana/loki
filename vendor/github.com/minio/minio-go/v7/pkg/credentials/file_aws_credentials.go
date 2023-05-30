@@ -18,17 +18,33 @@
 package credentials
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	ini "gopkg.in/ini.v1"
 )
+
+// A externalProcessCredentials stores the output of a credential_process
+type externalProcessCredentials struct {
+	Version         int
+	SessionToken    string
+	AccessKeyID     string `json:"AccessKeyId"`
+	SecretAccessKey string
+	Expiration      time.Time
+}
 
 // A FileAWSCredentials retrieves credentials from the current user's home
 // directory, and keeps track if those credentials are expired.
 //
 // Profile ini file example: $HOME/.aws/credentials
 type FileAWSCredentials struct {
+	Expiry
+
 	// Path to the shared credentials file.
 	//
 	// If empty will look for "AWS_SHARED_CREDENTIALS_FILE" env variable. If the
@@ -89,6 +105,33 @@ func (p *FileAWSCredentials) Retrieve() (Value, error) {
 	// Default to empty string if not found.
 	token := iniProfile.Key("aws_session_token")
 
+	// If credential_process is defined, obtain credentials by executing
+	// the external process
+	credentialProcess := strings.TrimSpace(iniProfile.Key("credential_process").String())
+	if credentialProcess != "" {
+		args := strings.Fields(credentialProcess)
+		if len(args) <= 1 {
+			return Value{}, errors.New("invalid credential process args")
+		}
+		cmd := exec.Command(args[0], args[1:]...)
+		out, err := cmd.Output()
+		if err != nil {
+			return Value{}, err
+		}
+		var externalProcessCredentials externalProcessCredentials
+		err = json.Unmarshal([]byte(out), &externalProcessCredentials)
+		if err != nil {
+			return Value{}, err
+		}
+		p.retrieved = true
+		p.SetExpiration(externalProcessCredentials.Expiration, DefaultExpiryWindow)
+		return Value{
+			AccessKeyID:     externalProcessCredentials.AccessKeyID,
+			SecretAccessKey: externalProcessCredentials.SecretAccessKey,
+			SessionToken:    externalProcessCredentials.SessionToken,
+			SignerType:      SignatureV4,
+		}, nil
+	}
 	p.retrieved = true
 	return Value{
 		AccessKeyID:     id.String(),
@@ -96,11 +139,6 @@ func (p *FileAWSCredentials) Retrieve() (Value, error) {
 		SessionToken:    token.String(),
 		SignerType:      SignatureV4,
 	}, nil
-}
-
-// IsExpired returns if the shared credentials have expired.
-func (p *FileAWSCredentials) IsExpired() bool {
-	return !p.retrieved
 }
 
 // loadProfiles loads from the file pointed to by shared credentials filename for profile.

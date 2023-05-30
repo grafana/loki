@@ -24,9 +24,11 @@ import (
 	"context"
 	"net"
 	"net/url"
+	"strings"
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/serviceconfig"
 )
 
@@ -95,7 +97,7 @@ const (
 
 // Address represents a server the client connects to.
 //
-// Experimental
+// # Experimental
 //
 // Notice: This type is EXPERIMENTAL and may be changed or removed in a
 // later release.
@@ -139,11 +141,16 @@ type Address struct {
 
 // Equal returns whether a and o are identical.  Metadata is compared directly,
 // not with any recursive introspection.
-func (a *Address) Equal(o Address) bool {
+func (a Address) Equal(o Address) bool {
 	return a.Addr == o.Addr && a.ServerName == o.ServerName &&
 		a.Attributes.Equal(o.Attributes) &&
 		a.BalancerAttributes.Equal(o.BalancerAttributes) &&
 		a.Type == o.Type && a.Metadata == o.Metadata
+}
+
+// String returns JSON formatted string representation of the address.
+func (a Address) String() string {
+	return pretty.ToJSON(a)
 }
 
 // BuildOptions includes additional information for the builder to create
@@ -230,25 +237,40 @@ type ClientConn interface {
 //
 // Examples:
 //
-// - "dns://some_authority/foo.bar"
-//   Target{Scheme: "dns", Authority: "some_authority", Endpoint: "foo.bar"}
-// - "foo.bar"
-//   Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "foo.bar"}
-// - "unknown_scheme://authority/endpoint"
-//   Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "unknown_scheme://authority/endpoint"}
+//   - "dns://some_authority/foo.bar"
+//     Target{Scheme: "dns", Authority: "some_authority", Endpoint: "foo.bar"}
+//   - "foo.bar"
+//     Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "foo.bar"}
+//   - "unknown_scheme://authority/endpoint"
+//     Target{Scheme: resolver.GetDefaultScheme(), Endpoint: "unknown_scheme://authority/endpoint"}
 type Target struct {
 	// Deprecated: use URL.Scheme instead.
 	Scheme string
 	// Deprecated: use URL.Host instead.
 	Authority string
-	// Deprecated: use URL.Path or URL.Opaque instead. The latter is set when
-	// the former is empty.
-	Endpoint string
 	// URL contains the parsed dial target with an optional default scheme added
 	// to it if the original dial target contained no scheme or contained an
 	// unregistered scheme. Any query params specified in the original dial
 	// target can be accessed from here.
 	URL url.URL
+}
+
+// Endpoint retrieves endpoint without leading "/" from either `URL.Path`
+// or `URL.Opaque`. The latter is used when the former is empty.
+func (t Target) Endpoint() string {
+	endpoint := t.URL.Path
+	if endpoint == "" {
+		endpoint = t.URL.Opaque
+	}
+	// For targets of the form "[scheme]://[authority]/endpoint, the endpoint
+	// value returned from url.Parse() contains a leading "/". Although this is
+	// in accordance with RFC 3986, we do not want to break existing resolver
+	// implementations which expect the endpoint without the leading "/". So, we
+	// end up stripping the leading "/" here. But this will result in an
+	// incorrect parsing for something like "unix:///path/to/socket". Since we
+	// own the "unix" resolver, we can workaround in the unix resolver by using
+	// the `URL` field.
+	return strings.TrimPrefix(endpoint, "/")
 }
 
 // Builder creates a resolver that will be used to watch name resolution updates.

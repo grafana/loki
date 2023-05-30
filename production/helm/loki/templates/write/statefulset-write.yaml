@@ -8,22 +8,39 @@ metadata:
   labels:
     {{- include "loki.writeLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.write.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
+{{- if not .Values.write.autoscaling.enabled }}
   replicas: {{ .Values.write.replicas }}
-
-  podManagementPolicy: Parallel
+{{- end }}
+  podManagementPolicy: {{ .Values.write.podManagementPolicy }}
   updateStrategy:
     rollingUpdate:
       partition: 0
   serviceName: {{ include "loki.writeFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.write.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{/*
+    Data on the write nodes is easy to replace, so we want to always delete PVCs to make
+    operation easier, and will rely on re-fetching data when needed.
+  */}}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+  {{- end }}
   selector:
     matchLabels:
       {{- include "loki.writeSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -32,6 +49,12 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.writeSelectorLabels" . | nindent 8 }}
+        {{- with .Values.loki.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.write.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.write.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
@@ -39,6 +62,7 @@ spec:
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{ include "loki.enableServiceLinks" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -47,13 +71,19 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.write.terminationGracePeriodSeconds }}
+      {{- if .Values.write.initContainers }}
+      initContainers:
+        {{- with .Values.write.initContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       containers:
-        - name: write
+        - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=write
+            - -target={{ .Values.write.targetModule }}
             {{- with .Values.write.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -79,9 +109,21 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- if .Values.write.lifecycle }}
+          lifecycle:
+            {{- toYaml .Values.write.lifecycle | nindent 12 }}
+          {{- else if .Values.write.autoscaling.enabled }}
+          lifecycle:
+            preStop:
+              httpGet:
+                path: "/ingester/flush_shutdown"
+                port: http-metrics
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
             - name: data
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
@@ -111,9 +153,11 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         {{- if .Values.enterprise.enabled }}
         - name: license
           secret:
@@ -138,4 +182,11 @@ spec:
         resources:
           requests:
             storage: {{ .Values.write.persistence.size | quote }}
+        {{- with .Values.write.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+    {{- with .Values.write.extraVolumeClaimTemplates }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 {{- end }}

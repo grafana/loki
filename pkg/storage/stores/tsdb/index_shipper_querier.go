@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -15,50 +17,49 @@ import (
 )
 
 type indexShipperIterator interface {
-	ForEach(ctx context.Context, tableName, userID string, doneChan <-chan struct{}, callback shipper_index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
 }
 
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
 	shipper     indexShipperIterator
 	chunkFilter chunk.RequestChunkFilterer
-	tableRanges config.TableRanges
+	tableRange  config.TableRange
 }
 
-func newIndexShipperQuerier(shipper indexShipperIterator, tableRanges config.TableRanges) Index {
-	return &indexShipperQuerier{shipper: shipper, tableRanges: tableRanges}
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
+	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange}
 }
 
-func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string, doneChan <-chan struct{}) (Index, error) {
-	var indices []Index
+type indexIterFunc func(func(context.Context, Index) error) error
 
-	// Ensure we query both per tenant and multitenant TSDBs
-	idxBuckets := indexBuckets(from, through, i.tableRanges)
-	for _, bkt := range idxBuckets {
-		if err := i.shipper.ForEach(ctx, bkt, user, doneChan, func(multitenant bool, idx shipper_index.Index) error {
-			impl, ok := idx.(Index)
-			if !ok {
-				return fmt.Errorf("unexpected shipper index type: %T", idx)
+func (i indexIterFunc) For(ctx context.Context, f func(context.Context, Index) error) error {
+	return i(f)
+}
+
+func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
+	itr := indexIterFunc(func(f func(context.Context, Index) error) error {
+		// Ensure we query both per tenant and multitenant TSDBs
+		idxBuckets := indexBuckets(from, through, []config.TableRange{i.tableRange})
+		for _, bkt := range idxBuckets {
+			if err := i.shipper.ForEachConcurrent(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
+				impl, ok := idx.(Index)
+				if !ok {
+					return fmt.Errorf("unexpected shipper index type: %T", idx)
+				}
+				if multitenant {
+					impl = NewMultiTenantIndex(impl)
+				}
+
+				return f(ctx, impl)
+			}); err != nil {
+				return err
 			}
-			if multitenant {
-				indices = append(indices, NewMultiTenantIndex(impl))
-			} else {
-				indices = append(indices, impl)
-			}
-			return nil
-		}); err != nil {
-			return nil, err
 		}
+		return nil
+	})
 
-	}
-
-	if len(indices) == 0 {
-		return NoopIndex{}, nil
-	}
-	idx, err := NewMultiIndex(indices...)
-	if err != nil {
-		return nil, err
-	}
+	idx := NewMultiIndex(itr)
 
 	if i.chunkFilter != nil {
 		idx.SetChunkFilterer(i.chunkFilter)
@@ -84,10 +85,7 @@ func (i *indexShipperQuerier) Close() error {
 }
 
 func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	doneChan := make(chan struct{})
-	defer close(doneChan)
-
-	idx, err := i.indices(ctx, from, through, userID, doneChan)
+	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,10 +93,7 @@ func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, f
 }
 
 func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
-	doneChan := make(chan struct{})
-	defer close(doneChan)
-
-	idx, err := i.indices(ctx, from, through, userID, doneChan)
+	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +101,7 @@ func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, t
 }
 
 func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	doneChan := make(chan struct{})
-	defer close(doneChan)
-
-	idx, err := i.indices(ctx, from, through, userID, doneChan)
+	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,10 +109,7 @@ func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, fro
 }
 
 func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	doneChan := make(chan struct{})
-	defer close(doneChan)
-
-	idx, err := i.indices(ctx, from, through, userID, doneChan)
+	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,13 +117,42 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 }
 
 func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	doneChan := make(chan struct{})
-	defer close(doneChan)
-
-	idx, err := i.indices(ctx, from, through, userID, doneChan)
+	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
+
+type resultAccumulator struct {
+	mtx   sync.Mutex
+	items []interface{}
+	merge func(xs []interface{}) (interface{}, error)
+}
+
+func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
+	return &resultAccumulator{
+		merge: merge,
+	}
+}
+
+func (acc *resultAccumulator) Add(item interface{}) {
+	acc.mtx.Lock()
+	defer acc.mtx.Unlock()
+	acc.items = append(acc.items, item)
+
+}
+
+func (acc *resultAccumulator) Merge() (interface{}, error) {
+	acc.mtx.Lock()
+	defer acc.mtx.Unlock()
+
+	if len(acc.items) == 0 {
+		return nil, ErrEmptyAccumulator
+	}
+
+	return acc.merge(acc.items)
+}
+
+var ErrEmptyAccumulator = errors.New("no items in result accumulator")

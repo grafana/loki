@@ -1,7 +1,8 @@
 ---
 title: ECS
+description: ending Logs From AWS Elastic Container Service (ECS)
 ---
-# Sending Logs From AWS Elastic Container Service (ECS)
+# ECS
 
 [ECS][ECS] is the fully managed container orchestration service by Amazon. Combined with [Fargate][Fargate] you can run your container workload without the need to provision your own compute resources. In this tutorial we will see how you can leverage [Firelens][Firelens] an AWS log router to forward all your logs and your workload metadata to a Grafana Loki instance.
 
@@ -9,7 +10,7 @@ After this tutorial you will able to query all your logs in one place using Graf
 
 <!-- TOC -->
 
-- [Sending Logs From AWS Elastic Container Service (ECS)](#sending-logs-from-aws-elastic-container-service-ecs)
+- [ECS](#ecs)
   - [Requirements](#requirements)
   - [Setting up the ECS cluster](#setting-up-the-ecs-cluster)
   - [Creating your task definition](#creating-your-task-definition)
@@ -43,7 +44,7 @@ We will also need an [IAM Role to run containers][ecs iam] with, let's create a 
 > You might already have this `ecsTaskExecutionRole` role in your AWS account if that's the case you can skip this step.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ecs/ecs-role.json > ecs-role.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-role.json > ecs-role.json
 aws iam create-role --role-name ecsTaskExecutionRole  --assume-role-policy-document file://ecs-role.json
 
 {
@@ -73,7 +74,7 @@ aws iam create-role --role-name ecsTaskExecutionRole  --assume-role-policy-docum
 
 Note down the [ARN][arn] of this new role, we'll use it later to create an ECS task.
 
-Finally we'll give the [ECS task execution policy][ecs iam](`AmazonECSTaskExecutionRolePolicy`) to the created role, this will allows us to manage logs with [Firelens][Firelens]:
+Finally we'll give the [ECS task execution policy][ecs iam] `AmazonECSTaskExecutionRolePolicy` to the created role, this will allows us to manage logs with [Firelens][Firelens]:
 
 ```bash
 aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
@@ -92,7 +93,7 @@ Our [task definition][task] will be made of two containers, the [Firelens][Firel
 Let's download the task definition, we'll go through the most important parts.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
 ```
 
 ```json
@@ -241,4 +242,4 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
 [grafanacloud account]: https://grafana.com/login
 [grafana logs firelens]: ./ecs-grafana.png
-[logql]: ../../../logql
+[logql]: ../../../query

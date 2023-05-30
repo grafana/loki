@@ -21,7 +21,7 @@ type IndexSet interface {
 	Add(idx index.Index)
 	Upload(ctx context.Context) error
 	Cleanup(indexRetainPeriod time.Duration) error
-	ForEach(ctx context.Context, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error
+	ForEach(callback index.ForEachIndexCallback) error
 	Close()
 }
 
@@ -65,13 +65,9 @@ func (t *indexSet) Add(idx index.Index) {
 	t.index[idx.Name()] = idx
 }
 
-func (t *indexSet) ForEach(_ context.Context, doneChan <-chan struct{}, callback index.ForEachIndexCallback) error {
+func (t *indexSet) ForEach(callback index.ForEachIndexCallback) error {
 	t.indexMtx.RLock()
-
-	go func() {
-		<-doneChan
-		t.indexMtx.RUnlock()
-	}()
+	defer t.indexMtx.RUnlock()
 
 	for _, idx := range t.index {
 		if err := callback(t.userID == "", idx); err != nil {

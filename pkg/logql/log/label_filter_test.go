@@ -3,6 +3,7 @@ package log
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -317,7 +318,7 @@ func TestReduceAndLabelFilter(t *testing.T) {
 		filters []LabelFilterer
 		want    LabelFilterer
 	}{
-		{"empty", nil, NoopLabelFilter},
+		{"empty", nil, &NoopLabelFilter{}},
 		{"1", []LabelFilterer{NewBytesLabelFilter(LabelFilterEqual, "foo", 5)}, NewBytesLabelFilter(LabelFilterEqual, "foo", 5)},
 		{
 			"2",
@@ -357,7 +358,7 @@ func TestStringLabelFilter(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		filter      *StringLabelFilter
+		filter      LabelFilterer
 		labels      labels.Labels
 		shouldMatch bool
 	}{
@@ -411,12 +412,97 @@ func TestStringLabelFilter(t *testing.T) {
 			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `subqueries` exist
 			shouldMatch: true,
 		},
+		{
+			name:        `logfmt|msg=~"(?i)hello" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)hello")),
+			labels:      labels.Labels{{Name: "msg", Value: "HELLO"}, {Name: "subqueries", Value: ""}}, // label `msg` contains HELLO
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|msg=~"(?i)hello" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)hello")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `msg` contains hello
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|msg=~"(?i)HELLO" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)HELLO")),
+			labels:      labels.Labels{{Name: "msg", Value: "HELLO"}, {Name: "subqueries", Value: ""}}, // label `msg` contains HELLO
+			shouldMatch: true,
+		},
+		{
+			name:        `logfmt|msg=~"(?i)HELLO" (with label)`,
+			filter:      NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "msg", "(?i)HELLO")),
+			labels:      labels.Labels{{Name: "msg", Value: "hello"}, {Name: "subqueries", Value: ""}}, // label `msg` contains hello
+			shouldMatch: true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, tc.labels.Hash()))
 			assert.Equal(t, tc.shouldMatch, ok)
+		})
+	}
+}
+
+var result bool
+
+func BenchmarkLineLabelFilters(b *testing.B) {
+	line := []byte("line")
+	fixture := strings.Join([]string{
+		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo", "FoO",
+		"foo, 世界", allunicode(), "fooÏbar",
+	}, ",")
+	lbl := NewBaseLabelsBuilder().ForLabels(labels.Labels{
+		{Name: "foo", Value: fixture},
+	}, 0)
+
+	for _, test := range []struct {
+		re string
+	}{
+		// regex we intend to support.
+		{"foo"},
+		{"(foo)"},
+		{"(foo|ba)"},
+		{"(foo|ba|ar)"},
+		{"(foo|(ba|ar))"},
+		{"foo.*"},
+		{".*foo.*"},
+		{"(.*)(foo).*"},
+		{"(foo.*|.*ba)"},
+		{"(foo.*|.*bar.*)"},
+		{".*foo.*|bar"},
+		{".*foo|bar"},
+		{"(?:.*foo.*|bar)"},
+		{"(?P<foo>.*foo.*|bar)"},
+		{".*foo.*|bar|buzz"},
+		{".*foo.*|bar|uzz"},
+		{"foo|bar|b|buzz|zz"},
+		{"f|foo|foobar"},
+		{"f.*|foobar.*|.*buzz"},
+		{"((f.*)|foobar.*)|.*buzz"},
+		{".*"},
+		{".*|.*"},
+		{".*||||"},
+		{""},
+		{"(?i)foo"},
+		{"(?i)界"},
+		{"(?i)ïB"},
+		{"(?:)foo|fatal|exception"},
+		{"(?i)foo|fatal|exception"},
+		{"(?i)f|foo|foobar"},
+		{"(?i)f|fatal|e.*"},
+		{"(?i).*foo.*"},
+	} {
+		b.Run(test.re, func(b *testing.B) {
+			matcher := labels.MustNewMatcher(labels.MatchRegexp, "foo", test.re)
+			f := NewStringLabelFilter(matcher)
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				_, result = f.Process(0, line, lbl)
+			}
 		})
 	}
 }

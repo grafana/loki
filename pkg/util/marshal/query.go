@@ -2,7 +2,9 @@ package marshal
 
 import (
 	"fmt"
+	"strconv"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -131,7 +133,7 @@ func NewVector(v promql.Vector) loghttp.Vector {
 func NewSample(s promql.Sample) model.Sample {
 
 	ret := model.Sample{
-		Value:     model.SampleValue(s.V),
+		Value:     model.SampleValue(s.F),
 		Timestamp: model.Time(s.T),
 		Metric:    NewMetric(s.Metric),
 	}
@@ -154,12 +156,12 @@ func NewMatrix(m promql.Matrix) loghttp.Matrix {
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
 		Metric: NewMetric(s.Metric),
-		Values: make([]model.SamplePair, len(s.Points)),
+		Values: make([]model.SamplePair, len(s.Floats)),
 	}
 
-	for i, p := range s.Points {
+	for i, p := range s.Floats {
 		ret.Values[i].Timestamp = model.Time(p.T)
-		ret.Values[i].Value = model.SampleValue(p.V)
+		ret.Values[i].Value = model.SampleValue(p.F)
 	}
 
 	return ret
@@ -174,4 +176,238 @@ func NewMetric(l labels.Labels) model.Metric {
 	}
 
 	return ret
+}
+
+func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream) error {
+	s.WriteObjectStart()
+	s.WriteObjectField("status")
+	s.WriteString("success")
+
+	s.WriteMore()
+	s.WriteObjectField("data")
+	err := encodeData(v, s)
+	if err != nil {
+		return err
+	}
+
+	s.WriteObjectEnd()
+	return nil
+}
+
+func encodeData(v logqlmodel.Result, s *jsoniter.Stream) error {
+	s.WriteObjectStart()
+
+	s.WriteObjectField("resultType")
+	s.WriteString(string(v.Data.Type()))
+
+	s.WriteMore()
+	s.WriteObjectField("result")
+	err := encodeResult(v.Data, s)
+	if err != nil {
+		return err
+	}
+
+	s.WriteMore()
+	s.WriteObjectField("stats")
+	s.WriteVal(v.Statistics)
+
+	s.WriteObjectEnd()
+	s.Flush()
+	return nil
+}
+
+func encodeResult(v parser.Value, s *jsoniter.Stream) error {
+	switch v.Type() {
+	case loghttp.ResultTypeStream:
+		result, ok := v.(logqlmodel.Streams)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for streams", s)
+		}
+
+		return encodeStreams(result, s)
+	case loghttp.ResultTypeScalar:
+		scalar, ok := v.(promql.Scalar)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for scalar", scalar)
+		}
+
+		encodeScalar(scalar, s)
+
+	case loghttp.ResultTypeVector:
+		vector, ok := v.(promql.Vector)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for vector", vector)
+		}
+
+		encodeVector(vector, s)
+
+	case loghttp.ResultTypeMatrix:
+		m, ok := v.(promql.Matrix)
+
+		if !ok {
+			return fmt.Errorf("unexpected type %T for matrix", m)
+		}
+
+		encodeMatrix(m, s)
+
+	default:
+		s.WriteNil()
+		return fmt.Errorf("v1 endpoints do not support type %s", v.Type())
+	}
+	return nil
+}
+
+func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream) error {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	for i, stream := range streams {
+		if i > 0 {
+			s.WriteMore()
+		}
+
+		err := encodeStream(stream, s)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
+	s.WriteObjectStart()
+	defer s.WriteObjectEnd()
+
+	s.WriteObjectField("stream")
+	s.WriteObjectStart()
+	labels, err := parser.ParseMetric(stream.Labels)
+	if err != nil {
+		return err
+	}
+
+	for i, l := range labels {
+		if i > 0 {
+			s.WriteMore()
+		}
+
+		s.WriteObjectField(l.Name)
+		s.WriteString(l.Value)
+	}
+	s.WriteObjectEnd()
+	s.Flush()
+
+	s.WriteMore()
+	s.WriteObjectField("values")
+	s.WriteArrayStart()
+
+	for i, e := range stream.Entries {
+		if i > 0 {
+			s.WriteMore()
+		}
+
+		s.WriteArrayStart()
+		s.WriteRaw(`"`)
+		s.WriteRaw(strconv.FormatInt(e.Timestamp.UnixNano(), 10))
+		s.WriteRaw(`"`)
+		s.WriteMore()
+		s.WriteStringWithHTMLEscaped(e.Line)
+		s.WriteArrayEnd()
+
+		s.Flush()
+	}
+
+	s.WriteArrayEnd()
+
+	return nil
+}
+
+func encodeScalar(v promql.Scalar, s *jsoniter.Stream) {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	s.WriteRaw(model.Time(v.T).String())
+	s.WriteMore()
+	s.WriteString(model.SampleValue(v.V).String())
+}
+
+func encodeVector(v promql.Vector, s *jsoniter.Stream) {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	for i, sample := range v {
+		if i > 0 {
+			s.WriteMore()
+		}
+		encodeSample(sample, s)
+		s.Flush()
+	}
+}
+
+func encodeSample(sample promql.Sample, s *jsoniter.Stream) {
+	s.WriteObjectStart()
+	defer s.WriteObjectEnd()
+
+	s.WriteObjectField("metric")
+	encodeMetric(sample.Metric, s)
+
+	s.WriteMore()
+	s.WriteObjectField("value")
+	encodeValue(sample.T, sample.F, s)
+}
+
+func encodeValue(T int64, V float64, s *jsoniter.Stream) {
+	s.WriteArrayStart()
+	s.WriteRaw(model.Time(T).String())
+	s.WriteMore()
+	s.WriteString(model.SampleValue(V).String())
+	s.WriteArrayEnd()
+}
+
+func encodeMetric(l labels.Labels, s *jsoniter.Stream) {
+	s.WriteObjectStart()
+	for i, label := range l {
+		if i > 0 {
+			s.WriteMore()
+		}
+
+		s.WriteObjectField(label.Name)
+		s.WriteString(label.Value)
+	}
+	s.WriteObjectEnd()
+}
+
+func encodeMatrix(m promql.Matrix, s *jsoniter.Stream) {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	for i, sampleStream := range m {
+		if i > 0 {
+			s.WriteMore()
+		}
+		encodeSampleStream(sampleStream, s)
+		s.Flush()
+	}
+}
+
+func encodeSampleStream(stream promql.Series, s *jsoniter.Stream) {
+	s.WriteObjectStart()
+	defer s.WriteObjectEnd()
+
+	s.WriteObjectField("metric")
+	encodeMetric(stream.Metric, s)
+
+	s.WriteMore()
+	s.WriteObjectField("values")
+	s.WriteArrayStart()
+	for i, p := range stream.Floats {
+		if i > 0 {
+			s.WriteMore()
+		}
+		encodeValue(p.T, p.F, s)
+	}
+	s.WriteArrayEnd()
 }

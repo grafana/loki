@@ -1,5 +1,5 @@
-//go:build !linux || !cgo
-// +build !linux !cgo
+//go:build !linux || !cgo || !promtail_journal_enabled
+// +build !linux !cgo !promtail_journal_enabled
 
 package journal
 

@@ -24,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -65,9 +66,9 @@ func TestChunkFlushingShutdown(t *testing.T) {
 
 type fullWAL struct{}
 
-func (fullWAL) Log(_ *WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
-func (fullWAL) Start()                 {}
-func (fullWAL) Stop() error            { return nil }
+func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
+func (fullWAL) Start()                  {}
+func (fullWAL) Stop() error             { return nil }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -315,7 +316,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		if chunk.Metric.Has("__name__") {
 			labelsBuilder := labels.NewBuilder(chunk.Metric)
 			labelsBuilder.Del("__name__")
-			chunks[ix].Metric = labelsBuilder.Labels(nil)
+			chunks[ix].Metric = labelsBuilder.Labels()
 		}
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)

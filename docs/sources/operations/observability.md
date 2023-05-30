@@ -1,12 +1,13 @@
 ---
 title: Observability
+description: Observing Grafana Loki
 weight: 20
 ---
-# Observing Grafana Loki
+# Observability
 
 Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
-metrics. You will need a local Prometheus and add Loki and Promtail as targets.
-See [configuring
+metrics (the default port is 3100 for Loki and 80 for Promtail). You will need
+a local Prometheus and add Loki and Promtail as targets. See [configuring
 Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration)
 for more information.
 
@@ -90,10 +91,10 @@ Most of these metrics are counters and should continuously increase during norma
 
 If Promtail uses any pipelines with metrics stages, those metrics will also be
 exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
-[Pipelines](../../clients/promtail/pipelines/) for more information.
+[Pipelines]({{<relref "../clients/promtail/pipelines">}}) for more information.
 
 An example Grafana dashboard was built by the community and is available as
-dashboard [10004](https://grafana.com/dashboards/10004).
+dashboard [10004](/dashboards/10004).
 
 ## Metrics cardinality
 
@@ -104,7 +105,7 @@ Review your emitted metrics before scraping with Prometheus, and configure the s
 
 ## Mixins
 
-The Loki repository has a [mixin](https://github.com/grafana/loki/blob/master/production/loki-mixin) that includes a
+The Loki repository has a [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin) that includes a
 set of dashboards, recording rules, and alerts. Together, the mixin gives you a
 comprehensive package for monitoring Loki in production.
 

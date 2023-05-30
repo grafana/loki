@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	strings "strings"
 	"testing"
 	"time"
@@ -79,6 +80,15 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Path:    "/label",
 			StartTs: start,
 			EndTs:   end,
+		}, false},
+		{"label_values", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiLabelNamesRequest{
+			Path:    "/label/test/values",
+			StartTs: start,
+			EndTs:   end,
+			Query:   `{foo="bar"}`,
 		}, false},
 		{"index_stats", func() (*http.Request, error) {
 			return LokiCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
@@ -334,6 +344,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 		Path:    "/loki/api/v1/labels/__name__/values",
 		StartTs: start,
 		EndTs:   end,
+		Query:   `{foo="bar"}`,
 	}
 	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -341,13 +352,37 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
 	req, err = LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, toEncode.Query, req.(*LokiLabelNamesRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+}
+
+func Test_codec_labels_DecodeRequest(t *testing.T) {
+	ctx := context.Background()
+	u, err := url.Parse(`/loki/api/v1/labels/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
+	require.NoError(t, err)
+
+	r := &http.Request{URL: u}
+	req, err := LokiCodec.DecodeRequest(context.TODO(), r, nil)
+	require.NoError(t, err)
+	require.Equal(t, start, req.(*LokiLabelNamesRequest).StartTs)
+	require.Equal(t, end, req.(*LokiLabelNamesRequest).EndTs)
+	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+
+	got, err := LokiCodec.EncodeRequest(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, ctx, got.Context())
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 }
 
 func Test_codec_index_stats_EncodeRequest(t *testing.T) {
@@ -487,7 +522,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiPromResponse{
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 1}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 1}},
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
 					Data: queryrangebase.PrometheusData{
@@ -558,7 +593,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      100,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -646,7 +681,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      6,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -731,7 +766,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.FORWARD,
 				Limit:      100,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -819,7 +854,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.FORWARD,
 				Limit:      5,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 2}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
@@ -872,8 +907,9 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiSeriesResponse{
-				Status:  "success",
-				Version: 1,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
+				Status:     "success",
+				Version:    1,
 				Data: []logproto.SeriesIdentifier{
 					{
 						Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
@@ -908,9 +944,10 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiLabelNamesResponse{
-				Status:  "success",
-				Version: 1,
-				Data:    []string{"foo", "bar", "buzz", "blip", "blop"},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
+				Status:     "success",
+				Version:    1,
+				Data:       []string{"foo", "bar", "buzz", "blip", "blop"},
 			},
 			false,
 		},
@@ -983,7 +1020,8 @@ var (
 				"entriesStored": 0,
 				"bytesReceived": 0,
 				"bytesSent": 0,
-				"requests": 0
+				"requests": 0,
+				"downloadTime": 0
 			},
 			"index": {
 				"entriesFound": 0,
@@ -991,7 +1029,8 @@ var (
 				"entriesStored": 0,
 				"bytesReceived": 0,
 				"bytesSent": 0,
-				"requests": 0
+				"requests": 0,
+				"downloadTime": 0
 			},
 			"result": {
 				"entriesFound": 0,
@@ -999,7 +1038,8 @@ var (
 				"entriesStored": 0,
 				"bytesReceived": 0,
 				"bytesSent": 0,
-				"requests": 0
+				"requests": 0,
+				"downloadTime": 0
 			}
 		},
 		"summary": {
@@ -1007,9 +1047,11 @@ var (
 			"execTime": 22,
 			"linesProcessedPerSecond": 23,
 			"queueTime": 21,
-			"subqueries": 1,
+			"shards": 0,
+			"splits": 0,
+			"subqueries": 0,
 			"totalBytesProcessed": 24,
-                        "totalEntriesReturned": 10,
+			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25
 		}
 	},`
@@ -1166,7 +1208,6 @@ var (
 			ExecTime:                22,
 			LinesProcessedPerSecond: 23,
 			TotalBytesProcessed:     24,
-			Subqueries:              1,
 			TotalLinesProcessed:     25,
 			TotalEntriesReturned:    10,
 		},

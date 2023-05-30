@@ -245,7 +245,7 @@ func newMockEntryIterator(numLabels int) mockEntryIterator {
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
 	}
-	return mockEntryIterator{labels: builder.Labels(nil).String()}
+	return mockEntryIterator{labels: builder.Labels().String()}
 }
 
 func (it mockEntryIterator) Labels() string {

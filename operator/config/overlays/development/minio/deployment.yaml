@@ -21,9 +21,9 @@ spec:
           mkdir -p /storage/loki && \
           minio server /storage
         env:
-        - name: MINIO_ACCESS_KEY
+        - name: MINIO_ROOT_USER
           value: minio
-        - name: MINIO_SECRET_KEY
+        - name: MINIO_ROOT_PASSWORD
           value: minio123
         image: minio/minio
         name: minio

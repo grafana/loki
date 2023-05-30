@@ -1,0 +1,14 @@
+{
+  "apiVersion": "tanka.dev/v1alpha1",
+  "kind": "Environment",
+  "metadata": {
+    "name": "environments/helm-cluster",
+    "namespace": "environments/helm-cluster/main.jsonnet"
+  },
+  "spec": {
+    "apiServer": "https://0.0.0.0:45123",
+    "namespace": "k3d-helm-cluster",
+    "resourceDefaults": {},
+    "expectVersions": {}
+  }
+}

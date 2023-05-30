@@ -8,19 +8,27 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/clients/pkg/promtail/utils"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
+)
+
+const (
+	timeoutUntilFanoutHardStop = time.Second * 30
 )
 
 var reloadSuccessTotal = prometheus.NewCounter(prometheus.CounterOpts{
@@ -58,6 +66,8 @@ func WithRegisterer(reg prometheus.Registerer) Option {
 // Promtail is the root struct for Promtail.
 type Promtail struct {
 	client         client.Client
+	walWriter      *wal.Writer
+	entriesFanout  api.EntryHandler
 	targetManagers *targets.TargetManagers
 	server         server.Server
 	logger         log.Logger
@@ -82,6 +92,13 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 		metrics: metrics,
 		dryRun:  dryRun,
 	}
+	for _, o := range opts {
+		// todo (callum) I don't understand why I needed to add this check
+		if o == nil {
+			continue
+		}
+		o(promtail)
+	}
 	err := promtail.reg.Register(reloadSuccessTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadSuccessTotal :%w", err)
@@ -89,13 +106,6 @@ func New(cfg config.Config, newConfig func() (*config.Config, error), metrics *c
 	err = promtail.reg.Register(reloadFailTotal)
 	if err != nil {
 		return nil, fmt.Errorf("error register prometheus collector reloadFailTotal :%w", err)
-	}
-	for _, o := range opts {
-		// todo (callum) I don't understand why I needed to add this check
-		if o == nil {
-			continue
-		}
-		o(promtail)
 	}
 	err = promtail.reloadConfig(&cfg)
 	if err != nil {
@@ -133,20 +143,51 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
 	var err error
+	// entryHandlers contains all sinks were scraped log entries should get to
+	var entryHandlers = []api.EntryHandler{}
+
+	// TODO: Refactor all client instantiation inside client.Manager
 	if p.dryRun {
-		p.client, err = client.NewLogger(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.ClientConfigs...)
+		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
+	} else if cfg.WAL.Enabled {
+		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+		if err != nil {
+			return fmt.Errorf("failed to create wal writer: %w", err)
+		}
+
+		p.client, err = client.NewManager(
+			p.metrics,
+			p.logger,
+			cfg.LimitsConfig.MaxStreams,
+			cfg.LimitsConfig.MaxLineSize.Val(),
+			cfg.LimitsConfig.MaxLineSizeTruncate,
+			p.reg,
+			cfg.WAL,
+			p.walWriter,
+			cfg.ClientConfigs...,
+		)
+		if err != nil {
+			return err
+		}
+
+		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
+		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
+		entryHandlers = append(entryHandlers, p.walWriter)
 	} else {
-		p.client, err = client.NewMulti(p.metrics, cfg.Options.StreamLagLabels, p.logger, cfg.LimitsConfig.MaxStreams, cfg.ClientConfigs...)
+		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
 	}
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	entryHandlers = append(entryHandlers, p.client)
+	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
+
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig, cfg.Global.FileWatch)
 	if err != nil {
 		return err
 	}
@@ -195,6 +236,12 @@ func (p *Promtail) Shutdown() {
 	}
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
+	}
+	if p.entriesFanout != nil {
+		p.entriesFanout.Stop()
+	}
+	if p.walWriter != nil {
+		p.walWriter.Stop()
 	}
 	// todo work out the stop.
 	p.client.Stop()

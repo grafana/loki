@@ -44,8 +44,9 @@ func PageResultFrom(resp *http.Response) (PageResult, error) {
 func PageResultFromParsed(resp *http.Response, body interface{}) PageResult {
 	return PageResult{
 		Result: gophercloud.Result{
-			Body:   body,
-			Header: resp.Header,
+			Body:       body,
+			StatusCode: resp.StatusCode,
+			Header:     resp.Header,
 		},
 		URL: *resp.Request.URL,
 	}

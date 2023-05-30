@@ -13,7 +13,6 @@ import (
 func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent) error {
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
-		fmt.Println("error parsing log event: ", err)
 		return err
 	}
 
@@ -42,18 +41,18 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	return nil
 }
 
-func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent) error {
-	batch, err := newBatch(ctx)
+func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, pClient Client) error {
+	batch, err := newBatch(ctx, pClient)
 	if err != nil {
 		return err
 	}
 
 	err = parseCWEvent(ctx, batch, ev)
 	if err != nil {
-		return err
+		return fmt.Errorf("error parsing log event: %s", err)
 	}
 
-	err = sendToPromtail(ctx, batch)
+	err = pClient.sendToPromtail(ctx, batch)
 	if err != nil {
 		return err
 	}

@@ -40885,6 +40885,9 @@ const (
 	// BucketLocationConstraintApSoutheast2 is a BucketLocationConstraint enum value
 	BucketLocationConstraintApSoutheast2 = "ap-southeast-2"
 
+	// BucketLocationConstraintApSoutheast3 is a BucketLocationConstraint enum value
+	BucketLocationConstraintApSoutheast3 = "ap-southeast-3"
+
 	// BucketLocationConstraintCaCentral1 is a BucketLocationConstraint enum value
 	BucketLocationConstraintCaCentral1 = "ca-central-1"
 
@@ -40948,6 +40951,7 @@ func BucketLocationConstraint_Values() []string {
 		BucketLocationConstraintApSouth1,
 		BucketLocationConstraintApSoutheast1,
 		BucketLocationConstraintApSoutheast2,
+		BucketLocationConstraintApSoutheast3,
 		BucketLocationConstraintCaCentral1,
 		BucketLocationConstraintCnNorth1,
 		BucketLocationConstraintCnNorthwest1,

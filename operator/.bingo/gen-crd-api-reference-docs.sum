@@ -1,0 +1,11 @@
+github.com/ViaQ/gen-crd-api-reference-docs v0.0.2 h1:OVI5SfpuPo/TTANkqiJvNf+qUWE50+DvhbQC12e3ogk=
+github.com/ViaQ/gen-crd-api-reference-docs v0.0.2/go.mod h1:WxpfZG1IGqhtLb0yM4e0Bl7K8VVmg4FAvQkd3x2R660=
+github.com/ViaQ/gen-crd-api-reference-docs v0.0.3 h1:ChSn0sz5GEkVkjart0RlyeHtuI2ahufu3qyvyjksDq0=
+github.com/ViaQ/gen-crd-api-reference-docs v0.0.3/go.mod h1:WxpfZG1IGqhtLb0yM4e0Bl7K8VVmg4FAvQkd3x2R660=
+github.com/go-logr/logr v0.2.0 h1:QvGt2nLcHH0WK9orKa+ppBPAxREcH364nPUedEpK0TY=
+github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
+github.com/russross/blackfriday/v2 v2.0.1 h1:lPqVAte+HuHNfhJ/0LC98ESWRz8afy9tM/0RK8m9o+Q=
+github.com/shurcooL/sanitized_anchor_name v1.0.0 h1:PdmoCO6wvbs+7yrJyMORt4/BmY5IYyJwS/kOiWx8mHo=
+k8s.io/gengo v0.0.0-20201203183100-97869a43a9d9 h1:1bLA4Agvs1DILmc+q2Bbcqjx6jOHO7YEFA+G+0aTZoc=
+k8s.io/klog v0.2.0 h1:0ElL0OHzF3N+OhoJTL0uca20SxtYt4X4+bzHeqrB83c=
+k8s.io/klog/v2 v2.2.0 h1:XRvcwJozkgZ1UQJmfMGpvRthQHOvihEhYtDfAaxMz/A=

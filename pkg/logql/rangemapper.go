@@ -13,12 +13,14 @@ import (
 )
 
 var splittableVectorOp = map[string]struct{}{
-	syntax.OpTypeSum:   {},
-	syntax.OpTypeCount: {},
-	syntax.OpTypeMax:   {},
-	syntax.OpTypeMin:   {},
-	syntax.OpTypeAvg:   {},
-	syntax.OpTypeTopK:  {},
+	syntax.OpTypeSum:      {},
+	syntax.OpTypeCount:    {},
+	syntax.OpTypeMax:      {},
+	syntax.OpTypeMin:      {},
+	syntax.OpTypeAvg:      {},
+	syntax.OpTypeTopK:     {},
+	syntax.OpTypeSort:     {},
+	syntax.OpTypeSortDesc: {},
 }
 
 var splittableRangeVectorOp = map[string]struct{}{
@@ -228,6 +230,7 @@ func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrid
 			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval, recorder),
 			Grouping: &syntax.Grouping{
 				Without: true,
+				Groups:  []string{},
 			},
 			Operation: syntax.OpTypeSum,
 		},
@@ -250,6 +253,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 	if expr.Grouping == nil {
 		grouping = &syntax.Grouping{
 			Without: true,
+			Groups:  []string{},
 		}
 	}
 	var downstream syntax.SampleExpr = expr
@@ -326,7 +330,7 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	// This does not work for `count()` and `topk()`, though.
 	// We also do not want to push down, if the inner expression is a binary operation.
 	var vectorAggrPushdown *syntax.VectorAggregationExpr
-	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK {
+	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK && expr.Operation != syntax.OpTypeSort && expr.Operation != syntax.OpTypeSortDesc {
 		vectorAggrPushdown = expr
 	}
 

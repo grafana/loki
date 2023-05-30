@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"strings"
 )
 
@@ -35,4 +36,27 @@ func sanitizeLabelKey(key string, isPrefix bool) string {
 		}
 		return '_'
 	}, key)
+}
+
+// appendSanitize appends the sanitized key to the slice.
+func appendSanitized(to, key []byte) []byte {
+	if len(key) == 0 {
+		return to
+	}
+	key = bytes.TrimSpace(key)
+
+	if len(to) == 0 && key[0] >= '0' && key[0] <= '9' {
+		to = append(to, '_')
+	}
+	// range over rune
+
+	for _, r := range string(key) {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (r >= '0' && r <= '9')) {
+			to = append(to, '_')
+			continue
+		}
+		to = append(to, byte(r))
+
+	}
+	return to
 }

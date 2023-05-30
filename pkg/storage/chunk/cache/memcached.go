@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/log"
+	"github.com/grafana/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
@@ -45,6 +45,10 @@ type Memcached struct {
 	wg      sync.WaitGroup
 	inputCh chan *work
 
+	// `closed` tracks if `inputCh` is closed.
+	// So that any writer goroutine wouldn't write to it after closing `intputCh`
+	closed chan struct{}
+
 	logger log.Logger
 }
 
@@ -61,11 +65,17 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				Namespace: "loki",
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
-				// Memcached requests are very quick: smallest bucket is 16us, biggest is 1s
-				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+				// 16us, 64us, 256us, 1.024ms, 4.096ms, 16.384ms, 65.536ms, 150ms, 250ms, 500ms, 1s
+				Buckets: append(prometheus.ExponentialBuckets(0.000016, 4, 7), []float64{
+					(150 * time.Millisecond).Seconds(),
+					(250 * time.Millisecond).Seconds(),
+					(500 * time.Millisecond).Seconds(),
+					(time.Second).Seconds(),
+				}...),
 				ConstLabels: prometheus.Labels{"name": name},
 			}, []string{"method", "status_code"}),
 		),
+		closed: make(chan struct{}),
 	}
 
 	if cfg.BatchSize == 0 || cfg.Parallelism == 0 {
@@ -77,6 +87,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 
 	for i := 0; i < cfg.Parallelism; i++ {
 		go func() {
+			defer c.wg.Done()
 			for input := range c.inputCh {
 				res := &result{
 					batchID: input.batchID,
@@ -85,7 +96,6 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				input.resultCh <- res
 			}
 
-			c.wg.Done()
 		}()
 	}
 
@@ -108,7 +118,7 @@ type result struct {
 }
 
 func memcacheStatusCode(err error) string {
-	// See https://godoc.org/github.com/bradfitz/gomemcache/memcache#pkg-variables
+	// See https://godoc.org/github.com/grafana/gomemcache/memcache#pkg-variables
 	switch err {
 	case nil:
 		return "200"
@@ -164,13 +174,18 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
-			c.inputCh <- &work{
-				keys:     batchKeys,
-				ctx:      ctx,
-				resultCh: resultsCh,
-				batchID:  j,
+			select {
+			case <-c.closed:
+				return
+			default:
+				c.inputCh <- &work{
+					keys:     batchKeys,
+					ctx:      ctx,
+					resultCh: resultsCh,
+					batchID:  j,
+				}
+				j++
 			}
-			j++
 		}
 	}()
 
@@ -183,8 +198,17 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	// We need to order found by the input keys order.
 	results := make([]*result, numResults)
 	for i := 0; i < numResults; i++ {
-		result := <-resultsCh
-		results[result.batchID] = result
+		// NOTE: Without this check, <-resultCh may wait forever as work is
+		// interrupted (by other goroutine by calling `Stop()`) and there may not be `numResults`
+		// values to read from `resultsCh` in that case.
+		// Also we do close(resultsCh) in the same goroutine so <-resultCh may never return.
+		select {
+		case <-c.closed:
+			return
+		default:
+			result := <-resultsCh
+			results[result.batchID] = result
+		}
 	}
 	close(resultsCh)
 
@@ -219,13 +243,13 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) err
 	return err
 }
 
-// Stop does nothing.
 func (c *Memcached) Stop() {
 	if c.inputCh == nil {
 		return
 	}
 
 	close(c.inputCh)
+	close(c.closed)
 	c.wg.Wait()
 }
 

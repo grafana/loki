@@ -3,12 +3,14 @@ package ingester
 import (
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
 	// defaultStripeSize is the default number of entries to allocate in the
 	// stripeSeries list.
-	defaultStripeSize = 1 << 15
+	defaultStripeSize = 1 << 10
 
 	// The intent is for a per-second rate so this is hard coded
 	updateInterval = time.Second
@@ -23,19 +25,25 @@ type stripeLock struct {
 
 type StreamRateCalculator struct {
 	size     int
-	samples  []int64
-	rates    []int64
+	samples  []map[string]map[uint64]logproto.StreamRate
 	locks    []stripeLock
 	stopchan chan struct{}
+
+	rateLock sync.RWMutex
+	allRates []logproto.StreamRate
 }
 
 func NewStreamRateCalculator() *StreamRateCalculator {
 	calc := &StreamRateCalculator{
-		size:     defaultStripeSize,
-		samples:  make([]int64, defaultStripeSize),
-		rates:    make([]int64, defaultStripeSize),
+		size: defaultStripeSize,
+		// Lookup pattern: tenant -> fingerprint -> rate
+		samples:  make([]map[string]map[uint64]logproto.StreamRate, defaultStripeSize),
 		locks:    make([]stripeLock, defaultStripeSize),
 		stopchan: make(chan struct{}),
+	}
+
+	for i := 0; i < defaultStripeSize; i++ {
+		calc.samples[i] = make(map[string]map[uint64]logproto.StreamRate)
 	}
 
 	go calc.updateLoop()
@@ -58,30 +66,64 @@ func (c *StreamRateCalculator) updateLoop() {
 }
 
 func (c *StreamRateCalculator) updateRates() {
+	rates := make([]logproto.StreamRate, 0, c.size)
+
 	for i := 0; i < c.size; i++ {
 		c.locks[i].Lock()
-		c.rates[i] = c.samples[i]
-		c.samples[i] = 0
+
+		tenantRates := c.samples[i]
+		for _, tenant := range tenantRates {
+			for _, streamRate := range tenant {
+				rates = append(rates, logproto.StreamRate{
+					Tenant:            streamRate.Tenant,
+					StreamHash:        streamRate.StreamHash,
+					StreamHashNoShard: streamRate.StreamHashNoShard,
+					Rate:              streamRate.Rate,
+					Pushes:            streamRate.Pushes,
+				})
+			}
+		}
+
+		c.samples[i] = make(map[string]map[uint64]logproto.StreamRate)
 		c.locks[i].Unlock()
 	}
+
+	c.rateLock.Lock()
+	defer c.rateLock.Unlock()
+
+	c.allRates = rates
 }
 
-func (c *StreamRateCalculator) RateFor(streamHash uint64) int64 {
-	i := streamHash & uint64(c.size-1)
+func (c *StreamRateCalculator) Rates() []logproto.StreamRate {
+	c.rateLock.RLock()
+	defer c.rateLock.RUnlock()
 
-	c.locks[i].RLock()
-	defer c.locks[i].RUnlock()
-
-	return c.rates[i]
+	return c.allRates
 }
 
-func (c *StreamRateCalculator) Record(streamHash uint64, bytes int64) {
+func (c *StreamRateCalculator) Record(tenant string, streamHash, streamHashNoShard uint64, bytes int) {
 	i := streamHash & uint64(c.size-1)
 
 	c.locks[i].Lock()
 	defer c.locks[i].Unlock()
 
-	c.samples[i] += bytes
+	tenantMap := c.getTenant(i, tenant)
+	streamRate := tenantMap[streamHash]
+	streamRate.StreamHash = streamHash
+	streamRate.StreamHashNoShard = streamHashNoShard
+	streamRate.Tenant = tenant
+	streamRate.Rate += int64(bytes)
+	streamRate.Pushes++
+	tenantMap[streamHash] = streamRate
+
+	c.samples[i][tenant] = tenantMap
+}
+
+func (c *StreamRateCalculator) getTenant(idx uint64, tenant string) map[uint64]logproto.StreamRate {
+	if t, ok := c.samples[idx][tenant]; ok {
+		return t
+	}
+	return make(map[uint64]logproto.StreamRate)
 }
 
 func (c *StreamRateCalculator) Stop() {

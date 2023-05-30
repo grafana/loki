@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -20,6 +19,7 @@ import (
 
 func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -36,6 +36,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 					},
 				},
 			},
+			Timeouts: defaultTimeoutConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -44,6 +45,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		require.Equal(t, defs.Size, opt.Stack.Size)
 		require.Equal(t, defs.Limits, opt.Stack.Limits)
 		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor)
+		require.Equal(t, defs.Replication, opt.Stack.Replication)
 		require.Equal(t, defs.ManagementState, opt.Stack.ManagementState)
 		require.Equal(t, defs.Template.Ingester, opt.Stack.Template.Ingester)
 		require.Equal(t, defs.Template.Querier, opt.Stack.Template.Querier)
@@ -60,6 +62,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 
 func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
 		lokiv1.SizeOneXSmall,
 		lokiv1.SizeOneXMedium,
@@ -76,6 +79,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 					},
 				},
 			},
+			Timeouts: defaultTimeoutConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -230,6 +234,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -248,6 +253,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -290,6 +296,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -307,6 +314,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: true,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -320,20 +328,6 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 			require.NoError(t, err)
 
 			svcs := []*corev1.Service{
-				NewDistributorGRPCService(tst.BuildOptions),
-				NewDistributorHTTPService(tst.BuildOptions),
-				NewIngesterGRPCService(tst.BuildOptions),
-				NewIngesterHTTPService(tst.BuildOptions),
-				NewQuerierGRPCService(tst.BuildOptions),
-				NewQuerierHTTPService(tst.BuildOptions),
-				NewQueryFrontendGRPCService(tst.BuildOptions),
-				NewQueryFrontendHTTPService(tst.BuildOptions),
-				NewCompactorGRPCService(tst.BuildOptions),
-				NewCompactorHTTPService(tst.BuildOptions),
-				NewIndexGatewayGRPCService(tst.BuildOptions),
-				NewIndexGatewayHTTPService(tst.BuildOptions),
-				NewRulerHTTPService(tst.BuildOptions),
-				NewRulerGRPCService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
@@ -361,15 +355,8 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		Gates: configv1.FeatureGates{
 			HTTPEncryption: true,
 		},
+		Timeouts: defaultTimeoutConfig,
 	}
-	ciphers := strings.Join([]string{
-		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
-		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
-	}, ",")
 
 	err := ApplyDefaultSettings(&opts)
 	require.NoError(t, err)
@@ -383,7 +370,6 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name string
 			vs   []corev1.Volume
 			vms  []corev1.VolumeMount
-			args []string
 			rps  corev1.URIScheme
 			lps  corev1.URIScheme
 		)
@@ -393,14 +379,12 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		default:
@@ -421,14 +405,10 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/var/run/tls/http",
+			MountPath: "/var/run/tls/http/server",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.tls-min-version=VersionTLS12")
-		require.Contains(t, args, fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers))
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -449,6 +429,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			HTTPEncryption:             true,
 			ServiceMonitorTLSEndpoints: true,
 		},
+		Timeouts: defaultTimeoutConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -462,7 +443,6 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name string
 			vs   []corev1.Volume
 			vms  []corev1.VolumeMount
-			args []string
 			rps  corev1.URIScheme
 			lps  corev1.URIScheme
 		)
@@ -472,14 +452,12 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			args = o.Spec.Template.Spec.Containers[0].Args
 			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
 			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
 		default:
@@ -500,12 +478,10 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 		expVolumeMount := corev1.VolumeMount{
 			Name:      secretName,
 			ReadOnly:  false,
-			MountPath: "/var/run/tls/http",
+			MountPath: "/var/run/tls/http/server",
 		}
 		require.Contains(t, vms, expVolumeMount)
 
-		require.Contains(t, args, "-server.http-tls-cert-path=/var/run/tls/http/tls.crt")
-		require.Contains(t, args, "-server.http-tls-key-path=/var/run/tls/http/tls.key")
 		require.Equal(t, corev1.URISchemeHTTPS, rps)
 		require.Equal(t, corev1.URISchemeHTTPS, lps)
 	}
@@ -558,6 +534,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -600,6 +577,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -615,15 +593,6 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 		"test-index-gateway": "test-index-gateway-grpc",
 		"test-ruler":         "test-ruler-grpc",
 	}
-
-	ciphers := strings.Join([]string{
-		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
-		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
-	}, ",")
 
 	for _, tst := range table {
 		tst := tst
@@ -657,17 +626,11 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 
 				t.Run(name, func(t *testing.T) {
 					secretName := secretsMap[name]
-					args := []string{
-						"-server.grpc-tls-cert-path=/var/run/tls/grpc/tls.crt",
-						"-server.grpc-tls-key-path=/var/run/tls/grpc/tls.key",
-						"-server.tls-min-version=VersionTLS12",
-						fmt.Sprintf("-server.tls-cipher-suites=%s", ciphers),
-					}
 
 					vm := corev1.VolumeMount{
 						Name:      secretName,
 						ReadOnly:  false,
-						MountPath: "/var/run/tls/grpc",
+						MountPath: "/var/run/tls/grpc/server",
 					}
 
 					v := corev1.Volume{
@@ -680,11 +643,9 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 					}
 
 					if tst.BuildOptions.Gates.GRPCEncryption {
-						require.Subset(t, spec.Containers[0].Args, args)
 						require.Contains(t, spec.Containers[0].VolumeMounts, vm)
 						require.Contains(t, spec.Volumes, v)
 					} else {
-						require.NotSubset(t, spec.Containers[0].Args, args)
 						require.NotContains(t, spec.Containers[0].VolumeMounts, vm)
 						require.NotContains(t, spec.Volumes, v)
 					}
@@ -741,6 +702,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					RuntimeSeccompProfile: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -783,6 +745,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					RuntimeSeccompProfile: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -846,6 +809,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -884,6 +848,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -922,6 +887,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: false,
 					LokiStackAlerts: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -936,6 +902,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: true,
 					LokiStackAlerts: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -951,63 +918,6 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
 			} else {
 				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
-			}
-		})
-	}
-}
-
-func TestBuildAll_WithFeatureGates_DefaultNodeAffinity(t *testing.T) {
-	tt := []struct {
-		desc         string
-		nodeAffinity bool
-		wantAffinity *corev1.Affinity
-	}{
-		{
-			desc:         "disabled",
-			nodeAffinity: false,
-			wantAffinity: nil,
-		},
-		{
-			desc:         "enabled",
-			nodeAffinity: true,
-			wantAffinity: defaultAffinity(true),
-		},
-	}
-
-	for _, tc := range tt {
-		tc := tc
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-
-			opts := &Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1.LokiStackSpec{
-					Size: lokiv1.SizeOneXSmall,
-				},
-				Gates: configv1.FeatureGates{
-					DefaultNodeAffinity: tc.nodeAffinity,
-				},
-			}
-
-			err := ApplyDefaultSettings(opts)
-			require.NoError(t, err)
-
-			objects, err := BuildAll(*opts)
-			require.NoError(t, err)
-
-			for _, raw := range objects {
-				gotAffinity, skip, err := extractAffinity(raw)
-				require.NoError(t, err)
-
-				if skip {
-					// Object with no affinity
-					continue
-				}
-
-				require.Equal(t, tc.wantAffinity, gotAffinity,
-					"kind", raw.GetObjectKind().GroupVersionKind(),
-					"name", raw.GetName())
 			}
 		})
 	}
@@ -1031,18 +941,4 @@ func checkGatewayDeployed(objects []client.Object, stackName string) bool {
 		}
 	}
 	return false
-}
-
-func extractAffinity(raw client.Object) (*corev1.Affinity, bool, error) {
-	switch obj := raw.(type) {
-	case *appsv1.Deployment:
-		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *appsv1.StatefulSet:
-		return obj.Spec.Template.Spec.Affinity, false, nil
-	case *corev1.ConfigMap, *corev1.Service:
-		return nil, true, nil
-	default:
-	}
-
-	return nil, false, fmt.Errorf("unknown kind: %s", raw.GetObjectKind().GroupVersionKind())
 }

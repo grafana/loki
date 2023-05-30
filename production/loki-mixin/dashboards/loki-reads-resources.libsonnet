@@ -19,13 +19,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           $._config.internal_components,
           $.row('Gateway')
           .addPanel(
-            $.containerCPUUsagePanel('CPU', 'cortex-gw'),
+            $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
           )
           .addPanel(
-            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw'),
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
           )
         )
         .addRowIf(
@@ -119,13 +119,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', index_gateway_job_matcher),
-          )
-          .addPanel(
-            $.panel('Query Readiness Duration') +
-            $.queryPanel(
-              ['loki_boltdb_shipper_query_readiness_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']
-            ) +
-            { yaxes: $.yaxes('s') },
           )
         )
         .addRow(

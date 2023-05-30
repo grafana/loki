@@ -1,13 +1,13 @@
 package uploads
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -33,7 +33,7 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 	cfg := Config{
 		UploadInterval: time.Hour,
 	}
-	tm, err := NewTableManager(cfg, storageClient, nil)
+	tm, err := NewTableManager(cfg, storageClient, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	return tm, func() {
@@ -65,12 +65,10 @@ func TestTableManager(t *testing.T) {
 
 					// see if we can find all the added indexes in the table.
 					indexesFound := map[string]*mockIndex{}
-					doneChan := make(chan struct{})
-					err := testTableManager.ForEach(context.Background(), tableName, userID, doneChan, func(_ bool, index index.Index) error {
+					err := testTableManager.ForEach(tableName, userID, func(_ bool, index index.Index) error {
 						indexesFound[index.Path()] = index.(*mockIndex)
 						return nil
 					})
-					close(doneChan)
 					require.NoError(t, err)
 
 					require.Equal(t, testIndexes, indexesFound)

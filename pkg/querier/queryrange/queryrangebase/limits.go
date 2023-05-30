@@ -1,6 +1,7 @@
 package queryrangebase
 
 import (
+	"context"
 	"time"
 )
 
@@ -8,16 +9,16 @@ import (
 // the query handling code.
 type Limits interface {
 	// MaxQueryLookback returns the max lookback period of queries.
-	MaxQueryLookback(userID string) time.Duration
+	MaxQueryLookback(context.Context, string) time.Duration
 
 	// MaxQueryLength returns the limit of the length (in time) of a query.
-	MaxQueryLength(string) time.Duration
+	MaxQueryLength(context.Context, string) time.Duration
 
 	// MaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel.
-	MaxQueryParallelism(string) int
+	MaxQueryParallelism(context.Context, string) int
 
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
-	MaxCacheFreshness(string) time.Duration
+	MaxCacheFreshness(context.Context, string) time.Duration
 }

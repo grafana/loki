@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -50,6 +51,16 @@ func Test_TargetManager(t *testing.T) {
 			// Serve networks
 			w.Header().Set("Content-Type", "application/json")
 			err := json.NewEncoder(w).Encode([]types.NetworkResource{})
+			require.NoError(t, err)
+		case strings.HasSuffix(path, "json"):
+			w.Header().Set("Content-Type", "application/json")
+			info := types.ContainerJSON{
+				ContainerJSONBase: &types.ContainerJSONBase{},
+				Mounts:            []types.MountPoint{},
+				Config:            &container.Config{Tty: false},
+				NetworkSettings:   &types.NetworkSettings{},
+			}
+			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)
 		default:
 			// Serve container logs

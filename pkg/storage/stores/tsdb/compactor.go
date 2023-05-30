@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -49,7 +48,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}()
 
 	builder := NewBuilder()
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -89,8 +88,9 @@ func newTableCompactor(
 func (t *tableCompactor) CompactTable() error {
 	multiTenantIndexes := t.commonIndexSet.ListSourceFiles()
 
-	var multiTenantIndices []Index
-	indicesMtx := sync.Mutex{}
+	// index reference and download paths would be stored at the same slice index
+	multiTenantIndices := make([]Index, len(multiTenantIndexes))
+	downloadPaths := make([]string, len(multiTenantIndexes))
 
 	// concurrently download and open all the multi-tenant indexes
 	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(ctx context.Context, job int) error {
@@ -99,20 +99,13 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		defer func() {
-			if err := os.Remove(downloadedAt); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadedAt, "err", err)
-			}
-		}()
-
+		downloadPaths[job] = downloadedAt
 		idx, err := OpenShippableTSDB(downloadedAt)
 		if err != nil {
 			return err
 		}
 
-		indicesMtx.Lock()
-		defer indicesMtx.Unlock()
-		multiTenantIndices = append(multiTenantIndices, idx.(Index))
+		multiTenantIndices[job] = idx.(Index)
 
 		return nil
 	})
@@ -120,13 +113,21 @@ func (t *tableCompactor) CompactTable() error {
 		return err
 	}
 
+	defer func() {
+		for i, idx := range multiTenantIndices {
+			if err := idx.Close(); err != nil {
+				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+			}
+
+			if err := os.Remove(downloadPaths[i]); err != nil {
+				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+			}
+		}
+	}()
+
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {
-		var err error
-		multiTenantIndex, err = NewMultiIndex(multiTenantIndices...)
-		if err != nil {
-			return err
-		}
+		multiTenantIndex = NewMultiIndex(IndexSlice(multiTenantIndices))
 	}
 
 	// find all the user ids from the multi-tenant indexes using TenantLabel.
@@ -196,7 +197,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
-		err := idx.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -228,7 +229,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 			}
 		}()
 
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
@@ -354,11 +355,17 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 	c.deleteChunks = nil
 
 	for _, chk := range c.indexChunks {
-		err := c.builder.InsertChunk(chk.Metric.String(), index.ChunkMeta{
+		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
+		b := labels.NewBuilder(chk.Metric)
+		b.Del(labels.MetricName)
+		ls := b.Labels()
+
+		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
 			Checksum: chk.Checksum,
 			MinTime:  int64(chk.From),
 			MaxTime:  int64(chk.Through),
-			KB:       uint32(chk.Size()) / (1 << 10),
+			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
 		})
 		if err != nil {
@@ -374,7 +381,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, c.workingDir, "")
+		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})
 	if err != nil {
 		return nil, err

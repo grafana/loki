@@ -1,4 +1,5 @@
-/*Package filters provides tools for encoding a mapping of keys to a set of
+/*
+Package filters provides tools for encoding a mapping of keys to a set of
 multiple values.
 */
 package filters // import "github.com/docker/docker/api/types/filters"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/versions"
+	"github.com/pkg/errors"
 )
 
 // Args stores a mapping of keys to a set of multiple values.
@@ -48,7 +50,7 @@ func (args Args) Keys() []string {
 // MarshalJSON returns a JSON byte representation of the Args
 func (args Args) MarshalJSON() ([]byte, error) {
 	if len(args.fields) == 0 {
-		return []byte{}, nil
+		return []byte("{}"), nil
 	}
 	return json.Marshal(args.fields)
 }
@@ -97,7 +99,7 @@ func FromJSON(p string) (Args, error) {
 	// Fallback to parsing arguments in the legacy slice format
 	deprecated := map[string][]string{}
 	if legacyErr := json.Unmarshal(raw, &deprecated); legacyErr != nil {
-		return args, err
+		return args, invalidFilter{errors.Wrap(err, "invalid filter")}
 	}
 
 	args.fields = deprecatedArgs(deprecated)
@@ -106,9 +108,6 @@ func FromJSON(p string) (Args, error) {
 
 // UnmarshalJSON populates the Args from JSON encode bytes
 func (args Args) UnmarshalJSON(raw []byte) error {
-	if len(raw) == 0 {
-		return nil
-	}
 	return json.Unmarshal(raw, &args.fields)
 }
 
@@ -247,10 +246,10 @@ func (args Args) Contains(field string) bool {
 	return ok
 }
 
-type invalidFilter string
+type invalidFilter struct{ error }
 
 func (e invalidFilter) Error() string {
-	return "Invalid filter '" + string(e) + "'"
+	return e.error.Error()
 }
 
 func (invalidFilter) InvalidParameter() {}
@@ -260,7 +259,7 @@ func (invalidFilter) InvalidParameter() {}
 func (args Args) Validate(accepted map[string]bool) error {
 	for name := range args.fields {
 		if !accepted[name] {
-			return invalidFilter(name)
+			return invalidFilter{errors.New("invalid filter '" + name + "'")}
 		}
 	}
 	return nil

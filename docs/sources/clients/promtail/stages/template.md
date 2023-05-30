@@ -1,7 +1,8 @@
 ---
 title: template
+description: template stage
 ---
-# `template` stage
+# template
 
 The `template` stage is a transform stage that lets use manipulate the values in
 the extracted map using [Go's template
@@ -110,6 +111,33 @@ A special key named `Entry` can be used to reference the current line, this can 
 ```
 
 The snippet above will for instance prepend the log line with the application name.
+
+```yaml
+- template:
+    source: time
+    template: "\
+      {{ .date_local | substr 6 10 }}-{{ .date_local | substr 0 2 }}-{{ .date_local | substr 3 5 }}T\
+      {{ if eq (.time_local | substr 0 2) \"12\" }}\
+          {{ if eq .hour_period \"AM\" }}00{{ else }}12{{ end }}{{ .time_local | substr 2 10}}Z\
+      {{ else }}\
+          {{ if eq .hour_period \"AM\" }}\
+              {{ if or (eq (.time_local | substr 0 2) \"11\") (eq (.time_local | substr 0 2) \"10\") }}{{ .time_local }}Z\
+                  {{ else }}0{{ .time_local }}Z\
+              {{ end }}\
+          {{ else }}\
+              {{ if eq (.time_local | substr 0 2) \"11\" }}23{{ .time_local | substr 2 10 }}Z{{ end }}\
+              {{ if eq (.time_local | substr 0 2) \"10\" }}22{{ .time_local | substr 2 10 }}Z{{ end }}\
+              {{ if eq (.time_local | substr 0 2) \"9:\" }}21{{ .time_local | substr 1 10 }}Z{{ end }}\
+              {{ if eq (.time_local | substr 0 2) \"8:\" }}20{{ .time_local | substr 1 10 }}Z{{ end }}\
+              {{ if and (le (.time_local | substr 0 1) \"7\") (eq (.time_local | substr 1 2) \":\") }}1{{ add (.time_local | substr 0 1) 2 }}{{ .time_local | substr 1 10 }}Z{{ end }}\
+          {{ end }}\
+      {{ end }}"
+  - timestamp:
+      source: time
+      format: RFC3339      
+```
+
+The snippet above is an example of a multiline template without spaces. The extracted data from logs using regex will be used to convert `11/08/2022, 12:53:24 PM` to `RFC3339` time format. It also makes use of functions like `eq`, `substr` and shows how we can use `if` with `and`, `or` in go templates.
 
 ## Supported Functions
 

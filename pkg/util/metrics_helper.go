@@ -61,6 +61,9 @@ func (m singleValueWithLabelsMap) WriteToMetricChannel(out chan<- prometheus.Met
 // Keeping map of metric name to its family makes it easier to do searches later.
 type MetricFamilyMap map[string]*dto.MetricFamily
 
+// MetricLabelTransformFunc exists in ruler package, but that would create a cyclic import, so is duplicated here
+type MetricLabelTransformFunc func(k, v string) string
+
 // NewMetricFamilyMap sorts output from Gatherer.Gather method into a map.
 // Gatherer.Gather specifies that there metric families are uniquely named, and we use that fact here.
 // If they are not, this method returns error.
@@ -119,13 +122,13 @@ func (mfm MetricFamilyMap) SumSummariesTo(name string, output *SummaryData) {
 	}
 }
 
-func (mfm MetricFamilyMap) sumOfSingleValuesWithLabels(metric string, labelNames []string, extractFn func(*dto.Metric) float64, aggregateFn func(labelsKey string, labelValues []string, value float64)) {
-	metricsPerLabelValue := getMetricsWithLabelNames(mfm[metric], labelNames)
+func (mfm MetricFamilyMap) sumOfSingleValuesWithLabels(metric string, labelNames []string, extractFn func(*dto.Metric) float64, aggregateFn func(labelsKey string, labelValues []string, value float64), transformFn MetricLabelTransformFunc) {
+	metricsPerLabelValue := getMetricsWithLabelNames(mfm[metric], labelNames, transformFn)
 
-	for key, mlv := range metricsPerLabelValue {
+	for k, mlv := range metricsPerLabelValue {
 		for _, m := range mlv.metrics {
 			val := extractFn(m)
-			aggregateFn(key, mlv.labelValues, val)
+			aggregateFn(k, mlv.labelValues, val)
 		}
 	}
 }
@@ -133,8 +136,9 @@ func (mfm MetricFamilyMap) sumOfSingleValuesWithLabels(metric string, labelNames
 // MetricFamiliesPerUser is a collection of metrics gathered via calling Gatherer.Gather() method on different
 // gatherers, one per user.
 type MetricFamiliesPerUser []struct {
-	user    string
-	metrics MetricFamilyMap
+	user             string
+	metrics          MetricFamilyMap
+	labelTransformFn MetricLabelTransformFunc
 }
 
 func (d MetricFamiliesPerUser) GetSumOfCounters(counter string) float64 {
@@ -166,7 +170,7 @@ func (d MetricFamiliesPerUser) SendSumOfCountersPerUserWithLabels(out chan<- pro
 		}
 
 		result := singleValueWithLabelsMap{}
-		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, counterValue, result.aggregateFn)
+		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, counterValue, result.aggregateFn, userEntry.labelTransformFn)
 		result.prependUserLabelValue(userEntry.user)
 		result.WriteToMetricChannel(out, desc, prometheus.CounterValue)
 	}
@@ -201,7 +205,7 @@ func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prome
 		}
 
 		result := singleValueWithLabelsMap{}
-		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, gaugeValue, result.aggregateFn)
+		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, gaugeValue, result.aggregateFn, userEntry.labelTransformFn)
 		result.prependUserLabelValue(userEntry.user)
 		result.WriteToMetricChannel(out, desc, prometheus.GaugeValue)
 	}
@@ -210,7 +214,7 @@ func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prome
 func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn func(*dto.Metric) float64, labelNames []string) singleValueWithLabelsMap {
 	result := singleValueWithLabelsMap{}
 	for _, userEntry := range d {
-		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, fn, result.aggregateFn)
+		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, fn, result.aggregateFn, userEntry.labelTransformFn)
 	}
 	return result
 }
@@ -259,7 +263,7 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheu
 	result := map[string]summaryResult{}
 
 	for _, mfm := range d {
-		metricsPerLabelValue := getMetricsWithLabelNames(mfm.metrics[summaryName], labelNames)
+		metricsPerLabelValue := getMetricsWithLabelNames(mfm.metrics[summaryName], labelNames, mfm.labelTransformFn)
 
 		for key, mwl := range metricsPerLabelValue {
 			for _, m := range mwl.metrics {
@@ -307,7 +311,7 @@ func (d MetricFamiliesPerUser) SendSumOfHistogramsWithLabels(out chan<- promethe
 	result := map[string]histogramResult{}
 
 	for _, mfm := range d {
-		metricsPerLabelValue := getMetricsWithLabelNames(mfm.metrics[histogramName], labelNames)
+		metricsPerLabelValue := getMetricsWithLabelNames(mfm.metrics[histogramName], labelNames, mfm.labelTransformFn)
 
 		for key, mwl := range metricsPerLabelValue {
 			for _, m := range mwl.metrics {
@@ -333,11 +337,11 @@ type metricsWithLabels struct {
 	metrics     []*dto.Metric
 }
 
-func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string) map[string]metricsWithLabels {
+func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string, labelTransformFunc MetricLabelTransformFunc) map[string]metricsWithLabels {
 	result := map[string]metricsWithLabels{}
 
 	for _, m := range mf.GetMetric() {
-		lbls, include := getLabelValues(m, labelNames)
+		lbls, include := getLabelValues(m, labelNames, labelTransformFunc)
 		if !include {
 			continue
 		}
@@ -353,7 +357,7 @@ func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string) map[str
 	return result
 }
 
-func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
+func getLabelValues(m *dto.Metric, labelNames []string, labelTransformFunc MetricLabelTransformFunc) ([]string, bool) {
 	result := make([]string, 0, len(labelNames))
 
 	for _, ln := range labelNames {
@@ -367,7 +371,12 @@ func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
 				continue
 			}
 
-			result = append(result, lp.GetValue())
+			value := lp.GetValue()
+			if labelTransformFunc != nil {
+				value = labelTransformFunc(ln, value)
+			}
+
+			result = append(result, value)
 			found = true
 			break
 		}
@@ -669,16 +678,21 @@ func (r *UserRegistries) Registries() []UserRegistry {
 	return out
 }
 
-func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
+func (r *UserRegistries) BuildMetricFamiliesPerUser(labelTransformFn MetricLabelTransformFunc) MetricFamiliesPerUser {
 	data := MetricFamiliesPerUser{}
 	for _, entry := range r.Registries() {
 		// Set for removed users.
 		if entry.reg == nil {
 			if entry.lastGather != nil {
 				data = append(data, struct {
-					user    string
-					metrics MetricFamilyMap
-				}{user: "", metrics: entry.lastGather})
+					user             string
+					metrics          MetricFamilyMap
+					labelTransformFn MetricLabelTransformFunc
+				}{
+					user:             "",
+					metrics:          entry.lastGather,
+					labelTransformFn: labelTransformFn,
+				})
 			}
 
 			continue
@@ -690,11 +704,13 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 			mfm, err = NewMetricFamilyMap(m)
 			if err == nil {
 				data = append(data, struct {
-					user    string
-					metrics MetricFamilyMap
+					user             string
+					metrics          MetricFamilyMap
+					labelTransformFn MetricLabelTransformFunc
 				}{
-					user:    entry.user,
-					metrics: mfm,
+					user:             entry.user,
+					metrics:          mfm,
+					labelTransformFn: labelTransformFn,
 				})
 			}
 		}
@@ -713,7 +729,7 @@ func FromLabelPairsToLabels(pairs []*dto.LabelPair) labels.Labels {
 	for _, pair := range pairs {
 		builder.Set(pair.GetName(), pair.GetValue())
 	}
-	return builder.Labels(nil)
+	return builder.Labels()
 }
 
 // GetSumOfHistogramSampleCount returns the sum of samples count of histograms matching the provided metric name
@@ -779,7 +795,7 @@ nextMetric:
 
 			lbls.Set(lp.GetName(), lp.GetValue())
 		}
-		result = append(result, lbls.Labels(nil))
+		result = append(result, lbls.Labels())
 	}
 
 	return result, errs.Err()
@@ -804,4 +820,24 @@ func DeleteMatchingLabels(c CollectorVec, filter map[string]string) error {
 type CollectorVec interface {
 	prometheus.Collector
 	Delete(labels prometheus.Labels) bool
+}
+
+// RegisterCounterVec registers new CounterVec with given name,namespace and labels.
+// If metric was already registered it returns existing instance.
+func RegisterCounterVec(registerer prometheus.Registerer, namespace, name, help string, labels []string) *prometheus.CounterVec {
+	vec := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      name,
+		Help:      help,
+	}, labels)
+	err := registerer.Register(vec)
+	if err != nil {
+		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			vec = existing.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			// Same behavior as MustRegister if the error is not for AlreadyRegistered
+			panic(err)
+		}
+	}
+	return vec
 }

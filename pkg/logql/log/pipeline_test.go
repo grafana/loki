@@ -1,6 +1,7 @@
 package log
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -134,6 +135,109 @@ var (
 	resSample     float64
 )
 
+func TestDropLabelsPipeline(t *testing.T) {
+	tests := []struct {
+		name       string
+		stages     []Stage
+		lines      [][]byte
+		wantLine   [][]byte
+		wantLabels []labels.Labels
+	}{
+		{
+			"drop __error__",
+			[]Stage{
+				NewLogfmtParser(),
+				NewJSONParser(),
+				NewDropLabels([]DropLabel{
+					{
+						nil,
+						"__error__",
+					},
+					{
+						nil,
+						"__error_details__",
+					},
+				}),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[]labels.Labels{
+				{
+					{Name: "level", Value: "info"},
+					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
+					{Name: "caller", Value: "metrics.go:81"},
+					{Name: "status", Value: "200"},
+				},
+				{
+					{Name: "app", Value: "foo"},
+					{Name: "namespace", Value: "prod"},
+					{Name: "pod_uuid", Value: "foo"},
+					{Name: "pod_deployment_ref", Value: "foobar"},
+				},
+			},
+		},
+		{
+			"drop __error__ with matching value",
+			[]Stage{
+				NewLogfmtParser(),
+				NewJSONParser(),
+				NewDropLabels([]DropLabel{
+					{
+						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
+						"",
+					},
+					{
+						labels.MustNewMatcher(labels.MatchEqual, "status", "200"),
+						"",
+					},
+					{
+						nil,
+						"app",
+					},
+				}),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			},
+			[]labels.Labels{
+				{
+					{Name: "level", Value: "info"},
+					{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
+					{Name: "caller", Value: "metrics.go:81"},
+					{Name: logqlmodel.ErrorLabel, Value: errJSON},
+					{Name: logqlmodel.ErrorDetailsLabel, Value: "Value looks like object, but can't find closing '}' symbol"},
+				},
+				{
+					{Name: "namespace", Value: "prod"},
+					{Name: "pod_uuid", Value: "foo"},
+					{Name: "pod_deployment_ref", Value: "foobar"},
+					{Name: logqlmodel.ErrorDetailsLabel, Value: "logfmt syntax error at pos 2 : unexpected '\"'"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		p := NewPipeline(tt.stages)
+		sp := p.ForStream(labels.Labels{})
+		for i, line := range tt.lines {
+			_, finalLbs, _ := sp.Process(0, line)
+			sort.Sort(tt.wantLabels[i])
+			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
+		}
+	}
+
+}
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
@@ -284,8 +388,8 @@ func BenchmarkJSONParserInvalidLine(b *testing.B) {
 }
 
 func BenchmarkJSONExpressionParser(b *testing.B) {
-	parser, err := NewJSONExpressionParser([]JSONExpression{
-		NewJSONExpr("context_file", "context.file"),
+	parser, err := NewJSONExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("context_file", "context.file"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new JSON expression parser")
@@ -295,12 +399,56 @@ func BenchmarkJSONExpressionParser(b *testing.B) {
 }
 
 func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
-	parser, err := NewJSONExpressionParser([]JSONExpression{
-		NewJSONExpr("context_file", "some.expression"),
+	parser, err := NewJSONExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("context_file", "some.expression"),
 	})
 	if err != nil {
 		b.Fatal("cannot create new JSON expression parser")
 	}
 
 	invalidJSONBenchmark(b, parser)
+}
+
+func logfmtBenchmark(b *testing.B, parser Stage) {
+	b.ReportAllocs()
+
+	p := NewPipeline([]Stage{
+		mustFilter(NewFilter("ts", labels.MatchEqual)).ToStage(),
+		parser,
+	})
+
+	line := []byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116`)
+	lbs := labels.Labels{
+		{Name: "cluster", Value: "ops-tool1"},
+		{Name: "name", Value: "querier"},
+		{Name: "ts", Value: "2020-10-18T18:04:22.147378997Z"},
+	}
+	b.ResetTimer()
+	sp := p.ForStream(lbs)
+	for n := 0; n < b.N; n++ {
+		resLine, resLbs, resMatches = sp.Process(0, line)
+
+		if !resMatches {
+			b.Fatalf("resulting line not ok: %s\n", line)
+		}
+
+		if resLbs.Labels().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
+			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+		}
+	}
+}
+
+func BenchmarkLogfmtParser(b *testing.B) {
+	logfmtBenchmark(b, NewLogfmtParser())
+}
+
+func BenchmarkLogfmtExpressionParser(b *testing.B) {
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("timestamp", "ts"),
+	})
+	if err != nil {
+		b.Fatal("cannot create new logfmt expression parser:", err.Error())
+	}
+
+	logfmtBenchmark(b, parser)
 }

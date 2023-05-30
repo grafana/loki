@@ -114,17 +114,17 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 	// htransport selects the correct endpoint among WithEndpoint (user override), WithDefaultEndpoint, and WithDefaultMTLSEndpoint.
 	hc, ep, err := htransport.NewClient(ctx, s.clientOption...)
 	if err != nil {
-		return nil, fmt.Errorf("dialing: %v", err)
+		return nil, fmt.Errorf("dialing: %w", err)
 	}
 	// RawService should be created with the chosen endpoint to take account of user override.
 	rawService, err := raw.NewService(ctx, option.WithEndpoint(ep), option.WithHTTPClient(hc))
 	if err != nil {
-		return nil, fmt.Errorf("storage client: %v", err)
+		return nil, fmt.Errorf("storage client: %w", err)
 	}
 	// Update readHost and scheme with the chosen endpoint.
 	u, err := url.Parse(ep)
 	if err != nil {
-		return nil, fmt.Errorf("supplied endpoint %q is not valid: %v", ep, err)
+		return nil, fmt.Errorf("supplied endpoint %q is not valid: %w", ep, err)
 	}
 
 	return &httpStorageClient{
@@ -159,7 +159,7 @@ func (c *httpStorageClient) GetServiceAccount(ctx context.Context, project strin
 	return res.EmailAddress, nil
 }
 
-func (c *httpStorageClient) CreateBucket(ctx context.Context, project string, attrs *BucketAttrs, opts ...storageOption) (*BucketAttrs, error) {
+func (c *httpStorageClient) CreateBucket(ctx context.Context, project, bucket string, attrs *BucketAttrs, opts ...storageOption) (*BucketAttrs, error) {
 	s := callSettings(c.settings, opts...)
 	var bkt *raw.Bucket
 	if attrs != nil {
@@ -167,7 +167,7 @@ func (c *httpStorageClient) CreateBucket(ctx context.Context, project string, at
 	} else {
 		bkt = &raw.Bucket{}
 	}
-
+	bkt.Name = bucket
 	// If there is lifecycle information but no location, explicitly set
 	// the location. This is a GCS quirk/bug.
 	if bkt.Location == "" && bkt.Lifecycle != nil {
@@ -344,8 +344,8 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		req.EndOffset(it.query.EndOffset)
 		req.Versions(it.query.Versions)
 		req.IncludeTrailingDelimiter(it.query.IncludeTrailingDelimiter)
-		if len(it.query.fieldSelection) > 0 {
-			req.Fields("nextPageToken", googleapi.Field(it.query.fieldSelection))
+		if selection := it.query.toFieldSelection(); selection != "" {
+			req.Fields("nextPageToken", googleapi.Field(selection))
 		}
 		req.PageToken(pageToken)
 		if s.userProject != "" {
@@ -548,8 +548,25 @@ func (c *httpStorageClient) ListDefaultObjectACLs(ctx context.Context, bucket st
 	}
 	return toObjectACLRules(acls.Items), nil
 }
-func (c *httpStorageClient) UpdateDefaultObjectACL(ctx context.Context, opts ...storageOption) (*ACLRule, error) {
-	return nil, errMethodNotSupported
+func (c *httpStorageClient) UpdateDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) error {
+	s := callSettings(c.settings, opts...)
+	type setRequest interface {
+		Do(opts ...googleapi.CallOption) (*raw.ObjectAccessControl, error)
+		Header() http.Header
+	}
+	acl := &raw.ObjectAccessControl{
+		Bucket: bucket,
+		Entity: string(entity),
+		Role:   string(role),
+	}
+	var req setRequest
+	var err error
+	req = c.raw.DefaultObjectAccessControls.Update(bucket, string(entity), acl)
+	configureACLCall(ctx, s.userProject, req)
+	return run(ctx, func() error {
+		_, err = req.Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(req))
 }
 
 // Bucket ACL methods.
@@ -577,7 +594,7 @@ func (c *httpStorageClient) ListBucketACLs(ctx context.Context, bucket string, o
 	return toBucketACLRules(acls.Items), nil
 }
 
-func (c *httpStorageClient) UpdateBucketACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error) {
+func (c *httpStorageClient) UpdateBucketACL(ctx context.Context, bucket string, entity ACLEntity, role ACLRole, opts ...storageOption) error {
 	s := callSettings(c.settings, opts...)
 	acl := &raw.BucketAccessControl{
 		Bucket: bucket,
@@ -586,17 +603,11 @@ func (c *httpStorageClient) UpdateBucketACL(ctx context.Context, bucket string, 
 	}
 	req := c.raw.BucketAccessControls.Update(bucket, string(entity), acl)
 	configureACLCall(ctx, s.userProject, req)
-	var aclRule ACLRule
 	var err error
-	err = run(ctx, func() error {
-		acl, err = req.Do()
-		aclRule = toBucketACLRule(acl)
+	return run(ctx, func() error {
+		_, err = req.Do()
 		return err
 	}, s.retry, s.idempotent, setRetryHeaderHTTP(req))
-	if err != nil {
-		return nil, err
-	}
-	return &aclRule, nil
 }
 
 // configureACLCall sets the context, user project and headers on the apiary library call.
@@ -613,7 +624,10 @@ func configureACLCall(ctx context.Context, userProject string, call interface{ H
 // Object ACL methods.
 
 func (c *httpStorageClient) DeleteObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, opts ...storageOption) error {
-	return errMethodNotSupported
+	s := callSettings(c.settings, opts...)
+	req := c.raw.ObjectAccessControls.Delete(bucket, object, string(entity))
+	configureACLCall(ctx, s.userProject, req)
+	return run(ctx, func() error { return req.Context(ctx).Do() }, s.retry, s.idempotent, setRetryHeaderHTTP(req))
 }
 
 // ListObjectACLs retrieves object ACL entries. By default, it operates on the latest generation of this object.
@@ -634,17 +648,129 @@ func (c *httpStorageClient) ListObjectACLs(ctx context.Context, bucket, object s
 	return toObjectACLRules(acls.Items), nil
 }
 
-func (c *httpStorageClient) UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) (*ACLRule, error) {
-	return nil, errMethodNotSupported
+func (c *httpStorageClient) UpdateObjectACL(ctx context.Context, bucket, object string, entity ACLEntity, role ACLRole, opts ...storageOption) error {
+	s := callSettings(c.settings, opts...)
+	type setRequest interface {
+		Do(opts ...googleapi.CallOption) (*raw.ObjectAccessControl, error)
+		Header() http.Header
+	}
+
+	acl := &raw.ObjectAccessControl{
+		Bucket: bucket,
+		Entity: string(entity),
+		Role:   string(role),
+	}
+	var req setRequest
+	var err error
+	req = c.raw.ObjectAccessControls.Update(bucket, object, string(entity), acl)
+	configureACLCall(ctx, s.userProject, req)
+	return run(ctx, func() error {
+		_, err = req.Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(req))
 }
 
 // Media operations.
 
 func (c *httpStorageClient) ComposeObject(ctx context.Context, req *composeObjectRequest, opts ...storageOption) (*ObjectAttrs, error) {
-	return nil, errMethodNotSupported
+	s := callSettings(c.settings, opts...)
+	rawReq := &raw.ComposeRequest{}
+	// Compose requires a non-empty Destination, so we always set it,
+	// even if the caller-provided ObjectAttrs is the zero value.
+	rawReq.Destination = req.dstObject.attrs.toRawObject(req.dstBucket)
+	if req.sendCRC32C {
+		rawReq.Destination.Crc32c = encodeUint32(req.dstObject.attrs.CRC32C)
+	}
+	for _, src := range req.srcs {
+		srcObj := &raw.ComposeRequestSourceObjects{
+			Name: src.name,
+		}
+		if err := applyConds("ComposeFrom source", src.gen, src.conds, composeSourceObj{srcObj}); err != nil {
+			return nil, err
+		}
+		rawReq.SourceObjects = append(rawReq.SourceObjects, srcObj)
+	}
+
+	call := c.raw.Objects.Compose(req.dstBucket, req.dstObject.name, rawReq).Context(ctx)
+	if err := applyConds("ComposeFrom destination", defaultGen, req.dstObject.conds, call); err != nil {
+		return nil, err
+	}
+	if s.userProject != "" {
+		call.UserProject(s.userProject)
+	}
+	if req.predefinedACL != "" {
+		call.DestinationPredefinedAcl(req.predefinedACL)
+	}
+	if err := setEncryptionHeaders(call.Header(), req.dstObject.encryptionKey, false); err != nil {
+		return nil, err
+	}
+	var obj *raw.Object
+	setClientHeader(call.Header())
+
+	var err error
+	retryCall := func() error { obj, err = call.Do(); return err }
+
+	if err := run(ctx, retryCall, s.retry, s.idempotent, setRetryHeaderHTTP(call)); err != nil {
+		return nil, err
+	}
+	return newObject(obj), nil
 }
 func (c *httpStorageClient) RewriteObject(ctx context.Context, req *rewriteObjectRequest, opts ...storageOption) (*rewriteObjectResponse, error) {
-	return nil, errMethodNotSupported
+	s := callSettings(c.settings, opts...)
+	rawObject := req.dstObject.attrs.toRawObject("")
+	call := c.raw.Objects.Rewrite(req.srcObject.bucket, req.srcObject.name, req.dstObject.bucket, req.dstObject.name, rawObject)
+
+	call.Context(ctx).Projection("full")
+	if req.token != "" {
+		call.RewriteToken(req.token)
+	}
+	if req.dstObject.keyName != "" {
+		call.DestinationKmsKeyName(req.dstObject.keyName)
+	}
+	if req.predefinedACL != "" {
+		call.DestinationPredefinedAcl(req.predefinedACL)
+	}
+	if err := applyConds("Copy destination", defaultGen, req.dstObject.conds, call); err != nil {
+		return nil, err
+	}
+	if err := applySourceConds(req.srcObject.gen, req.srcObject.conds, call); err != nil {
+		return nil, err
+	}
+	if s.userProject != "" {
+		call.UserProject(s.userProject)
+	}
+	// Set destination encryption headers.
+	if err := setEncryptionHeaders(call.Header(), req.dstObject.encryptionKey, false); err != nil {
+		return nil, err
+	}
+	// Set source encryption headers.
+	if err := setEncryptionHeaders(call.Header(), req.srcObject.encryptionKey, true); err != nil {
+		return nil, err
+	}
+
+	if req.maxBytesRewrittenPerCall != 0 {
+		call.MaxBytesRewrittenPerCall(req.maxBytesRewrittenPerCall)
+	}
+
+	var res *raw.RewriteResponse
+	var err error
+	setClientHeader(call.Header())
+
+	retryCall := func() error { res, err = call.Do(); return err }
+
+	if err := run(ctx, retryCall, s.retry, s.idempotent, setRetryHeaderHTTP(call)); err != nil {
+		return nil, err
+	}
+
+	r := &rewriteObjectResponse{
+		done:     res.Done,
+		written:  res.TotalBytesRewritten,
+		size:     res.ObjectSize,
+		token:    res.RewriteToken,
+		resource: newObject(res.Resource),
+	}
+
+	return r, nil
 }
 
 func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (r *Reader, err error) {
@@ -653,14 +779,6 @@ func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRange
 
 	s := callSettings(c.settings, opts...)
 
-	if params.offset < 0 && params.length >= 0 {
-		return nil, fmt.Errorf("storage: invalid offset %d < 0 requires negative length", params.offset)
-	}
-	if params.conds != nil {
-		if err := params.conds.validate("NewRangeReader"); err != nil {
-			return nil, err
-		}
-	}
 	u := &url.URL{
 		Scheme: c.scheme,
 		Host:   c.readHost,
@@ -678,10 +796,9 @@ func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRange
 	if s.userProject != "" {
 		req.Header.Set("X-Goog-User-Project", s.userProject)
 	}
-	// TODO(noahdietz): add option for readCompressed.
-	// if o.readCompressed {
-	// 	req.Header.Set("Accept-Encoding", "gzip")
-	// }
+	if params.readCompressed {
+		req.Header.Set("Accept-Encoding", "gzip")
+	}
 	if err := setEncryptionHeaders(req.Header, params.encryptionKey, false); err != nil {
 		return nil, err
 	}
@@ -793,7 +910,7 @@ func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRange
 		if dashIndex >= 0 {
 			startOffset, err = strconv.ParseInt(cr[len("bytes="):dashIndex], 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("storage: invalid Content-Range %q: %v", cr, err)
+				return nil, fmt.Errorf("storage: invalid Content-Range %q: %w", cr, err)
 			}
 		}
 	} else {
@@ -906,7 +1023,7 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 			return
 		}
 		var resp *raw.Object
-		err := applyConds("NewWriter", params.attrs.Generation, params.conds, call)
+		err := applyConds("NewWriter", defaultGen, params.conds, call)
 		if err == nil {
 			if s.userProject != "" {
 				call.UserProject(s.userProject)
@@ -921,9 +1038,8 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 			// there is no need to add retries here.
 
 			// Retry only when the operation is idempotent or the retry policy is RetryAlways.
-			isIdempotent := params.conds != nil && (params.conds.GenerationMatch >= 0 || params.conds.DoesNotExist == true)
 			var useRetry bool
-			if (s.retry == nil || s.retry.policy == RetryIdempotent) && isIdempotent {
+			if (s.retry == nil || s.retry.policy == RetryIdempotent) && s.idempotent {
 				useRetry = true
 			} else if s.retry != nil && s.retry.policy == RetryAlways {
 				useRetry = true
@@ -1006,20 +1122,139 @@ func (c *httpStorageClient) TestIamPermissions(ctx context.Context, resource str
 
 // HMAC Key methods.
 
-func (c *httpStorageClient) GetHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) (*HMACKey, error) {
-	return nil, errMethodNotSupported
+func (c *httpStorageClient) GetHMACKey(ctx context.Context, project, accessID string, opts ...storageOption) (*HMACKey, error) {
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Projects.HmacKeys.Get(project, accessID)
+	if s.userProject != "" {
+		call = call.UserProject(s.userProject)
+	}
+
+	var metadata *raw.HmacKeyMetadata
+	var err error
+	if err := run(ctx, func() error {
+		metadata, err = call.Context(ctx).Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(call)); err != nil {
+		return nil, err
+	}
+	hk := &raw.HmacKey{
+		Metadata: metadata,
+	}
+	return toHMACKeyFromRaw(hk, false)
 }
-func (c *httpStorageClient) ListHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) *HMACKeysIterator {
-	return &HMACKeysIterator{}
+
+func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAccountEmail string, showDeletedKeys bool, opts ...storageOption) *HMACKeysIterator {
+	s := callSettings(c.settings, opts...)
+	it := &HMACKeysIterator{
+		ctx:       ctx,
+		raw:       c.raw.Projects.HmacKeys,
+		projectID: project,
+		retry:     s.retry,
+	}
+	fetch := func(pageSize int, pageToken string) (token string, err error) {
+		call := c.raw.Projects.HmacKeys.List(project)
+		setClientHeader(call.Header())
+		if pageToken != "" {
+			call = call.PageToken(pageToken)
+		}
+		if pageSize > 0 {
+			call = call.MaxResults(int64(pageSize))
+		}
+		if showDeletedKeys {
+			call = call.ShowDeletedKeys(true)
+		}
+		if s.userProject != "" {
+			call = call.UserProject(s.userProject)
+		}
+		if serviceAccountEmail != "" {
+			call = call.ServiceAccountEmail(serviceAccountEmail)
+		}
+
+		var resp *raw.HmacKeysMetadata
+		err = run(it.ctx, func() error {
+			resp, err = call.Context(it.ctx).Do()
+			return err
+		}, s.retry, s.idempotent, setRetryHeaderHTTP(call))
+		if err != nil {
+			return "", err
+		}
+
+		for _, metadata := range resp.Items {
+			hk := &raw.HmacKey{
+				Metadata: metadata,
+			}
+			hkey, err := toHMACKeyFromRaw(hk, true)
+			if err != nil {
+				return "", err
+			}
+			it.hmacKeys = append(it.hmacKeys, hkey)
+		}
+		return resp.NextPageToken, nil
+	}
+
+	it.pageInfo, it.nextFunc = iterator.NewPageInfo(
+		fetch,
+		func() int { return len(it.hmacKeys) - it.index },
+		func() interface{} {
+			prev := it.hmacKeys
+			it.hmacKeys = it.hmacKeys[:0]
+			it.index = 0
+			return prev
+		})
+	return it
 }
-func (c *httpStorageClient) UpdateHMACKey(ctx context.Context, desc *hmacKeyDesc, attrs *HMACKeyAttrsToUpdate, opts ...storageOption) (*HMACKey, error) {
-	return nil, errMethodNotSupported
+
+func (c *httpStorageClient) UpdateHMACKey(ctx context.Context, project, serviceAccountEmail, accessID string, attrs *HMACKeyAttrsToUpdate, opts ...storageOption) (*HMACKey, error) {
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Projects.HmacKeys.Update(project, accessID, &raw.HmacKeyMetadata{
+		Etag:  attrs.Etag,
+		State: string(attrs.State),
+	})
+	if s.userProject != "" {
+		call = call.UserProject(s.userProject)
+	}
+
+	var metadata *raw.HmacKeyMetadata
+	var err error
+	if err := run(ctx, func() error {
+		metadata, err = call.Context(ctx).Do()
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(call)); err != nil {
+		return nil, err
+	}
+	hk := &raw.HmacKey{
+		Metadata: metadata,
+	}
+	return toHMACKeyFromRaw(hk, false)
 }
-func (c *httpStorageClient) CreateHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) (*HMACKey, error) {
-	return nil, errMethodNotSupported
+
+func (c *httpStorageClient) CreateHMACKey(ctx context.Context, project, serviceAccountEmail string, opts ...storageOption) (*HMACKey, error) {
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Projects.HmacKeys.Create(project, serviceAccountEmail)
+	if s.userProject != "" {
+		call = call.UserProject(s.userProject)
+	}
+
+	var hk *raw.HmacKey
+	if err := run(ctx, func() error {
+		h, err := call.Context(ctx).Do()
+		hk = h
+		return err
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(call)); err != nil {
+		return nil, err
+	}
+	return toHMACKeyFromRaw(hk, true)
 }
-func (c *httpStorageClient) DeleteHMACKey(ctx context.Context, desc *hmacKeyDesc, opts ...storageOption) error {
-	return errMethodNotSupported
+
+func (c *httpStorageClient) DeleteHMACKey(ctx context.Context, project string, accessID string, opts ...storageOption) error {
+	s := callSettings(c.settings, opts...)
+	call := c.raw.Projects.HmacKeys.Delete(project, accessID)
+	if s.userProject != "" {
+		call = call.UserProject(s.userProject)
+	}
+	return run(ctx, func() error {
+		return call.Context(ctx).Do()
+	}, s.retry, s.idempotent, setRetryHeaderHTTP(call))
 }
 
 // Notification methods.

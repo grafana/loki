@@ -44,3 +44,5 @@ linters:
     - cyclop
     - errname
     - varnamelen
+    - exhaustruct
+    - maintidx

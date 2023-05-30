@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -32,7 +34,6 @@ import (
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -48,12 +49,12 @@ type QueryResponse struct {
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
-	limits  *validation.Overrides
+	limits  Limits
 	engine  *logql.Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger) *QuerierAPI {
 	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
 	return &QuerierAPI{
 		cfg:     cfg,
@@ -72,7 +73,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -108,7 +109,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -162,7 +163,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -222,7 +223,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		status, _ = server.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -456,7 +457,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -472,7 +473,8 @@ func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, li
 		return nil
 	}
 
-	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limits.MaxEntriesLimitPerQuery)
+	maxEntriesCapture := func(id string) int { return q.limits.MaxEntriesLimitPerQuery(ctx, id) }
+	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
@@ -486,23 +488,27 @@ func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, li
 func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			log, ctx := spanlogger.New(req.Context(), call)
-			userID, err := tenant.TenantID(ctx)
+			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
+			defer sp.Finish()
+			log := spanlogger.FromContext(req.Context())
+			defer log.Finish()
+
+			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
 				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 				return
 			}
 
-			// Enforce the query timeout while querying backends
-			queryTimeout := q.limits.QueryTimeout(userID)
+			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
-			if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout")
-				queryTimeout = q.cfg.QueryTimeout
+			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
+				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))
+				timeout = q.cfg.QueryTimeout
 			}
 
-			newCtx, cancel := context.WithTimeout(ctx, queryTimeout)
+			newCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)

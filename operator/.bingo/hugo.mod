@@ -4,4 +4,4 @@ go 1.19
 
 replace github.com/markbates/inflect => github.com/markbates/inflect v0.0.0-20171215194931-a12c3aec81a6
 
-require github.com/gohugoio/hugo v0.104.3 // CGO_ENABLED=1 -tags=extended
+require github.com/gohugoio/hugo v0.80.0 // CGO_ENABLED=1 -tags=extended

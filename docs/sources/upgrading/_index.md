@@ -1,20 +1,21 @@
 ---
 title: Upgrading
+description: Upgrading Grafana Loki
 weight: 250
 ---
 
-# Upgrading Grafana Loki
+# Upgrading
 
 Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 
-If we have any expectation of difficulty upgrading we will document it here.
+If we have any expectation of difficulty upgrading, we will document it here.
 
 As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once.
 If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
-# Checking for config changes
+## Checking for config changes
 
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
@@ -25,29 +26,173 @@ export CONFIG_FILE=loki-local-config.yaml
 diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```
 
-the `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
+The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
 
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
+
 
 ## Main / Unreleased
 
 ### Loki
 
+#### Index shipper multi-store support
+In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
+These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
+
+#### Shutdown marker file
+
+A shutdown marker file can be written by the `/ingester/prepare_shutdown` endpoint.
+If the new `ingester.shutdown_marker_path` config setting has a value that value is used.
+If not the`common.path_prefix` config setting is used if it has a value. Otherwise a warning is shown
+in the logs on startup and the `/ingester/prepare_shutdown` endpoint will return a 500 status code.
+
+#### Compactor multi-store support
+
+In previous releases, setting `-boltdb.shipper.compactor.shared-store` configured the following:
+- store used for managing delete requests.
+- store on which index compaction should be performed.
+
+If `-boltdb.shipper.compactor.shared-store` was not set, it used to default to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
+
+Compactor now supports index compaction on multiple buckets/object stores.
+And going forward loki will not set any defaults on `-boltdb.shipper.compactor.shared-store`, this has a couple of side effects detailed as follows:
+
+##### store on which index compaction should be performed:
+If `-boltdb.shipper.compactor.shared-store` is configured by the user, loki would run index compaction only on the store specified by the config.
+If not set, compaction would be performed on all the object stores that contain either a boltdb-shipper or tsdb index.
+
+##### store used for managing delete requests:
+A new config option `-boltdb.shipper.compactor.delete-request-store` decides where delete requests should be stored. This new option takes precedence over `-boltdb.shipper.compactor.shared-store`.
+
+In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
+
+
+## 2.8.0
+
+### Loki
+
+#### Change in LogQL behavior
+
+When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
+was kept.
+
+#### Default retention_period has changed
+
+This change will affect you if you have:
+```yaml
+compactor:
+  retention_enabled: true
+```
+
+And did *not* define a `retention_period` in `limits_config`, thus relying on the previous default of `744h`
+
+In this release the default has been changed to `0s`.
+
+A value of `0s` is the same as "retain forever" or "disable retention".
+
+If, **and only if**, you wish to retain the previous default of 744h, apply this config.
+```yaml
+limits_config:
+  retention_period: 744h
+```
+
+**Please note:** In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
+only in 2.8 and forward releases does the zero value disable retention.
+
+#### metrics.go log line `subqueries` replaced with `splits` and `shards`
+
+The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
+
+In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+
+There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
+
+In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in the statistics API data returned but just for backwards compatibility, the value will always be zero now.
+
+Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
+
+Note: currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
+
+### Promtail
+
+#### The go build tag `promtail_journal_enabled` was introduced
+
+The go build tag `promtail_journal_enabled` should be passed to include Journal support to the promtail binary.
+If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
+
+```shell
+go build --tags=promtail_journal_enabled ./clients/cmd/promtail
+```
+Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
+
+### Ruler
+
+#### CLI flag `ruler.wal-cleaer.period` deprecated
+
+CLI flag `ruler.wal-cleaer.period` is now deprecated and replaced with a typo fix `ruler.wal-cleaner.period`.
+The yaml configuration remains unchanged:
+
+```yaml
+ruler:
+  wal_cleaner:
+    period: 5s
+```
+
+### Querier
+
+#### query-frontend k8s headless service changed to load balanced service
+
+*Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/)
+
+The `query-frontend` k8s service was previously headless and was used for two purposes:
+* Distributing the Loki query requests amongst all the available Query Frontend pods.
+* Discover IPs of Query Frontend pods from Queriers to connect as workers.
+
+The problem here is that a headless service does not support load balancing and leaves it up to the client to balance the load.
+Additionally, a load-balanced service does not let us discover the IPs of the underlying pods.
+
+To meet both these requirements, we have made the following changes:
+* Changed the existing `query-frontend` k8s service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
+* Added `query-frontend-headless` to discover QF pod IPs from queriers to connect as workers.
+
+If you are deploying Loki with Query Scheduler by setting [query_scheduler_enabled](https://github.com/grafana/loki/blob/cc4ab7487ab3cd3b07c63601b074101b0324083b/production/ksonnet/loki/config.libsonnet#L18) config to `true`, then there is nothing to do here for this change.
+If you are not using Query Scheduler, then to avoid any issues on the Read path until the rollout finishes, it would be good to follow below steps:
+* Create just the `query-frontend-headless` service without applying any changes to the `query-frontend` service.
+* Rollout changes to `queriers`.
+* Roll out the rest of the changes.
+
+### General
+
+#### Store & Cache Statistics
+
+Statistics are now logged in `metrics.go` lines about how long it takes to download chunks from the store, as well as how long it takes to download chunks, index query, and result cache responses from cache.
+
+Example (note the `*_download_time` fields):
+
+```
+level=info ts=2022-12-20T15:27:54.858554127Z caller=metrics.go:147 component=frontend org_id=docker latency=fast query="sum(count_over_time({job=\"generated-logs\"}[1h]))" query_type=metric range_type=range length=6h17m48.865587821s start_delta=6h17m54.858533178s end_delta=5.99294552s step=1m30s duration=5.990829396s status=200 limit=30 returned_lines=0 throughput=123MB total_bytes=738MB total_entries=1 store_chunks_download_time=2.319297059s queue_time=2m21.476090991s subqueries=8 cache_chunk_req=81143 cache_chunk_hit=32390 cache_chunk_bytes_stored=1874098 cache_chunk_bytes_fetched=94289610 cache_chunk_download_time=56.96914ms cache_index_req=994 cache_index_hit=710 cache_index_download_time=1.587842ms cache_result_req=7 cache_result_hit=0 cache_result_download_time=380.555µs
+```
+
+These statistics are also displayed when using `--stats` with LogCLI.
+
+## 2.7.0
+
+### Loki
+
 ### Loki Canary Permission
-We introduced new `push` mode to [Loki canary](https://grafana.com/docs/loki/latest/operations/loki-canary/), that can push logs generated by Loki canary directly to given Loki URL (previously it just writes to local file and you need some agent like promtail to scrape and push it to Loki).
+
+The new `push` mode to [Loki canary](/docs/loki/latest/operations/loki-canary/) can push logs that are generated by a Loki canary directly to a given Loki URL. Previously, it only wrote to a local file and you needed some agent, such as promtail, to scrape and push it to Loki.
 So if you run Loki behind some proxy with different authorization policies to read and write to Loki, then auth credentials we pass to Loki canary now needs to have both `READ` and `WRITE` permissions.
 
-### Engine query timeout is deprecated
+### `engine.timeout` and `querier.query_timeout` are deprecated
 
 Previously, we had two configurations to define a query timeout: `engine.timeout` and `querier.query-timeout`.
 As they were conflicting and `engine.timeout` isn't as expressive as `querier.query-tiomeout`,
-we're deprecating it in favor of relying on `engine.query-timeout` only.
+we're deprecating it and moving it to [Limits Config](/docs/loki/latest/configuration/#limits_config) `limits_config.query_timeout` with same default values.
 
-#### Fifocache is deprecated
+#### `fifocache` has been renamed
 
-We introduced a new cache called `embedded-cache` which is an in-process cache system that make it possible to run Loki without the need for an external cache (like Memcached, Redis, etc). It can be run in two modes `distributed: false` (default, and same as old `fifocache`) and `distributed: true` which runs cache in distributed fashion sharding keys across peers if Loki is run in microservices or SSD mode.
-
-Currently `embedded-cache` with `distributed: true` can be enabled only for results cache.
+The in-memory `fifocache` has been renamed to `embedded-cache`. This allows us to replace the implementation (currently a simple FIFO datastructure) with something else in the future without causing confusion
 
 #### Evenly spread Memcached pods for chunks across kubernetes nodes
 
@@ -98,15 +243,35 @@ The global `deletion_mode` option in the compactor configuration moved to runtim
 - The `deletion_mode` global override needs to be set to the desired mode: `disabled`, `filter-only`, or `filter-and-delete`. By default, `filter-and-delete` is enabled.
 - Any `allow_delete` per-tenant overrides need to be removed or changed to `deletion_mode` overrides with the desired mode.
 
-#### Metric name for `loki_log_messages_total` changed 
+#### Metric name for `loki_log_messages_total` changed
 
 The name of this metric was changed to `loki_internal_log_messages_total` to reduce ambiguity. The previous name is still present but is deprecated.
+
+#### Usage Report  / Telemetry config has changed named
+
+The configuration for anonymous usage statistics reporting to Grafana has changed from `usage_report` to `analytics`.
+
+#### TLS `cipher_suites` and `tls_min_version` have moved
+
+These were previously configurable under `server.http_tls_config` and `server.grpc_tls_config` separately. They are now under `server.tls_cipher_suites` and `server.tls_min_version`. These values are also now configurable for individual clients, for example: `distributor.ring.etcd` or `querier.ingester_client.grpc_client_config`.
+
+#### `ruler.storage.configdb` has been removed
+
+ConfigDB was disallowed as a Ruler storage option back in 2.0. The config struct has finally been removed.
+
+#### `ruler.remote_write.client` has been removed
+
+Can no longer specify a remote write client for the ruler.
 
 ### Promtail
 
 #### `gcp_push_target_parsing_errors_total` has a new `reason` label
 
 The `gcp_push_target_parsing_errors_total` GCP Push Target metrics has been added a new label named `reason`. This includes detail on what might have caused the parsing to fail.
+
+#### Windows event logs: now correctly includes `user_data`
+
+The contents of the `user_data` field was erroneously set to the same value as `event_data` in previous versions. This was fixed in [#7461](https://github.com/grafana/loki/pull/7461) and log queries relying on this broken behaviour may be impacted.
 
 ## 2.6.0
 
@@ -205,7 +370,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/clients/promtail/stages/metrics/#counter)
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -224,7 +389,7 @@ Following 2 compactor configs that were defined as command line arguments in jso
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
-# Supported types: gcs, s3, azure, swift, filesystem.
+# Supported types: gcs, s3, azure, swift, cos, filesystem.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 ```
@@ -259,7 +424,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs](../operations/storage/retention) for more info.
+See the [retention docs]({{<relref "../operations/storage/retention">}}) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -360,7 +525,7 @@ We decided the default would be better to disable this sleep behavior but anyone
 * [4624](https://github.com/grafana/loki/pull/4624) **chaudum**: Disable chunk transfers in jsonnet lib
 
 This changes a few default values, resulting in the ingester WAL now being on by default,
-and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for its WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
 
 Previous defaults:
 ```yaml
@@ -456,10 +621,10 @@ cortex_chunks_store* -> loki_chunks_store*
 
 Previously, samples generated by recording rules would only be buffered in memory before being remote-written to Prometheus; from this
 version, the `ruler` now writes these samples to a per-tenant Write-Ahead Log for durability. More details about the
-per-tenant WAL can be found [here](https://grafana.com/docs/loki/latest/operations/recording-rules/).
+per-tenant WAL can be found [here](/docs/loki/latest/operations/recording-rules/).
 
 The `ruler` now requires persistent storage - please see the
-[Operations](https://grafana.com/docs/loki/latest/operations/recording-rules/#deployment) page for more details about deployment.
+[Operations](/docs/loki/latest/operations/recording-rules/#deployment) page for more details about deployment.
 
 ### Promtail
 
@@ -992,7 +1157,7 @@ exit
 docker run -d --name=loki --mount source=loki-data,target=/loki -p 3100:3100 grafana/loki:1.5.0
 ```
 
-Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/tree/master/cmd/loki/loki-docker-config.yaml).
+Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/blob/main/cmd/loki/loki-docker-config.yaml).
 
 The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.
 That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container.
@@ -1045,13 +1210,9 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-One such config change which will affect Loki users:
+In the [cache_config]({{< relref "../configuration#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
 
-In the [cache_config](../../configuration#cache_config):
-
-`defaul_validity` has changed to `default_validity`
-
-Also in the unlikely case you were configuring your schema via arguments and not a config file, this is no longer supported.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
+If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
 The other config changes should not be relevant to Loki.
 
