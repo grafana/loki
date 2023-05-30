@@ -10,6 +10,7 @@ requirements.lock
 mixin/vendor/
 cmd/loki/loki
 cmd/logcli/logcli
+cmd/lokitool/lokitool
 clients/cmd/promtail/promtail
 cmd/loki/loki-debug
 clients/cmd/promtail/promtail-debug
@@ -23,6 +24,7 @@ cmd/querytee/querytee
 /loki
 /promtail
 /logcli
+/lokitool
 /loki-canary
 dlv
 rootfs/
