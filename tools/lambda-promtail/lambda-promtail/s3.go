@@ -12,8 +12,9 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -97,7 +98,6 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 
 	ls = applyExtraLabels(ls)
 
-	timestamp := time.Now()
 	// extract the timestamp of the nested event and sends the rest as raw json
 	if labels["type"] == CLOUDTRAIL_LOG_TYPE {
 		records := make(chan Record)
@@ -131,11 +131,14 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		}
 
 		match := timestampRegex.FindStringSubmatch(log_line)
+		var timestamp time.Time
 		if len(match) > 0 {
 			timestamp, err = time.Parse(time.RFC3339, match[1])
 			if err != nil {
 				return err
 			}
+		} else {
+			timestamp = time.Now()
 		}
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
