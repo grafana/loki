@@ -24,6 +24,7 @@ import (
 type Builder struct {
 	streams         map[string]*stream
 	chunksFinalized bool
+	version         int
 }
 
 type stream struct {
@@ -32,8 +33,11 @@ type stream struct {
 	chunks index.ChunkMetas
 }
 
-func NewBuilder() *Builder {
-	return &Builder{streams: make(map[string]*stream)}
+func NewBuilder(version int) *Builder {
+	return &Builder{
+		streams: make(map[string]*stream),
+		version: version,
+	}
 }
 
 func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
@@ -86,26 +90,8 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 	return chunkFound, nil
 }
 
-func (b *Builder) BuildWithVersion(
-	ctx context.Context,
-	version int, // build TSDB with specified version. 0 means default version.
-	scratchDir string,
-	createFn func(from, through model.Time, checksum uint32) Identifier,
-) (id Identifier, err error) {
-	return b.buildWithVersion(ctx, version, scratchDir, createFn)
-}
-
 func (b *Builder) Build(
 	ctx context.Context,
-	scratchDir string,
-	createFn func(from, through model.Time, checksum uint32) Identifier,
-) (id Identifier, err error) {
-	return b.buildWithVersion(ctx, 0, scratchDir, createFn)
-}
-
-func (b *Builder) buildWithVersion(
-	ctx context.Context,
-	version int, // build TSDB with specified version. 0 means default version.
 	scratchDir string,
 	// Determines how to create the resulting Identifier and file name.
 	// This is variable as we use Builder for multiple reasons,
@@ -127,18 +113,9 @@ func (b *Builder) buildWithVersion(
 
 	var writer *index.Writer
 
-	if version == 0 {
-		var err error
-		writer, err = index.NewWriter(ctx, tmpPath)
-		if err != nil {
-			return id, err
-		}
-	} else {
-		var err error
-		writer, err = index.NewWriterWithVersion(ctx, version, tmpPath)
-		if err != nil {
-			return id, err
-		}
+	writer, err = index.NewWriterWithVersion(ctx, b.version, tmpPath)
+	if err != nil {
+		return id, err
 	}
 	// TODO(owen-d): multithread
 
