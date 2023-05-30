@@ -666,7 +666,7 @@ Examples:
 
 Converts the string epoch to the time value it represents. Epoch times in days, seconds, milliseconds, microseconds and nanoseconds are supported.
 
-Signature: `toUnixEpoch(epoch string) time.Time`
+Signature: `unixToTime(epoch string) time.Time`
 
 Examples:
 
