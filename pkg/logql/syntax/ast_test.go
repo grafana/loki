@@ -681,3 +681,41 @@ func TestParseLargeQuery(t *testing.T) {
 	_, err := ParseExpr(line)
 	require.NoError(t, err)
 }
+
+func TestGroupingString(t *testing.T) {
+	g := Grouping{
+		Groups:  []string{"a", "b"},
+		Without: false,
+	}
+	require.Equal(t, " by (a,b)", g.String())
+
+	g = Grouping{
+		Groups:  []string{},
+		Without: false,
+	}
+	require.Equal(t, " by ()", g.String())
+
+	g = Grouping{
+		Groups:  nil,
+		Without: false,
+	}
+	require.Equal(t, "", g.String())
+
+	g = Grouping{
+		Groups:  []string{"a", "b"},
+		Without: true,
+	}
+	require.Equal(t, " without (a,b)", g.String())
+
+	g = Grouping{
+		Groups:  []string{},
+		Without: true,
+	}
+	require.Equal(t, " without ()", g.String())
+
+	g = Grouping{
+		Groups:  nil,
+		Without: true,
+	}
+	require.Equal(t, "", g.String())
+}

@@ -22,6 +22,7 @@ component is different.
 These endpoints are exposed by all components:
 
 - [`GET /ready`](#identify-ready-loki-instance)
+- [`GET /log_level`](#change-log-level-at-runtime)
 - [`GET /metrics`](#return-exposed-prometheus-metrics)
 - [`GET /config`](#list-current-configuration)
 - [`GET /services`](#list-running-services)
@@ -611,6 +612,21 @@ GET /ready
 running Loki on Kubernetes, `/ready` can be used as a readiness probe.
 
 In microservices mode, the `/ready` endpoint is exposed by all components.
+
+## Change log level at runtime
+
+```
+GET /log_level
+POST /log_level
+```
+
+`/log_level` a `GET` returns the current log level and a `POST` lets you change the log level of a Loki process at runtime. This can be useful for accessing debugging information during an incident. Caution should be used when running at the `debug` log level, as this produces a large volume of data.
+
+Params:
+
+- `log_level`: A valid log level that can be passed as a URL param (`?log_level=<level>`) or as a form value in case of `POST`. Valid levels: [debug, info, warn, error]
+
+In microservices mode, the `/log_level` endpoint is exposed by all components.
 
 ## Flush in-memory chunks to backing store
 

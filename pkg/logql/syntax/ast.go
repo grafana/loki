@@ -1101,9 +1101,14 @@ type Grouping struct {
 // impls Stringer
 func (g Grouping) String() string {
 	var sb strings.Builder
+
+	if g.Groups == nil {
+		return ""
+	}
+
 	if g.Without {
 		sb.WriteString(" without ")
-	} else if len(g.Groups) > 0 {
+	} else {
 		sb.WriteString(" by ")
 	}
 
@@ -1111,6 +1116,9 @@ func (g Grouping) String() string {
 		sb.WriteString("(")
 		sb.WriteString(strings.Join(g.Groups, ","))
 		sb.WriteString(")")
+	}
+	if len(g.Groups) == 0 {
+		sb.WriteString("()")
 	}
 
 	return sb.String()

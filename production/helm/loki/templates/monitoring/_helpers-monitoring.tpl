@@ -21,7 +21,7 @@ Client definition for LogsInstance
       name: {{ include "enterprise-logs.selfMonitoringTenantSecret" . }}
       key: password
   {{- else if .Values.loki.auth_enabled }}
-  tenantId: {{ .Values.monitoring.selfMonitoring.tenant.name }}
+  tenantId: {{ .Values.monitoring.selfMonitoring.tenant.name | quote }}
   {{- end }}
 {{- end -}}
 

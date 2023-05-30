@@ -569,6 +569,9 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	from, through := req.From.Time(), req.Through.Time()
 
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
+		// checks for equality against chunk flush fields
+		var zeroValueTime time.Time
+
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
 			s.chunkMtx.RLock()
@@ -580,7 +583,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 				// by the TSDB manager+shipper
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
-				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+				if !chk.flushed.Equal(zeroValueTime) && from.Before(chkThrough) && through.After(chkFrom) {
 					hasChunkOverlap = true
 					res.Chunks++
 					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())

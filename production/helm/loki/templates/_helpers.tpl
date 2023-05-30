@@ -354,6 +354,29 @@ ruler:
 {{- end }}
 
 {{/*
+Calculate the config from structured and unstructred text input
+*/}}
+{{- define "loki.calculatedConfig" -}}
+{{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
+{{- end }}
+
+{{/*
+The volume to mount for loki configuration
+*/}}
+{{- define "loki.configVolume" -}}
+{{- if eq .Values.loki.configStorageType "Secret" -}}
+secret:
+  secretName: {{ tpl .Values.loki.externalConfigSecretName . }}
+{{- else if eq .Values.loki.configStorageType "ConfigMap" -}}
+configMap:
+  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  items:
+    - key: "config.yaml"
+      path: "config.yaml"
+{{- end -}}
+{{- end -}}
+
+{{/*
 Memcached Docker image
 */}}
 {{- define "loki.memcachedImage" -}}
@@ -582,6 +605,7 @@ http {
 
   server {
     listen             8080;
+    listen             [::]:8080;
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";

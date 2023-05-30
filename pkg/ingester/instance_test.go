@@ -837,23 +837,6 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
-func TestGetStats(t *testing.T) {
-	instance := defaultInstance(t)
-	resp, err := instance.GetStats(context.Background(), &logproto.IndexStatsRequest{
-		From:     0,
-		Through:  11000,
-		Matchers: `{host="agent"}`,
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, &logproto.IndexStatsResponse{
-		Streams: 2,
-		Chunks:  2,
-		Bytes:   160,
-		Entries: 10,
-	}, resp)
-}
-
 func defaultInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()

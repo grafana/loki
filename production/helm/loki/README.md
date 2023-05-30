@@ -1,6 +1,6 @@
 # loki
 
-![Version: 5.5.3](https://img.shields.io/badge/Version-5.5.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.8.2](https://img.shields.io/badge/AppVersion-2.8.2-informational?style=flat-square)
+![Version: 5.5.10](https://img.shields.io/badge/Version-5.5.10-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.8.2](https://img.shields.io/badge/AppVersion-2.8.2-informational?style=flat-square)
 
 Helm chart for Grafana Loki in simple, scalable mode
 

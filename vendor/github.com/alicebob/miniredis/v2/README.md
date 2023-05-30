@@ -127,6 +127,7 @@ Implemented commands:
    - RPUSH
    - RPUSHX
    - LMOVE
+   - BLMOVE
  - Pub/Sub (complete)
    - PSUBSCRIBE
    - PUBLISH
