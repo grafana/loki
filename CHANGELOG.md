@@ -7,6 +7,7 @@
 ##### Enhancements
 
 * [8886](https://github.com/grafana/loki/pull/8886) **MichelHollands**: Add new logql template functions `toUnixEpoch`, `toUnixEpochMillis` and `toUnixEpochNanos`
+* [8067](https://github.com/grafana/loki/pull/9497) **CCOLLOT**: Lambda-Promtail: Add support for AWS CloudTrail log ingestion.
 * [9515](https://github.com/grafana/loki/pull/9515) **MichelHollands**: Fix String() on vector aggregation LogQL expressions that contain `without ()`.
 * [8067](https://github.com/grafana/loki/pull/8067) **DylanGuedes**: Distributor: Add auto-forget unhealthy members support.
 * [9175](https://github.com/grafana/loki/pull/9175) **MichelHollands**: Ingester: update the `prepare_shutdown` endpoint so it supports GET and DELETE and stores the state on disk.
