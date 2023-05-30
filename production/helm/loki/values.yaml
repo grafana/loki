@@ -50,6 +50,8 @@ loki:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Common annotations for all deployments/StatefulSets
+  annotations: {}
   # -- Common annotations for all pods
   podAnnotations: {}
   # -- Common labels for all pods
@@ -73,6 +75,12 @@ loki:
   enableServiceLinks: true
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
+  # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
+  # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).
+  # Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
+  configStorageType: ConfigMap
+  # -- Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).
+  externalConfigSecretName: '{{ include "loki.name" . }}'
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
@@ -679,6 +687,8 @@ write:
     tag: null
   # -- The name of the PriorityClass for write pods
   priorityClassName: null
+  # -- Annotations for write StatefulSet
+  annotations: {}
   # -- Annotations for write pods
   podAnnotations: {}
   # -- Additional labels for each `write` pod
@@ -761,6 +771,8 @@ tableManager:
   priorityClassName: null
   # -- Labels for table-manager pods
   podLabels: {}
+  # -- Annotations for table-manager deployment
+  annotations: {}
   # -- Annotations for table-manager pods
   podAnnotations: {}
   # -- Labels for table-manager service
@@ -839,6 +851,8 @@ read:
     tag: null
   # -- The name of the PriorityClass for read pods
   priorityClassName: null
+  # -- Annotations for read deployment
+  annotations: {}
   # -- Annotations for read pods
   podAnnotations: {}
   # -- Additional labels for each `read` pod
@@ -935,6 +949,8 @@ backend:
     tag: null
   # -- The name of the PriorityClass for backend pods
   priorityClassName: null
+  # -- Annotations for backend StatefulSet
+  annotations: {}
   # -- Annotations for backend pods
   podAnnotations: {}
   # -- Additional labels for each `backend` pod
@@ -1015,6 +1031,8 @@ singleBinary:
     tag: null
   # -- The name of the PriorityClass for single binary pods
   priorityClassName: null
+  # -- Annotations for single binary StatefulSet
+  annotations: {}
   # -- Annotations for single binary pods
   podAnnotations: {}
   # -- Additional labels for each `single binary` pod
@@ -1164,6 +1182,8 @@ gateway:
     pullPolicy: IfNotPresent
   # -- The name of the PriorityClass for gateway pods
   priorityClassName: null
+  # -- Annotations for gateway deployment
+  annotations: {}
   # -- Annotations for gateway pods
   podAnnotations: {}
   # -- Additional labels for gateway pods

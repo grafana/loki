@@ -41,6 +41,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>backend.annotations</td>
+			<td>object</td>
+			<td>Annotations for backend StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.autoscaling.behavior</td>
 			<td>object</td>
 			<td>Behavior policies while scaling.</td>
@@ -826,6 +835,15 @@ null
 			<td>Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.annotations</td>
+			<td>object</td>
+			<td>Annotations for gateway deployment</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1696,6 +1714,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.annotations</td>
+			<td>object</td>
+			<td>Common annotations for all deployments/StatefulSets</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.auth_enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -1736,6 +1763,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.configStorageType</td>
+			<td>string</td>
+			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
+			<td><pre lang="json">
+"ConfigMap"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for Loki containers</td>
@@ -1767,6 +1803,15 @@ true
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.externalConfigSecretName</td>
+			<td>string</td>
+			<td>Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).</td>
+			<td><pre lang="json">
+"{{ include \"loki.name\" . }}"
 </pre>
 </td>
 		</tr>
@@ -2853,6 +2898,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>read.annotations</td>
+			<td>object</td>
+			<td>Annotations for read deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.autoscaling.behavior</td>
 			<td>object</td>
 			<td>Behavior policies while scaling.</td>
@@ -3204,6 +3258,15 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.annotations</td>
+			<td>object</td>
+			<td>Annotations for single binary StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
 			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
@@ -3479,6 +3542,15 @@ null
 			<td>Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.annotations</td>
+			<td>object</td>
+			<td>Annotations for table-manager deployment</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3786,6 +3858,15 @@ null
 			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.annotations</td>
+			<td>object</td>
+			<td>Annotations for write StatefulSet</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
