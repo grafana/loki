@@ -17,7 +17,6 @@ func TestWriteFailuresLogging(t *testing.T) {
 	t.Run("it only logs for the configured tenants and is disabled by default", func(t *testing.T) {
 		buf := bytes.NewBuffer(nil)
 		logger := log.NewLogfmtLogger(buf)
-		runtimeCfg := runtime.DefaultTenantConfigs()
 
 		f := func(tenantID string) *runtime.Config {
 			if tenantID == "good-tenant" {
@@ -53,7 +52,6 @@ func TestWriteFailuresLogging(t *testing.T) {
 func TestWriteFailuresRateLimiting(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	logger := log.NewLogfmtLogger(buf)
-	runtimeCfg := runtime.DefaultTenantConfigs()
 
 	f := func(tenantID string) *runtime.Config {
 		return &runtime.Config{
