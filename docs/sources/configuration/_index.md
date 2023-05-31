@@ -483,9 +483,11 @@ rate_store:
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
 
+# Experimental. Customize the logging of write failures.
 write_failures_logging:
-  # Experimental: Log volume allowed (per second). Default: 1KB.
-  # CLI flag: -distributor.write-failures-logging/rate
+  # Experimental and subject to change. Log volume allowed (per second).
+  # Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging.rate
   [rate: <int> | default = 1KB]
 ```
 

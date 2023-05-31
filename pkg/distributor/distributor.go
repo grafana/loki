@@ -68,7 +68,7 @@ type Config struct {
 	RateStore RateStoreConfig `yaml:"rate_store"`
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
-	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging"`
+	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
 }
 
 // RegisterFlags registers distributor-related flags.
