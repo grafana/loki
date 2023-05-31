@@ -400,6 +400,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Prefix: "index_",
 					Period: time.Hour * 24,
 				},
+				TSDBIndexVersion: index.LiveFormat,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
@@ -409,6 +410,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Prefix: "index_",
 					Period: time.Hour * 24,
 				},
+				TSDBIndexVersion: index.LiveFormat,
 			},
 		},
 	}
