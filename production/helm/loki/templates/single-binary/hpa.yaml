@@ -1,6 +1,7 @@
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- $usingObjectStorage := eq (include "loki.isUsingObjectStorage" .) "true" }}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
-{{- if and $isSingleBinary ( .Values.singleBinary.autoscaling.enabled ) }}
+{{- if and $isSingleBinary $usingObjectStorage ( .Values.singleBinary.autoscaling.enabled ) }}
 {{- if $autoscalingv2 }}
 apiVersion: autoscaling/v2
 {{- else }}
