@@ -162,6 +162,8 @@ type PeriodConfig struct {
 	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
 	RowShards   uint32              `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
 
+	TSDBIndexVersion int `yaml:"tsdb_index_version" doc:"description=The version of the TSDB index to use. Only used with the TSDB index type."`
+
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
 }

@@ -151,13 +151,18 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
+type idxTblNameWithVersion struct {
+	tableName string
+	version   int
+}
+
 func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
-		pds := make(map[string]index.ChunkMetas)
+		pds := make(map[idxTblNameWithVersion]index.ChunkMetas)
 		for _, chk := range chks {
 			idxBuckets := indexBuckets(chk.From(), chk.Through(), tableRanges)
 
@@ -173,10 +178,10 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 
 		// Add the chunks to all relevant builders
 		for pd, matchingChks := range pds {
-			b, ok := periods[pd]
+			b, ok := periods[pd.tableName]
 			if !ok {
-				b = NewBuilder(index.LiveFormat)
-				periods[pd] = b
+				b = NewBuilder(pd.version)
+				periods[pd.tableName] = b
 			}
 
 			b.AddSeries(
@@ -290,13 +295,17 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	return nil
 }
 
-func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
+func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []idxTblNameWithVersion) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
-			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
+			idxTblNameWithVer := idxTblNameWithVersion{
+				tableName: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)),
+				version:   cfg.TSDBIndexVersion,
+			}
+			res = append(res, idxTblNameWithVer)
 		}
 	}
 	if len(res) == 0 {
