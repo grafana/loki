@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) error {
@@ -15,7 +16,7 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 	}
 
 	for _, record := range ev.Records {
-		timestamp := time.Unix(record.Kinesis.ApproximateArrivalTimestamp.Unix(),0)
+		timestamp := time.Unix(record.Kinesis.ApproximateArrivalTimestamp.Unix(), 0)
 
 		labels := model.LabelSet{
 			model.LabelName("__aws_log_type"):                 model.LabelValue("kinesis"),

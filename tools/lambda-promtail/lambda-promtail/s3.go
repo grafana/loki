@@ -131,14 +131,12 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		}
 
 		match := timestampRegex.FindStringSubmatch(log_line)
-		var timestamp time.Time
+		timestamp := time.Now()
 		if len(match) > 0 {
 			timestamp, err = time.Parse(time.RFC3339, match[1])
 			if err != nil {
 				return err
 			}
-		} else {
-			timestamp = time.Now()
 		}
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
