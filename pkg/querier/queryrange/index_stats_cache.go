@@ -68,15 +68,16 @@ func (cfg *IndexStatsCacheConfig) Validate() error {
 	return cfg.ResultsCacheConfig.Validate()
 }
 
-// ShouldCache returns true if the request should be cached.
-// It returns false if the request end time falls within the DoNotCacheRequestWithin duration.
-func (cfg *IndexStatsCacheConfig) ShouldCache(req queryrangebase.Request, now model.Time) bool {
-	return cfg.DoNotCacheRequestWithin == 0 || model.Time(req.GetEnd()).Before(now.Add(-cfg.DoNotCacheRequestWithin))
-}
-
 // statsCacheMiddlewareNowTimeFunc is a function that returns the current time.
 // It is used to allow tests to override the current time.
 var statsCacheMiddlewareNowTimeFunc = model.Now
+
+// ShouldCache returns true if the request should be cached.
+// It returns false if the request end time falls within the DoNotCacheRequestWithin duration.
+func (cfg *IndexStatsCacheConfig) ShouldCache(req queryrangebase.Request) bool {
+	now := statsCacheMiddlewareNowTimeFunc()
+	return cfg.DoNotCacheRequestWithin == 0 || model.Time(req.GetEnd()).Before(now.Add(-cfg.DoNotCacheRequestWithin))
+}
 
 func NewIndexStatsCacheMiddleware(
 	cfg IndexStatsCacheConfig,
@@ -103,8 +104,7 @@ func NewIndexStatsCacheMiddleware(
 			if shouldCache != nil && !shouldCache(r) {
 				return false
 			}
-			now := statsCacheMiddlewareNowTimeFunc()
-			return cfg.ShouldCache(r, now)
+			return cfg.ShouldCache(r)
 		},
 		parallelismForReq,
 		retentionEnabled,
