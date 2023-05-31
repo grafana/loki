@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/limiter"
+
 	"github.com/grafana/loki/pkg/runtime"
 )
 
@@ -16,11 +17,7 @@ type Manager struct {
 }
 
 func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
-	logger = log.With(logger, "path", "write")
-
-	if cfg.AddInsightsLabel {
-		logger = log.With(logger, "insight", "true")
-	}
+	logger = log.With(logger, "path", "write", "insight", "true")
 
 	strat := newStrategy(cfg.LogRate, float64(cfg.LogRate))
 
