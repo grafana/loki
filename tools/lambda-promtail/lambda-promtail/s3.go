@@ -80,10 +80,10 @@ var (
 			timestampRegex:  defaultTimestampRegex,
 		},
 		CLOUDTRAIL_LOG_TYPE: {
-			logTypeLabel:  "s3_cloudtrail",
-			ownerLabelKey: "account_id",
+			logTypeLabel:    "s3_cloudtrail",
+			ownerLabelKey:   "account_id",
 			skipHeaderCount: 3,
-			filenameRegex: cloudtrailFilenameRegex,
+			filenameRegex:   cloudtrailFilenameRegex,
 		},
 		CLOUDFRONT_LOG_TYPE: {
 			logTypeLabel:    "s3_cloudfront",
