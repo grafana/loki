@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [9574](https://github.com/grafana/loki/pull/9574) **chaudum**: Add per-tenant replication factor for index gateways.
 * [8067](https://github.com/grafana/loki/pull/9497) **CCOLLOT**: Lambda-Promtail: Add support for AWS CloudTrail log ingestion.
 * [9515](https://github.com/grafana/loki/pull/9515) **MichelHollands**: Fix String() on vector aggregation LogQL expressions that contain `without ()`.
 * [8067](https://github.com/grafana/loki/pull/8067) **DylanGuedes**: Distributor: Add auto-forget unhealthy members support.
