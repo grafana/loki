@@ -194,6 +194,10 @@ func (p *Push) run() {
 			return
 		case e := <-p.entries:
 			payload, err := p.buildPayload(e)
+			if err != nil {
+				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
+				continue
+			}
 
 			// We will use a timeout within each attempt to send
 			backoff := backoff.New(context.Background(), *p.backoff)
