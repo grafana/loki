@@ -705,30 +705,10 @@ func (l *LogfmtExpressionParser) String() string {
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
-	if t == labels.MatchRegexp || t == labels.MatchNotRegexp {
-		return simplifyRegexMatcher(t, n, v)
-	}
-
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
-	return m
-}
-
-func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matcher {
-	reg, err := syntax.Parse(value, syntax.Perl)
-	if err != nil {
-		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
-	}
-	reg = reg.Simplify()
-
-	m, ok := simplify(typ, name, reg)
-	if !ok {
-		util.AllNonGreedy(reg)
-		return labels.MustNewMatcher(typ, name, reg.String())
-	}
-
 	return m
 }
 
