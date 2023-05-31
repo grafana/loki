@@ -151,11 +151,6 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
-type idxTblNameWithVersion struct {
-	tableName string
-	version   int
-}
-
 func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
@@ -293,6 +288,11 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	}
 
 	return nil
+}
+
+type idxTblNameWithVersion struct {
+	tableName string
+	version   int
 }
 
 func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []idxTblNameWithVersion) {
