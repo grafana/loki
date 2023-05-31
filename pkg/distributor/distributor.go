@@ -193,7 +193,7 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
-		writeFailuresManager: writefailures.NewManager(util_log.Logger, cfg.WriteFailuresLogging),
+		writeFailuresManager: writefailures.NewManager(util_log.Logger, cfg.WriteFailuresLogging, configs),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {

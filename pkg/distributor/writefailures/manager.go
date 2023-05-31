@@ -6,14 +6,16 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/limiter"
+	"github.com/grafana/loki/pkg/runtime"
 )
 
 type Manager struct {
-	limiter *limiter.RateLimiter
-	logger  log.Logger
+	limiter    *limiter.RateLimiter
+	logger     log.Logger
+	tenantCfgs *runtime.TenantConfigs
 }
 
-func NewManager(logger log.Logger, cfg Cfg) *Manager {
+func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
 	logger = log.With(logger, "path", "write")
 
 	if cfg.AddInsightsLabel {
@@ -23,13 +25,19 @@ func NewManager(logger log.Logger, cfg Cfg) *Manager {
 	strat := newStrategy(cfg.LogRate, float64(cfg.LogRate))
 
 	return &Manager{
-		limiter: limiter.NewRateLimiter(strat, time.Minute),
-		logger:  logger,
+		limiter:    limiter.NewRateLimiter(strat, time.Minute),
+		logger:     logger,
+		tenantCfgs: tenants,
 	}
 }
 
 func (m *Manager) Log(tenantID string, err error) {
-	if m.limiter.AllowN(time.Now(), tenantID, 1) {
-		level.Error(m.logger).Log("msg", "write operation failed", "err", err)
+	if !m.tenantCfgs.LimitedLogPushErrors(tenantID) {
+		return
+	}
+
+	errMsg := err.Error()
+	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
+		level.Error(m.logger).Log("msg", "write operation failed", "err", errMsg)
 	}
 }
