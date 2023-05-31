@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/util/flagext"
-	"github.com/stretchr/testify/require"
 )
 
 func TestWriteFailuresLogging(t *testing.T) {
