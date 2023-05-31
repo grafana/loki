@@ -75,6 +75,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.

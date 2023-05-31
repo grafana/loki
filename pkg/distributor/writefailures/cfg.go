@@ -3,13 +3,16 @@ package writefailures
 import (
 	"flag"
 	"path"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 type Cfg struct {
-	LogRate int `yaml:"logging_rate" category:"experimental"`
+	LogRate flagext.ByteSize `yaml:"rate" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Cfg) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
-	fs.IntVar(&cfg.LogRate, path.Join(prefix, "log-rate"), 1000 /* 1 KB */, "Experimental and subject to change. Log volume allowed (per second). Default: 1KB.")
+	_ = cfg.LogRate.Set("1KB")
+	fs.Var(&cfg.LogRate, path.Join(prefix, "rate"), "Experimental: Log volume allowed (per second). Default: 1KB.")
 }

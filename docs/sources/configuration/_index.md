@@ -484,7 +484,9 @@ rate_store:
   [debug: <boolean> | default = false]
 
 write_failures_logging:
-  [logging_rate: <int>]
+  # Experimental: Log volume allowed (per second). Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging/rate
+  [rate: <int> | default = 1KB]
 ```
 
 ### querier
