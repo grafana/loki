@@ -22,11 +22,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	md5simd "github.com/minio/md5-simd"
 )
 
 // Reference for constants used below -
@@ -91,14 +92,14 @@ func getStreamLength(dataLen, chunkSize int64, trailers http.Header) int64 {
 
 // buildChunkStringToSign - returns the string to sign given chunk data
 // and previous signature.
-func buildChunkStringToSign(t time.Time, region, previousSig string, chunkData []byte) string {
+func buildChunkStringToSign(t time.Time, region, previousSig, chunkChecksum string) string {
 	stringToSignParts := []string{
 		streamingPayloadHdr,
 		t.Format(iso8601DateFormat),
 		getScope(region, t, ServiceTypeS3),
 		previousSig,
 		emptySHA256,
-		hex.EncodeToString(sum256(chunkData)),
+		chunkChecksum,
 	}
 
 	return strings.Join(stringToSignParts, "\n")
@@ -106,13 +107,13 @@ func buildChunkStringToSign(t time.Time, region, previousSig string, chunkData [
 
 // buildTrailerChunkStringToSign - returns the string to sign given chunk data
 // and previous signature.
-func buildTrailerChunkStringToSign(t time.Time, region, previousSig string, chunkData []byte) string {
+func buildTrailerChunkStringToSign(t time.Time, region, previousSig, chunkChecksum string) string {
 	stringToSignParts := []string{
 		streamingTrailerHdr,
 		t.Format(iso8601DateFormat),
 		getScope(region, t, ServiceTypeS3),
 		previousSig,
-		hex.EncodeToString(sum256(chunkData)),
+		chunkChecksum,
 	}
 
 	return strings.Join(stringToSignParts, "\n")
@@ -149,21 +150,21 @@ func buildChunkHeader(chunkLen int64, signature string) []byte {
 }
 
 // buildChunkSignature - returns chunk signature for a given chunk and previous signature.
-func buildChunkSignature(chunkData []byte, reqTime time.Time, region,
+func buildChunkSignature(chunkCheckSum string, reqTime time.Time, region,
 	previousSignature, secretAccessKey string,
 ) string {
 	chunkStringToSign := buildChunkStringToSign(reqTime, region,
-		previousSignature, chunkData)
+		previousSignature, chunkCheckSum)
 	signingKey := getSigningKey(secretAccessKey, region, reqTime, ServiceTypeS3)
 	return getSignature(signingKey, chunkStringToSign)
 }
 
 // buildChunkSignature - returns chunk signature for a given chunk and previous signature.
-func buildTrailerChunkSignature(chunkData []byte, reqTime time.Time, region,
+func buildTrailerChunkSignature(chunkChecksum string, reqTime time.Time, region,
 	previousSignature, secretAccessKey string,
 ) string {
 	chunkStringToSign := buildTrailerChunkStringToSign(reqTime, region,
-		previousSignature, chunkData)
+		previousSignature, chunkChecksum)
 	signingKey := getSigningKey(secretAccessKey, region, reqTime, ServiceTypeS3)
 	return getSignature(signingKey, chunkStringToSign)
 }
@@ -203,12 +204,17 @@ type StreamingReader struct {
 	totalChunks     int
 	lastChunkSize   int
 	trailer         http.Header
+	sh256           md5simd.Hasher
 }
 
 // signChunk - signs a chunk read from s.baseReader of chunkLen size.
 func (s *StreamingReader) signChunk(chunkLen int, addCrLf bool) {
 	// Compute chunk signature for next header
-	signature := buildChunkSignature(s.chunkBuf[:chunkLen], s.reqTime,
+	s.sh256.Reset()
+	s.sh256.Write(s.chunkBuf[:chunkLen])
+	chunckChecksum := hex.EncodeToString(s.sh256.Sum(nil))
+
+	signature := buildChunkSignature(chunckChecksum, s.reqTime,
 		s.region, s.prevSignature, s.secretAccessKey)
 
 	// For next chunk signature computation
@@ -240,8 +246,11 @@ func (s *StreamingReader) addSignedTrailer(h http.Header) {
 		s.chunkBuf = append(s.chunkBuf, []byte(strings.ToLower(k)+trailerKVSeparator+v[0]+"\n")...)
 	}
 
+	s.sh256.Reset()
+	s.sh256.Write(s.chunkBuf)
+	chunkChecksum := hex.EncodeToString(s.sh256.Sum(nil))
 	// Compute chunk signature
-	signature := buildTrailerChunkSignature(s.chunkBuf, s.reqTime,
+	signature := buildTrailerChunkSignature(chunkChecksum, s.reqTime,
 		s.region, s.prevSignature, s.secretAccessKey)
 
 	// For next chunk signature computation
@@ -274,13 +283,13 @@ func (s *StreamingReader) setStreamingAuthHeader(req *http.Request) {
 // StreamingSignV4 - provides chunked upload signatureV4 support by
 // implementing io.Reader.
 func StreamingSignV4(req *http.Request, accessKeyID, secretAccessKey, sessionToken,
-	region string, dataLen int64, reqTime time.Time,
+	region string, dataLen int64, reqTime time.Time, sh256 md5simd.Hasher,
 ) *http.Request {
 	// Set headers needed for streaming signature.
 	prepareStreamingRequest(req, sessionToken, dataLen, reqTime)
 
 	if req.Body == nil {
-		req.Body = ioutil.NopCloser(bytes.NewReader([]byte("")))
+		req.Body = io.NopCloser(bytes.NewReader([]byte("")))
 	}
 
 	stReader := &StreamingReader{
@@ -295,6 +304,7 @@ func StreamingSignV4(req *http.Request, accessKeyID, secretAccessKey, sessionTok
 		chunkNum:        1,
 		totalChunks:     int((dataLen+payloadChunkSize-1)/payloadChunkSize) + 1,
 		lastChunkSize:   int(dataLen % payloadChunkSize),
+		sh256:           sh256,
 	}
 	if len(req.Trailer) > 0 {
 		stReader.trailer = req.Trailer
@@ -385,5 +395,9 @@ func (s *StreamingReader) Read(buf []byte) (int, error) {
 
 // Close - this method makes underlying io.ReadCloser's Close method available.
 func (s *StreamingReader) Close() error {
+	if s.sh256 != nil {
+		s.sh256.Close()
+		s.sh256 = nil
+	}
 	return s.baseReadCloser.Close()
 }

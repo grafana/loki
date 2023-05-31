@@ -78,7 +78,6 @@ storage_config:
 
 compactor:
   working_directory: {{.dataPath}}/retention
-  shared_store: filesystem
   retention_enabled: true
 
 analytics:

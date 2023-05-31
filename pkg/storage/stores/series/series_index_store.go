@@ -266,7 +266,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 				continue outer
 			}
 
-			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels(nil))
+			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {

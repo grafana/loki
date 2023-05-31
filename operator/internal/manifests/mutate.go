@@ -138,6 +138,14 @@ func mergeWithOverride(dst, src interface{}) error {
 	return nil
 }
 
+func mergeWithOverrideEmpty(dst, src interface{}) error {
+	err := mergo.Merge(dst, src, mergo.WithOverwriteWithEmptyValue)
+	if err != nil {
+		return kverrors.Wrap(err, "unable to mergeWithOverrideEmpty", "dst", dst, "src", src)
+	}
+	return nil
+}
+
 func mutateConfigMap(existing, desired *corev1.ConfigMap) {
 	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
@@ -224,7 +232,7 @@ func mutateDeployment(existing, desired *appsv1.Deployment) error {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
+	if err := mergeWithOverrideEmpty(&existing.Spec.Template, desired.Spec.Template); err != nil {
 		return err
 	}
 	if err := mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy); err != nil {
@@ -240,7 +248,7 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) error {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
+	if err := mergeWithOverrideEmpty(&existing.Spec.Template, desired.Spec.Template); err != nil {
 		return err
 	}
 	return nil

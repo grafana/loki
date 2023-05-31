@@ -13,29 +13,29 @@ import (
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 	op, err := syntax.MergeBinOp(syntax.OpTypeDiv,
 		&promql.Sample{
-			Point: promql.Point{T: 1, V: 1},
+			T: 1, F: 1,
 		},
 		&promql.Sample{
-			Point: promql.Point{T: 1, V: 0},
+			T: 1, F: 0,
 		},
 		false,
 		false,
 	)
 	require.NoError(t, err)
 
-	require.Equal(t, true, math.IsNaN(op.Point.V))
+	require.Equal(t, true, math.IsNaN(op.F))
 	binOp, err := syntax.MergeBinOp(syntax.OpTypeMod,
 		&promql.Sample{
-			Point: promql.Point{T: 1, V: 1},
+			T: 1, F: 1,
 		},
 		&promql.Sample{
-			Point: promql.Point{T: 1, V: 0},
+			T: 1, F: 0,
 		},
 		false,
 		false,
 	)
 	require.NoError(t, err)
-	require.Equal(t, true, math.IsNaN(binOp.Point.V))
+	require.Equal(t, true, math.IsNaN(binOp.F))
 }
 func TestDefaultEvaluator_Sortable(t *testing.T) {
 	logqlSort := `sort(rate(({app=~"foo|bar"} |~".+bar")[1m])) `
@@ -64,156 +64,156 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 			`eq_0`,
 			syntax.OpTypeCmpEQ,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 		},
 		{
 			`eq_1`,
 			syntax.OpTypeCmpEQ,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 		},
 		{
 			`neq_0`,
 			syntax.OpTypeNEQ,
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 		},
 		{
 			`neq_1`,
 			syntax.OpTypeNEQ,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 		},
 		{
 			`gt_0`,
 			syntax.OpTypeGT,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 		},
 		{
 			`gt_1`,
 			syntax.OpTypeGT,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 		},
 		{
 			`lt_0`,
 			syntax.OpTypeLT,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 		},
 		{
 			`lt_1`,
 			syntax.OpTypeLT,
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 		},
 		{
 			`gte_0`,
 			syntax.OpTypeGTE,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 		},
 		{
 			`gt_1`,
 			syntax.OpTypeGTE,
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 		},
 		{
 			`lte_0`,
 			syntax.OpTypeLTE,
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 		},
 		{
 			`lte_1`,
 			syntax.OpTypeLTE,
 			&promql.Sample{
-				Point: promql.Point{V: 1},
+				F: 1,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 			&promql.Sample{
-				Point: promql.Point{V: 0},
+				F: 0,
 			},
 		},
 	} {
@@ -232,7 +232,7 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 			require.Nil(t, op3)
 
 			//  test filtered variants
-			if tc.expected.V == 0 {
+			if tc.expected.F == 0 {
 				//  ensure zeroed predicates are filtered out
 
 				op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, true, false)

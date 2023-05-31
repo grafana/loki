@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
@@ -40,7 +41,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/wal"
@@ -62,10 +62,10 @@ var (
 		Name: "cortex_ingester_flush_queue_length",
 		Help: "The total number of series pending in the flush queue.",
 	})
-	compressionStats   = usagestats.NewString("ingester_compression")
-	targetSizeStats    = usagestats.NewInt("ingester_target_size_bytes")
-	walStats           = usagestats.NewString("ingester_wal")
-	activeTenantsStats = usagestats.NewInt("ingester_active_tenants")
+	compressionStats   = analytics.NewString("ingester_compression")
+	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
+	walStats           = analytics.NewString("ingester_wal")
+	activeTenantsStats = analytics.NewInt("ingester_active_tenants")
 )
 
 // Config for an ingester.
@@ -547,9 +547,25 @@ func (i *Ingester) stopping(_ error) error {
 	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
+		i.removeShutdownMarkerFile()
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
+}
+
+// removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
+func (i *Ingester) removeShutdownMarkerFile() {
+	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+	exists, err := shutdownMarkerExists(shutdownMarkerPath)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+	}
+	if exists {
+		err = removeShutdownMarker(shutdownMarkerPath)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+		}
+	}
 }
 
 func (i *Ingester) loop() {

@@ -269,6 +269,14 @@ type LokiComponentSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+	// of a component.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podAntiAffinity",displayName="PodAntiAffinity"
+	PodAntiAffinity *corev1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
 }
 
 // LokiTemplateSpec defines the template of all requirements to configure
@@ -553,7 +561,7 @@ type QueryLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default:="1m"
+	// +kubebuilder:default:="3m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
 	QueryTimeout string `json:"queryTimeout,omitempty"`
 }
@@ -766,6 +774,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
 	Proxy *ClusterProxy `json:"proxy,omitempty"`
 
+	// Deprecated: Please use replication.factor instead. This field will be removed in future versions of this CRD.
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +optional
@@ -774,7 +783,14 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
 
-	// Rules defines the spec for the ruler component
+	// Replication defines the configuration for Loki data replication.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Replication Spec"
+	Replication *ReplicationSpec `json:"replication,omitempty"`
+
+	// Rules defines the spec for the ruler component.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -788,7 +804,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rate Limiting"
 	Limits *LimitsSpec `json:"limits,omitempty"`
 
-	// Template defines the resource/limits/tolerations/nodeselectors per component
+	// Template defines the resource/limits/tolerations/nodeselectors per component.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -801,6 +817,41 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+}
+
+type ReplicationSpec struct {
+	// Factor defines the policy for log stream replication.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
+	Factor int32 `json:"factor,omitempty"`
+
+	// Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+	// IMPORTANT: Make sure that the replication factor defined is less than or equal to the number of available zones.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Zones Spec"
+	Zones []ZoneSpec `json:"zones,omitempty"`
+}
+
+// ZoneSpec defines the spec to support zone-aware component deployments.
+type ZoneSpec struct {
+	// MaxSkew describes the maximum degree to which Pods can be unevenly distributed.
+	//
+	// +required
+	// +kubebuilder:default:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Skew"
+	MaxSkew int `json:"maxSkew"`
+
+	// TopologyKey is the key that defines a topology in the Nodes' labels.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Topology Key"
+	TopologyKey string `json:"topologyKey"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.
@@ -862,6 +913,8 @@ const (
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
+	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
+	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

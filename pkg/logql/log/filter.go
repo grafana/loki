@@ -315,8 +315,8 @@ func containsLower(line, substr []byte) bool {
 	j := 0
 	for len(line) > 0 {
 		// ascii fast case
-		if c := line[0]; c < utf8.RuneSelf {
-			if c == substr[j] || c+'a'-'A' == substr[j] {
+		if c := line[0]; c < utf8.RuneSelf && substr[j] < utf8.RuneSelf {
+			if c == substr[j] || c+'a'-'A' == substr[j] || c == substr[j]+'a'-'A' {
 				j++
 				if j == len(substr) {
 					return true

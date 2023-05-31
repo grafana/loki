@@ -31,7 +31,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"mime/multipart"
 	"net/http"
@@ -346,7 +345,7 @@ func getDataReader(fileName string) io.ReadCloser {
 		if _, ok := dataFileCRC32[fileName]; !ok {
 			dataFileCRC32[fileName] = mustCrcReader(newRandomReader(size, size))
 		}
-		return ioutil.NopCloser(newRandomReader(size, size))
+		return io.NopCloser(newRandomReader(size, size))
 	}
 	reader, _ := os.Open(getMintDataDirFilePath(fileName))
 	if _, ok := dataFileCRC32[fileName]; !ok {
@@ -989,7 +988,7 @@ func testGetObjectWithVersioning() {
 
 	for _, testFile := range testFiles {
 		r := getDataReader(testFile)
-		buf, err := ioutil.ReadAll(r)
+		buf, err := io.ReadAll(r)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "unexpected failure", err)
 			return
@@ -1131,7 +1130,7 @@ func testPutObjectWithVersioning() {
 	var errs [n]error
 	for i := 0; i < n; i++ {
 		r := newRandomReader(int64((1<<20)*i+i), int64(i))
-		buf, err := ioutil.ReadAll(r)
+		buf, err := io.ReadAll(r)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "unexpected failure", err)
 			return
@@ -1271,7 +1270,7 @@ func testCopyObjectWithVersioning() {
 	testFiles := []string{"datafile-1-b", "datafile-10-kB"}
 	for _, testFile := range testFiles {
 		r := getDataReader(testFile)
-		buf, err := ioutil.ReadAll(r)
+		buf, err := io.ReadAll(r)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "unexpected failure", err)
 			return
@@ -1304,7 +1303,7 @@ func testCopyObjectWithVersioning() {
 		return
 	}
 
-	oldestContent, err := ioutil.ReadAll(reader)
+	oldestContent, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Reading the oldest object version failed", err)
 		return
@@ -1338,7 +1337,7 @@ func testCopyObjectWithVersioning() {
 	}
 	defer readerCopy.Close()
 
-	newestContent, err := ioutil.ReadAll(readerCopy)
+	newestContent, err := io.ReadAll(readerCopy)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Reading from GetObject reader failed", err)
 		return
@@ -1408,7 +1407,7 @@ func testConcurrentCopyObjectWithVersioning() {
 	testFiles := []string{"datafile-10-kB"}
 	for _, testFile := range testFiles {
 		r := getDataReader(testFile)
-		buf, err := ioutil.ReadAll(r)
+		buf, err := io.ReadAll(r)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "unexpected failure", err)
 			return
@@ -1441,7 +1440,7 @@ func testConcurrentCopyObjectWithVersioning() {
 		return
 	}
 
-	oldestContent, err := ioutil.ReadAll(reader)
+	oldestContent, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Reading the oldest object version failed", err)
 		return
@@ -1491,7 +1490,7 @@ func testConcurrentCopyObjectWithVersioning() {
 		}
 		defer readerCopy.Close()
 
-		newestContent, err := ioutil.ReadAll(readerCopy)
+		newestContent, err := io.ReadAll(readerCopy)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "Reading from GetObject reader failed", err)
 			return
@@ -1571,7 +1570,7 @@ func testComposeObjectWithVersioning() {
 
 	for _, testFile := range testFiles {
 		r := getDataReader(testFile)
-		buf, err := ioutil.ReadAll(r)
+		buf, err := io.ReadAll(r)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "unexpected failure", err)
 			return
@@ -1633,7 +1632,7 @@ func testComposeObjectWithVersioning() {
 	}
 	defer readerCopy.Close()
 
-	copyContentBytes, err := ioutil.ReadAll(readerCopy)
+	copyContentBytes, err := io.ReadAll(readerCopy)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Reading from the copy object reader failed", err)
 		return
@@ -1733,12 +1732,39 @@ func testRemoveObjectWithVersioning() {
 		logError(testName, function, args, startTime, "", "Unexpected versioning info, should not have any one ", err)
 		return
 	}
-
-	err = c.RemoveBucket(context.Background(), bucketName)
+	// test delete marker version id is non-null
+	_, err = c.PutObject(context.Background(), bucketName, objectName, getDataReader("datafile-10-kB"), int64(dataFileMap["datafile-10-kB"]), minio.PutObjectOptions{})
 	if err != nil {
-		logError(testName, function, args, startTime, "", "CleanupBucket failed", err)
+		logError(testName, function, args, startTime, "", "PutObject failed", err)
 		return
 	}
+	// create delete marker
+	err = c.RemoveObject(context.Background(), bucketName, objectName, minio.RemoveObjectOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "DeleteObject failed", err)
+		return
+	}
+	objectsInfo = c.ListObjects(context.Background(), bucketName, minio.ListObjectsOptions{WithVersions: true, Recursive: true})
+	idx := 0
+	for info := range objectsInfo {
+		if info.Err != nil {
+			logError(testName, function, args, startTime, "", "Unexpected error during listing objects", err)
+			return
+		}
+		if idx == 0 {
+			if !info.IsDeleteMarker {
+				logError(testName, function, args, startTime, "", "Unexpected error - expected delete marker to have been created", err)
+				return
+			}
+			if info.VersionID == "" {
+				logError(testName, function, args, startTime, "", "Unexpected error - expected delete marker to be versioned", err)
+				return
+			}
+		}
+		idx++
+	}
+
+	defer cleanupBucket(bucketName, c)
 
 	successLogger(testName, function, args, startTime).Info()
 }
@@ -2027,7 +2053,7 @@ func testPutObjectWithChecksums() {
 	}
 
 	// Enable tracing, write to stderr.
-	//c.TraceOn(os.Stderr)
+	// c.TraceOn(os.Stderr)
 
 	// Set user agent.
 	c.SetAppInfo("MinIO-go-FunctionalTest", "0.1.0")
@@ -2461,7 +2487,7 @@ func testGetObjectSeekEnd() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -2982,7 +3008,7 @@ func testFPutObjectMultipart() {
 	fileName := getMintDataDirFilePath("datafile-129-MB")
 	if fileName == "" {
 		// Make a temp file with minPartSize bytes of data.
-		file, err := ioutil.TempFile(os.TempDir(), "FPutObjectTest")
+		file, err := os.CreateTemp(os.TempDir(), "FPutObjectTest")
 		if err != nil {
 			logError(testName, function, args, startTime, "", "TempFile creation failed", err)
 			return
@@ -3091,7 +3117,7 @@ func testFPutObject() {
 	fName := getMintDataDirFilePath("datafile-129-MB")
 	if fName == "" {
 		// Make a temp file with minPartSize bytes of data.
-		file, err := ioutil.TempFile(os.TempDir(), "FPutObjectTest")
+		file, err := os.CreateTemp(os.TempDir(), "FPutObjectTest")
 		if err != nil {
 			logError(testName, function, args, startTime, "", "TempFile creation failed", err)
 			return
@@ -3257,7 +3283,7 @@ func testFPutObjectContext() {
 	fName := getMintDataDirFilePath("datafile-1-MB")
 	if fName == "" {
 		// Make a temp file with 1 MiB bytes of data.
-		file, err := ioutil.TempFile(os.TempDir(), "FPutObjectContextTest")
+		file, err := os.CreateTemp(os.TempDir(), "FPutObjectContextTest")
 		if err != nil {
 			logError(testName, function, args, startTime, "", "TempFile creation failed", err)
 			return
@@ -3357,7 +3383,7 @@ func testFPutObjectContextV2() {
 	fName := getMintDataDirFilePath("datafile-1-MB")
 	if fName == "" {
 		// Make a temp file with 1 MiB bytes of data.
-		file, err := ioutil.TempFile(os.TempDir(), "FPutObjectContextTest")
+		file, err := os.CreateTemp(os.TempDir(), "FPutObjectContextTest")
 		if err != nil {
 			logError(testName, function, args, startTime, "", "Temp file creation failed", err)
 			return
@@ -3621,7 +3647,7 @@ func testGetObjectS3Zip() {
 			logError(testName, function, args, startTime, "", "file.Open failed", err)
 			return
 		}
-		want, err := ioutil.ReadAll(zfr)
+		want, err := io.ReadAll(zfr)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "fzip file read failed", err)
 			return
@@ -3638,7 +3664,7 @@ func testGetObjectS3Zip() {
 			}
 			return
 		}
-		got, err := ioutil.ReadAll(r)
+		got, err := io.ReadAll(r)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "ReadAll failed", err)
 			return
@@ -3722,7 +3748,7 @@ func testGetObjectReadSeekFunctional() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -3885,7 +3911,7 @@ func testGetObjectReadAtFunctional() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -4062,7 +4088,7 @@ func testGetObjectReadAtWhenEOFWasReached() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -4181,7 +4207,7 @@ func testPresignedPostPolicy() {
 	metadataKey := randString(60, rand.NewSource(time.Now().UnixNano()), "user")
 	metadataValue := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -4245,7 +4271,7 @@ func testPresignedPostPolicy() {
 	filePath := getMintDataDirFilePath("datafile-33-kB")
 	if filePath == "" {
 		// Make a temp file with 33 KB data.
-		file, err := ioutil.TempFile(os.TempDir(), "PresignedPostPolicyTest")
+		file, err := os.CreateTemp(os.TempDir(), "PresignedPostPolicyTest")
 		if err != nil {
 			logError(testName, function, args, startTime, "", "TempFile creation failed", err)
 			return
@@ -4588,7 +4614,7 @@ func testSSECEncryptedGetObjectReadSeekFunctional() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -4770,7 +4796,7 @@ func testSSES3EncryptedGetObjectReadSeekFunctional() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -4944,7 +4970,7 @@ func testSSECEncryptedGetObjectReadAtFunctional() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -5127,7 +5153,7 @@ func testSSES3EncryptedGetObjectReadAtFunctional() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -6138,7 +6164,7 @@ func testFunctional() {
 		return
 	}
 
-	newReadBytes, err := ioutil.ReadAll(newReader)
+	newReadBytes, err := io.ReadAll(newReader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -6269,7 +6295,7 @@ func testFunctional() {
 		logError(testName, function, args, startTime, "", "PresignedGetObject response incorrect, status "+string(resp.StatusCode), err)
 		return
 	}
-	newPresignedBytes, err := ioutil.ReadAll(resp.Body)
+	newPresignedBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PresignedGetObject response incorrect", err)
 		return
@@ -6312,7 +6338,7 @@ func testFunctional() {
 		logError(testName, function, args, startTime, "", "PresignedGetObject response incorrect, status "+string(resp.StatusCode), err)
 		return
 	}
-	newPresignedBytes, err = ioutil.ReadAll(resp.Body)
+	newPresignedBytes, err = io.ReadAll(resp.Body)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PresignedGetObject response incorrect", err)
 		return
@@ -6372,7 +6398,7 @@ func testFunctional() {
 		return
 	}
 
-	newReadBytes, err = ioutil.ReadAll(newReader)
+	newReadBytes, err = io.ReadAll(newReader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll after GetObject failed", err)
 		return
@@ -6428,7 +6454,7 @@ func testFunctional() {
 		return
 	}
 
-	newReadBytes, err = ioutil.ReadAll(newReader)
+	newReadBytes, err = io.ReadAll(newReader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed during get on custom-presigned put object", err)
 		return
@@ -6652,7 +6678,7 @@ func testPutObjectUploadSeekedObject() {
 		}
 		args["fileToUpload"] = fileName
 	} else {
-		tempfile, err = ioutil.TempFile("", "minio-go-upload-test-")
+		tempfile, err = os.CreateTemp("", "minio-go-upload-test-")
 		if err != nil {
 			logError(testName, function, args, startTime, "", "TempFile create failed", err)
 			return
@@ -6916,7 +6942,7 @@ func testFPutObjectV2() {
 	defer cleanupBucket(bucketName, c)
 
 	// Make a temp file with 11*1024*1024 bytes of data.
-	file, err := ioutil.TempFile(os.TempDir(), "FPutObjectTest")
+	file, err := os.CreateTemp(os.TempDir(), "FPutObjectTest")
 	if err != nil {
 		logError(testName, function, args, startTime, "", "TempFile creation failed", err)
 		return
@@ -7145,7 +7171,7 @@ func testGetObjectReadSeekFunctionalV2() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -7299,7 +7325,7 @@ func testGetObjectReadAtFunctionalV2() {
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	args["objectName"] = objectName
 
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -7837,7 +7863,7 @@ func testEncryptedEmptyObject() {
 	}
 	defer reader.Close()
 
-	decBytes, err := ioutil.ReadAll(reader)
+	decBytes, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, map[string]interface{}{}, startTime, "", "ReadAll failed", err)
 		return
@@ -7915,7 +7941,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 		return
 	}
 
-	decBytes, err := ioutil.ReadAll(reader)
+	decBytes, err := io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -7955,7 +7981,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 			return
 		}
 
-		decBytes, err = ioutil.ReadAll(reader)
+		decBytes, err = io.ReadAll(reader)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "ReadAll failed", err)
 			return
@@ -7994,7 +8020,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 	}
 	defer reader.Close()
 
-	decBytes, err = ioutil.ReadAll(reader)
+	decBytes, err = io.ReadAll(reader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -8388,14 +8414,20 @@ func testSSECMultipartEncryptedToSSECCopyObjectPart() {
 
 	var completeParts []minio.CompletePart
 
-	part, err := c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 1, bytes.NewReader(buf[:5*1024*1024]), 5*1024*1024, "", "", srcencryption)
+	part, err := c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 1,
+		bytes.NewReader(buf[:5*1024*1024]), 5*1024*1024,
+		minio.PutObjectPartOptions{SSE: srcencryption},
+	)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PutObjectPart call failed", err)
 		return
 	}
 	completeParts = append(completeParts, minio.CompletePart{PartNumber: part.PartNumber, ETag: part.ETag})
 
-	part, err = c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 2, bytes.NewReader(buf[5*1024*1024:]), 1024*1024, "", "", srcencryption)
+	part, err = c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 2,
+		bytes.NewReader(buf[5*1024*1024:]), 1024*1024,
+		minio.PutObjectPartOptions{SSE: srcencryption},
+	)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PutObjectPart call failed", err)
 		return
@@ -11040,7 +11072,7 @@ func testFunctionalV2() {
 		return
 	}
 
-	newReadBytes, err := ioutil.ReadAll(newReader)
+	newReadBytes, err := io.ReadAll(newReader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -11146,7 +11178,7 @@ func testFunctionalV2() {
 		logError(testName, function, args, startTime, "", "PresignedGetObject URL returns status "+string(resp.StatusCode), err)
 		return
 	}
-	newPresignedBytes, err := ioutil.ReadAll(resp.Body)
+	newPresignedBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -11185,7 +11217,7 @@ func testFunctionalV2() {
 		logError(testName, function, args, startTime, "", "PresignedGetObject URL returns status "+string(resp.StatusCode), err)
 		return
 	}
-	newPresignedBytes, err = ioutil.ReadAll(resp.Body)
+	newPresignedBytes, err = io.ReadAll(resp.Body)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed", err)
 		return
@@ -11239,7 +11271,7 @@ func testFunctionalV2() {
 		return
 	}
 
-	newReadBytes, err = ioutil.ReadAll(newReader)
+	newReadBytes, err = io.ReadAll(newReader)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "ReadAll failed during get on presigned put object", err)
 		return
@@ -11553,7 +11585,7 @@ func testGetObjectRanges() {
 	}
 	for _, test := range tests {
 		wantRC := getDataReader("datafile-129-MB")
-		io.CopyN(ioutil.Discard, wantRC, test.start)
+		io.CopyN(io.Discard, wantRC, test.start)
 		want := mustCrcReader(io.LimitReader(wantRC, test.end-test.start+1))
 		opts := minio.GetObjectOptions{}
 		opts.SetRange(test.start, test.end)

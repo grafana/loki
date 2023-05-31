@@ -165,6 +165,64 @@ func TestFileTargetSync(t *testing.T) {
 	ps.Stop()
 }
 
+func TestFileTarget_StopsTailersCleanly(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	tempDir := t.TempDir()
+	positionsFileName := filepath.Join(tempDir, "positions.yml")
+	logFile := filepath.Join(tempDir, "test1.log")
+
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Millisecond,
+		PositionsFile: positionsFileName,
+	})
+	require.NoError(t, err)
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	fakeHandler := make(chan fileTargetEvent, 10)
+	pathToWatch := filepath.Join(tempDir, "*.log")
+	target, err := NewFileTarget(NewMetrics(nil), logger, client, ps, pathToWatch, "", nil, nil, &Config{
+		SyncPeriod: 10 * time.Millisecond,
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
+	assert.NoError(t, err)
+
+	_, err = os.Create(logFile)
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return len(target.readers) == 1
+	}, time.Second*10, time.Millisecond*1, "expected 1 tailer to be created")
+
+	// Inject an error to tailer
+	initailTailer := target.readers[logFile].(*tailer)
+	_ = initailTailer.tail.Tomb.Killf("test: network file systems can be unreliable")
+
+	// Tailer will be replaced by a new one
+	require.Eventually(t, func() bool {
+		return len(target.readers) == 1 && target.readers[logFile].(*tailer) != initailTailer
+	}, time.Second*10, time.Millisecond*1, "expected dead tailer to be replaced by a new one")
+
+	// The old tailer should be stopped:
+	select {
+	case <-initailTailer.done:
+	case <-time.After(time.Second * 10):
+		t.Fatal("expected position timer to be stopped cleanly")
+	}
+
+	// The old tailer's position timer should be stopped
+	select {
+	case <-initailTailer.posdone:
+	case <-time.After(time.Second * 10):
+		t.Fatal("expected position timer to be stopped cleanly")
+	}
+
+	target.Stop()
+	ps.Stop()
+}
+
 func TestFileTargetPathExclusion(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)

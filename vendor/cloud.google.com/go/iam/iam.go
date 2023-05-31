@@ -26,8 +26,8 @@ import (
 	"fmt"
 	"time"
 
+	pb "cloud.google.com/go/iam/apiv1/iampb"
 	gax "github.com/googleapis/gax-go/v2"
-	pb "google.golang.org/genproto/googleapis/iam/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

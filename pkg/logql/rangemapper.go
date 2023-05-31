@@ -230,6 +230,7 @@ func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrid
 			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval, recorder),
 			Grouping: &syntax.Grouping{
 				Without: true,
+				Groups:  []string{},
 			},
 			Operation: syntax.OpTypeSum,
 		},
@@ -252,6 +253,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 	if expr.Grouping == nil {
 		grouping = &syntax.Grouping{
 			Without: true,
+			Groups:  []string{},
 		}
 	}
 	var downstream syntax.SampleExpr = expr

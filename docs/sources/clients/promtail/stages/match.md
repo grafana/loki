@@ -5,7 +5,7 @@ description: match stage
 # match
 
 The match stage is a filtering stage that conditionally applies a set of stages
-or drop entries when a log entry matches a configurable [LogQL]({{<relref "../../../logql">}})
+or drop entries when a log entry matches a configurable [LogQL]({{<relref "../../../query">}})
 stream selector and filter expressions.
 
 ## Schema

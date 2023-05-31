@@ -136,10 +136,8 @@ var queryTests = []struct {
 	{
 		promql.Vector{
 			{
-				Point: promql.Point{
-					T: 1568404331324,
-					V: 0.013333333333333334,
-				},
+				T: 1568404331324,
+				F: 0.013333333333333334,
 				Metric: []labels.Label{
 					{
 						Name:  "filename",
@@ -152,10 +150,8 @@ var queryTests = []struct {
 				},
 			},
 			{
-				Point: promql.Point{
-					T: 1568404331324,
-					V: 3.45,
-				},
+				T: 1568404331324,
+				F: 3.45,
 				Metric: []labels.Label{
 					{
 						Name:  "filename",
@@ -278,10 +274,10 @@ var queryTests = []struct {
 	{
 		promql.Matrix{
 			{
-				Points: []promql.Point{
+				Floats: []promql.FPoint{
 					{
 						T: 1568404331324,
-						V: 0.013333333333333334,
+						F: 0.013333333333333334,
 					},
 				},
 				Metric: []labels.Label{
@@ -296,14 +292,14 @@ var queryTests = []struct {
 				},
 			},
 			{
-				Points: []promql.Point{
+				Floats: []promql.FPoint{
 					{
 						T: 1568404331324,
-						V: 3.45,
+						F: 3.45,
 					},
 					{
 						T: 1568404331339,
-						V: 4.45,
+						F: 4.45,
 					},
 				},
 				Metric: []labels.Label{

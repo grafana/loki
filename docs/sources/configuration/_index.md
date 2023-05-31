@@ -185,6 +185,14 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The table_manager block configures the table manager for retention.
 [table_manager: <table_manager>]
 
+# Configuration for memberlist client. Only applies if the selected kvstore is
+# memberlist.
+# 
+# When a memberlist config with atleast 1 join_members is defined, kvstore of
+# type memberlist is automatically selected for all the components that require
+# a ring unless otherwise specified in the component's configuration section.
+[memberlist: <memberlist>]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -192,7 +200,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for tracing.
 [tracing: <tracing>]
 
-# Configuration for usage report.
+# Configuration for analytics.
 [analytics: <analytics>]
 
 # Common configuration to be shared between multiple modules. If a more specific
@@ -381,9 +389,19 @@ grpc_tls_config:
 # CLI flag: -server.log-source-ips-regex
 [log_source_ips_regex: <string> | default = ""]
 
-# Optionally log requests at info level instead of debug level.
+# Optionally log request headers.
+# CLI flag: -server.log-request-headers
+[log_request_headers: <boolean> | default = false]
+
+# Optionally log requests at info level instead of debug level. Applies to
+# request headers as well if server.log-request-headers is enabled.
 # CLI flag: -server.log-request-at-info-level-enabled
 [log_request_at_info_level_enabled: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from loggin. Only used if
+# server.log-request-headers is true.
+# CLI flag: -server.log-request-headers-exclude-list
+[log_request_exclude_headers_list: <string> | default = ""]
 
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
@@ -406,11 +424,13 @@ ring:
     # CLI flag: -distributor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: distributor.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: distributor.ring
     [etcd: <etcd>]
 
@@ -563,11 +583,13 @@ scheduler_ring:
     # CLI flag: -query-scheduler.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: query-scheduler.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: query-scheduler.ring
     [etcd: <etcd>]
 
@@ -627,6 +649,10 @@ scheduler_ring:
   # zone-awareness is enabled.
   # CLI flag: -query-scheduler.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -query-scheduler.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 ```
 
 ### frontend
@@ -763,9 +789,13 @@ results_cache:
 The `ruler` block configures the Loki ruler.
 
 ```yaml
-# URL of alerts return path.
+# Base URL of the Grafana instance.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
+
+# Datasource UID for the dashboard.
+# CLI flag: -ruler.datasource-uid
+[datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
@@ -860,18 +890,18 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # Path to the key file for the client certificate. Also requires the client
+  # Path to the key for the client certificate. Also requires the client
   # certificate to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
   # CLI flag: -ruler.alertmanager-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
 
@@ -987,11 +1017,13 @@ ring:
     # CLI flag: -ruler.ring.prefix
     [prefix: <string> | default = "rulers/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: ruler.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: ruler.ring
     [etcd: <etcd>]
 
@@ -1133,18 +1165,18 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
-    # Path to the client certificate file, which will be used for authenticating
-    # with the server. Also requires the key path to be configured.
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
     [tls_cert_path: <string> | default = ""]
 
-    # Path to the key file for the client certificate. Also requires the client
+    # Path to the key for the client certificate. Also requires the client
     # certificate to be configured.
     # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
     [tls_key_path: <string> | default = ""]
 
-    # Path to the CA certificates file to validate server certificate against.
-    # If not set, the host's root CA certificates are used.
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
     # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
     [tls_ca_path: <string> | default = ""]
 
@@ -1245,10 +1277,12 @@ lifecycler:
       # CLI flag: -ring.prefix
       [prefix: <string> | default = "collectors/"]
 
-      # Configuration for a Consul client. Only applies if store is consul.
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
       [consul: <consul>]
 
-      # Configuration for an ETCD v3 client. Only applies if store is etcd.
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
       [etcd: <etcd>]
 
       multi:
@@ -1321,6 +1355,11 @@ lifecycler:
   # Name of network interface to read address from.
   # CLI flag: -ingester.lifecycler.interface
   [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Enable IPv6 support. Required to make use of IP addresses from IPv6
+  # interfaces.
+  # CLI flag: -ingester.enable-inet6
+  [enable_inet6: <boolean> | default = false]
 
   # Duration to sleep for before exiting, to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
@@ -1516,11 +1555,13 @@ ring:
     # CLI flag: -index-gateway.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: index-gateway.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: index-gateway.ring
     [etcd: <etcd>]
 
@@ -1580,6 +1621,10 @@ ring:
   # zone-awareness is enabled.
   # CLI flag: -index-gateway.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -index-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
   # How many index gateway instances are assigned to each tenant.
   # CLI flag: -replication-factor
@@ -1997,7 +2042,9 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos, cos.
+# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
+# to operate on all the object stores that contain either boltdb-shipper or tsdb
+# index.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -2033,6 +2080,11 @@ The `compactor` block configures the compactor component, which compacts index s
 # given table in the index.
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
+
+# Store used for managing delete requests. Defaults to
+# -boltdb.shipper.compactor.shared-store.
+# CLI flag: -boltdb.shipper.compactor.delete-request-store
+[delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
@@ -2077,12 +2129,14 @@ compactor_ring:
     # CLI flag: -boltdb.shipper.compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is:
     # boltdb.shipper.compactor.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is:
     # boltdb.shipper.compactor.ring
     [etcd: <etcd>]
@@ -2143,6 +2197,10 @@ compactor_ring:
   # zone-awareness is enabled.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
@@ -2934,7 +2992,7 @@ Configuration for `tracing`.
 
 ### analytics
 
-Configuration for usage report.
+Configuration for `analytics`.
 
 ```yaml
 # Enable anonymous usage reporting.
@@ -3026,11 +3084,13 @@ ring:
     # CLI flag: -common.storage.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: common.storage.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: common.storage.ring
     [etcd: <etcd>]
 
@@ -3091,6 +3151,10 @@ ring:
   # CLI flag: -common.storage.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
+  # Enable using a IPv6 instance address.
+  # CLI flag: -common.storage.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
 [instance_interface_names: <list of strings>]
 
 [instance_addr: <string> | default = ""]
@@ -3106,7 +3170,7 @@ ring:
 
 ### consul
 
-Configuration for a Consul client. Only applies if store is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
+Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
@@ -3150,7 +3214,7 @@ Configuration for a Consul client. Only applies if store is `consul`. The suppor
 
 ### etcd
 
-Configuration for an ETCD v3 client. Only applies if store is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
+Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
@@ -3178,18 +3242,18 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3246,6 +3310,206 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # Etcd password.
 # CLI flag: -<prefix>.etcd.password
 [password: <string> | default = ""]
+```
+
+### memberlist
+
+Configuration for `memberlist` client. Only applies if the selected kvstore is memberlist.
+
+When a memberlist config with atleast 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.
+
+```yaml
+# Name of the node in memberlist cluster. Defaults to hostname.
+# CLI flag: -memberlist.nodename
+[node_name: <string> | default = ""]
+
+# Add random suffix to the node name.
+# CLI flag: -memberlist.randomize-node-name
+[randomize_node_name: <boolean> | default = true]
+
+# The timeout for establishing a connection with a remote node, and for
+# read/write operations.
+# CLI flag: -memberlist.stream-timeout
+[stream_timeout: <duration> | default = 10s]
+
+# Multiplication factor used when sending out messages (factor * log(N+1)).
+# CLI flag: -memberlist.retransmit-factor
+[retransmit_factor: <int> | default = 4]
+
+# How often to use pull/push sync.
+# CLI flag: -memberlist.pullpush-interval
+[pull_push_interval: <duration> | default = 30s]
+
+# How often to gossip.
+# CLI flag: -memberlist.gossip-interval
+[gossip_interval: <duration> | default = 200ms]
+
+# How many nodes to gossip to.
+# CLI flag: -memberlist.gossip-nodes
+[gossip_nodes: <int> | default = 3]
+
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 30s]
+
+# How soon can dead node's name be reclaimed with new address. 0 to disable.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
+
+# Enable message compression. This can be used to reduce bandwidth usage at the
+# cost of slightly more CPU utilization.
+# CLI flag: -memberlist.compression-enabled
+[compression_enabled: <boolean> | default = true]
+
+# Gossip address to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-addr
+[advertise_addr: <string> | default = ""]
+
+# Gossip port to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-port
+[advertise_port: <int> | default = 7946]
+
+# The cluster label is an optional string to include in outbound packets and
+# gossip streams. Other members in the memberlist cluster will discard any
+# message whose label doesn't match the configured one, unless the
+# 'cluster-label-verification-disabled' configuration option is set to true.
+# CLI flag: -memberlist.cluster-label
+[cluster_label: <string> | default = ""]
+
+# When true, memberlist doesn't verify that inbound packets and gossip streams
+# have the cluster label matching the configured one. This verification should
+# be disabled while rolling out the change to the configured cluster label in a
+# live memberlist cluster.
+# CLI flag: -memberlist.cluster-label-verification-disabled
+[cluster_label_verification_disabled: <boolean> | default = false]
+
+# Other cluster members to join. Can be specified multiple times. It can be an
+# IP, hostname or an entry specified in the DNS Service Discovery format.
+# CLI flag: -memberlist.join
+[join_members: <list of strings> | default = []]
+
+# Min backoff duration to join other cluster members.
+# CLI flag: -memberlist.min-join-backoff
+[min_join_backoff: <duration> | default = 1s]
+
+# Max backoff duration to join other cluster members.
+# CLI flag: -memberlist.max-join-backoff
+[max_join_backoff: <duration> | default = 1m]
+
+# Max number of retries to join other cluster members.
+# CLI flag: -memberlist.max-join-retries
+[max_join_retries: <int> | default = 10]
+
+# If this node fails to join memberlist cluster, abort.
+# CLI flag: -memberlist.abort-if-join-fails
+[abort_if_cluster_join_fails: <boolean> | default = false]
+
+# If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix
+# the cluster split issue, and is harmless otherwise. For example when using
+# only few components as a seed nodes (via -memberlist.join), then it's
+# recommended to use rejoin. If -memberlist.join points to dynamic service that
+# resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin
+# is not needed.
+# CLI flag: -memberlist.rejoin-interval
+[rejoin_interval: <duration> | default = 0s]
+
+# How long to keep LEFT ingesters in the ring.
+# CLI flag: -memberlist.left-ingesters-timeout
+[left_ingesters_timeout: <duration> | default = 5m]
+
+# Timeout for leaving memberlist cluster.
+# CLI flag: -memberlist.leave-timeout
+[leave_timeout: <duration> | default = 20s]
+
+# How much space to use for keeping received and sent messages in memory for
+# troubleshooting (two buffers). 0 to disable.
+# CLI flag: -memberlist.message-history-buffer-bytes
+[message_history_buffer_bytes: <int> | default = 0]
+
+# IP address to listen on for gossip messages. Multiple addresses may be
+# specified. Defaults to 0.0.0.0
+# CLI flag: -memberlist.bind-addr
+[bind_addr: <list of strings> | default = []]
+
+# Port to listen on for gossip messages.
+# CLI flag: -memberlist.bind-port
+[bind_port: <int> | default = 7946]
+
+# Timeout used when connecting to other nodes to send packet.
+# CLI flag: -memberlist.packet-dial-timeout
+[packet_dial_timeout: <duration> | default = 2s]
+
+# Timeout for writing 'packet' data.
+# CLI flag: -memberlist.packet-write-timeout
+[packet_write_timeout: <duration> | default = 5s]
+
+# Enable TLS on the memberlist transport layer.
+# CLI flag: -memberlist.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
+# CLI flag: -memberlist.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -memberlist.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
+# CLI flag: -memberlist.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -memberlist.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -memberlist.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
+
+# Override the default cipher suite list (separated by commas). Allowed values:
+# 
+# Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
+# - TLS_AES_128_GCM_SHA256
+# - TLS_AES_256_GCM_SHA384
+# - TLS_CHACHA20_POLY1305_SHA256
+# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+# 
+# Insecure Ciphers:
+# - TLS_RSA_WITH_RC4_128_SHA
+# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+# - TLS_RSA_WITH_AES_128_CBC_SHA256
+# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+# CLI flag: -memberlist.tls-cipher-suites
+[tls_cipher_suites: <string> | default = ""]
+
+# Override the default minimum TLS version. Allowed values: VersionTLS10,
+# VersionTLS11, VersionTLS12, VersionTLS13
+# CLI flag: -memberlist.tls-min-version
+[tls_min_version: <string> | default = ""]
 ```
 
 ### grpc_client
@@ -3308,18 +3572,18 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3368,6 +3632,21 @@ backoff_config:
 # VersionTLS11, VersionTLS12, VersionTLS13
 # CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
+
+# The maximum amount of time to establish a connection. A value of 0 means
+# default gRPC connect timeout and backoff.
+# CLI flag: -<prefix>.connect-timeout
+[connect_timeout: <duration> | default = 0s]
+
+# Initial backoff delay after first connection failure. Only relevant if
+# ConnectTimeout > 0.
+# CLI flag: -<prefix>.connect-backoff-base-delay
+[connect_backoff_base_delay: <duration> | default = 1s]
+
+# Maximum backoff delay when establishing a connection. Only relevant if
+# ConnectTimeout > 0.
+# CLI flag: -<prefix>.connect-backoff-max-delay
+[connect_backoff_max_delay: <duration> | default = 5s]
 ```
 
 ### tls_config
@@ -3375,18 +3654,18 @@ backoff_config:
 The TLS configuration.
 
 ```yaml
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -frontend.tail-tls-config.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3815,6 +4094,10 @@ dynamodb:
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -4089,6 +4372,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -<prefix>.storage.s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]

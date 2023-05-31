@@ -112,10 +112,10 @@ func Test_seriesLimiter(t *testing.T) {
 		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{
 			Data: promql.Matrix{
 				{
-					Points: []promql.Point{
+					Floats: []promql.FPoint{
 						{
 							T: toMs(testTime.Add(-4 * time.Hour)),
-							V: 0.013333333333333334,
+							F: 0.013333333333333334,
 						},
 					},
 					Metric: []labels.Label{

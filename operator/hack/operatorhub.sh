@@ -48,7 +48,7 @@ import os, yaml
 with open("./operators/loki-operator/${INT_VERSION}/metadata/annotations.yaml", 'r') as f:
     y=yaml.safe_load(f) or {}
     y['annotations']['com.redhat.openshift.versions'] = os.getenv('SUPPORTED_OCP_VERSIONS')
-with open("./operators/loki-operator/${VERSION}/metadata/annotations.yaml", 'w') as f:
+with open("./operators/loki-operator/${INT_VERSION}/metadata/annotations.yaml", 'w') as f:
     yaml.dump(y, f)
 END
         fi

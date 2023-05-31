@@ -59,10 +59,10 @@ var (
 	}
 	matrix = promql.Matrix{
 		{
-			Points: []promql.Point{
+			Floats: []promql.FPoint{
 				{
 					T: toMs(testTime.Add(-4 * time.Hour)),
-					V: 0.013333333333333334,
+					F: 0.013333333333333334,
 				},
 			},
 			Metric: []labels.Label{
@@ -79,10 +79,8 @@ var (
 	}
 	vector = promql.Vector{
 		{
-			Point: promql.Point{
-				T: toMs(testTime.Add(-4 * time.Hour)),
-				V: 0.013333333333333334,
-			},
+			T: toMs(testTime.Add(-4 * time.Hour)),
+			F: 0.013333333333333334,
 			Metric: []labels.Label{
 				{
 					Name:  "filename",

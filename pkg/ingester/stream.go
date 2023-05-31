@@ -231,11 +231,11 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 
 	for _, entryWithError := range limitedFailedEntries {
 		fmt.Fprintf(&buf,
-			"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-			entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+			"entry with timestamp %s ignored, reason: '%s',\n",
+			entryWithError.entry.Timestamp.String(), entryWithError.e.Error())
 	}
 
-	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d", s.tenant, len(failedEntriesWithError), totalEntries)
+	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d for stream: %s", s.tenant, len(failedEntriesWithError), totalEntries, streamName)
 
 	return httpgrpc.Errorf(statusCode, buf.String())
 }
@@ -394,13 +394,13 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
 	now := time.Now()
-	if rateLimitWholeStream && !s.limiter.AllowN(now, totalBytes) {
+	if rateLimitWholeStream && !s.limiter.AllowN(now, validBytes) {
 		// Report that the whole stream was rate limited
-		rateLimitedSamples = len(entries)
-		failedEntriesWithError = make([]entryWithError, 0, len(entries))
-		for i := 0; i < len(entries); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
-			rateLimitedBytes += len(entries[i].Line)
+		rateLimitedSamples = len(toStore)
+		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
+		for i := 0; i < len(toStore); i++ {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			rateLimitedBytes += len(toStore[i].Line)
 		}
 	}
 

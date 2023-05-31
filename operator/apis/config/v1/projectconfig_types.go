@@ -28,16 +28,14 @@ type BuiltInCertManagement struct {
 
 // OpenShiftFeatureGates is the supported set of all operator features gates on OpenShift.
 type OpenShiftFeatureGates struct {
+	// Enabled defines the flag to enable that these feature gates are used against OpenShift Container Platform releases.
+	Enabled bool `json:"enabled,omitempty"`
+
 	// ServingCertsService enables OpenShift service-ca annotations on the lokistack-gateway service only
 	// to use the in-platform CA and generate a TLS cert/key pair per service for
 	// in-cluster data-in-transit encryption.
 	// More details: https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html
 	ServingCertsService bool `json:"servingCertsService,omitempty"`
-
-	// GatewayRoute enables creating an OpenShift Route for the LokiStack
-	// gateway to expose the service to public internet access.
-	// More details: https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html
-	GatewayRoute bool `json:"gatewayRoute,omitempty"`
 
 	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
 	// to enforce tenancy in an OpenShift context.
