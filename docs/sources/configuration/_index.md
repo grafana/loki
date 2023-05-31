@@ -484,8 +484,6 @@ rate_store:
   [debug: <boolean> | default = false]
 
 write_failures_logging:
-  [add_insights_label: <boolean>]
-
   [logging_rate: <int>]
 ```
 
