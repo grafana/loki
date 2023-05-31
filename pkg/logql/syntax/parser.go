@@ -78,7 +78,14 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
+	return parseExpr(input)
+}
 
+func parseExprWithoutInputCheck(input string) (expr Expr, err error) {
+	return parseExpr(input)
+}
+
+func parseExpr(input string) (expr Expr, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			var ok bool
@@ -140,6 +147,19 @@ func MatchersString(xs []*labels.Matcher) string {
 // ParseSampleExpr parses a string and returns the sampleExpr
 func ParseSampleExpr(input string) (SampleExpr, error) {
 	expr, err := ParseExpr(input)
+	if err != nil {
+		return nil, err
+	}
+	sampleExpr, ok := expr.(SampleExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+
+	return sampleExpr, nil
+}
+
+func ParseSampleExprWithoutInputCheck(input string) (SampleExpr, error) {
+	expr, err := parseExprWithoutInputCheck(input)
 	if err != nil {
 		return nil, err
 	}

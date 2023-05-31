@@ -456,7 +456,7 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 // clone is identical to syntax.Expr.Clone() but with the additional type
 // casting for syntax.SampleExpr.
 func clone(expr syntax.SampleExpr) syntax.SampleExpr {
-	e, err := syntax.ParseSampleExpr(expr.String())
+	e, err := syntax.ParseSampleExprWithoutInputCheck(expr.String())
 	if err != nil {
 		panic(
 			errors.Wrapf(err, "error cloning query: %s", expr.String()),
