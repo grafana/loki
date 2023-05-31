@@ -3,6 +3,7 @@ package manifests
 import (
 	"path"
 	"testing"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,61 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 			},
 		},
 		{
+			desc: "static mode on openshift",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:        "lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
+						RulerName:            "lokistack-ocp-ruler",
+						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+					},
+				},
+			},
+		},
+		{
 			desc: "dynamic mode",
 			opts: &Options{
 				Stack: lokiv1.LokiStackSpec{
@@ -60,14 +116,79 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 			},
 		},
 		{
+			desc: "dynamic mode on openshift",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Dynamic,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:        "lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
+						RulerName:            "lokistack-ocp-ruler",
+						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+					},
+				},
+			},
+		},
+		{
 			desc: "openshift-logging mode",
 			opts: &Options{
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -94,9 +215,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -125,6 +256,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
 						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},
@@ -160,9 +292,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -179,9 +321,19 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
 					},
 				},
 				Tenants: Tenants{
@@ -200,6 +352,7 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 						GatewayName:          "lokistack-ocp-gateway",
 						GatewaySvcName:       "lokistack-ocp-gateway-http",
 						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
 						RulerName:            "lokistack-ocp-ruler",
 						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
 					},

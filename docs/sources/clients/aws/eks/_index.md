@@ -216,7 +216,7 @@ helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
 And deploy the `eventrouter` using:
 
 ```bash
- kubectl create -f https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/eks/eventrouter.yaml
+kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/eks/eventrouter.yaml
 
 serviceaccount/eventrouter created
 clusterrole.rbac.authorization.k8s.io/eventrouter created

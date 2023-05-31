@@ -86,8 +86,26 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 	return chunkFound, nil
 }
 
+func (b *Builder) BuildWithVersion(
+	ctx context.Context,
+	version int, // build TSDB with specified version. 0 means default version.
+	scratchDir string,
+	createFn func(from, through model.Time, checksum uint32) Identifier,
+) (id Identifier, err error) {
+	return b.buildWithVersion(ctx, version, scratchDir, createFn)
+}
+
 func (b *Builder) Build(
 	ctx context.Context,
+	scratchDir string,
+	createFn func(from, through model.Time, checksum uint32) Identifier,
+) (id Identifier, err error) {
+	return b.buildWithVersion(ctx, 0, scratchDir, createFn)
+}
+
+func (b *Builder) buildWithVersion(
+	ctx context.Context,
+	version int, // build TSDB with specified version. 0 means default version.
 	scratchDir string,
 	// Determines how to create the resulting Identifier and file name.
 	// This is variable as we use Builder for multiple reasons,
@@ -107,9 +125,20 @@ func (b *Builder) Build(
 	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 
-	writer, err := index.NewWriter(ctx, tmpPath)
-	if err != nil {
-		return id, err
+	var writer *index.Writer
+
+	if version == 0 {
+		var err error
+		writer, err = index.NewWriter(ctx, tmpPath)
+		if err != nil {
+			return id, err
+		}
+	} else {
+		var err error
+		writer, err = index.NewWriterWithVersion(ctx, version, tmpPath)
+		if err != nil {
+			return id, err
+		}
 	}
 	// TODO(owen-d): multithread
 

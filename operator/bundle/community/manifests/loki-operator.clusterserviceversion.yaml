@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-99acb9b
-    createdAt: "2023-04-06T11:19:01Z"
+    containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
+    createdAt: "2023-05-22T15:22:44Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -160,7 +160,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.2.0
+  name: loki-operator.v0.3.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -438,12 +438,37 @@ spec:
       - description: NoProxy configures the NO_PROXY/no_proxy env variable.
         displayName: NoProxy
         path: proxy.noProxy
-      - description: ReplicationFactor defines the policy for log stream replication.
+      - description: Replication defines the configuration for Loki data replication.
+        displayName: Replication Spec
+        path: replication
+      - description: Factor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replication.factor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
+        displayName: Zones Spec
+        path: replication.zones
+      - description: MaxSkew describes the maximum degree to which Pods can be unevenly
+          distributed.
+        displayName: Max Skew
+        path: replication.zones[0].maxSkew
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: TopologyKey is the key that defines a topology in the Nodes'
+          labels.
+        displayName: Topology Key
+        path: replication.zones[0].topologyKey
+      - description: 'Deprecated: Please use replication.factor instead. This field
+          will be removed in future versions of this CRD. ReplicationFactor defines
+          the policy for log stream replication.'
         displayName: Replication Factor
         path: replicationFactor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Rules defines the spec for the ruler component
+      - description: Rules defines the spec for the ruler component.
         displayName: Rules
         path: rules
         x-descriptors:
@@ -514,7 +539,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:StorageClass
       - description: Template defines the resource/limits/tolerations/nodeselectors
-          per component
+          per component.
         displayName: Node Placement
         path: template
         x-descriptors:
@@ -522,6 +547,12 @@ spec:
       - description: Compactor defines the compaction component spec.
         displayName: Compactor pods
         path: template.compactor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.compactor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.compactor.replicas
@@ -530,6 +561,12 @@ spec:
       - description: Distributor defines the distributor component spec.
         displayName: Distributor pods
         path: template.distributor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.distributor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.distributor.replicas
@@ -538,6 +575,12 @@ spec:
       - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.gateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.gateway.replicas
@@ -546,6 +589,12 @@ spec:
       - description: IndexGateway defines the index gateway component spec.
         displayName: Index Gateway pods
         path: template.indexGateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.indexGateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.indexGateway.replicas
@@ -554,6 +603,12 @@ spec:
       - description: Ingester defines the ingester component spec.
         displayName: Ingester pods
         path: template.ingester
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ingester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
@@ -562,6 +617,12 @@ spec:
       - description: Querier defines the querier component spec.
         displayName: Querier pods
         path: template.querier
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.querier.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.querier.replicas
@@ -570,6 +631,12 @@ spec:
       - description: QueryFrontend defines the query frontend component spec.
         displayName: Query Frontend pods
         path: template.queryFrontend
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.queryFrontend.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.queryFrontend.replicas
@@ -578,6 +645,12 @@ spec:
       - description: Ruler defines the ruler component spec.
         displayName: Ruler pods
         path: template.ruler
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ruler.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ruler.replicas
@@ -1411,6 +1484,16 @@ spec:
           - update
           - watch
         - apiGroups:
+          - policy
+          resources:
+          - poddisruptionbudgets
+          verbs:
+          - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - clusterrolebindings
@@ -1451,11 +1534,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.2.0
+          app.kubernetes.io/instance: loki-operator-v0.3.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.2.0
+          app.kubernetes.io/version: 0.3.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1484,12 +1567,12 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.8.0
+                  value: docker.io/grafana/loki:2.8.2
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:main-99acb9b
+                image: docker.io/grafana/loki-operator:main-ac1c1fd
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1600,14 +1683,14 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.8.0
+  - image: docker.io/grafana/loki:2.8.2
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.1.0
-  version: 0.2.0
+  replaces: loki-operator.v0.2.0
+  version: 0.3.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

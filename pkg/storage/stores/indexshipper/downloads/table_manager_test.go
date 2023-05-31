@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -21,6 +22,7 @@ const (
 	objectsStorageDirName = "objects"
 	cacheDirName          = "cache"
 	indexTablePrefix      = "table_"
+	indexTablePeriod      = 24 * time.Hour
 )
 
 func buildTestStorageClient(t *testing.T, path string) storage.Client {
@@ -33,7 +35,7 @@ func buildTestStorageClient(t *testing.T, path string) storage.Client {
 
 type stopFunc func()
 
-func buildTestTableManager(t *testing.T, path string, tableRangesToHandle config.TableRanges) (*tableManager, stopFunc) {
+func buildTestTableManager(t *testing.T, path string, tableRangeToHandle *config.TableRange) (*tableManager, stopFunc) {
 	indexStorageClient := buildTestStorageClient(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
@@ -44,20 +46,21 @@ func buildTestTableManager(t *testing.T, path string, tableRangesToHandle config
 		Limits:       &mockLimits{},
 	}
 
-	if tableRangesToHandle == nil {
-		tableRangesToHandle = config.TableRanges{
-			{
-				Start: 0,
-				End:   math.MaxInt64,
-				PeriodConfig: &config.PeriodConfig{
-					IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+	if tableRangeToHandle == nil {
+		tableRangeToHandle = &config.TableRange{
+			Start: 0,
+			End:   math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: indexTablePeriod,
 				},
 			},
 		}
 	}
 	tblManager, err := NewTableManager(cfg, func(s string) (index.Index, error) {
 		return openMockIndexFile(t, s), nil
-	}, indexStorageClient, nil, tableRangesToHandle, nil)
+	}, indexStorageClient, nil, *tableRangeToHandle, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	return tblManager.(*tableManager), func() {
@@ -138,11 +141,12 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		cfg:                cfg,
 		indexStorageClient: mockIndexStorageClient,
 		tables:             make(map[string]Table),
-		tableRangesToHandle: config.TableRanges{{
+		tableRangeToHandle: config.TableRange{
 			Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{},
-		}},
+		},
 		ctx:    context.Background(),
 		cancel: func() {},
+		logger: log.NewNopLogger(),
 	}
 
 	// setup 10 tables with 5 latest tables having user index for user1 and user2
@@ -166,7 +170,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		name                 string
 		queryReadyNumDaysCfg int
 		queryReadinessLimits mockLimits
-		tableRangesToHandle  config.TableRanges
+		tableRangeToHandle   *config.TableRange
 
 		expectedQueryReadinessDoneForUsers map[string][]string
 	}{
@@ -270,29 +274,19 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		{
 			name:                 "common index: 20 days",
 			queryReadyNumDaysCfg: 20,
-			tableRangesToHandle: config.TableRanges{
-				{
-					End:   buildTableNumber(0),
-					Start: buildTableNumber(4),
-					PeriodConfig: &config.PeriodConfig{
-						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
-					},
-				},
-				{
-					End:   buildTableNumber(7),
-					Start: buildTableNumber(9),
-					PeriodConfig: &config.PeriodConfig{
-						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+			tableRangeToHandle: &config.TableRange{
+				End:   buildTableNumber(5),
+				Start: buildTableNumber(9),
+				PeriodConfig: &config.PeriodConfig{
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: indexTablePrefix,
+						Period: indexTablePeriod,
 					},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
-				buildTableName(0): {},
-				buildTableName(1): {},
-				buildTableName(2): {},
-				buildTableName(3): {},
-				buildTableName(4): {},
-
+				buildTableName(5): {},
+				buildTableName(6): {},
 				buildTableName(7): {},
 				buildTableName(8): {},
 				buildTableName(9): {},
@@ -304,27 +298,20 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				queryReadyIndexNumDaysDefault: 2,
 			},
 			queryReadyNumDaysCfg: 5,
-			tableRangesToHandle: config.TableRanges{
-				{
-					End:   buildTableNumber(0),
-					Start: buildTableNumber(1),
-					PeriodConfig: &config.PeriodConfig{
-						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
-					},
-				},
-				{
-					End:   buildTableNumber(4),
-					Start: buildTableNumber(5),
-					PeriodConfig: &config.PeriodConfig{
-						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+			tableRangeToHandle: &config.TableRange{
+				End:   buildTableNumber(2),
+				Start: buildTableNumber(4),
+				PeriodConfig: &config.PeriodConfig{
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: indexTablePrefix,
+						Period: indexTablePeriod,
 					},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
-				buildTableName(0): {"user1", "user2"},
-				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user1", "user2"},
+				buildTableName(3): {},
 				buildTableName(4): {},
-				buildTableName(5): {},
 			},
 		},
 	} {
@@ -333,14 +320,17 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			resetTables()
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
-			if tc.tableRangesToHandle == nil {
-				tableManager.tableRangesToHandle = config.TableRanges{{
+			if tc.tableRangeToHandle == nil {
+				tableManager.tableRangeToHandle = config.TableRange{
 					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{
-						IndexTables: config.PeriodicTableConfig{Prefix: indexTablePrefix},
+						IndexTables: config.PeriodicTableConfig{
+							Prefix: indexTablePrefix,
+							Period: indexTablePeriod,
+						},
 					},
-				}}
+				}
 			} else {
-				tableManager.tableRangesToHandle = tc.tableRangesToHandle
+				tableManager.tableRangeToHandle = *tc.tableRangeToHandle
 			}
 			require.NoError(t, tableManager.ensureQueryReadiness(context.Background()))
 
@@ -388,32 +378,22 @@ func TestTableManager_loadTables(t *testing.T) {
 
 	stopFunc()
 
-	tableManager, stopFunc = buildTestTableManager(t, tempDir, config.TableRanges{
-		{
-			End:   buildTableNumber(0),
-			Start: buildTableNumber(1),
-			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-				},
+	tableManager, stopFunc = buildTestTableManager(t, tempDir, &config.TableRange{
+		End:   buildTableNumber(4),
+		Start: buildTableNumber(8),
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: indexTablePeriod,
 			},
 		},
-		{
-			End:   buildTableNumber(5),
-			Start: buildTableNumber(8),
-			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-				},
-			},
-		},
-	})
+	},
+	)
 	defer stopFunc()
-	require.Equal(t, 6, len(tableManager.tables))
+	require.Equal(t, 5, len(tableManager.tables))
 
 	tables = []string{
-		buildTableName(0),
-		buildTableName(1),
+		buildTableName(4),
 		buildTableName(5),
 		buildTableName(6),
 		buildTableName(7),

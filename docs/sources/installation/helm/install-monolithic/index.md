@@ -1,14 +1,14 @@
 ---
-title: Install the Single Binary Helm Chart
-menuTitle: Install single binary Loki
-description: Install Loki in single binary mode.
+title: Install the monolithic Helm chart
+menuTitle: Install monolithic Loki
+description: Install Loki in monolithic, single binary mode.
 aliases:
   - /docs/installation/helm/monolithic
-weight: 100
-keywords: []
+weight: 300
+keywords: 
 ---
 
-# Install the Single Binary Helm Chart
+# Install the monolithic Helm chart
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 

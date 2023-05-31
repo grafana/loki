@@ -13,7 +13,7 @@ cri: {}
 ```
 
 Unlike most stages, the `cri` stage provides no configuration options and only
-supports the specific CRI log format. CRI specifies log lines log lines as
+supports the specific CRI log format. CRI specifies log lines as
 space-delimited values with the following components:
 
 1. `time`: The timestamp string of the log

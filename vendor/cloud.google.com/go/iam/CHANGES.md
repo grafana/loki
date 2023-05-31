@@ -1,5 +1,33 @@
 # Changes
 
+## [0.12.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.11.0...iam/v0.12.0) (2023-02-17)
+
+
+### Features
+
+* **iam:** Migrate to new stubs ([a61ddcd](https://github.com/googleapis/google-cloud-go/commit/a61ddcd3041c7af4a15109dc4431f9b327c497fb))
+
+## [0.11.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.10.0...iam/v0.11.0) (2023-02-16)
+
+
+### Features
+
+* **iam:** Start generating proto stubs ([970d763](https://github.com/googleapis/google-cloud-go/commit/970d763531b54b2bc75d7ff26a20b6e05150cab8))
+
+## [0.10.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.9.0...iam/v0.10.0) (2023-01-04)
+
+
+### Features
+
+* **iam:** Add REST client ([06a54a1](https://github.com/googleapis/google-cloud-go/commit/06a54a16a5866cce966547c51e203b9e09a25bc0))
+
+## [0.9.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.8.0...iam/v0.9.0) (2022-12-15)
+
+
+### Features
+
+* **iam:** Rewrite iam sigs and update proto import ([#7137](https://github.com/googleapis/google-cloud-go/issues/7137)) ([ad67fa3](https://github.com/googleapis/google-cloud-go/commit/ad67fa36c263c161226f7fecbab5221592374dca))
+
 ## [0.8.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.7.0...iam/v0.8.0) (2022-12-05)
 
 

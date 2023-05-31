@@ -20,16 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-var _ Store = &compositeStore{}
-
 type StoreLimits interface {
 	MaxChunksPerQueryFromStore(string) int
 	MaxQueryLength(context.Context, string) time.Duration
-}
-
-type ChunkWriter interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
 }
 
 type compositeStoreEntry struct {

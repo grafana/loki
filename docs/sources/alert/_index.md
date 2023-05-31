@@ -87,7 +87,7 @@ We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/
 
 > Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
 
-Loki allows you to run [metric queries]({{<relref "../logql/metric_queries">}}) over your logs, which means
+Loki allows you to run [metric queries]({{<relref "../query/metric_queries">}}) over your logs, which means
 that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your NGINX access log.
 
 ### Example
@@ -266,7 +266,7 @@ ruler:
 
 The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos` and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{<relref "../api/#ruler">}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{<relref "../reference/api/#ruler">}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```

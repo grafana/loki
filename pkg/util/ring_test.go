@@ -77,11 +77,11 @@ func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
 	}(*r)
 }
 
-func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
+func (r *readRingMock) BatchGet(_ []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
 
-func (r *readRingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 

@@ -21,7 +21,7 @@
     multi_zone_ingester_migration_enabled: false,
     multi_zone_ingester_replication_write_path_enabled: true,
     multi_zone_ingester_replication_read_path_enabled: true,
-    multi_zone_ingester_replicas: 0,
+    multi_zone_ingester_replicas: 3,
     multi_zone_ingester_max_unavailable: std.max(1, std.floor($._config.multi_zone_ingester_replicas / 9)),
     multi_zone_default_ingester_zone: false,
     multi_zone_ingester_exclude_default: false,

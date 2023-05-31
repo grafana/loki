@@ -165,3 +165,57 @@ func (r ResourceType) String() string {
 		return "UnknownResource"
 	}
 }
+
+var v2ResourceTypeToURL = map[ResourceType]string{
+	ListenerResource:        version.V2ListenerURL,
+	HTTPConnManagerResource: version.V2HTTPConnManagerURL,
+	RouteConfigResource:     version.V2RouteConfigURL,
+	ClusterResource:         version.V2ClusterURL,
+	EndpointsResource:       version.V2EndpointsURL,
+}
+var v3ResourceTypeToURL = map[ResourceType]string{
+	ListenerResource:        version.V3ListenerURL,
+	HTTPConnManagerResource: version.V3HTTPConnManagerURL,
+	RouteConfigResource:     version.V3RouteConfigURL,
+	ClusterResource:         version.V3ClusterURL,
+	EndpointsResource:       version.V3EndpointsURL,
+}
+
+// URL returns the transport protocol specific resource type URL.
+func (r ResourceType) URL(v version.TransportAPI) string {
+	var mapping map[ResourceType]string
+	switch v {
+	case version.TransportV2:
+		mapping = v2ResourceTypeToURL
+	case version.TransportV3:
+		mapping = v3ResourceTypeToURL
+	default:
+		return "UnknownResource"
+	}
+	if url, ok := mapping[r]; ok {
+		return url
+	}
+	return "UnknownResource"
+}
+
+var urlToResourceType = map[string]ResourceType{
+	version.V2ListenerURL:        ListenerResource,
+	version.V2RouteConfigURL:     RouteConfigResource,
+	version.V2ClusterURL:         ClusterResource,
+	version.V2EndpointsURL:       EndpointsResource,
+	version.V2HTTPConnManagerURL: HTTPConnManagerResource,
+	version.V3ListenerURL:        ListenerResource,
+	version.V3RouteConfigURL:     RouteConfigResource,
+	version.V3ClusterURL:         ClusterResource,
+	version.V3EndpointsURL:       EndpointsResource,
+	version.V3HTTPConnManagerURL: HTTPConnManagerResource,
+}
+
+// ResourceTypeFromURL returns the xDS resource type associated with the given
+// resource type URL.
+func ResourceTypeFromURL(url string) ResourceType {
+	if typ, ok := urlToResourceType[url]; ok {
+		return typ
+	}
+	return UnknownResource
+}

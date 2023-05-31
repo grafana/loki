@@ -8,7 +8,7 @@
           "subdir": "consul"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "Po3c1Ic96ngrJCtOazic/7OsLkoILOKZWXWyZWl+od8="
     },
     {
@@ -18,7 +18,7 @@
           "subdir": "enterprise-metrics"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "hi2ZpHKl7qWXmSZ46sAycjWEQK6oGsoECuDKQT1dA+k="
     },
     {
@@ -28,7 +28,7 @@
           "subdir": "etcd-operator"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "duHm6wmUju5KHQurOe6dnXoKgl5gTUsfGplgbmAOsHw="
     },
     {
@@ -38,7 +38,7 @@
           "subdir": "grafana"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "Y5nheroSOIwmE+djEVPq4OvvTxKenzdHhpEwaR3Ebjs="
     },
     {
@@ -48,7 +48,7 @@
           "subdir": "jaeger-agent-mixin"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "nsukyr2SS8h97I2mxvBazXZp2fxu1i6eg+rKq3/NRwY="
     },
     {
@@ -58,8 +58,8 @@
           "subdir": "ksonnet-util"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
-      "sum": "/pkNOLhRqvQoPA0yYdUuJvpPHqhkCLauAUMD2ZHMIkE="
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
+      "sum": "0y3AFX9LQSpfWTxWKSwoLgbt0Wc9nnCwhMH2szKzHv0="
     },
     {
       "source": {
@@ -78,7 +78,7 @@
           "subdir": "memcached"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "SWywAq4U0MRPMbASU0Ez8O9ArRNeoZzb75sEuReueow="
     },
     {
@@ -88,7 +88,7 @@
           "subdir": "tanka-util"
         }
       },
-      "version": "e87aa70c8857d09235fa658a6780e7646a625ce6",
+      "version": "af3ca2c3fae4096002b0c0c921f18ca7da8d361f",
       "sum": "ShSIissXdvCy1izTCDZX6tY7qxCoepE5L+WJ52Hw7ZQ="
     },
     {
@@ -108,8 +108,8 @@
           "subdir": "doc-util"
         }
       },
-      "version": "01f689fb4a2d93f0fa4415491e95ea3ca641d6d8",
-      "sum": "yRBlDzGmyJ4eTdfftx51XrRW1fcBrtym+/yJENZywyE="
+      "version": "2eae33a828320269c42acf38e808479a33e416db",
+      "sum": "lppHbNARpG3YTpuSv94X9TyIE9TfV3CyTVceIHSRxpc="
     },
     {
       "source": {
@@ -118,8 +118,8 @@
           "subdir": "1.20"
         }
       },
-      "version": "85543e49238903ac14b486321bd3d60fef09d9ef",
-      "sum": "K8hAiyQ4ELAsln24tcwTf/++hKM/3YvLXsOYN0zD8eM="
+      "version": "9e5b48eee32913938d3cac30f183b49ecd9fe13a",
+      "sum": "KXx5RVXiqTJQo2GVfrD8DIvlm292s0TxfTKT8I591+c="
     }
   ],
   "legacyImports": false

@@ -1,14 +1,14 @@
 ---
-title: Install the Helm Chart
-menuTitle: Install Loki
+title: Install the scalable monolithic Helm chart 
+menuTitle: Install scalable Loki
 description: Install Loki in scalable mode.
 aliases:
   - /docs/installation/helm/scalable
-weight: 100
-keywords: []
+weight: 400
+keywords: 
 ---
 
-# Install the Helm Chart
+# Install the scalable monolithic Helm chart
 <!-- vale Grafana.Quotes = NO -->
 <!-- vale Grafana.Quotes = YES -->
 

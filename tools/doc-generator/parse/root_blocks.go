@@ -9,9 +9,11 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/kv/etcd"
+	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/weaveworks/common/server"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -37,7 +39,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -144,8 +145,8 @@ var (
 		},
 		{
 			Name:       "analytics",
-			StructType: reflect.TypeOf(usagestats.Config{}),
-			Desc:       "Configuration for usage report.",
+			StructType: reflect.TypeOf(analytics.Config{}),
+			Desc:       "Configuration for analytics.",
 		},
 
 		{
@@ -159,12 +160,19 @@ var (
 		{
 			Name:       "consul",
 			StructType: reflect.TypeOf(consul.Config{}),
-			Desc:       "Configuration for a Consul client. Only applies if store is consul.",
+			Desc:       "Configuration for a Consul client. Only applies if the selected kvstore is consul.",
 		},
 		{
 			Name:       "etcd",
 			StructType: reflect.TypeOf(etcd.Config{}),
-			Desc:       "Configuration for an ETCD v3 client. Only applies if store is etcd.",
+			Desc:       "Configuration for an ETCD v3 client. Only applies if the selected kvstore is etcd.",
+		},
+		{
+			Name:       "memberlist",
+			StructType: reflect.TypeOf(memberlist.KVConfig{}),
+			Desc: `Configuration for memberlist client. Only applies if the selected kvstore is memberlist.
+
+When a memberlist config with atleast 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.`,
 		},
 		// GRPC client
 		{

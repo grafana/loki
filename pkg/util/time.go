@@ -9,6 +9,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
+
+	utilsMath "github.com/grafana/loki/pkg/util/math"
 )
 
 const (
@@ -109,4 +111,32 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		}
 		callback(start, newEnd)
 	}
+}
+
+// GetFactorOfTime returns the percentage of time that the span `from` to `through`
+// accounts for inside the range `minTime` to `maxTime`.
+// It also returns the leading and trailing time that is not accounted for.
+// Note that `from`, `through`, `minTime` and `maxTime` should have the same scale (e.g. milliseconds).
+//
+//	MinTime  From              Through  MaxTime
+//	┌────────┬─────────────────┬────────┐
+//	│        *                 *        │
+//	└────────┴─────────────────┴────────┘
+//	▲   A    |        C        |   B    ▲
+//	└───────────────────────────────────┘
+//	        T = MinTime - MaxTime
+//
+// We get the percentage of time that fits into C
+// factor = C = (T - (A + B)) / T = (chunkTime - (leadingTime + trailingTime)) / chunkTime
+func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float64) {
+	if from > maxTime || through < minTime {
+		return 0
+	}
+
+	totalTime := maxTime - minTime
+	leadingTime := utilsMath.Max64(0, from-minTime)
+	trailingTime := utilsMath.Max64(0, maxTime-through)
+	factor = float64(totalTime-(leadingTime+trailingTime)) / float64(totalTime)
+
+	return factor
 }

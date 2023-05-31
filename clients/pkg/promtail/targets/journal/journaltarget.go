@@ -206,7 +206,7 @@ func journalTargetWithReader(
 					return
 				}
 
-				if err == syscall.EBADMSG || err == io.EOF {
+				if err == syscall.EBADMSG || err == io.EOF || strings.HasPrefix(err.Error(), "failed to iterate journal:") {
 					level.Error(t.logger).Log("msg", "unable to follow journal", "err", err.Error())
 					return
 				}

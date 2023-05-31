@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -55,13 +56,16 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
 		NewIndexGatewayHTTPService(opts),
+		NewIndexGatewayPodDisruptionBudget(opts),
 	}, nil
 }
 
 // NewIndexGatewayStatefulSet creates a statefulset object for an index-gateway
 func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelIndexGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.IndexGateway),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -129,8 +133,9 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
 	}
 
-	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
+	}
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -234,6 +239,30 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 				},
 			},
 			Selector: labels,
+		},
+	}
+}
+
+// NewIndexGatewayPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// index-gateway pods.
+func NewIndexGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
+	ma := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      IndexGatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
 		},
 	}
 }

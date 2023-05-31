@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"math"
 	"sync"
 	"time"
 
@@ -22,6 +23,13 @@ import (
 type poolClientFactory interface {
 	GetClientFor(addr string) (client.PoolClient, error)
 }
+
+const (
+	// The factor used to weight the moving average. Must be in the range [0, 1.0].
+	// A larger factor weights recent samples more heavily while a smaller
+	// factor weights historic samples more heavily.
+	smoothingFactor = .4
+)
 
 type RateStoreConfig struct {
 	MaxParallelism           int           `yaml:"max_request_parallelism"`
@@ -46,6 +54,7 @@ type expiringRate struct {
 	createdAt time.Time
 	rate      int64
 	shards    int64
+	pushes    float64
 }
 
 type rateStore struct {
@@ -122,10 +131,11 @@ type rateStats struct {
 }
 
 func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
+	streamCnt := 0
 	if s.debug {
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV("event", "started to update rates")
-			defer sp.LogKV("event", "finished to update rates")
+			sp.LogKV("event", "started updating rates")
+			defer sp.LogKV("event", "finished updating rates", "streams", streamCnt)
 		}
 	}
 	s.rateLock.Lock()
@@ -137,14 +147,28 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 		}
 
 		for stream, rate := range tenant {
+			if oldRate, ok := s.rates[tenantID][stream]; ok {
+				rate.rate = weightedMovingAverage(rate.rate, oldRate.rate)
+				rate.pushes = weightedMovingAverageF(rate.pushes, oldRate.pushes)
+			}
 			s.rates[tenantID][stream] = rate
+			streamCnt++
 		}
 	}
 
-	return s.cleanupExpired()
+	return s.cleanupExpired(updated)
 }
 
-func (s *rateStore) cleanupExpired() rateStats {
+func weightedMovingAverage(n, l int64) int64 {
+	return int64(weightedMovingAverageF(float64(n), float64(l)))
+}
+
+func weightedMovingAverageF(next, last float64) float64 {
+	// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+	return (smoothingFactor * next) + ((1 - smoothingFactor) * last)
+}
+
+func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
 	var rs rateStats
 
 	for tID, tenant := range s.rates {
@@ -159,6 +183,12 @@ func (s *rateStore) cleanupExpired() rateStats {
 				continue
 			}
 
+			if !s.wasUpdated(tID, stream, updated) {
+				rate.rate = weightedMovingAverage(0, rate.rate)
+				rate.pushes = weightedMovingAverageF(0, rate.pushes)
+				s.rates[tID][stream] = rate
+			}
+
 			rs.maxRate = max(rs.maxRate, rate.rate)
 			rs.maxShards = max(rs.maxShards, rate.shards)
 
@@ -168,6 +198,18 @@ func (s *rateStore) cleanupExpired() rateStats {
 	}
 
 	return rs
+}
+
+func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map[string]map[uint64]expiringRate) bool {
+	if _, ok := lastUpdated[tenantID]; !ok {
+		return false
+	}
+
+	if _, ok := lastUpdated[tenantID][streamID]; !ok {
+		return false
+	}
+
+	return true
 }
 
 func (s *rateStore) anyShardingEnabled() bool {
@@ -194,17 +236,19 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
+	now := time.Now()
 
 	for tID, tenant := range streamRates {
-		for _, streamRate := range tenant {
-			if _, ok := rates[tID]; !ok {
-				rates[tID] = map[uint64]expiringRate{}
-			}
+		if _, ok := rates[tID]; !ok {
+			rates[tID] = map[uint64]expiringRate{}
+		}
 
+		for _, streamRate := range tenant {
 			rate := rates[tID][streamRate.StreamHashNoShard]
 			rate.rate += streamRate.Rate
+			rate.pushes = math.Max(float64(streamRate.Pushes), rate.pushes)
 			rate.shards++
-			rate.createdAt = time.Now()
+			rate.createdAt = now
 
 			rates[tID][streamRate.StreamHashNoShard] = rate
 		}
@@ -323,12 +367,14 @@ func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(tenant string, streamHash uint64) int64 {
+func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, float64) {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
 	if t, ok := s.rates[tenant]; ok {
-		return t[streamHash].rate
+		rate := t[streamHash]
+		return rate.rate, rate.pushes
 	}
-	return 0
+
+	return 0, 0
 }

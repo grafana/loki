@@ -113,7 +113,7 @@ ingester:
     join_after: 30s
     num_tokens: 512
     ring:
-      replication_factor: {{ .Stack.ReplicationFactor }}
+      replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
   wal:
     enabled: true
@@ -422,8 +422,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: {{ .HTTPTimeouts.IdleTimeout }}
+  http_server_read_timeout: {{ .HTTPTimeouts.ReadTimeout }}
+  http_server_write_timeout: {{ .HTTPTimeouts.WriteTimeout }}
 {{- if or .Gates.HTTPEncryption .Gates.GRPCEncryption }}
   tls_min_version: {{ .TLS.MinTLSVersion }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}

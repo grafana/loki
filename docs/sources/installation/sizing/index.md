@@ -1,14 +1,14 @@
 ---
 title: Size the cluster 
 menuTitle: Size the cluster 
-description: A sizing tool that generates Helm Chart values.
+description: This tool generates a Helm Chart values.yaml file based on expected ingestion, retention rate, and node type, to help size your Grafana deployment.
 aliases:
   - /docs/installation/helm/generate
 weight: 100
 keywords: []
 ---
 
-<link rel="stylesheet" href="../../logql/analyzer/style.css">
+<link rel="stylesheet" href="../../query/analyzer/style.css">
 
 # Size the cluster
 <!-- vale Grafana.Quotes = NO -->

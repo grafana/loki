@@ -9,7 +9,7 @@ There are multiple considerations when
 load testing a Loki cluster's write path.
 
 The most important consideration is the setup of the target cluster.
-Keep these items in mind when writing your load test.
+Keep these items in mind when setting up your load test for the target cluster.
 
 - Deployment mode. The cluster might be deployed as
 a single-binary, as a simple scalable deployment, or as microservices
@@ -26,7 +26,7 @@ These parameters can be adjusted in the load test:
 * The quantity of distinct labels and their cardinality
 
     This will define how many active streams your load test will generate.
-    Start with only a few label values,
+    Start with a small number of label values,
     to keep the quantity of streams small enough,
     such that it does not overwhelm your cluster.
 
@@ -43,7 +43,7 @@ These parameters can be adjusted in the load test:
 
     VUs can be used to control the amount of parallelism with which logs should
     be pushed. Every VU runs its own loop of iterations.
-    Therfore, the number of VUs has the most impact on
+    Therefore, the number of VUs has the most impact on
     the generated log throughput.
     Since generating logs is CPU-intensive, there is a threshold above which
     increasing the number VUs does not result in a higher amount of log data.

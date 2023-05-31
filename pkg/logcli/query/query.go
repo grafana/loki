@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -15,12 +14,13 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/grafana/dskit/multierror"
 	json "github.com/json-iterator/go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -531,14 +531,14 @@ type schemaConfigSection struct {
 
 // LoadSchemaUsingObjectClient returns the loaded schema from the first found object
 func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*config.SchemaConfig, error) {
-	errors := multierror.New()
+	errs := multierror.New()
 	for _, name := range names {
 		schema, err := func(name string) (*config.SchemaConfig, error) {
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
 			defer cancel()
 			rdr, _, err := oc.GetObject(ctx, name)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "failed to load schema object '%s'", name)
 			}
 			defer rdr.Close()
 
@@ -554,12 +554,12 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*confi
 		}(name)
 
 		if err != nil {
-			errors = append(errors, err)
+			errs = append(errs, err)
 			continue
 		}
 		return schema, nil
 	}
-	return nil, errors.Err()
+	return nil, errs.Err()
 }
 
 // SetInstant makes the Query an instant type

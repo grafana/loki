@@ -1,6 +1,8 @@
 package openshift
 
 import (
+	"fmt"
+
 	routev1 "github.com/openshift/api/route/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -19,6 +21,9 @@ func BuildRoute(opts Options) client.Object {
 			Name:      routeName(opts),
 			Namespace: opts.BuildOpts.LokiStackNamespace,
 			Labels:    opts.BuildOpts.Labels,
+			Annotations: map[string]string{
+				annotationGatewayRouteTimeout: fmt.Sprintf("%.fs", opts.BuildOpts.GatewayRouteTimeout.Seconds()),
+			},
 		},
 		Spec: routev1.RouteSpec{
 			To: routev1.RouteTargetReference{

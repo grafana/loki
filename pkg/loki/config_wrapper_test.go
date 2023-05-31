@@ -720,58 +720,6 @@ storage_config:
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
 
-		t.Run("when common object store config is provided, compactor shared store is defaulted to use it", func(t *testing.T) {
-			for _, tt := range []struct {
-				configString string
-				expected     string
-			}{
-				{
-					configString: `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789`,
-					expected: config.StorageTypeS3,
-				},
-				{
-					configString: `common:
-  storage:
-    gcs:
-      bucket_name: foobar`,
-					expected: config.StorageTypeGCS,
-				},
-				{
-					configString: `common:
-  storage:
-    azure:
-      account_name: 3rd_planet
-      account_key: water`,
-					expected: config.StorageTypeAzure,
-				},
-				{
-					configString: `common:
-  storage:
-    swift:
-      username: steve
-      password: supersecret`,
-					expected: config.StorageTypeSwift,
-				},
-				{
-					configString: `common:
-  storage:
-    filesystem:
-      chunks_directory: /tmp/chunks
-      rules_directory: /tmp/rules`,
-					expected: config.StorageTypeFileSystem,
-				},
-			} {
-				config, _ := testContext(tt.configString, nil)
-
-				assert.Equal(t, tt.expected, config.CompactorConfig.SharedStoreType)
-			}
-		})
-
 		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
 			configString := `common:
   storage:
@@ -788,38 +736,6 @@ compactor:
 	})
 
 	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: s3
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-		})
-
-		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeGCS, cfg.CompactorConfig.SharedStoreType)
-		})
-
 		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:
@@ -1094,10 +1010,10 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 	t.Run("Attempt to catch changes to a RingConfig", func(t *testing.T) {
 		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
-		assert.Equal(t, 8,
+		assert.Equal(t, 9,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 12,
+		assert.Equal(t, 13,
 			reflect.TypeOf(util.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
 	})

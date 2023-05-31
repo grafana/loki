@@ -48,7 +48,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}()
 
 	builder := NewBuilder()
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -197,7 +197,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
-		err := idx.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -229,7 +229,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 			}
 		}()
 
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
@@ -358,7 +358,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 		b := labels.NewBuilder(chk.Metric)
 		b.Del(labels.MetricName)
-		ls := b.Labels(nil)
+		ls := b.Labels()
 
 		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
@@ -381,7 +381,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, c.workingDir, "")
+		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})
 	if err != nil {
 		return nil, err

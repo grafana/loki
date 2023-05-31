@@ -27,11 +27,8 @@ func (l *queryLimitsMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limits, err := ExtractQueryLimitsHTTP(r)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			if _, err := w.Write([]byte(err.Error())); err != nil {
-				level.Error(util_log.Logger).Log("msg", "error in queryLimitsMiddleware Wrap", "err", err)
-			}
-			return
+			level.Warn(util_log.Logger).Log("msg", "could not extract query limits from header", "err", err)
+			limits = nil
 		}
 
 		if limits != nil {
