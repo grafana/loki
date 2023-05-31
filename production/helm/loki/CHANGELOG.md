@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.5.11
 
 - [BUGFIX] Add missing metrics section in backend hpa template
+- [BUGFIX] Fix checksum annotation for config in single binary
 
 ## 5.5.10
 
