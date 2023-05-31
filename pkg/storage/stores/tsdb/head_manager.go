@@ -310,7 +310,7 @@ func (m *HeadManager) buildTSDBFromWALs(legacy bool) error {
 		allWALs,
 		legacy,
 	); err != nil {
-		return errors.Wrap(err, "building tsdb from WALs")
+		level.Error(m.log).Log("msg", "failed to build tsdb from WALs, continuing", "err", err.Error())
 	}
 
 	if legacy {
