@@ -44,7 +44,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 Commonly used sections:
 
-- [API documentation](https://grafana.com/docs/loki/latest/reference/api/) for getting logs into Loki.
+- [API documentation](https://grafana.com/docs/loki/latest/api/) for getting logs into Loki.
 - [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
 - [Operations](https://grafana.com/docs/loki/latest/operations/)
 - [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which tails log files and pushes them to Loki.
