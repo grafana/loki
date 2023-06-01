@@ -3,9 +3,10 @@ package manifests
 import (
 	"fmt"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 )
 
 type RuleName struct {

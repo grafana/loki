@@ -2,8 +2,9 @@ package rules
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"gopkg.in/yaml.v2"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 const tenantLabel = "tenantId"

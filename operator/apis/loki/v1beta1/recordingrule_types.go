@@ -1,9 +1,10 @@
 package v1beta1
 
 import (
-	v1 "github.com/grafana/loki/operator/apis/loki/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	v1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // RecordingRuleSpec defines the desired state of RecordingRule

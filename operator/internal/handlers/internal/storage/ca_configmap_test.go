@@ -3,9 +3,10 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 )
 
 func TestIsValidConfigMap(t *testing.T) {

@@ -6,9 +6,10 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // APIServerName is the apiserver resource name used to fetch it.

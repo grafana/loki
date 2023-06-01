@@ -5,6 +5,7 @@ import (
 	"regexp"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
