@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-05-09T09:43:36Z"
+    createdAt: "2023-05-11T08:04:29Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -446,8 +446,9 @@ spec:
         path: replication.factor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Zones defines an array of ZoneSpec that the scheduler will try
-          to satisfy.
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
         displayName: Zones Spec
         path: replication.zones
       - description: MaxSkew describes the maximum degree to which Pods can be unevenly

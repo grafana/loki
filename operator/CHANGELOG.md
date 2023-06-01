@@ -1,5 +1,6 @@
 ## Main
 
+- [9378](https://github.com/grafana/loki/pull/9378) **aminesnow**: Add zone aware API spec validation
 - [9408](https://github.com/grafana/loki/pull/9408) **JoaoBraveCoding**: Add PodAntiAffinity overwrites per component
 - [9429](https://github.com/grafana/loki/pull/9429) **aminesnow**: Add default TopologySpreadContraints to Gateway
 - [9418](https://github.com/grafana/loki/pull/9418) **JoaoBraveCoding**: Add default TopologySpreadContaints to Querier

@@ -327,8 +327,10 @@ spec:
                     minimum: 1
                     type: integer
                   zones:
-                    description: Zones defines an array of ZoneSpec that the scheduler
-                      will try to satisfy.
+                    description: 'Zones defines an array of ZoneSpec that the scheduler
+                      will try to satisfy. IMPORTANT: Make sure that the replication
+                      factor defined is less than or equal to the number of available
+                      zones.'
                     items:
                       description: ZoneSpec defines the spec to support zone-aware
                         component deployments.
