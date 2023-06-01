@@ -18,6 +18,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -55,6 +56,7 @@ var (
 	errInvalidSchemaVersion     = errors.New("invalid schema version")
 	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 	errInvalidTableName         = errors.New("invalid table name")
+	errInvalidNonTSDBSchemaType = errors.New("TSDBIndexVersion is only compatible with TSDB schema type")
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
 	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
@@ -371,6 +373,10 @@ func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
 	}
+
+	if cfg.IndexType == TSDBType && cfg.TSDBIndexVersion == 0 {
+		cfg.TSDBIndexVersion = index.LiveFormat
+	}
 }
 
 // Validate the period config.
@@ -383,6 +389,10 @@ func (cfg PeriodConfig) validate() error {
 	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
 		return errTSDBNon24HoursIndexPeriod
 	}
+
+  if cfg.IndexType != TSDBType && cfg.TSDBIndexVersion != 0 {
+    return errInvalidNonTSDBSchemaType
+  }
 
 	// Ensure the tables period is a multiple of the bucket period
 	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%(24*time.Hour) != 0 {

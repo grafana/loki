@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -348,6 +349,30 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				},
 			},
 		},
+		"should default TSDB index version to current default/live format": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						IndexType:   TSDBType,
+						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
+						Schema:      "v12",
+						RowShards:   6,
+					},
+				},
+			},
+			expected: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						IndexType:        TSDBType,
+						IndexTables:      PeriodicTableConfig{Period: 24 * time.Hour},
+						Schema:           "v12",
+						RowShards:        6,
+						TSDBIndexVersion: index.LiveFormat,
+					},
+				},
+			},
+			err: nil,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -422,12 +447,24 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
+		{
+			desc: "should validate TSDB index version is only set for TSDB schema type",
+			in: PeriodConfig{
+				IndexType:        "boltdb-shipper",
+				Schema:           "v12",
+				RowShards:        6,
+				TSDBIndexVersion: index.FormatV3,
+			},
+			err: errInvalidNonTSDBSchemaType.Error(),
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.err == "" {
 				require.Nil(t, tc.in.validate())
 			} else {
-				require.Error(t, tc.in.validate(), tc.err)
+				err := tc.in.validate()
+				require.Error(t, err)
+				require.Equal(t, tc.err, err.Error())
 			}
 		})
 	}

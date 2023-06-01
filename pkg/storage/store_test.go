@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -1046,6 +1047,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 						IndexType:  indexes[1],
 						ObjectType: "named-store",
 						Schema:     "v11",
+            TSDBIndexVersion: index.FormatV3,
 						IndexTables: config.PeriodicTableConfig{
 							Prefix: "index_",
 							Period: time.Hour * 24,
@@ -1354,6 +1356,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				IndexType:  "tsdb",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
+        TSDBIndexVersion: index.FormatV3,
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 24,

@@ -861,8 +861,9 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 	now := model.Now()
 	periodConfig := config.PeriodConfig{
-		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
-		Schema:      "v12",
+		IndexTables:      config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		Schema:           "v12",
+		TSDBIndexVersion: index.FormatV3,
 	}
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{periodConfig},
