@@ -4,12 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -66,24 +68,11 @@ func (cfg *IndexStatsCacheConfig) Validate() error {
 	return cfg.ResultsCacheConfig.Validate()
 }
 
-// statsCacheMiddlewareNowTimeFunc is a function that returns the current time.
-// It is used to allow tests to override the current time.
-var statsCacheMiddlewareNowTimeFunc = model.Now
-
-// shouldCacheStats returns true if the request should be cached.
-// It returns false if:
-// - The request end time falls within the max_stats_cache_freshness duration.
-func shouldCacheStats(ctx context.Context, req queryrangebase.Request, lim Limits) (bool, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	cacheFreshnessCapture := func(id string) time.Duration { return lim.MaxStatsCacheFreshness(ctx, id) }
-	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
-
-	now := statsCacheMiddlewareNowTimeFunc()
-	return maxCacheFreshness == 0 || model.Time(req.GetEnd()).Before(now.Add(-maxCacheFreshness)), nil
+type statsCacheMiddleware struct {
+	logger    log.Logger
+	limits    Limits
+	next      queryrangebase.Handler
+	cacheWare queryrangebase.Handler
 }
 
 func NewIndexStatsCacheMiddleware(
@@ -98,7 +87,7 @@ func NewIndexStatsCacheMiddleware(
 	transformer UserIDTransformer,
 	metrics *queryrangebase.ResultsCacheMetrics,
 ) (queryrangebase.Middleware, error) {
-	return queryrangebase.NewResultsCacheMiddleware(
+	cacheWare, err := queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
 		IndexStatsSplitter{cacheKeyLimits{limits, transformer}},
@@ -106,21 +95,76 @@ func NewIndexStatsCacheMiddleware(
 		merger,
 		IndexStatsExtractor{},
 		cacheGenNumberLoader,
-		func(ctx context.Context, r queryrangebase.Request) bool {
-			if shouldCache != nil && !shouldCache(ctx, r) {
-				return false
-			}
-
-			cacheStats, err := shouldCacheStats(ctx, r, limits)
-			if err != nil {
-				level.Error(log).Log("msg", "failed to determine if stats should be cached. Won't cache", "err", err)
-				return false
-			}
-
-			return cacheStats
-		},
+		shouldCache,
 		parallelismForReq,
 		retentionEnabled,
 		metrics,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return &statsCacheMiddleware{
+			logger:    log,
+			limits:    limits,
+			next:      next,
+			cacheWare: cacheWare.Wrap(next),
+		}
+	}), nil
+}
+
+// statsCacheMiddlewareNowTimeFunc is a function that returns the current time.
+// It is used to allow tests to override the current time.
+var statsCacheMiddlewareNowTimeFunc = model.Now
+
+// Do implements the queryrangebase.Handler interface.
+// It enforces the MaxStatsCacheFreshness limit before forwarding the request to the cache middleware.
+func (s *statsCacheMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxStatsCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
+
+	// If part of the request is too recent, we need to split the request into two parts:
+	// 1. A part that can be cached (before freshness). Forwarded to the cache middleware.
+	// 2. A part that cannot be cached (after freshness). Skips the cache middleware.
+	// The results of both parts are then merged and returned.
+	now := statsCacheMiddlewareNowTimeFunc()
+	if maxCacheFreshness != 0 && model.Time(r.GetEnd()).After(now.Add(-maxCacheFreshness)) {
+		cachableReq := r.WithStartEnd(r.GetStart(), int64(now.Add(-maxCacheFreshness)))
+		uncachableReq := r.WithStartEnd(int64(now.Add(-maxCacheFreshness)), r.GetEnd())
+
+		type f func() (queryrangebase.Response, error)
+		jobs := []f{
+			f(func() (queryrangebase.Response, error) {
+				return s.cacheWare.Do(ctx, cachableReq)
+			}),
+			f(func() (queryrangebase.Response, error) {
+				return s.next.Do(ctx, uncachableReq)
+			}),
+		}
+
+		results := make([]queryrangebase.Response, len(jobs))
+		if err := concurrency.ForEachJob(ctx, len(jobs), len(jobs), func(ctx context.Context, i int) error {
+			res, err := jobs[i]()
+			results[i] = res
+			return err
+		}); err != nil {
+			return nil, err
+		}
+
+		// Merge the results.
+		merged, err := LokiCodec.MergeResponse(results...)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, err.Error())
+		}
+
+		return merged, nil
+	}
+
+	return s.cacheWare.Do(ctx, r)
 }

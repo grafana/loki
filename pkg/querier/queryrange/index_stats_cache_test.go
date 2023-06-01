@@ -18,15 +18,12 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-var cfg = IndexStatsCacheConfig{
-	ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+func TestIndexStatsCache(t *testing.T) {
+	cfg := queryrangebase.ResultsCacheConfig{
 		CacheConfig: cache.Config{
 			Cache: cache.NewMockCache(),
 		},
-	},
-}
-
-func TestIndexStatsCache(t *testing.T) {
+	}
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
@@ -97,23 +94,81 @@ func TestIndexStatsCache(t *testing.T) {
 }
 
 func TestIndexStatsCache_RecentData(t *testing.T) {
+	statsCacheMiddlewareNowTimeFunc = func() model.Time { return model.Time(testTime.UnixMilli()) }
+	now := statsCacheMiddlewareNowTimeFunc()
+
+	statsResp := &IndexStatsResponse{
+		Response: &logproto.IndexStatsResponse{
+			Streams: 1,
+			Chunks:  2,
+			Bytes:   1 << 10,
+			Entries: 10,
+		},
+	}
+
 	for _, tc := range []struct {
 		name                   string
 		maxStatsCacheFreshness time.Duration
-		expectedCalls          int
+		req                    *logproto.IndexStatsRequest
+
+		expectedCallsBeforeCache int
+		expectedCallsAfterCache  int
+		expectedResp             *IndexStatsResponse
 	}{
 		{
 			name:                   "MaxStatsCacheFreshness disabled",
 			maxStatsCacheFreshness: 0,
-			expectedCalls:          0,
+			req: &logproto.IndexStatsRequest{
+				From:     now.Add(-1 * time.Hour),
+				Through:  now.Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
+				Matchers: `{foo="bar"}`,
+			},
+
+			expectedCallsBeforeCache: 1,
+			expectedCallsAfterCache:  0,
+			expectedResp:             statsResp,
 		},
 		{
 			name:                   "MaxStatsCacheFreshness enabled",
 			maxStatsCacheFreshness: 30 * time.Minute,
-			expectedCalls:          1,
+			req: &logproto.IndexStatsRequest{
+				From:     now.Add(-1 * time.Hour),
+				Through:  now.Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
+				Matchers: `{foo="bar"}`,
+			},
+
+			expectedCallsBeforeCache: 2,
+			expectedCallsAfterCache:  1, // Only the uncacheable part of the request is sent to the backend.
+			expectedResp: &IndexStatsResponse{
+				// We are hitting the stats endpoint twice, so the stats are doubled.
+				Response: &logproto.IndexStatsResponse{
+					Streams: statsResp.Response.Streams * 2,
+					Chunks:  statsResp.Response.Chunks * 2,
+					Bytes:   statsResp.Response.Bytes * 2,
+					Entries: statsResp.Response.Entries * 2,
+				},
+			},
+		},
+		{
+			name:                   "MaxStatsCacheFreshness enabled, but request before the max freshness",
+			maxStatsCacheFreshness: 30 * time.Minute,
+			req: &logproto.IndexStatsRequest{
+				From:     now.Add(-1 * time.Hour),
+				Through:  now.Add(-45 * time.Minute),
+				Matchers: `{foo="bar"}`,
+			},
+
+			expectedCallsBeforeCache: 1,
+			expectedCallsAfterCache:  0,
+			expectedResp:             statsResp,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			cfg := queryrangebase.ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					Cache: cache.NewMockCache(),
+				},
+			}
 			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 			defer c.Stop()
 			require.NoError(t, err)
@@ -136,39 +191,21 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			statsCacheMiddlewareNowTimeFunc = func() model.Time { return model.Time(testTime.UnixMilli()) }
-			now := statsCacheMiddlewareNowTimeFunc()
-
-			statsReq := &logproto.IndexStatsRequest{
-				From:     now.Add(-1 * time.Hour),
-				Through:  now.Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
-				Matchers: `{foo="bar"}`,
-			}
-
-			statsResp := &IndexStatsResponse{
-				Response: &logproto.IndexStatsResponse{
-					Streams: 1,
-					Chunks:  2,
-					Bytes:   1 << 10,
-					Entries: 10,
-				},
-			}
-
 			calls, statsHandler := indexStatsResultHandler(statsResp)
 			rc := cacheMiddleware.Wrap(statsHandler)
 
 			ctx := user.InjectOrgID(context.Background(), "fake")
-			resp, err := rc.Do(ctx, statsReq)
+			resp, err := rc.Do(ctx, tc.req)
 			require.NoError(t, err)
-			require.Equal(t, 1, *calls)
-			require.Equal(t, statsResp, resp)
+			require.Equal(t, tc.expectedCallsBeforeCache, *calls)
+			require.Equal(t, tc.expectedResp, resp)
 
 			// Doing same request again
 			*calls = 0
-			resp, err = rc.Do(ctx, statsReq)
+			resp, err = rc.Do(ctx, tc.req)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedCalls, *calls)
-			require.Equal(t, statsResp, resp)
+			require.Equal(t, tc.expectedCallsAfterCache, *calls)
+			require.Equal(t, tc.expectedResp, resp)
 		})
 	}
 }

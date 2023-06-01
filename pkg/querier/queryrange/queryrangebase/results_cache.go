@@ -156,7 +156,7 @@ func (t constSplitter) GenerateCacheKey(_ context.Context, userID string, r Requ
 
 // ShouldCacheFn checks whether the current request should go to cache
 // or not. If not, just send the request to next handler.
-type ShouldCacheFn func(ctx context.Context, r Request) bool
+type ShouldCacheFn func(r Request) bool
 
 type resultsCache struct {
 	logger   log.Logger
@@ -225,7 +225,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if s.shouldCache != nil && !s.shouldCache(ctx, r) {
+	if s.shouldCache != nil && !s.shouldCache(r) {
 		return s.next.Do(ctx, r)
 	}
 
