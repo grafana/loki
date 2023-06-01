@@ -12,8 +12,9 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -156,7 +157,6 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		return nil
 	}
 
-	timestamp := time.Now()
 	var lineCount int
 	for scanner.Scan() {
 		log_line := scanner.Text()
@@ -167,7 +167,8 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		if printLogLine {
 			fmt.Println(log_line)
 		}
-
+    
+    timestamp := time.Now()
 		match := parser.timestampRegex.FindStringSubmatch(log_line)
 		if len(match) > 0 {
 			timestamp, err = time.Parse(parser.timestampFormat, match[1])

@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// Stream helps transmit each recordss withing a channel.
+// Stream helps transmit each recordss within a channel.
 type Stream struct {
 	records chan Record
 }
