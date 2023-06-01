@@ -104,7 +104,7 @@ scrape_configs:
 
     pipeline_stages:
     - match:
-        selector: '{namespace=".+"}'
+        selector: '{namespace=~".+"}'
         stages:
           - tenant:
               label: "namespace"
