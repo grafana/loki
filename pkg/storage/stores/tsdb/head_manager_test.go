@@ -214,7 +214,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	storeName := "store_2010-10-10"
+	const storeName = "store_2010-10-10"
 	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
