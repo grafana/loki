@@ -15,6 +15,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.6.0
 - [ENHANCEMENT] Add `gateway.ingress.labels` to values and ingress-gateway in helm chart.
+## 5.5.12
+
+- [BUGFIX] Fix checksum annotation for config in single binary
+
+## 5.5.11
+
+- [BUGFIX] Add missing metrics section in backend hpa template
 
 ## 5.5.10
 

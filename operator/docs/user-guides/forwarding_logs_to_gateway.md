@@ -51,8 +51,8 @@ _Note: While this document will only give instructions for two methods of log fo
 
     ```console
     kubectl -n openshift-logging create secret generic lokistack-gateway-bearer-token \
-      --from-literal=token="/var/run/secrets/kubernetes.io/serviceaccount/token" \
-      --from-literal=ca-bundle.crt="$(kubectl get cm lokistack-dev-ca-bundle -o json | jq -r '.data."service-ca.crt"')"
+      --from-literal=token="$(kubectl -n openshift-logging get secret logcollector-token --template='{{.data.token | base64decode}}')"  \
+      --from-literal=ca-bundle.crt="$(kubectl -n openshift-logging get configmap openshift-service-ca.crt --template='{{index .data "service-ca.crt"}}')"
     ```
 
 * Create the following `ClusterRole` and `ClusterRoleBinding` which will allow the cluster to authenticate the user(s) submitting the logs:
