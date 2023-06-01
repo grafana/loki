@@ -60,6 +60,11 @@ linters-settings:
     packages-with-error-message:
       - github.com/go-kit/kit/log: "Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
 
+  revive:
+    rules:
+      - disabled: true
+        name: unused-parameter
+
 linters:
   enable:
     - errcheck
