@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/grafana/dskit/flagext"
@@ -162,6 +163,19 @@ func Test_DefaultContainerURL(t *testing.T) {
 	require.Equal(t, *expect, c.containerURL.URL())
 }
 
+func Test_DefaultContainerCreated(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	r, err := c.containerURL.GetProperties(context.Background(), azblob.LeaseAccessConditions{})
+	require.NoError(t, err)
+	require.Equal(t, 200, r.StatusCode)
+}
+
 func Test_EndpointSuffixWithContainer(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",
@@ -172,6 +186,20 @@ func Test_EndpointSuffixWithContainer(t *testing.T) {
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.test.com/foo")
 	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_EndpointSuffixWithBlob(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://bar.test.com/foo/blob")
+	bloburl, err := c.getBlobURL("blob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, bloburl.URL())
 }
 
 func Test_DefaultBlobURL(t *testing.T) {
@@ -189,20 +217,6 @@ func Test_DefaultBlobURL(t *testing.T) {
 
 func Test_UseFederatedToken(t *testing.T) {
 	suite.Run(t, new(FederatedTokenTestSuite))
-}
-
-func Test_EndpointSuffixWithBlob(t *testing.T) {
-	c, err := NewBlobStorage(&BlobStorageConfig{
-		ContainerName:      "foo",
-		StorageAccountName: "bar",
-		Environment:        azureGlobal,
-		Endpoint:           "test.com",
-	}, metrics, hedging.Config{})
-	require.NoError(t, err)
-	expect, _ := url.Parse("https://bar.test.com/foo/blob")
-	bloburl, err := c.getBlobURL("blob", false)
-	require.NoError(t, err)
-	require.Equal(t, *expect, bloburl.URL())
 }
 
 func Test_ConfigValidation(t *testing.T) {
