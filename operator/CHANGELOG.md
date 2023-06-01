@@ -1,5 +1,6 @@
 ## Main
 
+- [9600](https://github.com/grafana/loki/pull/9600) **periklis**: Add rules labels filters for openshift-logging application tenant
 - [9457](https://github.com/grafana/loki/pull/9457) **Red-GV**: Set seccomp profile to runtime default
 - [9448](https://github.com/grafana/loki/pull/9448) **btaani**: Include runtime-config in compiling the SHA1 checksum
 - [9511](https://github.com/grafana/loki/pull/9511) **xperimental**: Do not update status after setting degraded condition
