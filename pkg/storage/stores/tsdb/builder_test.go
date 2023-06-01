@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func Test_Build(t *testing.T) {
