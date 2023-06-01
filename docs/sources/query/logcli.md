@@ -89,7 +89,7 @@ Common labels: {job="loki-ops/consul", namespace="loki-ops"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ...
 
-$ logcli series -q --match='{namespace="loki",container_name="loki"}'
+$ logcli series '{namespace="loki",container_name="loki"}'
 {app="loki", container_name="loki", controller_revision_hash="loki-57c9df47f4", filename="/var/log/pods/loki_loki-0_8ed03ded-bacb-4b13-a6fe-53a445a15887/loki/0.log", instance="loki-0", job="loki/loki", name="loki", namespace="loki", release="loki", statefulset_kubernetes_io_pod_name="loki-0", stream="stderr"}
 ```
 
