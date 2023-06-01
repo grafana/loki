@@ -9,14 +9,15 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	tsdbIndex "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	tsdbIndex "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func Test_BuildFromHead_HasCorrectIndexVersion(t *testing.T) {

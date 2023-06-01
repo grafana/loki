@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 func TestChunkTableFor(t *testing.T) {

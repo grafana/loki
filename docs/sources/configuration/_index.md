@@ -3964,6 +3964,9 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int>]
+
+# The version of the TSDB index to use. Only used with the TSDB index type.
+[tsdb_index_version: <int>]
 ```
 
 ### aws_storage_config

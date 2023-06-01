@@ -1043,11 +1043,11 @@ func TestStore_MultiPeriod(t *testing.T) {
 						},
 					},
 					{
-						From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-						IndexType:  indexes[1],
-						ObjectType: "named-store",
-						Schema:     "v11",
-            TSDBIndexVersion: index.FormatV3,
+						From:             config.DayTime{Time: timeToModelTime(secondStoreDate)},
+						IndexType:        indexes[1],
+						ObjectType:       "named-store",
+						Schema:           "v11",
+						TSDBIndexVersion: index.FormatV3,
 						IndexTables: config.PeriodicTableConfig{
 							Prefix: "index_",
 							Period: time.Hour * 24,
@@ -1352,11 +1352,11 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				RowShards: 2,
 			},
 			{
-				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
-				IndexType:  "tsdb",
-				ObjectType: config.StorageTypeFileSystem,
-				Schema:     "v12",
-        TSDBIndexVersion: index.FormatV3,
+				From:             config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				IndexType:        "tsdb",
+				ObjectType:       config.StorageTypeFileSystem,
+				Schema:           "v12",
+				TSDBIndexVersion: index.FormatV3,
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 24,

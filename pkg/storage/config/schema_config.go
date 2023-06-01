@@ -390,9 +390,9 @@ func (cfg PeriodConfig) validate() error {
 		return errTSDBNon24HoursIndexPeriod
 	}
 
-  if cfg.IndexType != TSDBType && cfg.TSDBIndexVersion != 0 {
-    return errInvalidNonTSDBSchemaType
-  }
+	if cfg.IndexType != TSDBType && cfg.TSDBIndexVersion != 0 {
+		return errInvalidNonTSDBSchemaType
+	}
 
 	// Ensure the tables period is a multiple of the bucket period
 	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%(24*time.Hour) != 0 {
