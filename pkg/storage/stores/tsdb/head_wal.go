@@ -16,7 +16,7 @@ import (
 
 const (
 	// Disable this to begin writing chunks and series in the same record.
-	WALWriteChunksAndSeriesSeparately = false
+	WALWriteChunksAndSeriesSeparately = true
 )
 
 type WAL interface {
