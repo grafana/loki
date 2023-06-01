@@ -690,6 +690,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			wantArgs: []string{
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 				"--logs.rules.read-only=true",
+				"--logs.rules.label-filters=application:namespace",
 			},
 		},
 		{
