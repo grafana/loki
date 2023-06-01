@@ -31,7 +31,7 @@ func NewTopk(k int, numEntries int) (Topk, error) {
 	eps := float64(diff) / float64(numEntries/2)
 
 	// we want a 99.9% probability of being within the range of exact value to exact value + diff
-	s, err := NewCountMinSketch(eps, 0.999)
+	s, err := NewCountMinSketch(eps, 0.001)
 	if err != nil {
 		return Topk{}, err
 	}
@@ -94,15 +94,23 @@ func (t *Topk) InTopk(event string) bool {
 	return false
 }
 
-type TopKResult struct {
+type element struct {
 	Event string
 	Count int64
 }
 
-func (t *Topk) Topk() []TopKResult {
-	res := make([]TopKResult, len(t.currentTop))
+type TopKResult []element
+
+func (t TopKResult) Len() int { return len(t) }
+
+// for topk we actually want the largest item first
+func (t TopKResult) Less(i, j int) bool { return t[i].Count > t[j].Count }
+func (t TopKResult) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
+
+func (t *Topk) Topk() TopKResult {
+	res := make(TopKResult, len(t.currentTop))
 	for i, e := range t.currentTop {
-		res[i] = TopKResult{
+		res[i] = element{
 			Event: e,
 			Count: int64(t.sketch.Count(e)),
 		}
