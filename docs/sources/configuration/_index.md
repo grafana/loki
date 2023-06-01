@@ -3755,7 +3755,7 @@ background:
 
   # Size limit of buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer-size-limit
-  [writeback_buffer_size_limit: <int> | default = 500MB]
+  [writeback_buffer_size_limit: <int> | default = 1GB]
 
 memcached:
   # How long keys stay in the memcache.
