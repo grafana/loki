@@ -209,6 +209,17 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 		return nil, err
 	}
 
+	ctx := context.Background()
+	_, err = blobStorage.containerURL.GetProperties(ctx, azblob.LeaseAccessConditions{})
+	if err != nil {
+		if bloberror, ok := err.(azblob.StorageError); ok && bloberror.ServiceCode() == azblob.ServiceCodeContainerNotFound {
+			_, err = blobStorage.containerURL.Create(ctx, azblob.Metadata{}, azblob.PublicAccessNone)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create create Azure blob container '%s': %w", blobStorage.cfg.ContainerName, err)
+			}
+		}
+	}
+
 	return blobStorage, nil
 }
 

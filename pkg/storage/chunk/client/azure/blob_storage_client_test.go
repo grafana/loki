@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/grafana/dskit/flagext"
@@ -90,7 +91,7 @@ func Test_Hedging(t *testing.T) {
 	}{
 		{
 			"delete/put/list are not hedged",
-			3,
+			4, // 1 additional call added from GetProperties()
 			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
@@ -101,7 +102,7 @@ func Test_Hedging(t *testing.T) {
 		},
 		{
 			"gets are hedged",
-			3,
+			4, // 1 additional call added from GetProperties()
 			20 * time.Nanosecond,
 			3,
 			func(c *BlobStorage) {
@@ -110,7 +111,7 @@ func Test_Hedging(t *testing.T) {
 		},
 		{
 			"gets are not hedged when not configured",
-			1,
+			2, // 1 additional call added from GetProperties()
 			0,
 			0,
 			func(c *BlobStorage) {
@@ -160,6 +161,19 @@ func Test_DefaultContainerURL(t *testing.T) {
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo")
 	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_DefaultContainerCreated(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:      "foo",
+		StorageAccountName: "bar",
+		Environment:        azureGlobal,
+		Endpoint:           "test.com",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	r, err := c.containerURL.GetProperties(context.Background(), azblob.LeaseAccessConditions{})
+	require.NoError(t, err)
+	require.Equal(t, 200, r.StatusCode)
 }
 
 func Test_EndpointSuffixWithContainer(t *testing.T) {
