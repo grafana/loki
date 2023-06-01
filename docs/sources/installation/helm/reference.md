@@ -1117,6 +1117,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.ingress.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway ingress</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
 			<td>TLS configuration for the gateway ingress</td>

@@ -52,7 +52,7 @@ overrides:
 		}},
 		{Period: model.Duration(24 * time.Hour), Priority: 5, Selector: `{namespace="bar", cluster=~"fo.*|b.+|[1-2]"}`, Matchers: []*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "namespace", "bar"),
-			labels.MustNewMatcher(labels.MatchRegexp, "cluster", "fo(?-s:.)*?|b(?-s:.)+?|[1-2]"),
+			labels.MustNewMatcher(labels.MatchRegexp, "cluster", "fo.*|b.+|[1-2]"),
 		}},
 	}, overrides.StreamRetention("29"))
 }

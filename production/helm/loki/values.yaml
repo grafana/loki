@@ -1254,6 +1254,8 @@ gateway:
     ingressClassName: ""
     # -- Annotations for the gateway ingress
     annotations: {}
+    # -- Labels for the gateway ingress
+    labels: {}
     # -- Hosts configuration for the gateway ingress
     hosts:
       - host: gateway.loki.example.com
