@@ -89,7 +89,7 @@ func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName stri
 
 	container := corev1.Container{
 		Args: []string{
-			fmt.Sprintf("--logs.rules.label-filters=%s:namespace", tenantApplication),
+			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatcher),
 		},
 	}
 
