@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -52,16 +55,11 @@ func (p IndexStatsExtractor) ResponseWithoutHeaders(resp queryrangebase.Response
 
 type IndexStatsCacheConfig struct {
 	queryrangebase.ResultsCacheConfig `yaml:",inline"`
-	// NOTE: We cannot use something similar to the per-tenant `max_cache_freshness_per_query` limit
-	// because resultsCache.filterRecentExtents would extract already inflated stats.
-	// Instead, we need to filter out whole requests that ask for stats in recent data.
-	DoNotCacheRequestWithin time.Duration `yaml:"do_not_cache_request_within"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *IndexStatsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ResultsCacheConfig.RegisterFlagsWithPrefix(f, "frontend.index-stats-results-cache.")
-	f.DurationVar(&cfg.DoNotCacheRequestWithin, "frontend.index-stats-results-cache.do-not-cache-request-within", 0, "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature.")
 }
 
 func (cfg *IndexStatsCacheConfig) Validate() error {
@@ -72,15 +70,23 @@ func (cfg *IndexStatsCacheConfig) Validate() error {
 // It is used to allow tests to override the current time.
 var statsCacheMiddlewareNowTimeFunc = model.Now
 
-// ShouldCache returns true if the request should be cached.
-// It returns false if the request end time falls within the DoNotCacheRequestWithin duration.
-func (cfg *IndexStatsCacheConfig) ShouldCache(req queryrangebase.Request) bool {
+// shouldCacheStats returns true if the request should be cached.
+// It returns false if:
+// - The request end time falls within the max_stats_cache_freshness duration.
+func shouldCacheStats(ctx context.Context, req queryrangebase.Request, lim Limits) (bool, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	cacheFreshnessCapture := func(id string) time.Duration { return lim.MaxStatsCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
+
 	now := statsCacheMiddlewareNowTimeFunc()
-	return cfg.DoNotCacheRequestWithin == 0 || model.Time(req.GetEnd()).Before(now.Add(-cfg.DoNotCacheRequestWithin))
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd()).Before(now.Add(-maxCacheFreshness)), nil
 }
 
 func NewIndexStatsCacheMiddleware(
-	cfg IndexStatsCacheConfig,
 	log log.Logger,
 	limits Limits,
 	merger queryrangebase.Merger,
@@ -100,11 +106,18 @@ func NewIndexStatsCacheMiddleware(
 		merger,
 		IndexStatsExtractor{},
 		cacheGenNumberLoader,
-		func(r queryrangebase.Request) bool {
-			if shouldCache != nil && !shouldCache(r) {
+		func(ctx context.Context, r queryrangebase.Request) bool {
+			if shouldCache != nil && !shouldCache(ctx, r) {
 				return false
 			}
-			return cfg.ShouldCache(r)
+
+			cacheStats, err := shouldCacheStats(ctx, r, limits)
+			if err != nil {
+				level.Error(log).Log("msg", "failed to determine if stats should be cached. Won't cache", "err", err)
+				return false
+			}
+
+			return cacheStats
 		},
 		parallelismForReq,
 		retentionEnabled,

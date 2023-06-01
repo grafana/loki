@@ -30,7 +30,6 @@ func TestIndexStatsCache(t *testing.T) {
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
-		cfg,
 		log.NewNopLogger(),
 		WithSplitByLimits(fakeLimits{}, 24*time.Hour),
 		LokiCodec,
@@ -99,19 +98,19 @@ func TestIndexStatsCache(t *testing.T) {
 
 func TestIndexStatsCache_RecentData(t *testing.T) {
 	for _, tc := range []struct {
-		name                    string
-		doNotCacheRequestWithin time.Duration
-		expectedCalls           int
+		name                   string
+		maxStatsCacheFreshness time.Duration
+		expectedCalls          int
 	}{
 		{
-			name:                    "DoNotCacheRequestWithin disabled",
-			doNotCacheRequestWithin: 0,
-			expectedCalls:           0,
+			name:                   "MaxStatsCacheFreshness disabled",
+			maxStatsCacheFreshness: 0,
+			expectedCalls:          0,
 		},
 		{
-			name:                    "DoNotCacheRequestWithin enabled",
-			doNotCacheRequestWithin: 30 * time.Minute,
-			expectedCalls:           1,
+			name:                   "MaxStatsCacheFreshness enabled",
+			maxStatsCacheFreshness: 30 * time.Minute,
+			expectedCalls:          1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -119,13 +118,11 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 			defer c.Stop()
 			require.NoError(t, err)
 
-			statsCacheCfg := cfg
-			statsCacheCfg.DoNotCacheRequestWithin = tc.doNotCacheRequestWithin
+			lim := fakeLimits{maxStatsCacheFreshness: tc.maxStatsCacheFreshness}
 
 			cacheMiddleware, err := NewIndexStatsCacheMiddleware(
-				statsCacheCfg,
 				log.NewNopLogger(),
-				WithSplitByLimits(fakeLimits{}, 24*time.Hour),
+				WithSplitByLimits(lim, 24*time.Hour),
 				LokiCodec,
 				c,
 				nil,
