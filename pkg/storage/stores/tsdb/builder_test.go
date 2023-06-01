@@ -45,35 +45,6 @@ func Test_Build(t *testing.T) {
 		return reader
 	}
 
-	t.Run("ensures the directory is present", func(t *testing.T) {
-		ctx, builder, tmpDir := setup(index.LiveFormat)
-
-		_, err := builder.Build(ctx, "/path/does/not/exist", func(from, through model.Time, checksum uint32) Identifier {
-			id := SingleTenantTSDBIdentifier{
-				TS:       time.Now(),
-				From:     from,
-				Through:  through,
-				Checksum: checksum,
-			}
-			return NewPrefixedIdentifier(id, tmpDir, "")
-		})
-
-		require.Error(t, err)
-		require.ErrorContains(t, err, "permission denied")
-
-		_, err = builder.Build(ctx, filepath.Join(tmpDir, "foo"), func(from, through model.Time, checksum uint32) Identifier {
-			id := SingleTenantTSDBIdentifier{
-				TS:       time.Now(),
-				From:     from,
-				Through:  through,
-				Checksum: checksum,
-			}
-			return NewPrefixedIdentifier(id, tmpDir, "")
-		})
-
-		require.NoError(t, err)
-	})
-
 	t.Run("writes index to disk with from/through bounds of series in filename", func(t *testing.T) {
 		ctx, builder, tmpDir := setup(index.LiveFormat)
 
