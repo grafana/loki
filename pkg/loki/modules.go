@@ -344,7 +344,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	store := t.Store
-	if !t.Cfg.Querier.QueryStoreOnly {
+	if !t.Cfg.Querier.QueryStoreOnly && config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
 	}
 
