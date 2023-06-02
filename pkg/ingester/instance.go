@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -560,6 +561,9 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "instance.GetStats")
+	defer sp.Finish()
+
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -596,6 +600,16 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}); err != nil {
 		return nil, err
 	}
+
+	sp.LogKV(
+		"from", from,
+		"through", through,
+		"matchers", syntax.MatchersString(matchers),
+		"streams", res.Streams,
+		"chunks", res.Chunks,
+		"bytes", res.Bytes,
+		"entries", res.Entries,
+	)
 
 	return res, nil
 }
