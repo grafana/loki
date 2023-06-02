@@ -173,6 +173,8 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
+	r.ctx = ctx
+
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Finish()

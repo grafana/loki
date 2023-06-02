@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -191,6 +192,9 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Gateway.GetChunkRef")
+	defer sp.Finish()
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

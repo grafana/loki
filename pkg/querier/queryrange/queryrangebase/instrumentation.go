@@ -23,9 +23,9 @@ func InstrumentMiddleware(name string, metrics *InstrumentMiddlewareMetrics) Mid
 	return MiddlewareFunc(func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
 			var resp Response
-			err := instrument.CollectedRequest(ctx, name, durationCol, instrument.ErrorCode, func(ctx context.Context) error {
+			err := instrument.CollectedRequest(ctx, name, durationCol, instrument.ErrorCode, func(innerCtx context.Context) error {
 				var err error
-				resp, err = next.Do(ctx, req)
+				resp, err = next.Do(innerCtx, req)
 				return err
 			})
 			return resp, err

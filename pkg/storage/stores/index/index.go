@@ -107,9 +107,9 @@ func (m monitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, user
 
 func (m monitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	var sts *stats.Stats
-	if err := instrument.CollectedRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(innerCtx context.Context) error {
 		var err error
-		sts, err = m.rw.Stats(ctx, userID, from, through, matchers...)
+		sts, err = m.rw.Stats(innerCtx, userID, from, through, matchers...)
 		return err
 	}); err != nil {
 		return nil, err

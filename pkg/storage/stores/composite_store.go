@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -158,6 +159,9 @@ func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 
 func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "compositeStore.GetChunkRefs")
+	defer sp.Finish()
+
 	fetchers := []*fetcher.Fetcher{}
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		ids, fetcher, err := store.GetChunkRefs(innerCtx, userID, from, through, matchers...)
