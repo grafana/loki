@@ -85,7 +85,7 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 }
 
 func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	log, _ := spanlogger.New(context.Background(), "IndexGateway.QueryIndex")
+	log, ctx := spanlogger.New(server.Context(), "IndexGateway.QueryIndex")
 	defer log.Finish()
 
 	var outerErr, innerErr error
@@ -127,7 +127,7 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 			continue
 		}
 
-		outerErr = indexClient.QueryPages(server.Context(), queries[start:end], func(query seriesindex.Query, batch seriesindex.ReadBatchResult) bool {
+		outerErr = indexClient.QueryPages(ctx, queries[start:end], func(query seriesindex.Query, batch seriesindex.ReadBatchResult) bool {
 			innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
 				// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
 				sendBatchMtx.Lock()
