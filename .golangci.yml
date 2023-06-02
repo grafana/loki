@@ -39,6 +39,7 @@ run:
     - .*.pb.go
     - .*.y.go
     - .*.rl.go
+    - .*.deepcopy.go
 # output configuration options
 output:
   # colored-line-number|line-number|json|tab|checkstyle, default is "colored-line-number"
