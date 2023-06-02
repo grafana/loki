@@ -362,15 +362,23 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 	}
+
+	logger := log.With(util_log.Logger, "component", "querier")
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+
+	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI)
+
 	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
 			toMerge,
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 		)
-	}
 
-	logger := log.With(util_log.Logger, "component", "querier")
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+		indexStatsHTTPMiddleware = middleware.Merge(
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+			indexStatsHTTPMiddleware,
+		)
+	}
 
 	labelsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI)
 
@@ -403,7 +411,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/label/{name}/values": labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 
 		"/loki/api/v1/series":      querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
-		"/loki/api/v1/index/stats": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+		"/loki/api/v1/index/stats": indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
