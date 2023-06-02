@@ -190,7 +190,7 @@ func (p *Push) run() {
 	for {
 		select {
 		case <-p.quit:
-			canel()
+			cancel()
 			return
 		case e := <-p.entries:
 			payload, err := p.buildPayload(e)
