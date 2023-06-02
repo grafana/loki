@@ -167,8 +167,8 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		if printLogLine {
 			fmt.Println(log_line)
 		}
-    
-    timestamp := time.Now()
+
+		timestamp := time.Now()
 		match := parser.timestampRegex.FindStringSubmatch(log_line)
 		if len(match) > 0 {
 			timestamp, err = time.Parse(parser.timestampFormat, match[1])
