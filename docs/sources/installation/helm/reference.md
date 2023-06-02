@@ -1117,6 +1117,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.ingress.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway ingress</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
 			<td>TLS configuration for the gateway ingress</td>
@@ -3278,7 +3287,7 @@ Hard node and soft zone anti-affinity
 		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
-			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
+			<td>Enable autoscaling</td>
 			<td><pre lang="json">
 false
 </pre>
@@ -3892,7 +3901,8 @@ Hard node and soft zone anti-affinity
         "type": "Pods",
         "value": 1
       }
-    ]
+    ],
+    "stabilizationWindowSeconds": 3600
   },
   "scaleUp": {
     "policies": [
@@ -3902,8 +3912,7 @@ Hard node and soft zone anti-affinity
         "value": 1
       }
     ]
-  },
-  "stabilizationWindowSeconds": 3600
+  }
 }
 </pre>
 </td>

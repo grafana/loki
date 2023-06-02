@@ -954,7 +954,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			"unsharded",
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 			},
 		},
@@ -968,7 +968,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				nil,
 			),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 				labels.MustNewMatcher(
 					labels.MatchEqual,

@@ -1,6 +1,7 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- $usingObjectStorage := eq (include "loki.isUsingObjectStorage" .) "true" }}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
-{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) ( .Values.backend.autoscaling.enabled ) }}
+{{- if and $isSingleBinary $usingObjectStorage ( .Values.singleBinary.autoscaling.enabled ) }}
 {{- if $autoscalingv2 }}
 apiVersion: autoscaling/v2
 {{- else }}
@@ -8,22 +9,22 @@ apiVersion: autoscaling/v2beta1
 {{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.backendFullname" . }}
+  name: {{ include "loki.singleBinaryFullname" . }}
   labels:
-    {{- include "loki.backendLabels" . | nindent 4 }}
+    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: {{ include "loki.backendFullname" . }}   
-  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
-  {{- with .Values.backend.autoscaling.behavior }}
+    name: {{ include "loki.singleBinaryFullname" . }}
+  minReplicas: {{ .Values.singleBinary.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.singleBinary.autoscaling.maxReplicas }}
+  {{- with .Values.singleBinary.autoscaling.behavior }}
   behavior:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   metrics:
-  {{- with .Values.backend.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- with .Values.singleBinary.autoscaling.targetMemoryUtilizationPercentage }}
     - type: Resource
       resource:
         name: memory
@@ -35,7 +36,7 @@ spec:
         targetAverageUtilization: {{ . }}
         {{- end }}
   {{- end }}
-  {{- with .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+  {{- with .Values.singleBinary.autoscaling.targetCPUUtilizationPercentage }}
     - type: Resource
       resource:
         name: cpu

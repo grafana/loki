@@ -32,7 +32,7 @@ func Test_match(t *testing.T) {
 				{mustMatcher(labels.MatchEqual, "a", "1")},
 				{
 					mustMatcher(labels.MatchEqual, "b", "2"),
-					mustMatcher(labels.MatchEqual, "c", "3"),
+					mustMatcher(labels.MatchRegexp, "c", "3"),
 					mustMatcher(labels.MatchNotEqual, "d", "4"),
 				},
 			},
