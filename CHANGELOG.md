@@ -6,6 +6,8 @@
 
 ##### Enhancements
 
+* [9604](https://github.com/grafana/loki/pull/9604) **dannykopping**: Querier: configurable writeback queue bytes size
+
 ##### Fixes
 
 ##### Changes
