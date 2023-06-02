@@ -10,6 +10,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -37,7 +38,7 @@ type backgroundCache struct {
 	quit      chan struct{}
 	bgWrites  chan backgroundWrite
 	name      string
-	size      int
+	size      atomic.Int64
 	sizeLimit int
 
 	droppedWriteBack      prometheus.Counter
@@ -130,16 +131,16 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 		}
 
 		size := bgWrite.size()
-		newSize := c.size + size
-		if newSize > c.sizeLimit {
+		newSize := c.size.Load() + int64(size)
+		if newSize > int64(c.sizeLimit) {
 			c.failStore(ctx, size, num, "queue at byte size limit")
 			return nil
 		}
 
 		select {
 		case c.bgWrites <- bgWrite:
-			c.size = newSize
-			c.queueBytes.Set(float64(c.size))
+			c.size.Add(int64(size))
+			c.queueBytes.Set(float64(c.size.Load()))
 			c.queueLength.Add(float64(num))
 		default:
 			c.failStore(ctx, size, num, "queue at full capacity")
@@ -169,10 +170,10 @@ func (c *backgroundCache) writeBackLoop() {
 			if !ok {
 				return
 			}
-			c.size -= bgWrite.size()
+			c.size.Sub(int64(bgWrite.size()))
 
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
-			c.queueBytes.Set(float64(c.size))
+			c.queueBytes.Set(float64(c.size.Load()))
 			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
 			if err != nil {
 				level.Warn(util_log.Logger).Log("msg", "backgroundCache writeBackLoop Cache.Store fail", "err", err)
