@@ -25,7 +25,7 @@ func TestInjectAndExtractQueryLimits(t *testing.T) {
 
 func TestDeserializingQueryLimits(t *testing.T) {
 	// full limits
-	payload := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "queryTimeout": "5s", "maxQueryBytesRead": "1MB", "maxQuerierBytesRead": "1MB"}`
+	payload := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "maxQueryTime": "5s", "maxQueryBytesRead": "1MB", "maxQuerierBytesRead": "1MB"}`
 	limits, err := UnmarshalQueryLimits([]byte(payload))
 	require.NoError(t, err)
 	require.Equal(t, model.Duration(2*24*time.Hour), limits.MaxQueryLength)
@@ -55,7 +55,7 @@ func TestSerializingQueryLimits(t *testing.T) {
 
 	actual, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
-	expected := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "queryTimeout": "5s", "maxQueryBytesRead": "1MB"}`
+	expected := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "maxQueryTime": "5s", "maxQueryBytesRead": "1MB"}`
 	require.JSONEq(t, expected, string(actual))
 
 	// some limits are empty

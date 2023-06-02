@@ -202,12 +202,16 @@ func journalTargetWithReader(
 		for {
 			err := t.r.Follow(until, io.Discard)
 			if err != nil {
-				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+				if err == sdjournal.ErrExpired {
+					return
+				}
 
-				if err == sdjournal.ErrExpired || err == syscall.EBADMSG || err == io.EOF {
+				if err == syscall.EBADMSG || err == io.EOF || strings.HasPrefix(err.Error(), "failed to iterate journal:") {
 					level.Error(t.logger).Log("msg", "unable to follow journal", "err", err.Error())
 					return
 				}
+
+				level.Error(t.logger).Log("msg", "received unexpected error while following the journal", "err", err.Error())
 			}
 
 			// prevent tight loop

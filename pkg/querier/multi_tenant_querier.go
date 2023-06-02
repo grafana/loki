@@ -284,7 +284,7 @@ func (r relabel) relabel(original string) string {
 	}
 	builder.Set(defaultTenantLabel, r.tenantID)
 
-	lbls = builder.Labels(nil)
+	lbls = builder.Labels()
 	r.cache[original] = lbls
 	return lbls.String()
 }

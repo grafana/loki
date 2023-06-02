@@ -35,6 +35,42 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Index shipper multi-store support
+In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
+These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
+
+#### Shutdown marker file
+
+A shutdown marker file can be written by the `/ingester/prepare_shutdown` endpoint.
+If the new `ingester.shutdown_marker_path` config setting has a value that value is used.
+If not the`common.path_prefix` config setting is used if it has a value. Otherwise a warning is shown
+in the logs on startup and the `/ingester/prepare_shutdown` endpoint will return a 500 status code.
+
+#### Compactor multi-store support
+
+In previous releases, setting `-boltdb.shipper.compactor.shared-store` configured the following:
+- store used for managing delete requests.
+- store on which index compaction should be performed.
+
+If `-boltdb.shipper.compactor.shared-store` was not set, it used to default to the `object_store` configured in the latest `period_config` that uses either the tsdb or boltdb-shipper index.
+
+Compactor now supports index compaction on multiple buckets/object stores.
+And going forward loki will not set any defaults on `-boltdb.shipper.compactor.shared-store`, this has a couple of side effects detailed as follows:
+
+##### store on which index compaction should be performed:
+If `-boltdb.shipper.compactor.shared-store` is configured by the user, loki would run index compaction only on the store specified by the config.
+If not set, compaction would be performed on all the object stores that contain either a boltdb-shipper or tsdb index.
+
+##### store used for managing delete requests:
+A new config option `-boltdb.shipper.compactor.delete-request-store` decides where delete requests should be stored. This new option takes precedence over `-boltdb.shipper.compactor.shared-store`.
+
+In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
+
+
+## 2.8.0
+
+### Loki
+
 #### Change in LogQL behavior
 
 When there are duplicate labels in a log line, only the first value will be kept. Previously only the last value
@@ -85,7 +121,7 @@ The go build tag `promtail_journal_enabled` should be passed to include Journal 
 If you need Journal support you will need to run go build with tag `promtail_journal_enabled`:
 
 ```shell
-go build ./clients/cmd/promtail --tags=promtail_journal_enabled
+go build --tags=promtail_journal_enabled ./clients/cmd/promtail
 ```
 Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from installing libsystemd-dev/systemd-devel libraries if they don't need Journal support.
 
@@ -353,7 +389,7 @@ Following 2 compactor configs that were defined as command line arguments in jso
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
-# Supported types: gcs, s3, azure, swift, filesystem.
+# Supported types: gcs, s3, azure, swift, cos, filesystem.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 ```
@@ -489,7 +525,7 @@ We decided the default would be better to disable this sleep behavior but anyone
 * [4624](https://github.com/grafana/loki/pull/4624) **chaudum**: Disable chunk transfers in jsonnet lib
 
 This changes a few default values, resulting in the ingester WAL now being on by default,
-and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for its WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
 
 Previous defaults:
 ```yaml
@@ -1121,7 +1157,7 @@ exit
 docker run -d --name=loki --mount source=loki-data,target=/loki -p 3100:3100 grafana/loki:1.5.0
 ```
 
-Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/tree/master/cmd/loki/loki-docker-config.yaml).
+Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/blob/main/cmd/loki/loki-docker-config.yaml).
 
 The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.
 That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container.

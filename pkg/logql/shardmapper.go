@@ -4,9 +4,10 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"

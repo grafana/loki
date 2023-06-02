@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -28,7 +29,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
@@ -76,6 +76,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// This is used for template expansion in alerts, and represents the corresponding Grafana datasource UID.
+	DatasourceUID string `yaml:"datasource_uid"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
@@ -88,8 +90,6 @@ type Config struct {
 	StoreConfig RuleStoreConfig `yaml:"storage" doc:"deprecated|description=Use -ruler-storage. CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
-	// Maximum time to sleep before each rule evaluation.
-	EvaluationJitter time.Duration `yaml:"evaluation_jitter"`
 
 	// Global alertmanager config.
 	config.AlertManagerConfig `yaml:",inline"`
@@ -160,10 +160,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
-	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "Base URL of the Grafana instance.")
+	f.StringVar(&cfg.DatasourceUID, "ruler.datasource-uid", "", "Datasource UID for the dashboard.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
-	f.DurationVar(&cfg.EvaluationJitter, "ruler.evaluation-jitter", 0, "Upper bound of random duration to wait before rule evaluation to avoid contention during concurrent execution of rules. Set 0 to disable (default).")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of Alertmanager URLs to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via '-ruler.alertmanager-discovery'.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
@@ -377,11 +377,41 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
+type query struct {
+	Expr       string      `json:"expr"`
+	QueryType  string      `json:"queryType"`
+	Datasource *datasource `json:"datasource,omitempty"`
+}
+
+type datasource struct {
+	Type string `json:"type"`
+	UID  string `json:"uid"`
+}
+
+func grafanaLinkForExpression(expr, datasourceUID string) string {
+	exprStruct := query{
+		Expr:      expr,
+		QueryType: "range",
+	}
+
+	if datasourceUID != "" {
+		exprStruct.Datasource = &datasource{
+			Type: "loki",
+			UID:  datasourceUID,
+		}
+	}
+
+	marshaledExpression, _ := json.Marshal(exprStruct)
+	escapedExpression := url.QueryEscape(string(marshaledExpression))
+	str := `/explore?left={"queries":[%s]}`
+	return fmt.Sprintf(str, escapedExpression)
+}
+
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -390,7 +420,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: externalURL + grafanaLinkForExpression(expr, datasourceUID),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt

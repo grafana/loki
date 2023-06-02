@@ -17,13 +17,15 @@ type Evaluator interface {
 }
 
 type EvaluationConfig struct {
-	Mode string `yaml:"mode,omitempty"`
+	Mode      string        `yaml:"mode,omitempty"`
+	MaxJitter time.Duration `yaml:"max_jitter"`
 
 	QueryFrontend QueryFrontendConfig `yaml:"query_frontend,omitempty"`
 }
 
 func (c *EvaluationConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Mode, "ruler.evaluation.mode", EvalModeLocal, "The evaluation mode for the ruler. Can be either 'local' or 'remote'. If set to 'local', the ruler will evaluate rules locally. If set to 'remote', the ruler will evaluate rules remotely. If unset, the ruler will evaluate rules locally.")
+	f.DurationVar(&c.MaxJitter, "ruler.evaluation.max-jitter", 0, "Upper bound of random duration to wait before rule evaluation to avoid contention during concurrent execution of rules. Jitter is calculated consistently for a given rule. Set 0 to disable (default).")
 	c.QueryFrontend.RegisterFlags(f)
 }
 

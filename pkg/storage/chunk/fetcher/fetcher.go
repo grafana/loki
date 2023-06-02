@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
@@ -174,7 +175,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	log, ctx := spanlogger.New(ctx, "ChunkStore.FetchChunks")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "ChunkStore.FetchChunks")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3
@@ -201,9 +204,10 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	// to the cache asynchronously in the background and we lose the context
 	var bytes int
 	for _, c := range fromStorage {
-		bytes += c.Size()
+		size := c.Data.Size()
+		bytes += size
 
-		chunkFetchedSize.WithLabelValues("store").Observe(float64(c.Size()))
+		chunkFetchedSize.WithLabelValues("store").Observe(float64(size))
 	}
 
 	st := stats.FromContext(ctx)

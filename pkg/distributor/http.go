@@ -34,6 +34,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
+		d.writeFailuresManager.Log(tenantID, err)
+
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -75,6 +77,9 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		"code", http.StatusInternalServerError,
 		"err", err.Error(),
 	)
+
+	d.writeFailuresManager.Log(tenantID, err)
+
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)

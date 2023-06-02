@@ -32,7 +32,7 @@ func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
 	b := labels.NewBuilder(base)
 	b.Set(labels.MetricName, AlertForStateMetricName)
 	b.Set(labels.AlertName, alertName)
-	return b.Labels(nil)
+	return b.Labels()
 }
 
 type memstoreMetrics struct {
@@ -196,7 +196,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 			ruleKey = matcher.Value
 		}
 	}
-	ls := b.Labels(nil)
+	ls := b.Labels()
 	if ruleKey == "" {
 		level.Error(m.logger).Log("msg", "Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
 		return storage.NoopSeriesSet()
@@ -233,7 +233,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		return series.NewConcreteSeriesSet(
 			[]storage.Series{
 				series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
-					{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+					{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.F)},
 				}),
 			},
 		)
@@ -261,10 +261,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 		forStateVec = append(forStateVec, promql.Sample{
 			Metric: ForStateMetric(smpl.Metric, rule.Alert),
-			Point: promql.Point{
-				T: ts,
-				V: float64(checkTime.Unix()),
-			},
+			T:      ts,
+			F:      float64(checkTime.Unix()),
 		})
 
 	}
@@ -282,7 +280,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	return series.NewConcreteSeriesSet(
 		[]storage.Series{
 			series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
-				{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+				{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.F)},
 			}),
 		},
 	)

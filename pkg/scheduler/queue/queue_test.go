@@ -301,6 +301,36 @@ func TestContextCond(t *testing.T) {
 	})
 }
 
+func TestMaxQueueSize(t *testing.T) {
+	t.Run("queue size is tracked per tenant", func(t *testing.T) {
+		maxSize := 3
+		queue := NewRequestQueue(maxSize, 0, NewMetrics("query_scheduler", nil))
+		queue.RegisterQuerierConnection("querier")
+
+		// enqueue maxSize items with different actors
+		// different actors have individual channels with maxSize length
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, 0, nil))
+
+		// max queue length per tenant is tracked globally for all actors within a tenant
+		err := queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil)
+		assert.Equal(t, err, ErrTooManyRequests)
+
+		// dequeue and enqueue some items
+		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
+		assert.NoError(t, err)
+		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
+		assert.NoError(t, err)
+
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, 0, nil))
+
+		err = queue.Enqueue("tenant", []string{"user-c"}, 6, 0, nil)
+		assert.Equal(t, err, ErrTooManyRequests)
+	})
+}
+
 func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, msg string) {
 	t.Helper()
 

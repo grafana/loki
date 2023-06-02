@@ -5,20 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -26,9 +25,6 @@ const (
 	cacheCleanupInterval = time.Hour
 	daySeconds           = int64(24 * time.Hour / time.Second)
 )
-
-// regexp for finding the trailing index bucket number at the end of table name
-var extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
@@ -55,14 +51,15 @@ type Config struct {
 }
 
 type tableManager struct {
-	cfg                 Config
-	openIndexFileFunc   index.OpenIndexFileFunc
-	indexStorageClient  storage.Client
-	tableRangesToHandle config.TableRanges
+	cfg                Config
+	openIndexFileFunc  index.OpenIndexFileFunc
+	indexStorageClient storage.Client
+	tableRangeToHandle config.TableRange
 
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
 	metrics   *metrics
+	logger    log.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -72,22 +69,23 @@ type tableManager struct {
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
-	ownsTenantFn IndexGatewayOwnsTenant, tableRangesToHandle config.TableRanges, reg prometheus.Registerer) (TableManager, error) {
+	ownsTenantFn IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &tableManager{
-		cfg:                 cfg,
-		openIndexFileFunc:   openIndexFileFunc,
-		indexStorageClient:  indexStorageClient,
-		tableRangesToHandle: tableRangesToHandle,
-		ownsTenant:          ownsTenantFn,
-		tables:              make(map[string]Table),
-		metrics:             newMetrics(reg),
-		ctx:                 ctx,
-		cancel:              cancel,
+		cfg:                cfg,
+		openIndexFileFunc:  openIndexFileFunc,
+		indexStorageClient: indexStorageClient,
+		tableRangeToHandle: tableRangeToHandle,
+		ownsTenant:         ownsTenantFn,
+		tables:             make(map[string]Table),
+		metrics:            newMetrics(reg),
+		logger:             logger,
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 
 	// load the existing tables first.
@@ -125,18 +123,18 @@ func (tm *tableManager) loop() {
 		case <-syncTicker.C:
 			err := tm.syncTables(tm.ctx)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+				level.Error(tm.logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
 			err = tm.ensureQueryReadiness(tm.ctx)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
+				level.Error(tm.logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
 			err := tm.cleanupCache()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error cleaning up expired tables", "err", err)
+				level.Error(tm.logger).Log("msg", "error cleaning up expired tables", "err", err)
 			}
 		case <-tm.ctx.Done():
 			return
@@ -187,7 +185,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 		table, ok = tm.tables[tableName]
 		if !ok {
 			// table not found, creating one.
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
+			level.Info(tm.logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
 			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
 			err := util.EnsureDirectory(tablePath)
@@ -220,7 +218,7 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
 	}()
 
-	level.Info(util_log.Logger).Log("msg", "syncing tables")
+	level.Info(tm.logger).Log("msg", "syncing tables")
 
 	for _, table := range tm.tables {
 		err := table.Sync(ctx)
@@ -236,10 +234,10 @@ func (tm *tableManager) cleanupCache() error {
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
-	level.Info(util_log.Logger).Log("msg", "cleaning tables cache")
+	level.Info(tm.logger).Log("msg", "cleaning tables cache")
 
 	for name, table := range tm.tables {
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
+		level.Info(tm.logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
 		isEmpty, err := table.DropUnusedIndex(tm.cfg.CacheTTL, time.Now())
 		if err != nil {
 			return err
@@ -259,7 +257,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	distinctUsers := make(map[string]struct{})
 
 	defer func() {
-		level.Info(util_log.Logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
+		level.Info(tm.logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -291,13 +289,23 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	}
 
 	for _, tableName := range tables {
-		tableNumber, err := extractTableNumberFromName(tableName)
-		if err != nil {
-			return err
+		if tableName == deletion.DeleteRequestsTableName {
+			continue
 		}
 
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, tableName) {
+		if ok, err := tm.tableRangeToHandle.TableInRange(tableName); !ok {
+			if err != nil {
+				level.Error(tm.logger).Log("msg", "failed to run query readiness for table", "table-name", tableName, "err", err)
+			} else {
+				level.Debug(tm.logger).Log("msg", "skipping query readiness. table not in range", "table-name", tableName)
+			}
+
 			continue
+		}
+
+		tableNumber, err := config.ExtractTableNumberFromName(tableName)
+		if err != nil {
+			return fmt.Errorf("cannot extract table number from %s: %w", tableName, err)
 		}
 
 		// continue if the table is not within query readiness
@@ -338,7 +346,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 		ensureQueryReadinessDuration := time.Since(operationStart)
 
-		level.Info(util_log.Logger).Log(
+		level.Info(tm.logger).Log(
 			"msg", "index pre-download for query readiness completed",
 			"users_len", len(usersToBeQueryReadyFor),
 			"query_readiness_duration", ensureQueryReadinessDuration,
@@ -393,15 +401,17 @@ func (tm *tableManager) loadLocalTables() error {
 			continue
 		}
 
-		tableNumber, err := extractTableNumberFromName(entry.Name())
-		if err != nil {
-			return err
-		}
-		if tableNumber == -1 || !tm.tableRangesToHandle.TableInRange(tableNumber, entry.Name()) {
+		if ok, err := tm.tableRangeToHandle.TableInRange(entry.Name()); !ok {
+			if err != nil {
+				level.Error(tm.logger).Log("msg", "failed to load table", "table-name", entry.Name(), "err", err)
+			} else {
+				level.Debug(tm.logger).Log("msg", "skip loading table as it is not in range", "table-name", entry.Name())
+			}
+
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
+		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
 		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
 			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
@@ -415,21 +425,6 @@ func (tm *tableManager) loadLocalTables() error {
 	return nil
 }
 
-// extractTableNumberFromName extract the table number from a given tableName.
-// if the tableName doesn't match the regex, it would return -1 as table number.
-func extractTableNumberFromName(tableName string) (int64, error) {
-	match := extractTableNumberRegex.Find([]byte(tableName))
-	if match == nil {
-		return -1, nil
-	}
-
-	tableNumber, err := strconv.ParseInt(string(match), 10, 64)
-	if err != nil {
-		return -1, err
-	}
-
-	return tableNumber, nil
-}
 func getActiveTableNumber() int64 {
 	return getTableNumberForTime(model.Now())
 }

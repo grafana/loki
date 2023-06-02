@@ -87,9 +87,10 @@ type Scheduler struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	// Metrics.
-	queueLength              *prometheus.GaugeVec
-	discardedRequests        *prometheus.CounterVec
+	// queue metrics
+	queueMetrics *queue.Metrics
+
+	// scheduler metrics.
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
@@ -148,8 +149,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
-		queueLength:        queueMetrics.QueueLength,
-		discardedRequests:  queueMetrics.DiscardedRequests,
+		queueMetrics:       queueMetrics,
 
 		requestQueue: queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
 	}
@@ -727,8 +727,7 @@ func (s *Scheduler) stopping(_ error) error {
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
-	s.queueLength.DeleteLabelValues(user)
-	s.discardedRequests.DeleteLabelValues(user)
+	s.queueMetrics.Cleanup(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

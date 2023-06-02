@@ -2,7 +2,6 @@
 loki:
   querier:
     multi_tenant_queries_enabled: true
-
 enterprise:
   enabled: true
   adminToken:
@@ -30,5 +29,7 @@ monitoring:
     namespace: k3d-helm-cluster
     labels:
       release: "prometheus"
+read:
+  legacyReadTarget: false
 minio:
   enabled: true

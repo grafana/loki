@@ -196,7 +196,7 @@ func (c *chunkFiltererByExpr) pipelineExecChunk(ctx context.Context, cnk chunk.C
 		return &chunkWithKey{cnk: cnk, key: s.ExternalKey(cnk.ChunkRef), isPostFilter: false}, nil
 	}
 
-	streamPipeline := pipeline.ForStream(labels.NewBuilder(cnk.Metric).Del(labels.MetricName).Labels(nil))
+	streamPipeline := pipeline.ForStream(labels.NewBuilder(cnk.Metric).Del(labels.MetricName).Labels())
 	chunkData := cnk.Data
 	lazyChunk := LazyChunk{Chunk: cnk}
 	newCtr, statCtx := stats.NewContext(ctx)

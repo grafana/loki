@@ -70,6 +70,7 @@ when using or writing a third-party client.
 
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
+- [python-logging-loki](https://pypi.org/project/python-logging-loki/) (Python 3)
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [NLog-Targets-Loki](https://github.com/corentinaltepe/nlog.loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
@@ -77,3 +78,6 @@ when using or writing a third-party client.
 - [mjaron-tinyloki-java](https://github.com/mjfryc/mjaron-tinyloki-java) (Java)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
+- [ilogtail](https://github.com/alibaba/ilogtail) (Go)
+- [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
+- [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)

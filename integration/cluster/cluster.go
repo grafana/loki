@@ -20,11 +20,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/integration/util"
 
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -60,26 +62,22 @@ limits_config:
   per_stream_rate_limit_burst: 50MB
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
+  reject_old_samples: false
 
 storage_config:
+  named_stores:
+    filesystem:
+      store-1:
+        directory: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
-    shared_store: filesystem
     active_index_directory: {{.dataPath}}/index
     cache_location: {{.dataPath}}/boltdb-cache
-
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
+  tsdb_shipper:
+    active_index_directory: {{.dataPath}}/tsdb-index
+    cache_location: {{.dataPath}}/tsdb-cache
 
 compactor:
   working_directory: {{.dataPath}}/retention
-  shared_store: filesystem
   retention_enabled: true
 
 analytics:
@@ -91,6 +89,9 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 2048
 
 ruler:
   enable_api: true
@@ -104,7 +105,6 @@ ruler:
     local:
       directory: {{.sharedDataPath}}/rules
   rule_path: {{.sharedDataPath}}/prom-rule
-
 `))
 )
 
@@ -139,12 +139,14 @@ func (w *wrappedRegisterer) MustRegister(collectors ...prometheus.Collector) {
 
 type Cluster struct {
 	sharedPath    string
-	overridesFile string
 	components    []*Component
 	waitGroup     sync.WaitGroup
+	initedAt      model.Time
+	periodCfgs    []string
+	overridesFile string
 }
 
-func New(logLevel level.Value) *Cluster {
+func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	if logLevel != nil {
 		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
 	}
@@ -162,10 +164,17 @@ func New(logLevel level.Value) *Cluster {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
 
-	return &Cluster{
+	cluster := &Cluster{
 		sharedPath:    sharedPath,
+		initedAt:      model.Now(),
 		overridesFile: overridesFile,
 	}
+
+	for _, opt := range opts {
+		opt(cluster)
+	}
+
+	return cluster
 }
 
 func (c *Cluster) Run() error {
@@ -266,6 +275,11 @@ func (c *Component) ClusterSharedPath() string {
 	return c.cluster.sharedPath
 }
 
+// component should be restarted if it's already running for the new flags to take effect
+func (c *Component) AddFlags(flags ...string) {
+	c.flags = append(c.flags, flags...)
+}
+
 func (c *Component) HTTPURL() string {
 	return fmt.Sprintf("http://localhost:%s", port(c.loki.Server.HTTPListenAddr().String()))
 }
@@ -320,6 +334,9 @@ func (c *Component) writeConfig() error {
 func (c *Component) MergedConfig() ([]byte, error) {
 	var sb bytes.Buffer
 
+	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
+	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
+
 	if err := configTemplate.Execute(&sb, map[string]interface{}{
 		"dataPath":       c.dataPath,
 		"sharedDataPath": c.cluster.sharedPath,
@@ -329,6 +346,23 @@ func (c *Component) MergedConfig() ([]byte, error) {
 
 	merger := util.NewYAMLMerger()
 	merger.AddFragment(sb.Bytes())
+
+	// default to using boltdb index
+	if len(c.cluster.periodCfgs) == 0 {
+		c.cluster.periodCfgs = []string{boltDBShipperSchemaConfigTemplate}
+	}
+
+	for _, periodCfg := range c.cluster.periodCfgs {
+		var buf bytes.Buffer
+		if err := template.Must(template.New("schema").Parse(periodCfg)).
+			Execute(&buf, map[string]interface{}{
+				"curPeriodStart":        periodStart.String(),
+				"additionalPeriodStart": additionalPeriodStart.String(),
+			}); err != nil {
+			return nil, errors.New("error building schema_config")
+		}
+		merger.AddFragment(buf.Bytes())
+	}
 
 	for _, extra := range c.extraConfigs {
 		merger.AddFragment([]byte(extra))

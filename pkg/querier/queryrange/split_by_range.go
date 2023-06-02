@@ -28,13 +28,13 @@ type splitByRange struct {
 }
 
 // NewSplitByRangeMiddleware creates a new Middleware that splits log requests by the range interval.
-func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
+func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
 			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
 			next:   next,
 			limits: limits,
-			ng: logql.NewDownstreamEngine(logql.EngineOpts{LogExecutingQuery: false}, DownstreamHandler{
+			ng: logql.NewDownstreamEngine(engineOpts, DownstreamHandler{
 				limits: limits,
 				next:   next,
 			}, limits, logger),

@@ -73,6 +73,13 @@ func (m *OrcaLoadReport) Validate() error {
 
 	}
 
+	if m.GetRpsFractional() < 0 {
+		return OrcaLoadReportValidationError{
+			field:  "RpsFractional",
+			reason: "value must be greater than or equal to 0",
+		}
+	}
+
 	return nil
 }
 

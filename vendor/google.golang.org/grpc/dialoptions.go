@@ -44,6 +44,7 @@ func init() {
 		extraDialOptions = nil
 	}
 	internal.WithBinaryLogger = withBinaryLogger
+	internal.JoinDialOptions = newJoinDialOption
 }
 
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
@@ -109,6 +110,20 @@ func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
 	return &funcDialOption{
 		f: f,
 	}
+}
+
+type joinDialOption struct {
+	opts []DialOption
+}
+
+func (jdo *joinDialOption) apply(do *dialOptions) {
+	for _, opt := range jdo.opts {
+		opt.apply(do)
+	}
+}
+
+func newJoinDialOption(opts ...DialOption) DialOption {
+	return &joinDialOption{opts: opts}
 }
 
 // WithWriteBufferSize determines how much data can be batched before doing a

@@ -10,12 +10,12 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
@@ -39,13 +39,14 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	sa := NewServiceAccount(opts)
 	saToken := NewServiceAccountTokenSecret(opts)
 	svc := NewGatewayHTTPService(opts)
+	pdb := NewGatewayPodDisruptionBudget(opts)
 
 	ing, err := NewGatewayIngress(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	objs := []client.Object{cm, tenantSecret, dpl, sa, saToken, svc, ing}
+	objs := []client.Object{cm, tenantSecret, dpl, sa, saToken, svc, ing, pdb}
 
 	minTLSVersion := opts.TLSProfile.MinTLSVersion
 	ciphersList := opts.TLSProfile.Ciphers
@@ -80,16 +81,23 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&dpl.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
 
 	return objs, nil
 }
 
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		ServiceAccountName: GatewayName(opts.Name),
-		Affinity:           defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		ServiceAccountName:        GatewayName(opts.Name),
+		Affinity:                  configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
+		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelGatewayComponent, opts.Name),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -137,8 +145,11 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.write.endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
+					fmt.Sprintf("--logs.write-timeout=%s", opts.Timeouts.Gateway.UpstreamWriteTimeout),
 					fmt.Sprintf("--rbac.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRbacFileName)),
 					fmt.Sprintf("--tenants.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName)),
+					fmt.Sprintf("--server.read-timeout=%s", opts.Timeouts.Gateway.ReadTimeout),
+					fmt.Sprintf("--server.write-timeout=%s", opts.Timeouts.Gateway.WriteTimeout),
 				},
 				Ports: []corev1.ContainerPort{
 					{
@@ -202,9 +213,6 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
 	}
-
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -349,6 +357,30 @@ func NewServiceAccountTokenSecret(opts Options) client.Object {
 			Namespace: opts.Namespace,
 		},
 		Type: corev1.SecretTypeServiceAccountToken,
+	}
+}
+
+// NewGatewayPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// Gateway pods.
+func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	mu := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      GatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &mu,
+		},
 	}
 }
 
@@ -568,15 +600,4 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	}
 
 	return nil
-}
-
-func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
-	podSpec := d.Spec.Template.Spec
-
-	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
-	for i := range podSpec.Containers {
-		podSpec.Containers[i].SecurityContext = containerSecurityContext()
-	}
-
-	d.Spec.Template.Spec = podSpec
 }

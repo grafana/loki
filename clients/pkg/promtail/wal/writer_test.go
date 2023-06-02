@@ -62,11 +62,23 @@ func TestWriter_EntriesAreWrittenToWAL(t *testing.T) {
 	require.Equal(t, testLabels, readEntries[0].Labels)
 }
 
+type notifySegmentsCleanedFunc func(num int)
+
+func (n notifySegmentsCleanedFunc) NotifyWrite() {
+}
+
+func (n notifySegmentsCleanedFunc) SeriesReset(segmentNum int) {
+	n(segmentNum)
+}
+
 func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
 	dir := t.TempDir()
 
 	maxSegmentAge := time.Second * 2
+
+	subscriber1 := []int{}
+	subscriber2 := []int{}
 
 	writer, err := NewWriter(Config{
 		Dir:           dir,
@@ -77,6 +89,14 @@ func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 	defer func() {
 		writer.Stop()
 	}()
+
+	// add writer events subscriber. Add multiple to test fanout
+	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
+		subscriber1 = append(subscriber1, num)
+	}))
+	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
+		subscriber2 = append(subscriber2, num)
+	}))
 
 	// write entries to wal and sync
 	var testLabels = model.LabelSet{
@@ -126,6 +146,14 @@ func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 	_, err = os.Stat(filepath.Join(dir, "00000000"))
 	require.Error(t, err)
 	require.ErrorIs(t, err, os.ErrNotExist, "expected file not exists error")
+
+	// assert all subscribers were notified
+	require.Len(t, subscriber1, 1, "expected one segment reclaimed notification in subscriber1")
+	require.Equal(t, 0, subscriber1[0])
+
+	require.Len(t, subscriber2, 1, "expected one segment reclaimed notification in subscriber2")
+	require.Equal(t, 0, subscriber2[0])
+
 	// Expect last, or "head" segment to still be alive
 	_, err = os.Stat(filepath.Join(dir, "00000001"))
 	require.NoError(t, err)
@@ -137,6 +165,8 @@ func TestWriter_NoSegmentIsCleanedUpIfTheresOnlyOne(t *testing.T) {
 
 	maxSegmentAge := time.Second * 2
 
+	segmentsReclaimedNotificationsReceived := []int{}
+
 	writer, err := NewWriter(Config{
 		Dir:           dir,
 		Enabled:       true,
@@ -146,6 +176,11 @@ func TestWriter_NoSegmentIsCleanedUpIfTheresOnlyOne(t *testing.T) {
 	defer func() {
 		writer.Stop()
 	}()
+
+	// add writer events subscriber
+	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
+		segmentsReclaimedNotificationsReceived = append(segmentsReclaimedNotificationsReceived, num)
+	}))
 
 	// write entries to wal and sync
 	var testLabels = model.LabelSet{
@@ -188,6 +223,7 @@ func TestWriter_NoSegmentIsCleanedUpIfTheresOnlyOne(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(dir, "00000000"))
 	require.NoError(t, err)
+	require.Len(t, segmentsReclaimedNotificationsReceived, 0, "expected no notification")
 }
 
 func watchAndLogDirEntries(t *testing.T, path string) {

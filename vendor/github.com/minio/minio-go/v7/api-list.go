@@ -402,7 +402,7 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 
 		for {
 			// Get list of objects a maximum of 1000 per request.
-			result, err := c.listObjectVersionsQuery(ctx, bucketName, opts.Prefix, keyMarker, versionIDMarker, delimiter, opts.MaxKeys, opts.headers)
+			result, err := c.listObjectVersionsQuery(ctx, bucketName, opts, keyMarker, versionIDMarker, delimiter)
 			if err != nil {
 				sendObjectInfo(ObjectInfo{
 					Err: err,
@@ -422,6 +422,8 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 					IsLatest:       version.IsLatest,
 					VersionID:      version.VersionID,
 					IsDeleteMarker: version.isDeleteMarker,
+					UserTags:       version.UserTags,
+					UserMetadata:   version.UserMetadata,
 				}
 				select {
 				// Send object version info.
@@ -474,13 +476,13 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?prefix - Limits the response to keys that begin with the specified prefix.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix, keyMarker, versionIDMarker, delimiter string, maxkeys int, headers http.Header) (ListVersionsResult, error) {
+func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName string, opts ListObjectsOptions, keyMarker, versionIDMarker, delimiter string) (ListVersionsResult, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListVersionsResult{}, err
 	}
 	// Validate object prefix.
-	if err := s3utils.CheckValidObjectNamePrefix(prefix); err != nil {
+	if err := s3utils.CheckValidObjectNamePrefix(opts.Prefix); err != nil {
 		return ListVersionsResult{}, err
 	}
 	// Get resources properly escaped and lined up before
@@ -491,7 +493,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix
 	urlValues.Set("versions", "")
 
 	// Set object prefix, prefix value to be set to empty is okay.
-	urlValues.Set("prefix", prefix)
+	urlValues.Set("prefix", opts.Prefix)
 
 	// Set delimiter, delimiter value to be set to empty is okay.
 	urlValues.Set("delimiter", delimiter)
@@ -502,13 +504,17 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix
 	}
 
 	// Set max keys.
-	if maxkeys > 0 {
-		urlValues.Set("max-keys", fmt.Sprintf("%d", maxkeys))
+	if opts.MaxKeys > 0 {
+		urlValues.Set("max-keys", fmt.Sprintf("%d", opts.MaxKeys))
 	}
 
 	// Set version ID marker
 	if versionIDMarker != "" {
 		urlValues.Set("version-id-marker", versionIDMarker)
+	}
+
+	if opts.WithMetadata {
+		urlValues.Set("metadata", "true")
 	}
 
 	// Always set encoding-type
@@ -519,7 +525,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix
 		bucketName:       bucketName,
 		queryValues:      urlValues,
 		contentSHA256Hex: emptySHA256Hex,
-		customHeader:     headers,
+		customHeader:     opts.headers,
 	})
 	defer closeResponse(resp)
 	if err != nil {
@@ -897,6 +903,8 @@ func (c *Client) listMultipartUploadsQuery(ctx context.Context, bucketName, keyM
 }
 
 // listObjectParts list all object parts recursively.
+//
+//lint:ignore U1000 Keep this around
 func (c *Client) listObjectParts(ctx context.Context, bucketName, objectName, uploadID string) (partsInfo map[int]ObjectPart, err error) {
 	// Part number marker for the next batch of request.
 	var nextPartNumberMarker int

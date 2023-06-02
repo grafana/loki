@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -116,6 +117,10 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 			pr := existing.(*monitoringv1.PrometheusRule)
 			wantPr := desired.(*monitoringv1.PrometheusRule)
 			mutatePrometheusRule(pr, wantPr)
+		case *policyv1.PodDisruptionBudget:
+			pdb := existing.(*policyv1.PodDisruptionBudget)
+			wantPdb := desired.(*policyv1.PodDisruptionBudget)
+			mutatePodDisruptionBudget(pdb, wantPdb)
 
 		default:
 			t := reflect.TypeOf(existing).String()
@@ -129,6 +134,14 @@ func mergeWithOverride(dst, src interface{}) error {
 	err := mergo.Merge(dst, src, mergo.WithOverride)
 	if err != nil {
 		return kverrors.Wrap(err, "unable to mergeWithOverride", "dst", dst, "src", src)
+	}
+	return nil
+}
+
+func mergeWithOverrideEmpty(dst, src interface{}) error {
+	err := mergo.Merge(dst, src, mergo.WithOverwriteWithEmptyValue)
+	if err != nil {
+		return kverrors.Wrap(err, "unable to mergeWithOverrideEmpty", "dst", dst, "src", src)
 	}
 	return nil
 }
@@ -219,7 +232,7 @@ func mutateDeployment(existing, desired *appsv1.Deployment) error {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
+	if err := mergeWithOverrideEmpty(&existing.Spec.Template, desired.Spec.Template); err != nil {
 		return err
 	}
 	if err := mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy); err != nil {
@@ -235,8 +248,14 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) error {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
+	if err := mergeWithOverrideEmpty(&existing.Spec.Template, desired.Spec.Template); err != nil {
 		return err
 	}
 	return nil
+}
+
+func mutatePodDisruptionBudget(existing, desired *policyv1.PodDisruptionBudget) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
 }

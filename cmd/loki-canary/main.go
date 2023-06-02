@@ -128,6 +128,16 @@ func main() {
 			_, _ = fmt.Fprintf(os.Stderr, "TLS configuration error: %s\n", err.Error())
 			os.Exit(1)
 		}
+	} else if *useTLS && *insecureSkipVerify {
+		// Case where cert cannot be trusted but we are also not using mTLS.
+		tc.InsecureSkipVerify = *insecureSkipVerify
+
+		var err error
+		tlsConfig, err = config.NewTLSConfig(&tc)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "TLS configuration error: %s\n", err.Error())
+			os.Exit(1)
+		}
 	}
 
 	sentChan := make(chan time.Time)

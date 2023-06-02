@@ -1,11 +1,11 @@
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- if and .Values.podDisruptionBudget $isSingleBinary -}}
 ---
-apiVersion: policy/v1beta1
+apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ template "loki.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:

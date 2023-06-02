@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= v0.1.0
+VERSION ?= v0.3.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
@@ -33,14 +33,15 @@ REGISTRY_BASE_OPENSHIFT = quay.io/openshift-logging
 REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 
 # TODO(@periklis): Replace this image tag with VERSION once we have GH tags
-MAIN_IMAGE_TAG = main-39f2856
+MAIN_IMAGE_TAG = main-ac1c1fd
 
-# Customize for variants: community or openshift
+# Customize for variants: community, community-openshift or openshift
 VARIANT ?= community
 ifeq ($(VARIANT), openshift)
 ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
     REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
 endif
+    VERSION = v0.1.0
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
@@ -164,8 +165,9 @@ test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
 	@$(PROMTOOL) test rules ./internal/manifests/internal/alerts/testdata/test.yaml
 
 .PHONY: scorecard
-scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundles (community, openshift)
+scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundles (community, community-openshift, openshift)
 	$(OPERATOR_SDK) scorecard -c ./bundle/community/tests/scorecard/config.yaml bundle/community
+	$(OPERATOR_SDK) scorecard -c ./bundle/community-openshift/tests/scorecard/config.yaml bundle/community-openshift
 	$(OPERATOR_SDK) scorecard -c ./bundle/openshift/tests/scorecard/config.yaml bundle/openshift
 
 .PHONY: lint

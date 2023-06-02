@@ -68,9 +68,18 @@ func (m *RegexMatcher) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.EngineType.(type) {
-
+	switch v := m.EngineType.(type) {
 	case *RegexMatcher_GoogleRe2:
+		if v == nil {
+			err := RegexMatcherValidationError{
+				field:  "EngineType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if m.GetGoogleRe2() == nil {
 			err := RegexMatcherValidationError{
@@ -112,6 +121,8 @@ func (m *RegexMatcher) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -253,7 +264,16 @@ func (m *RegexMatchAndSubstitute) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for Substitution
+	if !_RegexMatchAndSubstitute_Substitution_Pattern.MatchString(m.GetSubstitution()) {
+		err := RegexMatchAndSubstituteValidationError{
+			field:  "Substitution",
+			reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
 
 	if len(errors) > 0 {
 		return RegexMatchAndSubstituteMultiError(errors)
@@ -334,6 +354,8 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = RegexMatchAndSubstituteValidationError{}
+
+var _RegexMatchAndSubstitute_Substitution_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
 
 // Validate checks the field values on RegexMatcher_GoogleRE2 with the rules
 // defined in the proto definition for this message. If any rules are

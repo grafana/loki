@@ -2,6 +2,13 @@ package openshift
 
 import (
 	"fmt"
+	"time"
+)
+
+const (
+	annotationGatewayRouteTimeout = "haproxy.router.openshift.io/timeout"
+
+	gatewayRouteTimeoutExtension = 15 * time.Second
 )
 
 var (

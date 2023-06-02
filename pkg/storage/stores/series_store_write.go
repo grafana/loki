@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -20,6 +21,12 @@ var (
 		Namespace: "loki",
 		Name:      "chunk_store_deduped_chunks_total",
 		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
+	})
+
+	DedupedBytesTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "chunk_store_deduped_bytes_total",
+		Help:      "Count of bytes from chunks which were not stored because they have already been stored by another replica.",
 	})
 
 	IndexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
@@ -59,7 +66,9 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 // PutOne implements Store
 func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.PutOne")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	var (
@@ -78,6 +87,13 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 	if len(found) > 0 && !overlap {
 		writeChunk = false
 		DedupedChunksTotal.Inc()
+		encoded, err := chk.Encoded()
+		if err != nil {
+			level.Error(log).Log("msg", "failed to encode chunk, cannot record compressed de-duped chunk size", "err", err)
+		} else {
+			DedupedBytesTotal.Add(float64(len(encoded)))
+		}
+
 	}
 
 	// If we dont have to write the chunk and DisableIndexDeduplication is false, we do not have to do anything.

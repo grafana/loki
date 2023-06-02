@@ -527,6 +527,9 @@ const minBatchSize = 1000
 // As an optimization, to increase the batch size for each flush, loopy yields the processor, once
 // if the batch size is too low to give stream goroutines a chance to fill it up.
 func (l *loopyWriter) run() (err error) {
+	// Always flush the writer before exiting in case there are pending frames
+	// to be sent.
+	defer l.framer.writer.Flush()
 	for {
 		it, err := l.cbuf.get(true)
 		if err != nil {
@@ -650,16 +653,18 @@ func (l *loopyWriter) headerHandler(h *headerFrame) error {
 		itl:   &itemList{},
 		wq:    h.wq,
 	}
-	str.itl.enqueue(h)
-	return l.originateStream(str)
+	return l.originateStream(str, h)
 }
 
-func (l *loopyWriter) originateStream(str *outStream) error {
-	hdr := str.itl.dequeue().(*headerFrame)
+func (l *loopyWriter) originateStream(str *outStream, hdr *headerFrame) error {
+	// l.draining is set when handling GoAway. In which case, we want to avoid
+	// creating new streams.
+	if l.draining {
+		// TODO: provide a better error with the reason we are in draining.
+		hdr.onOrphaned(errStreamDrain)
+		return nil
+	}
 	if err := hdr.initStream(str.id); err != nil {
-		if err == errStreamDrain { // errStreamDrain need not close transport
-			return nil
-		}
 		return err
 	}
 	if err := l.writeHeader(str.id, hdr.endStream, hdr.hf, hdr.onWrite); err != nil {
@@ -757,7 +762,7 @@ func (l *loopyWriter) cleanupStreamHandler(c *cleanupStream) error {
 			return err
 		}
 	}
-	if l.side == clientSide && l.draining && len(l.estdStreams) == 0 {
+	if l.draining && len(l.estdStreams) == 0 {
 		return errors.New("finished processing active streams while in draining mode")
 	}
 	return nil
@@ -812,7 +817,6 @@ func (l *loopyWriter) goAwayHandler(g *goAway) error {
 }
 
 func (l *loopyWriter) closeConnectionHandler() error {
-	l.framer.writer.Flush()
 	// Exit loopyWriter entirely by returning an error here.  This will lead to
 	// the transport closing the connection, and, ultimately, transport
 	// closure.

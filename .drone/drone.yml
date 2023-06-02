@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.28.1
+    - 0.28.3
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.28.1
+    - 0.28.3
     username:
       from_secret: docker_username
   when:
@@ -93,14 +93,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: check-generated-files
 - commands:
   - cd ..
@@ -110,7 +110,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: clone-target-branch
   when:
     event:
@@ -121,7 +121,7 @@ steps:
   - clone-target-branch
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: test
 - commands:
   - cd ../loki-target-branch
@@ -129,7 +129,7 @@ steps:
   depends_on:
   - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: test-target-branch
   when:
     event:
@@ -142,7 +142,7 @@ steps:
   - test
   - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: compare-coverage
   when:
     event:
@@ -160,7 +160,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: report-coverage
   when:
     event:
@@ -170,7 +170,7 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -178,7 +178,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -189,28 +189,38 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false check-doc
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: check-doc
+- commands:
+  - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.28.3
+  name: check-format
+  when:
+    event:
+    - pull_request
 - commands:
   - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: check-example-config-doc
 - commands:
   - mkdir -p /hugo/content/docs/loki/latest
@@ -243,7 +253,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: loki-mixin-check
   when:
     event:
@@ -268,7 +278,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1164,7 +1174,7 @@ name: manifest
 steps:
 - depends_on:
   - clone
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-promtail
   settings:
     ignore_missing: false
@@ -1177,7 +1187,7 @@ steps:
 - depends_on:
   - clone
   - manifest-promtail
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki
   settings:
     ignore_missing: false
@@ -1190,7 +1200,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-canary
   settings:
     ignore_missing: false
@@ -1203,7 +1213,7 @@ steps:
 - depends_on:
   - clone
   - manifest-loki-canary
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-loki-operator
   settings:
     ignore_missing: false
@@ -1266,9 +1276,7 @@ trigger:
   - tag
   ref:
   - refs/heads/main
-  - refs/heads/k???
   - refs/tags/v*
-  - refs/pull/*/head
 ---
 depends_on:
 - manifest
@@ -1411,6 +1419,16 @@ services:
     path: /sys/fs/cgroup
 steps:
 - commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: gpg_private_key
+  image: alpine
+  name: skip pipeline if missing secret
+- commands:
   - apk add --no-cache bash git
   - git fetch origin --tags
   image: alpine
@@ -1421,7 +1439,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1429,7 +1447,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1455,7 +1473,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: publish
   when:
     event:
@@ -1489,7 +1507,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.28.1
+  image: grafana/loki-build-image:0.28.3
   name: build and push
   privileged: true
   volumes:
@@ -1523,8 +1541,19 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
+- commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: ecr_key
+  image: alpine
+  name: skip pipeline if missing secret
 - depends_on:
   - image-tag
+  - skip pipeline if missing secret
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -1581,8 +1610,19 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
+- commands:
+  - if [ "$${#TEST_SECRET}" -eq 0 ]; then
+  - '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed
+    as a branch in main grafana/loki repository in order to run." && exit 78'
+  - fi
+  environment:
+    TEST_SECRET:
+      from_secret: ecr_key
+  image: alpine
+  name: skip pipeline if missing secret
 - depends_on:
   - image-tag
+  - skip pipeline if missing secret
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -1650,7 +1690,7 @@ steps:
 - depends_on:
   - clone
   - ecr-login
-  image: plugins/manifest
+  image: plugins/manifest:1.4.0
   name: manifest-lambda-promtail
   settings:
     ignore_missing: true
@@ -1732,6 +1772,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: b5d3d292a9e1f7edc909dd0aa28664f1aa5794f4abe639dc1df8d9bbea5b5c13
+hmac: 81437a4d7383dd556801f441c1510191471ae0349da15361a0b661bdc44bb8cd
 
 ...

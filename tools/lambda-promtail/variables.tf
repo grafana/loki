@@ -113,3 +113,9 @@ variable "kinesis_stream_name" {
   description = "Enter kinesis name if kinesis stream is configured as event source in lambda."
   default     = []
 }
+
+variable "sqs_enabled" {
+  type        = bool
+  description = "Enables sending S3 logs to an SQS queue which will trigger lambda-promtail, unsuccessfully processed message are sent to a dead-letter-queue"
+  default     = false
+}

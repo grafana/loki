@@ -29,6 +29,7 @@ import (
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -54,7 +55,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
@@ -95,11 +95,11 @@ type Config struct {
 	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
 	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist" doc:"hidden"`
+	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
-	UsageReport   usagestats.Config    `yaml:"analytics"`
+	Analytics     analytics.Config     `yaml:"analytics"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
 
@@ -165,7 +165,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
-	c.UsageReport.RegisterFlags(f)
+	c.Analytics.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -191,6 +191,8 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		fs.Var(f.Value, f.Name, f.Usage)
 	})
+
+	c.Server.DisableRequestSuccessLog = true
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -365,15 +367,13 @@ type Loki struct {
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware basetripper.Tripperware
 	queryScheduler           *scheduler.Scheduler
-	usageReport              *usagestats.Reporter
+	usageReport              *analytics.Reporter
 	indexGatewayRingManager  *indexgateway.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
-
-	ingesterRelease *atomic.Bool
 }
 
 // New makes a new Loki.
@@ -383,7 +383,7 @@ func New(cfg Config) (*Loki, error) {
 		clientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 	}
-	usagestats.Edition("oss")
+	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
@@ -483,6 +483,8 @@ func (t *Loki) Run(opts RunOpts) error {
 		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
+
+	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LevelHandler(&t.Cfg.Server.LogLevel))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
@@ -634,7 +636,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
-	mm.RegisterModule(UsageReport, t.initUsageReport)
+	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 
 	mm.RegisterModule(All, nil)
@@ -645,22 +647,22 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		UsageReport:              {},
+		Analytics:                {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
-		Store:                    {Overrides, IndexGatewayRing},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, UsageReport, CacheGenerationLoader},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
+		Store:                    {Overrides, IndexGatewayRing, IngesterQuerier},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
+		Querier:                  {Store, Ring, Server, Overrides, Analytics, CacheGenerationLoader},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
-		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
-		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, UsageReport},
-		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
-		TableManager:             {Server, UsageReport},
-		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV, IndexGatewayRing},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
+		RuleEvaluator:            {Ring, Server, Store, Overrides, TenantConfigs, Analytics},
+		TableManager:             {Server, Analytics},
+		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
+		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing},
 		IngesterQuerier:          {Ring},
 		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
@@ -701,11 +703,6 @@ func (t *Loki) setupModuleManager() error {
 		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
 			return err
 		}
-	}
-
-	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
-		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes
@@ -755,7 +752,7 @@ func (t *Loki) setupModuleManager() error {
 	t.ModuleManager = mm
 
 	if t.isModuleActive(Ingester) {
-		if err := mm.AddDependency(UsageReport, Ring); err != nil {
+		if err := mm.AddDependency(Analytics, Ring); err != nil {
 			return err
 		}
 	}

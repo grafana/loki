@@ -32,19 +32,19 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 The distributor can also rate limit incoming logs based on the maximum per-tenant bitrate. It does this by checking a per tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/second before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
 
-**Note: The distributor uses the `ring` component under the hood to register itself amongst it's peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{<relref "../../../configuration#distributor">}}).**
+**Note: The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{<relref "../../../configuration#distributor">}}).**
 
 ### Forwarding
 
-Once the distributor has performed all of it's validation duties, it forwards data to the ingester component which is ultimately responsible for acknowledging the write.
+Once the distributor has performed all of its validation duties, it forwards data to the ingester component which is ultimately responsible for acknowledging the write.
 
 #### Replication factor
 
 In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication_factor_ of them. Generally, this is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will error if less than a _quorum_ of writes succeed. A quorum is defined as `floor(replication_factor / 2) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write can be retried.
 
-**Caveat: There's also an edge case where we acknowledge a write if 2 of the three ingesters do which means that in the case where 2 writes succeed, we can only lose one ingester before suffering data loss.**
+**Caveat: If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.**
 
-Replication factor isn't the only thing that prevents data loss, though, and arguably these days it's main purpose is to allow writes to continue uninterrupted during rollouts & restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
+Replication factor isn't the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts & restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
 
 ### Hashing
 
@@ -224,7 +224,7 @@ Caching log (filter, regexp) queries are under active development.
 
 ## Querier
 
-The **querier** service handles queries using the [LogQL]({{<relref "../../../logql/">}}) query
+The **querier** service handles queries using the [LogQL]({{<relref "../../../query/">}}) query
 language, fetching logs both from the ingesters and from long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to
@@ -232,4 +232,6 @@ running the same query against the backend store. Because of the replication
 factor, it is possible that the querier may receive duplicate data. To resolve
 this, the querier internally **deduplicates** data that has the same nanosecond
 timestamp, label set, and log message.
+
+At read path, [replication factor]({{< relref "#replication-factor" >}}) also plays a role here. For example with `replication-factor` of `3`, we require that two queries to be running. 
 

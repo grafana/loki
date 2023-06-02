@@ -429,13 +429,13 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
-		require.Equal(t, len(a.Points), len(b.Points))
+		require.Equal(t, len(a.Floats), len(b.Floats))
 
-		for j := 0; j < len(a.Points); j++ {
-			aSample := &a.Points[j]
-			aSample.V = math.Round(aSample.V*1e6) / 1e6
-			bSample := &b.Points[j]
-			bSample.V = math.Round(bSample.V*1e6) / 1e6
+		for j := 0; j < len(a.Floats); j++ {
+			aSample := &a.Floats[j]
+			aSample.F = math.Round(aSample.F*1e6) / 1e6
+			bSample := &b.Floats[j]
+			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
 		require.Equal(t, a, b)
 	}

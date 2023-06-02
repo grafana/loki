@@ -19,9 +19,11 @@ var noParserHints = &Hints{}
 type ParserHint interface {
 	// Tells if a label with the given key should be extracted.
 	ShouldExtract(key string) bool
+
 	// Tells if there's any hint that start with the given prefix.
 	// This allows to speed up key searching in nested structured like json.
 	ShouldExtractPrefix(prefix string) bool
+
 	// Tells if we should not extract any labels.
 	// For example in :
 	//		 sum(rate({app="foo"} | json [5m]))
@@ -31,10 +33,19 @@ type ParserHint interface {
 	// Holds state about what's already been extracted for the associated
 	// labels. This assumes that only required labels are ever extracted
 	RecordExtracted(string)
+
+	// Returns true if all the extracted labels have already been extracted
 	AllRequiredExtracted() bool
+
+	// Resets the state of extracted labels
 	Reset()
+
 	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
+
+	// ShouldContinueParsingLine ShouldContinueParsing line retruns true when there is no label matcher for the
+	// provided label or the passed label and value match what's in the pipeline
+	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 }
 
 type Hints struct {
@@ -42,6 +53,8 @@ type Hints struct {
 	requiredLabels      []string
 	shouldPreserveError bool
 	extracted           []string
+	labelFilters        []LabelFilterer
+	labelNames          []string
 }
 
 func (p *Hints) ShouldExtract(key string) bool {
@@ -101,32 +114,67 @@ func (p *Hints) Reset() {
 	p.extracted = p.extracted[:0]
 }
 
-// NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func (p *Hints) PreserveError() bool {
 	return p.shouldPreserveError
 }
 
+func (p *Hints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
+	for i := 0; i < len(p.labelNames); i++ {
+		if p.labelNames[i] == labelName {
+			_, matches := p.labelFilters[i].Process(0, nil, lbs)
+			return matches
+		}
+	}
+	return true
+}
+
 // NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *Hints {
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string, stages []Stage) *Hints {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
 	hints = appendLabelHints(hints, metricLabelName)
 	hints = uniqueString(hints)
 
+	// Save the names next to the filters to avoid an alloc when f.RequiredLabelNames() is called
+	var labelNames []string
+	var labelFilters []LabelFilterer
+	for _, s := range stages {
+		switch f := s.(type) {
+		case *BinaryLabelFilter:
+			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
+			// we should be able to add this to our filters
+			continue
+		case LabelFilterer:
+			if len(f.RequiredLabelNames()) > 1 {
+				// Hints can only operate on one label at a time
+				continue
+			}
+			labelFilters = append(labelFilters, f)
+			labelNames = append(labelNames, f.RequiredLabelNames()...)
+		}
+	}
+
 	extracted := make([]string, 0, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
-			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
+			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints), labelFilters: labelFilters, labelNames: labelNames}
 		}
 		return &Hints{noLabels: true}
 	}
+
+	ph := &Hints{labelFilters: labelFilters, labelNames: labelNames}
+
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
 	// no hints available then.
 	if without || len(groups) == 0 {
-		return noParserHints
+		return ph
 	}
+
+	ph.requiredLabels = hints
+	ph.shouldPreserveError = containsError(hints)
+
 	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 }
 
