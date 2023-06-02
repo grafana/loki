@@ -182,7 +182,7 @@ func (p *Push) buildPayload(e entry) ([]byte, error) {
 
 // run pulls lines out of the channel and sends them to Loki
 func (p *Push) run() {
-	ctx, canel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
 		close(p.done)
 	}()
