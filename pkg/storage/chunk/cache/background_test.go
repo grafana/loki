@@ -19,9 +19,9 @@ func TestBackground(t *testing.T) {
 	require.NoError(t, err)
 
 	c := cache.NewBackground("mock", cache.BackgroundConfig{
-		WriteBackGoroutines:      1,
-		WriteBackBuffer:          100,
-		WriteBackBufferSizeLimit: flagext.ByteSize(limit),
+		WriteBackGoroutines: 1,
+		WriteBackBuffer:     100,
+		WriteBackSizeLimit:  flagext.ByteSize(limit),
 	}, cache.NewMockCache(), nil)
 
 	s := config.SchemaConfig{
@@ -47,9 +47,9 @@ func TestBackgroundSizeLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	c := cache.NewBackground("mock", cache.BackgroundConfig{
-		WriteBackGoroutines:      1,
-		WriteBackBuffer:          100,
-		WriteBackBufferSizeLimit: flagext.ByteSize(limit),
+		WriteBackGoroutines: 1,
+		WriteBackBuffer:     100,
+		WriteBackSizeLimit:  flagext.ByteSize(limit),
 	}, cache.NewMockCache(), nil)
 
 	ctx := context.Background()

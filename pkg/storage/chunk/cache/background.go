@@ -18,17 +18,17 @@ import (
 
 // BackgroundConfig is config for a Background Cache.
 type BackgroundConfig struct {
-	WriteBackGoroutines      int              `yaml:"writeback_goroutines"`
-	WriteBackBuffer          int              `yaml:"writeback_buffer"`
-	WriteBackBufferSizeLimit flagext.ByteSize `yaml:"writeback_buffer_size_limit"`
+	WriteBackGoroutines int              `yaml:"writeback_goroutines"`
+	WriteBackBuffer     int              `yaml:"writeback_buffer"`
+	WriteBackSizeLimit  flagext.ByteSize `yaml:"writeback_size_limit"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *BackgroundConfig) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
 	f.IntVar(&cfg.WriteBackGoroutines, prefix+"background.write-back-concurrency", 10, description+"At what concurrency to write back to cache.")
 	f.IntVar(&cfg.WriteBackBuffer, prefix+"background.write-back-buffer", 10000, description+"How many key batches to buffer for background write-back.")
-	cfg.WriteBackBufferSizeLimit.Set("1GB")
-	f.Var(&cfg.WriteBackBufferSizeLimit, prefix+"background.write-back-buffer-size-limit", description+"Size limit of buffer for background write-back.")
+	cfg.WriteBackSizeLimit.Set("1GB")
+	f.Var(&cfg.WriteBackSizeLimit, prefix+"background.write-back-size-limit", description+"Size limit in bytes for background write-back.")
 }
 
 type backgroundCache struct {
@@ -69,7 +69,7 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheu
 		quit:      make(chan struct{}),
 		bgWrites:  make(chan backgroundWrite, cfg.WriteBackBuffer),
 		name:      name,
-		sizeLimit: cfg.WriteBackBufferSizeLimit.Val(),
+		sizeLimit: cfg.WriteBackSizeLimit.Val(),
 
 		droppedWriteBack: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   "loki",
@@ -80,21 +80,21 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheu
 		droppedWriteBackBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   "loki",
 			Name:        "cache_dropped_background_writes_bytes_total",
-			Help:        "Volume of chunk data dropped in write backs to cache.",
+			Help:        "Amount of data dropped in write backs to cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		queueLength: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace:   "loki",
 			Name:        "cache_background_queue_length",
-			Help:        "Length of the cache background write queue.",
+			Help:        "Length of the cache background writeback queue.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		queueBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace:   "loki",
 			Name:        "cache_background_queue_bytes",
-			Help:        "Volume of chunk bytes of the cache background write queue.",
+			Help:        "Amount of data in the background writeback queue.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 	}
