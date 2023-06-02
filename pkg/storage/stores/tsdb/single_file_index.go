@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -202,6 +203,9 @@ func (i *TSDBIndex) forPostings(
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TSDBIndex.GetChunkRefs")
+	defer sp.Finish()
+
 	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		for _, chk := range chks {
 			res = append(res, ChunkRef{
@@ -220,6 +224,8 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 }
 
 func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TSDBIndex.Series")
+	defer sp.Finish()
 	if res == nil {
 		res = SeriesPool.Get()
 	}
@@ -240,7 +246,10 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 	return res, nil
 }
 
-func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (i *TSDBIndex) LabelNames(ctx context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TSDBIndex.LabelNames")
+	defer sp.Finish()
+
 	if len(matchers) == 0 {
 		return i.reader.LabelNames()
 	}
@@ -248,7 +257,10 @@ func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, mat
 	return labelNamesWithMatchers(i.reader, matchers...)
 }
 
-func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (i *TSDBIndex) LabelValues(ctx context.Context, _ string, _, _ model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TSDBIndex.LabelValues")
+	defer sp.Finish()
+
 	if len(matchers) == 0 {
 		return i.reader.LabelValues(name)
 	}
@@ -270,6 +282,9 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "TSDBIndex.Stats")
+	defer sp.Finish()
+
 	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
