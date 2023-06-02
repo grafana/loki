@@ -118,6 +118,7 @@ func (c *chunkFiltererByExpr) PostFetchFilter(ctx context.Context, chunks []chun
 	if strings.Contains(preFilterLogql, "line_format") {
 		//removeLineFmt(postFilterLogSelector)
 		//removeLineFmtAbel = true
+		//trigger ci
 		log.Span.LogFields(otlog.String("resultPostFilterPreFilterLogql", postFilterLogSelector.String()))
 		return chunks, nil, nil
 	}
