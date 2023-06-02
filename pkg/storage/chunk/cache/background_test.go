@@ -58,8 +58,8 @@ func TestBackgroundSizeLimit(t *testing.T) {
 	const secondKey = "second"
 	first := make([]byte, 10e3)  // 10KB
 	second := make([]byte, 10e3) // 10KB
-	rand.Read(first)
-	rand.Read(second)
+	_, _ = rand.Read(first)
+	_, _ = rand.Read(second)
 
 	// store the first 10KB
 	require.NoError(t, c.Store(ctx, []string{firstKey}, [][]byte{first}))
