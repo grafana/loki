@@ -308,7 +308,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	now := time.Now()
 	req.enqueueTime = now
-	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
+	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "Frontend.queued")
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)

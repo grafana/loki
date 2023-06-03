@@ -343,7 +343,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	now := time.Now()
 
 	req.parentSpanContext = parentSpanContext
-	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "queued", opentracing.ChildOf(parentSpanContext))
+	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "Scheduler.queued", opentracing.ChildOf(parentSpanContext))
 	req.queueTime = now
 	req.ctxCancel = cancel
 
