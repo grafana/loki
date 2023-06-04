@@ -18,6 +18,8 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+var shouldCachePostings = false
+
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
@@ -120,13 +122,20 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
+func NewTSDBIndexFromFile(location string) (Index, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
+	var idx Index
+	if shouldCachePostings {
+		idx = NewCachedPostingsTSDBIndex(reader)
+	} else {
+		idx = NewTSDBIndex(reader)
+	}
+
+	return idx, func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
