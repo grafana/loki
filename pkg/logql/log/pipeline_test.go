@@ -145,7 +145,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__",
 			[]Stage{
-				NewLogfmtParser(false),
+				NewLogfmtParser(true),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -182,7 +182,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__ with matching value",
 			[]Stage{
-				NewLogfmtParser(false),
+				NewLogfmtParser(true),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
