@@ -77,7 +77,7 @@ func dYAML(y []byte) Source {
 	}
 }
 
-func ConfigFileLoader(args []string, name string, strict bool) Source {
+func ConfigFileLoader(args []string, name string, strict, fallbackToNonStrict bool) Source {
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
 
@@ -113,6 +113,10 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 			}
 			if _, err := os.Stat(val); err == nil {
 				err := YAML(val, expandEnv, strict)(dst)
+				if err != nil && strict && fallbackToNonStrict {
+					fmt.Fprintln(freshFlags.Output(), "Loading configuration failed, trying non-strict YAML decoding", err)
+					err = YAML(val, expandEnv, false)(dst)
+				}
 				if err != nil && !expandEnv {
 					err = fmt.Errorf("%w. Use `-config.expand-env=true` flag if you want to expand environment variables in your config file", err)
 				}
