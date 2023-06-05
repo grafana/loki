@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/config"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 type mockIndexShipperIndexIterator struct {
@@ -55,7 +56,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
 				},
-			}),
+			}, index.FormatV3),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -64,7 +65,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
 				},
-			}),
+			}, index.FormatV3),
 		},
 	}
 
@@ -113,7 +114,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{fizz="buzz"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
-			}),
+			}, index.FormatV3),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -130,7 +131,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{ping="pong"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
-			}),
+			}, index.FormatV3),
 		},
 	}
 

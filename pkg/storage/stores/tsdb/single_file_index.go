@@ -109,6 +109,27 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 	return f.getRawFileReader()
 }
 
+func (f *TSDBFile) Version() (int, error) {
+	r, err := f.getRawFileReader()
+	if err != nil {
+		return 0, err
+	}
+
+  // index.MagicIndex is 4 bytes, version is after that
+	_, err = r.Seek(4, io.SeekStart)
+	if err != nil {
+		return 0, err
+	}
+
+	version := make([]byte, 1)
+	_, err = r.Read(version)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(version[0]), nil
+}
+
 // nolint
 // TSDBIndex is backed by an IndexReader
 // and translates the IndexReader to an Index implementation

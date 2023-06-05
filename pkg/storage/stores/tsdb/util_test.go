@@ -17,8 +17,8 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
-	b := NewBuilder(index.LiveFormat)
+func BuildIndex(t testing.TB, dir string, cases []LoadableSeries, version int) *TSDBFile {
+	b := NewBuilder(version)
 
 	for _, s := range cases {
 		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks)

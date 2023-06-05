@@ -67,7 +67,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases)
+				return BuildIndex(t, t.TempDir(), cases, index.FormatV3)
 			},
 		},
 		{
@@ -249,7 +249,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	})
+	}, index.FormatV3)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -307,7 +307,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, index.FormatV3)
 
 	// Create the test cases
 	testCases := []struct {
@@ -370,5 +370,35 @@ func TestTSDBIndex_Stats(t *testing.T) {
 			require.Equal(t, tc.expectedErr, err)
 			require.Equal(t, tc.expected, *acc)
 		})
+	}
+}
+
+func TestTSDBFile_Version(t *testing.T) {
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+			},
+		},
+	}
+
+	tempDir := t.TempDir()
+	for _, v := range []int{
+		index.FormatV1,
+		index.FormatV2,
+		index.FormatV3,
+	} {
+		tsdbIndex := BuildIndex(t, tempDir, series, v)
+
+		version, err := tsdbIndex.Version()
+		require.NoError(t, err)
+		require.Equal(t, v, version)
 	}
 }

@@ -115,9 +115,9 @@ func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex
 	return nil
 }
 
-func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDir string, ts time.Time) string {
+func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDir string, ts time.Time, version int) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
-	b := NewBuilder(index.LiveFormat)
+	b := NewBuilder(version)
 	for userID, streams := range userStreams {
 		for _, stream := range streams {
 			lb := labels.NewBuilder(stream.labels)
@@ -153,9 +153,9 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 	return dst.Path()
 }
 
-func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time.Time) string {
+func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time.Time, version int) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
-	b := NewBuilder(index.LiveFormat)
+	b := NewBuilder(version)
 	for _, stream := range streams {
 		b.AddSeries(
 			stream.labels,
@@ -520,7 +520,7 @@ func TestCompactor_Compact(t *testing.T) {
 								userStreams[userID] = append(userStreams[userID], stream)
 							}
 						}
-						setupMultiTenantIndex(t, userStreams, tablePathInStorage, multiTenantIndexConfig.createdAt)
+						setupMultiTenantIndex(t, userStreams, tablePathInStorage, multiTenantIndexConfig.createdAt, index.FormatV3)
 					}
 
 					// setup per-tenant indexes i.e compacted ones
@@ -538,7 +538,7 @@ func TestCompactor_Compact(t *testing.T) {
 								stream = buildStream(streamConfig.labels, streamConfig.chunkMetas, "")
 								streams = append(streams, stream)
 							}
-							setupPerTenantIndex(t, streams, filepath.Join(tablePathInStorage, userID), perTenantIndexConfig.createdAt)
+							setupPerTenantIndex(t, streams, filepath.Join(tablePathInStorage, userID), perTenantIndexConfig.createdAt, index.FormatV3)
 						}
 					}
 
@@ -617,6 +617,144 @@ func TestCompactor_Compact(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestCompactor_Compact_UsesTSDBIndexVersionFromPeriodConfig(t *testing.T) {
+	now := model.Now()
+	periodConfigs := []config.PeriodConfig{
+		{
+			IndexTables:      config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+			Schema:           "v12",
+			IndexType:        config.TSDBType,
+			TSDBIndexVersion: index.FormatV2,
+			From:             config.DayTime{Time: now.Add(-time.Hour * 25)},
+		},
+		{
+			IndexTables:      config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+			Schema:           "v12",
+			IndexType:        config.TSDBType,
+			TSDBIndexVersion: index.FormatV3,
+			From:             config.DayTime{Time: now},
+		},
+	}
+
+	tableRanges := []config.TableRange{
+		periodConfigs[0].GetIndexTableNumberRange(config.DayTime{Time: now.Add(-24 * time.Hour)}),
+		periodConfigs[1].GetIndexTableNumberRange(config.DayTime{Time: now}),
+	}
+	indexBkts := indexBuckets(now.Add(-25*time.Hour), now, tableRanges)
+	require.Len(t, indexBkts, 2)
+
+	for i, tbl := range indexBkts {
+		lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
+
+		tempDir := t.TempDir()
+		objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+		tablePathInStorage := filepath.Join(objectStoragePath, tbl.tableName)
+		tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tbl.tableName)
+
+		require.NoError(t, util.EnsureDirectory(objectStoragePath))
+		require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+		require.NoError(t, util.EnsureDirectory(tableWorkingDirectory))
+
+		createdAt := time.Unix(0, 0)
+		userStreams := map[string][]stream{}
+		tenantIndexPaths := map[string]string{}
+		for _, userID := range []string{"user1", "user2"} {
+			userStreams[userID] = []stream{}
+
+			// unique s for user with user_id label
+			s := buildStream(lbls1, buildChunkMetas(0, 5), userID)
+			userStreams[userID] = append(userStreams[userID], s)
+
+			// without user_id label
+			s = buildStream(lbls1, buildChunkMetas(0, 5), "")
+			userStreams[userID] = append(userStreams[userID], s)
+
+			var streams []stream
+			// unique stream for user with user_id label
+			s = buildStream(lbls1, buildChunkMetas(6, 10), userID)
+			streams = append(streams, s)
+
+			// without user_id label
+			s = buildStream(lbls1, buildChunkMetas(6, 10), "")
+			streams = append(streams, s)
+			p := setupPerTenantIndex(t, streams, filepath.Join(tablePathInStorage, userID), createdAt, periodConfigs[i].TSDBIndexVersion)
+			tenantIndexPaths[userID] = p
+		}
+		setupMultiTenantIndex(t, userStreams, tablePathInStorage, createdAt, periodConfigs[i].TSDBIndexVersion)
+
+		// build the clients and index sets
+		objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+		require.NoError(t, err)
+
+		_, commonPrefixes, err := objectClient.List(context.Background(), tbl.tableName, "/")
+		require.NoError(t, err)
+
+		initializedIndexSets := map[string]compactor.IndexSet{}
+		initializedIndexSetsMtx := sync.Mutex{}
+		existingUserIndexSets := make(map[string]compactor.IndexSet, len(commonPrefixes))
+		for _, commonPrefix := range commonPrefixes {
+			userID := path.Base(string(commonPrefix))
+			idxSet, err := newMockIndexSet(userID, tbl.tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
+			require.NoError(t, err)
+
+			existingUserIndexSets[userID] = idxSet
+			initializedIndexSets[userID] = idxSet
+		}
+
+		commonIndexSet, err := newMockIndexSet("", tbl.tableName, tableWorkingDirectory, objectClient)
+		require.NoError(t, err)
+
+		// build TableCompactor and compact the index
+		tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
+			idxSet, err := newMockIndexSet(userID, tbl.tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
+			require.NoError(t, err)
+
+			initializedIndexSetsMtx.Lock()
+			defer initializedIndexSetsMtx.Unlock()
+			initializedIndexSets[userID] = idxSet
+			return idxSet, nil
+		}, periodConfigs[i])
+
+		require.NoError(t, tCompactor.CompactTable())
+
+		// expect user1 and user2 to each have a compacted index
+		require.Len(t, tCompactor.compactedIndexes, 2)
+
+		indexCompactor := NewIndexCompactor()
+		for userID, compactedIdx := range tCompactor.compactedIndexes {
+			require.NotNil(t, initializedIndexSets[userID].(*mockIndexSet).compactedIndex)
+
+			// now convert the compactedIndex to index.Index and verify the chunkmetas again
+			indexFile, err := compactedIdx.ToIndexFile()
+			require.NoError(t, err)
+
+			version, err := indexFile.(*TSDBFile).Version()
+			require.NoError(t, err)
+			require.Equal(t, tbl.version, version)
+
+			// now read it back from disk to make sure it has the correct version
+			compactedIndexFromDisk, err := indexCompactor.OpenCompactedIndexFile(
+				context.Background(),
+				tenantIndexPaths[userID],
+				tbl.tableName,
+				userID,
+				filepath.Join(tableWorkingDirectory, userID),
+				periodConfigs[i],
+				log.NewNopLogger(),
+			)
+
+			require.NoError(t, err)
+
+			indexFile, err = compactedIndexFromDisk.ToIndexFile()
+			require.NoError(t, err)
+
+			version, err = indexFile.(*TSDBFile).Version()
+			require.NoError(t, err)
+			require.Equal(t, tbl.version, version)
+		}
 	}
 }
 

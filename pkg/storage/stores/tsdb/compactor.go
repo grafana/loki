@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -47,7 +48,23 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 		}
 	}()
 
-	builder := NewBuilder(index.LiveFormat)
+	version, err := indexFile.(*TSDBFile).Version()
+	if err != nil {
+		return nil, err
+	}
+
+	if version != periodConfig.TSDBIndexVersion {
+		return nil, errors.New(
+			fmt.Sprintf(
+				"opened TSDB Index file with version %d that does not match the TSDBIndexVersion %d of the period config from %s",
+				version,
+				periodConfig.TSDBIndexVersion,
+				periodConfig.From,
+			),
+		)
+	}
+
+	builder := NewBuilder(version)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
@@ -149,7 +166,7 @@ func (t *tableCompactor) CompactTable() error {
 			}
 		}
 
-		builder, err := setupBuilder(t.ctx, userID, existingUserIndexSet, multiTenantIndices)
+		builder, err := setupBuilder(t.ctx, userID, t.periodConfig.TSDBIndexVersion, existingUserIndexSet, multiTenantIndices)
 		if err != nil {
 			return err
 		}
@@ -169,7 +186,7 @@ func (t *tableCompactor) CompactTable() error {
 			continue
 		}
 
-		builder, err := setupBuilder(t.ctx, userID, srcIdxSet, []Index{})
+		builder, err := setupBuilder(t.ctx, userID, t.periodConfig.TSDBIndexVersion, srcIdxSet, []Index{})
 		if err != nil {
 			return err
 		}
@@ -191,9 +208,9 @@ func (t *tableCompactor) CompactTable() error {
 
 // setupBuilder creates a Builder for a single user.
 // It combines the users index from multiTenantIndexes and its existing compacted index(es)
-func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
+func setupBuilder(ctx context.Context, userID string, version int, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
-	builder := NewBuilder(index.LiveFormat)
+	builder := NewBuilder(version)
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
