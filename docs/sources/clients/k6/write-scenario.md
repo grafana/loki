@@ -60,7 +60,7 @@ These parameters can be adjusted in the load test:
     or remote) machine is easy to set up and fine for smaller Loki clusters,
     the single machine does not load test large Loki installations,
     because it cannot create the data to saturate the write path.
-    For larger tests, consider [these optimizations](https://k6.io/docs/testing-guides/running-large-tests/), or run them in [Grafana Cloud k6](https://grafana.com/products/cloud/k6) or a Kubernetes cluster with the [k6 Operator](https://github.com/grafana/k6-operator).
+    For larger tests, consider [these optimizations](https://k6.io/docs/testing-guides/running-large-tests/), or run them in [Grafana Cloud k6](/products/cloud/k6) or a Kubernetes cluster with the [k6 Operator](https://github.com/grafana/k6-operator).
 
 ## Metrics
 
