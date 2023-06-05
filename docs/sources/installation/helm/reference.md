@@ -3278,7 +3278,7 @@ Hard node and soft zone anti-affinity
 		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
-			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
+			<td>Enable autoscaling</td>
 			<td><pre lang="json">
 false
 </pre>
