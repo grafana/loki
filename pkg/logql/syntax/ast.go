@@ -940,6 +940,18 @@ func IsLogicalBinOp(op string) bool {
 	}
 }
 
+func IsGlobalFilter(expr Expr) bool {
+	result := false
+	expr.Walk(func(e interface{}) {
+		switch e.(type) {
+		case *DistinctFilterExpr:
+			result = true
+			break
+		}
+	})
+	return result
+}
+
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
