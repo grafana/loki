@@ -262,10 +262,12 @@ func tryScanFlag(l *Scanner) (string, bool) {
 
 		_, _ = sb.WriteRune(r)
 		_ = s.Next()
+
 		consumed++
 	}
 
-	if consumed == 0 {
+	// atleast one more rune besides '-' should be consumed to consider this a valid flag
+	if consumed <= 1 {
 		return "", false
 	}
 
