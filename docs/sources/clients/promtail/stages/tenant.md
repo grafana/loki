@@ -103,10 +103,18 @@ scrape_configs:
     
     pipeline_stages:
     - match:
-        selector: '{namespace=".+"}'
+        selector: '{namespace=~".+"}'
         stages:
           - tenant:
               label: "namespace"
     - output:
          source: message
 ```
+
+The pipeline would:
+
+1. Match any log where the `namespace` label matched the regexp `.+`
+1. Process the `match` stage checking if the `{namespace=~".+"}` selector matches
+   and - whenever it matches - run the sub stages. The `tenant` sub stage
+   would override the tenant with the value with the value of the `namespace` label,
+   if it was set.
