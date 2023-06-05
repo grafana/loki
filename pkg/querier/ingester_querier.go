@@ -120,9 +120,9 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
-		stats.FromContext(ctx).AddIngesterReached(1)
-		return client.QuerySample(ctx, params.SampleQueryRequest)
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		stats.FromContext(innerCtx).AddIngesterReached(1)
+		return client.QuerySample(innerCtx, params.SampleQueryRequest)
 	})
 	if err != nil {
 		return nil, err
