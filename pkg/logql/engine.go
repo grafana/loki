@@ -510,14 +510,13 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 
-	globalPipeline, err := parseGlobalPipeline(logql)
+	globalPipeline, err := syntax.ParseGlobalPipeline(logql)
 	if err != nil {
 		return nil, err
 	}
 	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
 
-		// global filter.
 		if globalPipeline != nil {
 			lbs, err := syntax.ParseLabels(labels)
 			if err != nil {
@@ -556,28 +555,6 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	}
 	sort.Sort(result)
 	return result, i.Error()
-}
-
-func parseGlobalPipeline(logql string) (syntax.Pipeline, error) {
-	expr, err := syntax.ParseExpr(logql)
-	if err != nil {
-		return nil, err
-	}
-	isGlobalFilter := syntax.IsGlobalFilter(expr)
-	var globalPipeline syntax.Pipeline
-	if isGlobalFilter {
-		switch e := expr.(type) {
-		case syntax.LogSelectorExpr:
-			pipeline, err := e.Pipeline()
-			if err != nil {
-				return nil, err
-			}
-			globalPipeline = pipeline
-		default:
-			return nil, errors.New("Unexpected type (%T): cannot evaluate")
-		}
-	}
-	return globalPipeline, nil
 }
 
 type groupedAggregation struct {
