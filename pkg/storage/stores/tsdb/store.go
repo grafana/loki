@@ -39,7 +39,7 @@ type store struct {
 // NewStore creates a new tsdb index ReaderWriter.
 func NewStore(
 	name string,
-	indexShipperCfg indexshipper.Config,
+	indexShipperCfg IndexCfg,
 	schemaCfg config.SchemaConfig,
 	f *fetcher.Fetcher,
 	objectClient client.ObjectClient,
@@ -69,12 +69,16 @@ func NewStore(
 	return storeInstance, storeInstance.Stop, nil
 }
 
-func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
+func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+
+	if indexCfg.cachePostings {
+		shouldCachePostings = true
+	}
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
-		indexShipperCfg,
+		indexCfg.Config,
 		objectClient,
 		limits,
 		nil,
@@ -90,7 +94,7 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 	var indices []Index
 	opts := DefaultIndexClientOptions()
 
-	if indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
+	if indexCfg.Mode == indexshipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
 		// for the Stats() methods as it's of relatively little
 		// benefit when compared to the memory cost. The bloom filters
@@ -100,8 +104,8 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 		opts.UseBloomFilters = false
 	}
 
-	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
-		nodeName, err := indexShipperCfg.GetUniqueUploaderName()
+	if indexCfg.Mode != indexshipper.ModeReadOnly {
+		nodeName, err := indexCfg.GetUniqueUploaderName()
 		if err != nil {
 			return err
 		}
@@ -110,7 +114,7 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 		tsdbManager := NewTSDBManager(
 			name,
 			nodeName,
-			indexShipperCfg.ActiveIndexDirectory,
+			indexCfg.ActiveIndexDirectory,
 			s.indexShipper,
 			tableRange,
 			schemaCfg,
@@ -121,7 +125,7 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 		headManager := NewHeadManager(
 			name,
 			s.logger,
-			indexShipperCfg.ActiveIndexDirectory,
+			indexCfg.ActiveIndexDirectory,
 			tsdbMetrics,
 			tsdbManager,
 		)

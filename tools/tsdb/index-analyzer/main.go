@@ -34,7 +34,7 @@ func main() {
 	tableRanges := getIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
 	shipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig,
+		conf.StorageConfig.TSDBShipperConfig.Config,
 		objectClient,
 		overrides,
 		nil,

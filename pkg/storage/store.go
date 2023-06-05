@@ -215,7 +215,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if p.IndexType == config.TSDBType {
-		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
+		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig.Config) {
 			// inject the index-gateway client into the index store
 			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, indexClientLogger)
 			if err != nil {

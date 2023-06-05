@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -20,6 +21,12 @@ type ChunkRef struct {
 	Fingerprint model.Fingerprint
 	Start, End  model.Time
 	Checksum    uint32
+}
+
+type IndexCfg struct {
+	indexshipper.Config
+
+	cachePostings bool
 }
 
 // Compares by (Start, End)
