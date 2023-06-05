@@ -1255,6 +1255,8 @@ func (e *VectorAggregationExpr) Shardable() bool {
 			// cleaner. For now I'm disallowing sharding on both.
 			case *LabelParserExpr:
 				shardable = false
+			case *LogfmtParserExpr:
+				shardable = false
 			}
 		})
 		return shardable
