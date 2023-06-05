@@ -202,6 +202,8 @@ A service(s) is rate limiting at least 10% of all incoming requests.
 | `label_value_too_long` | `maxLabelValueLength` |
 | `line_too_long` | `maxLineSize` |
 | `max_label_names_per_series` | `maxLabelNamesPerSeries` |
+| `Per stream rate limit exceeded` | `perStreamRateLimit`, `perStreamRateLimitBurst` |
+
 
 ## Loki Storage Slow Write
 
