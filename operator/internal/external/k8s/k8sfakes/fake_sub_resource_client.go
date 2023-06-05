@@ -5,9 +5,8 @@ import (
 	"context"
 	"sync"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	"github.com/grafana/loki/operator/internal/external/k8s"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type FakeSubResourceClient struct {
