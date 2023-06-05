@@ -115,7 +115,7 @@ func (f *TSDBFile) Version() (int, error) {
 		return 0, err
 	}
 
-  // index.MagicIndex is 4 bytes, version is after that
+	// index.MagicIndex is 4 bytes, version is after that
 	_, err = r.Seek(4, io.SeekStart)
 	if err != nil {
 		return 0, err
