@@ -946,7 +946,7 @@ func IsGlobalFilter(expr Expr) bool {
 		switch e.(type) {
 		case *DistinctFilterExpr:
 			result = true
-			break
+			return
 		}
 	})
 	return result
