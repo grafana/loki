@@ -153,6 +153,8 @@ func (t *tailer) readLines() {
 		t.running.Store(false)
 		level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
 		close(t.done)
+		// Shut down the position marker thread
+		close(t.posquit)
 	}()
 	entries := t.handler.Chan()
 	for {
@@ -222,10 +224,6 @@ func (t *tailer) Stop() {
 	// stop can be called by two separate threads in filetarget, to avoid a panic closing channels more than once
 	// we wrap the stop in a sync.Once.
 	t.stopOnce.Do(func() {
-		// Shut down the position marker thread
-		close(t.posquit)
-		<-t.posdone
-
 		// Save the current position before shutting down tailer
 		err := t.MarkPositionAndSize()
 		if err != nil {
@@ -239,6 +237,8 @@ func (t *tailer) Stop() {
 		}
 		// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 		<-t.done
+		// Wait for the position marker thread to exit
+		<-t.posdone
 		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 		t.handler.Stop()
 	})

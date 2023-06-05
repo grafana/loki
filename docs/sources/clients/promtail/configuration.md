@@ -356,7 +356,7 @@ is restarted to allow it to continue from where it left off.
 ## scrape_configs
 
 The `scrape_configs` block configures how Promtail can scrape logs from a series
-of targets using a specified discovery method:
+of targets using a specified discovery method. Promtail uses the same [Prometheus scrape_configs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config). This means if you already own a Prometheus instance, the config will be very similar:
 
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
@@ -592,7 +592,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
+a configurable [LogQL]({{<relref "../../query/">}}) stream selector.
 
 ```yaml
 match:
@@ -917,7 +917,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../api#push-log-entries-to-loki">}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../reference/api#push-log-entries-to-loki">}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1050,7 +1050,7 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
 
@@ -1108,11 +1108,9 @@ connection_string: <string> | default = "range"
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
-
-**Available Labels:**
 
 - `__azure_event_hubs_category`: The log category of the message when a message is an application log.
 
@@ -1211,7 +1209,7 @@ labels:
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
-**Available Labels:**
+#### Available Labels
 
 The list of labels below are discovered when consuming kafka:
 
@@ -1255,7 +1253,7 @@ use_incoming_timestamp: <bool>
 
 ```
 
-**Available Labels:**
+#### Available Labels
 
 - `__gelf_message_level`: The GELF level as string.
 - `__gelf_message_host`: The host sending the GELF message.

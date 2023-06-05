@@ -3,13 +3,13 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -105,11 +105,24 @@ const (
 	kubernetesNodeOSLabel       = "kubernetes.io/os"
 	kubernetesNodeOSLinux       = "linux"
 	kubernetesNodeHostnameLabel = "kubernetes.io/hostname"
-	kubernetesCompomentLabel    = "app.kubernetes.io/component"
+	kubernetesComponentLabel    = "app.kubernetes.io/component"
 	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
 )
 
+const (
+	// lokiDefaultQueryTimeout contains the default query timeout. It should match the value mentioned in the CRD
+	// definition and also the default in the `sizes.go`.
+	lokiDefaultQueryTimeout    = 3 * time.Minute
+	lokiDefaultHTTPIdleTimeout = 30 * time.Second
+	lokiQueryWriteDuration     = 1 * time.Minute
+
+	gatewayReadDuration  = 30 * time.Second
+	gatewayWriteDuration = 2 * time.Minute
+)
+
 var (
+	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
+
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
 	podAntiAffinityComponents = map[string]struct{}{
@@ -135,6 +148,26 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
+func componentInstaceLabels(component string, stackName string) map[string]string {
+	return map[string]string{
+		kubernetesInstanceLabel:  stackName,
+		kubernetesComponentLabel: component,
+	}
+}
+
+// defaultTopologySpreadConstraints returns a topology spread contraint that will
+// instruct the scheduler to try and schedule pods from the same component in different nodes
+func defaultTopologySpreadConstraints(component string, stackName string) []corev1.TopologySpreadConstraint {
+	return []corev1.TopologySpreadConstraint{{
+		MaxSkew:     1,
+		TopologyKey: kubernetesNodeHostnameLabel,
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: componentInstaceLabels(component, stackName),
+		},
+		WhenUnsatisfiable: corev1.ScheduleAnyway,
+	}}
+}
+
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
@@ -143,7 +176,7 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	return annotations
 }
 
-func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpreadConstraint {
+func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
 	var tsc []corev1.TopologySpreadConstraint
 	if len(spec.Zones) > 0 {
 		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
@@ -152,6 +185,12 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpr
 				MaxSkew:           int32(z.MaxSkew),
 				TopologyKey:       z.TopologyKey,
 				WhenUnsatisfiable: corev1.DoNotSchedule,
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						kubernetesComponentLabel: component,
+						kubernetesInstanceLabel:  stackName,
+					},
+				},
 			}
 		}
 	}
@@ -162,7 +201,7 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec) []corev1.TopologySpr
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		kubernetesCompomentLabel: component,
+		kubernetesComponentLabel: component,
 	})
 }
 
@@ -485,10 +524,13 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 // configureAffinity returns an Affinity struture that can be used directly
 // in a Deployment/StatefulSet. Parameters will affected configuration of the
 // different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
-func configureAffinity(labels labels.Set, enableNodeAffinity bool) *corev1.Affinity {
+func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool, cSpec *lokiv1.LokiComponentSpec) *corev1.Affinity {
 	affinity := &corev1.Affinity{
 		NodeAffinity:    defaultNodeAffinity(enableNodeAffinity),
-		PodAntiAffinity: defaultPodAntiAffinity(labels),
+		PodAntiAffinity: defaultPodAntiAffinity(componentLabel, stackName),
+	}
+	if cSpec.PodAntiAffinity != nil {
+		affinity.PodAntiAffinity = cSpec.PodAntiAffinity
 	}
 
 	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
@@ -524,13 +566,7 @@ func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 
 // defaultPodAntiAffinity for components in podAntiAffinityComponents will
 // configure pods, of a LokiStack, to preferably not run on the same node
-func defaultPodAntiAffinity(labels labels.Set) *corev1.PodAntiAffinity {
-	// This code assumes that this function will never be called with a set of labels
-	// that don't have the "component" and "instance" labels since we enforce those on
-	// all the components of the LokiStack
-	componentLabel := labels[kubernetesCompomentLabel]
-	stackName := labels[kubernetesInstanceLabel]
-
+func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAffinity {
 	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
 	if !enablePodAntiAffinity {
 		return nil
@@ -542,10 +578,7 @@ func defaultPodAntiAffinity(labels labels.Set) *corev1.PodAntiAffinity {
 				Weight: 100,
 				PodAffinityTerm: corev1.PodAffinityTerm{
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": componentLabel,
-							"app.kubernetes.io/instance":  stackName,
-						},
+						MatchLabels: componentInstaceLabels(componentLabel, stackName),
 					},
 					TopologyKey: kubernetesNodeHostnameLabel,
 				},
@@ -585,27 +618,4 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
-}
-
-func containerSecurityContext() *corev1.SecurityContext {
-	return &corev1.SecurityContext{
-		AllowPrivilegeEscalation: pointer.Bool(false),
-		Capabilities: &corev1.Capabilities{
-			Drop: []corev1.Capability{"ALL"},
-		},
-	}
-}
-
-func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
-	context := corev1.PodSecurityContext{
-		RunAsNonRoot: pointer.Bool(true),
-	}
-
-	if withSeccompProfile {
-		context.SeccompProfile = &corev1.SeccompProfile{
-			Type: corev1.SeccompProfileTypeRuntimeDefault,
-		}
-	}
-
-	return &context
 }

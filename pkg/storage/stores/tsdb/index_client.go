@@ -115,8 +115,10 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
-	// TODO(owen-d): use a pool to reduce allocs here
-	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	chks := ChunkRefsPool.Get()
+	defer ChunkRefsPool.Put(chks)
+
+	chks, err = c.idx.GetChunkRefs(ctx, userID, from, through, chks, shard, matchers...)
 	kvps = append(kvps,
 		"chunks", len(chks),
 		"indexErr", err,
@@ -172,6 +174,9 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Stats")
+	defer sp.Finish()
+
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -217,6 +222,18 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 		return nil, err
 	}
 	res := acc.Stats()
+
+	sp.LogKV(
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"intervals", len(intervals),
+		"streams", res.Streams,
+		"chunks", res.Chunks,
+		"bytes", res.Bytes,
+		"entries", res.Entries,
+	)
 
 	return &res, nil
 }

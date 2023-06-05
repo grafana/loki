@@ -227,3 +227,59 @@ func TestForInterval(t *testing.T) {
 		})
 	}
 }
+
+func TestGetFactorOfTime(t *testing.T) {
+	for _, tc := range []struct {
+		desc                                string
+		from, through, extentMin, extentMax int64
+		exp                                 float64
+	}{
+		{
+			desc: "equal",
+			from: 10, through: 20,
+			extentMin: 10, extentMax: 20,
+			exp: 1,
+		},
+		{
+			desc: "50% overlap on left",
+			from: 10, through: 20,
+			extentMin: 5, extentMax: 15,
+			exp: 0.5,
+		},
+		{
+			desc: "50% overlap on right",
+			from: 10, through: 20,
+			extentMin: 15, extentMax: 25,
+			exp: 0.5,
+		},
+		{
+			desc: "10% overlap on right",
+			from: 15, through: 16,
+			extentMin: 15, extentMax: 25,
+			exp: 0.1,
+		},
+		{
+			desc: "no overlap",
+			from: 10, through: 20,
+			extentMin: 25, extentMax: 35,
+			exp: 0,
+		},
+		{
+			desc: "no overlap, through=extentMin",
+			from: 10, through: 20,
+			extentMin: 20, extentMax: 35,
+			exp: 0,
+		},
+		{
+			desc: "factor would be NaN",
+			from: 1685655637000000000, through: 1685656237000000000,
+			extentMin: 1685656107442496000, extentMax: 1685656107442496000,
+			exp: 1,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			factor := GetFactorOfTime(tc.from, tc.through, tc.extentMin, tc.extentMax)
+			require.Equal(t, tc.exp, factor)
+		})
+	}
+}

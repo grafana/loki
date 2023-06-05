@@ -80,7 +80,7 @@ type multilineState struct {
 	currentLines   uint64        // The number of lines of the current multiline block.
 }
 
-// newMulitlineStage creates a MulitlineStage from config
+// newMultilineStage creates a MulitlineStage from config
 func newMultilineStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg := &MultilineConfig{}
 	err := mapstructure.WeakDecode(config, cfg)

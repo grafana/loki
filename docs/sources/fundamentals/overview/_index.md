@@ -31,7 +31,7 @@ Each stream identifies a set of logs associated with a unique set of labels.
 A quality set of labels is key to the creation of an index that is both compact
 and allows for efficient query execution.
 
-[LogQL]({{<relref "../../logql">}}) is the query language for Loki.
+[LogQL]({{<relref "../../query">}}) is the query language for Loki.
 
 ## Loki features
 

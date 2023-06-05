@@ -617,7 +617,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		case jsonparser.Null:
 			lbs.Set(key, "")
 		default:
-			lbs.Set(key, unsafeGetString(data))
+			lbs.Set(key, unescapeJSONString(data))
 		}
 
 		matches++
