@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
