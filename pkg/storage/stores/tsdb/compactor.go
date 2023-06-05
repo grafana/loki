@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -54,13 +53,11 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}
 
 	if version != periodConfig.TSDBIndexVersion {
-		return nil, errors.New(
-			fmt.Sprintf(
-				"opened TSDB Index file with version %d that does not match the TSDBIndexVersion %d of the period config from %s",
-				version,
-				periodConfig.TSDBIndexVersion,
-				periodConfig.From,
-			),
+		return nil, fmt.Errorf(
+			"opened TSDB Index file with version %d that does not match the TSDBIndexVersion %d of the period config from %s",
+			version,
+			periodConfig.TSDBIndexVersion,
+			periodConfig.From,
 		)
 	}
 
