@@ -101,13 +101,17 @@ func (h *splitByInterval) Process(
 	threshold int64,
 	input []*lokiResult,
 	maxSeries int,
+	logql string,
 ) ([]queryrangebase.Response, error) {
 	var responses []queryrangebase.Response
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	ch := h.Feed(ctx, input)
-
+	globalPipeline, err := syntax.ParseGlobalPipeline(logql)
+	if err != nil {
+		return nil, err
+	}
 	// queries with 0 limits should not be exited early
 	var unlimited bool
 	if threshold == 0 {
@@ -135,17 +139,21 @@ func (h *splitByInterval) Process(
 			if data.err != nil {
 				return nil, data.err
 			}
-
-			responses = append(responses, data.resp)
-
 			// see if we can exit early if a limit has been reached
 			if casted, ok := data.resp.(*LokiResponse); !unlimited && ok {
+				if globalPipeline != nil {
+					casted, err = globalFilter(casted, globalPipeline)
+					if err != nil {
+						return nil, err
+					}
+				}
 				threshold -= casted.Count()
-
+				responses = append(responses, casted)
 				if threshold <= 0 {
 					return responses, nil
 				}
-
+			} else {
+				responses = append(responses, data.resp)
 			}
 
 		}
@@ -230,7 +238,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
-	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
+	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries, r.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -405,4 +413,40 @@ func nextIntervalBoundary(t time.Time, step int64, interval time.Duration) time.
 		target -= stepNs
 	}
 	return time.Unix(0, target)
+}
+
+func globalFilter(r *LokiResponse, globalPipeline syntax.Pipeline) (*LokiResponse, error) {
+	extractedResp := LokiResponse{
+		Status:     r.Status,
+		Direction:  r.Direction,
+		Limit:      r.Limit,
+		Version:    r.Version,
+		ErrorType:  r.ErrorType,
+		Error:      r.Error,
+		Statistics: r.Statistics,
+		Data: LokiData{
+			ResultType: r.Data.ResultType,
+			Result:     []logproto.Stream{},
+		},
+	}
+	for _, stream := range r.Data.Result {
+		lbs, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			return nil, err
+		}
+		extractedStream := logproto.Stream{
+			Labels:  stream.Labels,
+			Entries: []logproto.Entry{},
+			Hash:    stream.Hash,
+		}
+		for _, entry := range stream.Entries {
+			_, _, matches := globalPipeline.ForStream(lbs).ProcessString(entry.Timestamp.UnixNano(), entry.Line)
+			if !matches {
+				continue
+			}
+			extractedStream.Entries = append(extractedStream.Entries, entry)
+		}
+		extractedResp.Data.Result = append(extractedResp.Data.Result, extractedStream)
+	}
+	return &extractedResp, nil
 }

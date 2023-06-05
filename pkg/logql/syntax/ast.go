@@ -940,6 +940,51 @@ func IsLogicalBinOp(op string) bool {
 	}
 }
 
+func IsGlobalFilter(expr Expr) bool {
+	result := false
+	expr.Walk(func(e interface{}) {
+		switch e.(type) {
+		case *DistinctFilterExpr:
+			result = true
+			break
+		}
+	})
+	return result
+}
+
+func ParseGlobalPipeline(logql string) (Pipeline, error) {
+	expr, err := ParseExpr(logql)
+	if err != nil {
+		//label and series query
+		return nil, nil
+	}
+	isGlobalFilter := IsGlobalFilter(expr)
+	var globalPipeline Pipeline
+	if isGlobalFilter {
+		switch e := expr.(type) {
+		case LogSelectorExpr:
+			pipeline, err := e.Pipeline()
+			if err != nil {
+				return nil, err
+			}
+			globalPipeline = pipeline
+		case SampleExpr:
+			selector, err := e.Selector()
+			if err != nil {
+				return nil, err
+			}
+			pipeline, err := selector.Pipeline()
+			if err != nil {
+				return nil, err
+			}
+			globalPipeline = pipeline
+		default:
+			globalPipeline = nil
+		}
+	}
+	return globalPipeline, nil
+}
+
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
