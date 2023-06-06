@@ -413,6 +413,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: extract in middleware or method.
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
 		p := queryrange.QueryResponse{
 			Response: &queryrange.QueryResponse_Series{
@@ -455,6 +456,22 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		serverutil.WriteError(err, w)
+		return
+	}
+
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p := queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Stats{
+				Stats: &queryrange.IndexStatsResponse{
+					Response: resp,
+				}},
+		}
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
 		return
 	}
 
