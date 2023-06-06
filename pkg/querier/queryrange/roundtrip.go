@@ -383,7 +383,7 @@ func NewLogFilterTripperware(
 				log,
 				limits,
 				c,
-				func(r queryrangebase.Request) bool {
+				func(_ context.Context, r queryrangebase.Request) bool {
 					return !r.GetCachingOptions().Disabled
 				},
 				cfg.Transformer,
@@ -575,7 +575,7 @@ func NewMetricTripperware(
 			codec,
 			extractor,
 			cacheGenNumLoader,
-			func(r queryrangebase.Request) bool {
+			func(_ context.Context, r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
 			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
@@ -747,7 +747,7 @@ func NewIndexStatsTripperware(
 			codec,
 			c,
 			cacheGenNumLoader,
-			func(r queryrangebase.Request) bool {
+			func(_ context.Context, r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
 			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
