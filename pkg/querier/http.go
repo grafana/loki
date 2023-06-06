@@ -14,6 +14,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -27,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -97,9 +99,20 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: extract in middleware or method.
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
-		//LokiResponse{{
-		// TODO: write protobuf
+		p, err := ResultToResponse(result)
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
 		return
 	}
 
@@ -138,6 +151,23 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
+		return
+	}
+
+	// TODO: extract in middleware or method.
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p, err := ResultToResponse(result)
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
 		return
 	}
 
@@ -221,6 +251,16 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 func ResultToResponse(result logqlmodel.Result) (*queryrange.QueryResponse, error) {
 	switch data := result.Data.(type) {
+	case promql.Vector:
+		pr := queryrangebase.NewEmptyPrometheusResponse()
+		//pr.Data.Result = data
+		return &queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Prom{
+				Prom: &queryrange.LokiPromResponse{
+					Response:   pr,
+					Statistics: result.Statistics,
+				}},
+		}, nil
 	case logqlmodel.Streams:
 		return &queryrange.QueryResponse{
 			Response: &queryrange.QueryResponse_Streams{
