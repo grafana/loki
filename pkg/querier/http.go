@@ -239,14 +239,6 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
-		p := queryrange.QueryResponse{
-		}
-		//LokiResponse{{
-		// TODO: write protobuf
-		return
-	}
-
 	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
 		err = marshal.WriteLabelResponseJSON(*resp, w)
 	} else {
@@ -418,6 +410,24 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
 	if err != nil {
 		serverutil.WriteError(err, w)
+		return
+	}
+
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p := queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Series{
+				Series: &queryrange.LokiSeriesResponse{
+					Status:     "success",
+					Data:       resp.Series,
+					Statistics: statResult,
+				}},
+		}
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
 		return
 	}
 
