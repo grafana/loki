@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -91,7 +92,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Rebound(start, end model.Time, filter filter.Func) (Data, error) {
+func (b *bigchunk) Rebound(ctx context.Context, start, end model.Time, filter filter.Func) (Data, error) {
 	return nil, errors.New("not implemented")
 }
 

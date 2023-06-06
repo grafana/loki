@@ -123,7 +123,7 @@ func (c *dumbChunk) Close() error {
 	return nil
 }
 
-func (c *dumbChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
+func (c *dumbChunk) Rebound(ctx context.Context, start, end time.Time, filter filter.Func) (Chunk, error) {
 	return nil, nil
 }
 

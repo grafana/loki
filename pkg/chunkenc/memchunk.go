@@ -713,7 +713,7 @@ func (c *MemChunk) reorder() error {
 
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
-	newC, err := c.Rebound(from, to, nil)
+	newC, err := c.Rebound(context.Background(), from, to, nil)
 	if err != nil {
 		return err
 	}
