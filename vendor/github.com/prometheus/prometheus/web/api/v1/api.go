@@ -500,7 +500,7 @@ func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if end.Sub(start)/step > 11000 {
-		err := errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of step parameter")
+		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 
