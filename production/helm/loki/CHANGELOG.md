@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.6.2
 
+- [BUGFIX] Fix configmap checksum in read statefulset template
+
+## 5.6.2
+
 - [BUGFIX] Fix configmap checksum in table manager deployment template
 
 ## 5.6.1
