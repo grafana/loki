@@ -164,10 +164,8 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return NUMBER
 	case '-': // handle flags and negative durations
 		if l.Peek() == '-' {
-			if flag, ok := tryScanFlag(&l.Scanner); ok {
-				if tok, ok := flagTokens[flag]; ok {
-					return tok
-				}
+			if tok, ok := tryScanFlag(&l.Scanner); ok {
+				return tok
 			}
 		}
 
@@ -248,35 +246,33 @@ func (l *lexer) Error(msg string) {
 	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
 }
 
-func tryScanFlag(l *Scanner) (string, bool) {
+// tryScanFlag scans for a parser flag and returns it's token
+// it advances the scanner only if a valid token is found
+func tryScanFlag(l *Scanner) (int, bool) {
 	var sb strings.Builder
 	sb.WriteString(l.TokenText())
 
 	// copy the scanner to avoid advancing it in case it's not a flag
 	s := *l
 	consumed := 0
-	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
-		if !unicode.IsLetter(r) && r != '-' {
-			break
-		}
-
+	for r := s.Peek(); unicode.IsLetter(r) || r == '-'; r = s.Peek() {
 		_, _ = sb.WriteRune(r)
 		_ = s.Next()
 
 		consumed++
 	}
 
-	// atleast one more rune besides '-' should be consumed to consider this a valid flag
-	if consumed <= 1 {
-		return "", false
+	tok, ok := flagTokens[sb.String()]
+	if !ok {
+		return 0, false
 	}
 
-	// we need to consume the scanner.
+	// consume the scanner
 	for i := 0; i < consumed; i++ {
 		_ = l.Next()
 	}
 
-	return sb.String(), true
+	return tok, true
 }
 
 func tryScanDuration(number string, l *Scanner) (time.Duration, bool) {

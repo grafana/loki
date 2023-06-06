@@ -306,11 +306,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 
 	l.dec.Reset(line)
-	for {
-		if l.dec.EOL() {
-			break
-		}
-
+	for !l.dec.EOL() {
 		ok := l.dec.ScanKeyval()
 		if !ok {
 			// for strict parsing, do not continue on errs
@@ -473,11 +469,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 	l.dec.Reset(line)
 	var current []byte
-	for {
-		if l.dec.EOL() {
-			break
-		}
-
+	for !l.dec.EOL() {
 		ok := l.dec.ScanKeyval()
 		if !ok {
 			// for strict parsing, do not continue on errs
