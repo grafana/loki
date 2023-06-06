@@ -117,7 +117,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 // process loops processing requests on an established stream.
 func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool) error {
 	// Build a child context so we can cancel a query when the stream is closed.
-	outerCtx, cancel := context.WithCancel(c.Context())
+	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
 
 	for {
@@ -137,7 +137,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			defer inflightQuery.Store(false)
 
 			// We need to inject user into context for sending response back.
-			innerCtx := user.InjectOrgID(outerCtx, request.UserID)
+			ctx := user.InjectOrgID(ctx, request.UserID)
 
 			sp.metrics.inflightRequests.Inc()
 			tracer := opentracing.GlobalTracer()
@@ -147,14 +147,14 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				level.Error(util_log.Logger).Log("msg", "couldn't get parent span from request", "err", err)
 			}
 			if parentSpanContext != nil {
-				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(innerCtx, tracer, "querier_processor_runRequest", opentracing.ChildOf(parentSpanContext))
+				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "querier_processor_runRequest", opentracing.ChildOf(parentSpanContext))
 				defer queueSpan.Finish()
 
-				innerCtx = spanCtx
+				ctx = spanCtx
 			}
-			logger := util_log.WithContext(innerCtx, sp.log)
+			logger := util_log.WithContext(ctx, sp.log)
 
-			sp.runRequest(innerCtx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
+			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
