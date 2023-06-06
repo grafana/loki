@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -95,9 +96,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accept := r.Header.Get("Accept")
-
-	if accept == "application/vnd.google.protobuf" {
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
 		//LokiResponse{{
 		// TODO: write protobuf
 		return
@@ -237,6 +236,14 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		serverutil.WriteError(err, w)
+		return
+	}
+
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p := queryrange.QueryResponse{
+		}
+		//LokiResponse{{
+		// TODO: write protobuf
 		return
 	}
 

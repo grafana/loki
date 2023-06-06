@@ -157,5 +157,9 @@ message QueryResponse {
 }
 
 message LokiSketch {
-	// TODO: define sketch
+  // TODO: define sketch
+  repeated definitions.PrometheusResponseHeader Headers = 9 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
 }

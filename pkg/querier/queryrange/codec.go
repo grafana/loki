@@ -1,4 +1,5 @@
 package queryrange
+
 import (
 	"bytes"
 	"container/heap"
@@ -34,7 +35,7 @@ import (
 
 var LokiCodec queryrangebase.Codec = &JSONCodec{}
 
-type JSONCodec struct{
+type JSONCodec struct {
 	DefaultRequestCodec
 	DefaultMergeResponse
 }
@@ -202,7 +203,7 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
-type DefaultRequestCodec struct {}
+type DefaultRequestCodec struct{}
 
 func (DefaultRequestCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
@@ -616,7 +617,7 @@ func (JSONCodec) EncodeResponse(ctx context.Context, res queryrangebase.Response
 	return &resp, nil
 }
 
-type DefaultMergeResponse {}
+type DefaultMergeResponse struct{}
 
 // NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 // MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
@@ -1095,8 +1096,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 	}
 }
 
-
-type ProtobufCodec struct{
+type ProtobufCodec struct {
 	DefaultRequestCodec
 	DefaultMergeResponse
 }
@@ -1132,7 +1132,7 @@ func (ProtobufCodec) DecodeResponse(ctx context.Context, r *http.Response, req q
 		return resp.GetStats(), nil
 	default:
 		switch concrete := resp.Response.(type) {
-		case *QueryResponse_Prom:	
+		case *QueryResponse_Prom:
 			return concrete.Prom, nil
 		case *QueryResponse_Streams:
 			return concrete.Streams, nil
