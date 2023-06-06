@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -195,10 +196,46 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: extract in middleware or method.
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p, err := ResultToResponse(result)
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
+		return
+	}
+
 	if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
+}
+
+func ResultToResponse(result logqlmodel.Result) (*queryrange.QueryResponse, error) {
+	switch data := result.Data.(type) {
+	case logqlmodel.Streams:
+		return &queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Streams{
+				Streams: &queryrange.LokiResponse{
+					Data: queryrange.LokiData{
+						ResultType: string(data.Type()),
+						Result:     logqlmodel.Streams(data),
+					},
+					Status:     "success",
+					Statistics: result.Statistics,
+				}},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
@@ -459,6 +496,7 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: extract
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
 		p := queryrange.QueryResponse{
 			Response: &queryrange.QueryResponse_Stats{
