@@ -568,9 +568,9 @@ http {
   uwsgi_temp_path       /tmp/uwsgi_temp;
   scgi_temp_path        /tmp/scgi_temp;
 
-  client_max_body_size 4M;
+  client_max_body_size  4M;
 
-  proxy_read_timeout    600; ## 6 minutes
+  proxy_read_timeout    600; ## 10 minutes
   proxy_send_timeout    600;
   proxy_connect_timeout 600;
 
