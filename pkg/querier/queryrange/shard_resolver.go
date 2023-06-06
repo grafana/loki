@@ -173,7 +173,8 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
-	r.ctx = ctx
+	// TODO(dylanguedes): why we can't reassign the ctx here?
+	// r.ctx = ctx
 
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
