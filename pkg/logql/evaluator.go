@@ -194,8 +194,8 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEv = SampleEvaluatorFunc(func(innerCtx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
-				it, err := ev.querier.SelectSamples(innerCtx, SelectSampleParams{
+			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
 						End:      q.End().Add(-rangExpr.Left.Offset),
