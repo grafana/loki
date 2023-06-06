@@ -159,7 +159,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				statistics.ComputeSummary(time.Since(start), 0, totalEntries)
 				statistics.Log(level.Debug(logger))
 			}
-			ctxValue := statsCtx.Value(ctxKey)
+			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
 				data.statistics = statistics
