@@ -485,6 +485,8 @@ func (t *Loki) Run(opts RunOpts) error {
 	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 
+	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LevelHandler(&t.Cfg.Server.LogLevel))
+
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
 	// Config endpoint adds a way to see the config and the changes compared to the defaults.
@@ -652,14 +654,14 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
-		Store:                    {Overrides, IndexGatewayRing},
+		Store:                    {Overrides, IndexGatewayRing, IngesterQuerier},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		Querier:                  {Store, Ring, Server, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
-		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
+		RuleEvaluator:            {Ring, Server, Store, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing},
@@ -704,11 +706,6 @@ func (t *Loki) setupModuleManager() error {
 		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
 			return err
 		}
-	}
-
-	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(Backend) {
-		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes

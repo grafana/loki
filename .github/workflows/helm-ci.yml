@@ -74,7 +74,7 @@ jobs:
         run: ct lint --config "${CT_CONFIGFILE}" --check-version-increment=false
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1.5.0
+        uses: helm/kind-action@v1.7.0
         if: steps.list-changed.outputs.changed == 'true'
 
       - name: Install prometheus operator

@@ -18,7 +18,7 @@ func TestLambdaPromtail_ExtraLabelsValid(t *testing.T) {
 }
 
 func TestLambdaPromtail_ExtraLabelsMissingValue(t *testing.T) {
-	extraLabels, err := parseExtraLabels("A,a,B,b,C,c,D",false)
+	extraLabels, err := parseExtraLabels("A,a,B,b,C,c,D", false)
 	require.Nil(t, extraLabels)
 	require.Errorf(t, err, invalidExtraLabelsError)
 }

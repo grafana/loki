@@ -359,8 +359,9 @@ spec:
         path: replication.factor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Zones defines an array of ZoneSpec that the scheduler will try
-          to satisfy.
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
         displayName: Zones Spec
         path: replication.zones
       - description: MaxSkew describes the maximum degree to which Pods can be unevenly

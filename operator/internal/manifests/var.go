@@ -3,13 +3,13 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -109,7 +109,20 @@ const (
 	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
 )
 
+const (
+	// lokiDefaultQueryTimeout contains the default query timeout. It should match the value mentioned in the CRD
+	// definition and also the default in the `sizes.go`.
+	lokiDefaultQueryTimeout    = 3 * time.Minute
+	lokiDefaultHTTPIdleTimeout = 30 * time.Second
+	lokiQueryWriteDuration     = 1 * time.Minute
+
+	gatewayReadDuration  = 30 * time.Second
+	gatewayWriteDuration = 2 * time.Minute
+)
+
 var (
+	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
+
 	defaultConfigMapMode      = int32(420)
 	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
 	podAntiAffinityComponents = map[string]struct{}{
@@ -605,27 +618,4 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
-}
-
-func containerSecurityContext() *corev1.SecurityContext {
-	return &corev1.SecurityContext{
-		AllowPrivilegeEscalation: pointer.Bool(false),
-		Capabilities: &corev1.Capabilities{
-			Drop: []corev1.Capability{"ALL"},
-		},
-	}
-}
-
-func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
-	context := corev1.PodSecurityContext{
-		RunAsNonRoot: pointer.Bool(true),
-	}
-
-	if withSeccompProfile {
-		context.SeccompProfile = &corev1.SeccompProfile{
-			Type: corev1.SeccompProfileTypeRuntimeDefault,
-		}
-	}
-
-	return &context
 }

@@ -36,6 +36,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 					},
 				},
 			},
+			Timeouts: defaultTimeoutConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -78,6 +79,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 					},
 				},
 			},
+			Timeouts: defaultTimeoutConfig,
 		}
 		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
@@ -232,6 +234,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -250,6 +253,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -292,6 +296,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: false,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -309,6 +314,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 						ServingCertsService: true,
 					},
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -349,6 +355,7 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 		Gates: configv1.FeatureGates{
 			HTTPEncryption: true,
 		},
+		Timeouts: defaultTimeoutConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -422,6 +429,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			HTTPEncryption:             true,
 			ServiceMonitorTLSEndpoints: true,
 		},
+		Timeouts: defaultTimeoutConfig,
 	}
 
 	err := ApplyDefaultSettings(&opts)
@@ -526,6 +534,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -568,6 +577,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 				Gates: configv1.FeatureGates{
 					GRPCEncryption: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -645,7 +655,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
+func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 	type test struct {
 		desc         string
 		BuildOptions Options
@@ -653,7 +663,7 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 
 	table := []test{
 		{
-			desc: "disabled default/runtime seccomp profile",
+			desc: "disabled restricted security standard",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -690,12 +700,13 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 					},
 				},
 				Gates: configv1.FeatureGates{
-					RuntimeSeccompProfile: false,
+					RestrictedPodSecurityStandard: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
-			desc: "enabled default/runtime seccomp profile",
+			desc: "enabled restricted security standard",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -732,8 +743,9 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 					},
 				},
 				Gates: configv1.FeatureGates{
-					RuntimeSeccompProfile: true,
+					RestrictedPodSecurityStandard: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -766,11 +778,26 @@ func TestBuildAll_WithFeatureGates_RuntimeSeccompProfile(t *testing.T) {
 				}
 
 				t.Run(name, func(t *testing.T) {
-					if tst.BuildOptions.Gates.RuntimeSeccompProfile {
+					if tst.BuildOptions.Gates.RestrictedPodSecurityStandard {
+						require.NotNil(t, spec.SecurityContext)
+
+						require.True(t, *spec.SecurityContext.RunAsNonRoot)
+
 						require.NotNil(t, spec.SecurityContext.SeccompProfile)
 						require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
 					} else {
-						require.Nil(t, spec.SecurityContext.SeccompProfile)
+						require.Nil(t, spec.SecurityContext)
+					}
+
+					for _, c := range spec.Containers {
+						if tst.BuildOptions.Gates.RestrictedPodSecurityStandard {
+							require.False(t, *c.SecurityContext.AllowPrivilegeEscalation)
+
+							require.Empty(t, c.SecurityContext.Capabilities.Add)
+							require.Equal(t, c.SecurityContext.Capabilities.Drop, []corev1.Capability{"ALL"})
+						} else {
+							require.Nil(t, c.SecurityContext)
+						}
 					}
 				})
 			}
@@ -797,6 +824,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -835,6 +863,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}
@@ -873,6 +902,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: false,
 					LokiStackAlerts: false,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 		{
@@ -887,6 +917,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 					ServiceMonitors: true,
 					LokiStackAlerts: true,
 				},
+				Timeouts: defaultTimeoutConfig,
 			},
 		},
 	}

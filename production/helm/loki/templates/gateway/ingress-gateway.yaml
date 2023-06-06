@@ -7,8 +7,12 @@ apiVersion: {{ include "loki.ingress.apiVersion" . }}
 kind: Ingress
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- range $labelKey, $labelValue := .Values.gateway.ingress.labels }}
+    {{ $labelKey }}: {{ $labelValue | toYaml }}
+    {{- end }}
   {{- with .Values.gateway.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

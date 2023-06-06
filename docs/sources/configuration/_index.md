@@ -389,9 +389,19 @@ grpc_tls_config:
 # CLI flag: -server.log-source-ips-regex
 [log_source_ips_regex: <string> | default = ""]
 
-# Optionally log requests at info level instead of debug level.
+# Optionally log request headers.
+# CLI flag: -server.log-request-headers
+[log_request_headers: <boolean> | default = false]
+
+# Optionally log requests at info level instead of debug level. Applies to
+# request headers as well if server.log-request-headers is enabled.
 # CLI flag: -server.log-request-at-info-level-enabled
 [log_request_at_info_level_enabled: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from loggin. Only used if
+# server.log-request-headers is true.
+# CLI flag: -server.log-request-headers-exclude-list
+[log_request_exclude_headers_list: <string> | default = ""]
 
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
@@ -472,6 +482,13 @@ rate_store:
   # If enabled, detailed logs and spans will be emitted.
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
+
+# Experimental. Customize the logging of write failures.
+write_failures_logging:
+  # Experimental and subject to change. Log volume allowed (per second).
+  # Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging.rate
+  [rate: <int> | default = 1KB]
 ```
 
 ### querier
@@ -3622,6 +3639,21 @@ backoff_config:
 # VersionTLS11, VersionTLS12, VersionTLS13
 # CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
+
+# The maximum amount of time to establish a connection. A value of 0 means
+# default gRPC connect timeout and backoff.
+# CLI flag: -<prefix>.connect-timeout
+[connect_timeout: <duration> | default = 0s]
+
+# Initial backoff delay after first connection failure. Only relevant if
+# ConnectTimeout > 0.
+# CLI flag: -<prefix>.connect-backoff-base-delay
+[connect_backoff_base_delay: <duration> | default = 1s]
+
+# Maximum backoff delay when establishing a connection. Only relevant if
+# ConnectTimeout > 0.
+# CLI flag: -<prefix>.connect-backoff-max-delay
+[connect_backoff_max_delay: <duration> | default = 5s]
 ```
 
 ### tls_config
@@ -3720,6 +3752,10 @@ background:
   # How many key batches to buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> | default = 10000]
+
+  # Size limit in bytes for background write-back.
+  # CLI flag: -<prefix>.background.write-back-size-limit
+  [writeback_size_limit: <int> | default = 1GB]
 
 memcached:
   # How long keys stay in the memcache.

@@ -24,12 +24,6 @@ type ReplicationSet struct {
 // MaxErrors and returning early otherwise.
 // Return a slice of all results from f, or nil if an error occurred.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
-	type instanceResult struct {
-		res      interface{}
-		err      error
-		instance *InstanceDesc
-	}
-
 	// Initialise the result tracker, which is use to keep track of successes and failures.
 	var tracker replicationSetResultTracker
 	if r.MaxUnavailableZones > 0 {
@@ -39,7 +33,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	}
 
 	var (
-		ch         = make(chan instanceResult, len(r.Instances))
+		ch         = make(chan instanceResult[any], len(r.Instances))
 		forceStart = make(chan struct{}, r.MaxErrors)
 	)
 	ctx, cancel := context.WithCancel(ctx)
@@ -60,8 +54,8 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 				}
 			}
 			result, err := f(ctx, ing)
-			ch <- instanceResult{
-				res:      result,
+			ch <- instanceResult[any]{
+				result:   result,
 				err:      err,
 				instance: ing,
 			}
@@ -84,7 +78,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 					forceStart <- struct{}{}
 				}
 			} else {
-				results = append(results, res.res)
+				results = append(results, res.result)
 			}
 
 		case <-ctx.Done():
@@ -93,6 +87,127 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	}
 
 	return results, nil
+}
+
+// DoUntilQuorum runs function f in parallel for all replicas in r.
+//
+// If r.MaxUnavailableZones is greater than zero:
+//   - DoUntilQuorum returns an error if calls to f for instances in more than r.MaxUnavailableZones zones return errors
+//   - Otherwise, DoUntilQuorum returns all results from all replicas in the first zones for which f succeeds
+//     for every instance in that zone (eg. if there are 3 zones and r.MaxUnavailableZones is 1, DoUntilQuorum will
+//     return the results from all instances in 2 zones, even if all calls to f succeed).
+//
+// Otherwise:
+//   - DoUntilQuorum returns an error if more than r.MaxErrors calls to f return errors
+//   - Otherwise, DoUntilQuorum returns all results from the first len(r.Instances) - r.MaxErrors instances
+//     (eg. if there are 6 replicas and r.MaxErrors is 2, DoUntilQuorum will return the results from the first 4
+//     successful calls to f, even if all 6 calls to f succeed).
+//
+// Any results from successful calls to f that are not returned by DoUntilQuorum will be passed to cleanupFunc,
+// including when DoUntilQuorum returns an error or only returns a subset of successful results. cleanupFunc may
+// be called both before and after DoUntilQuorum returns.
+//
+// A call to f is considered successful if it returns a nil error.
+//
+// DoUntilQuorum cancels the context.Context passed to each invocation of f if the result of that invocation of
+// f will not be returned. If the result of that invocation of f will be returned, the context.Context passed
+// to that invocation of f will not be cancelled by DoUntilQuorum, but the context.Context is a child of ctx
+// passed to DoUntilQuorum and so will be cancelled if ctx is cancelled.
+func DoUntilQuorum[T any](ctx context.Context, r ReplicationSet, f func(context.Context, *InstanceDesc) (T, error), cleanupFunc func(T)) ([]T, error) {
+	resultsChan := make(chan instanceResult[T], len(r.Instances))
+	resultsRemaining := len(r.Instances)
+
+	defer func() {
+		go func() {
+			for resultsRemaining > 0 {
+				result := <-resultsChan
+				resultsRemaining--
+
+				if result.err == nil {
+					cleanupFunc(result.result)
+				}
+			}
+		}()
+	}()
+
+	var resultTracker replicationSetResultTracker
+	var contextTracker replicationSetContextTracker
+	if r.MaxUnavailableZones > 0 {
+		resultTracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
+		contextTracker = newZoneAwareContextTracker(ctx, r.Instances)
+	} else {
+		resultTracker = newDefaultResultTracker(r.Instances, r.MaxErrors)
+		contextTracker = newDefaultContextTracker(ctx, r.Instances)
+	}
+
+	for i := range r.Instances {
+		instance := &r.Instances[i]
+		instanceCtx := contextTracker.contextFor(instance)
+
+		go func(desc *InstanceDesc) {
+			result, err := f(instanceCtx, desc)
+			resultsChan <- instanceResult[T]{
+				result:   result,
+				err:      err,
+				instance: desc,
+			}
+		}(instance)
+	}
+
+	resultsMap := make(map[*InstanceDesc]T, len(r.Instances))
+	cleanupResultsAlreadyReceived := func() {
+		for _, result := range resultsMap {
+			cleanupFunc(result)
+		}
+	}
+
+	for !resultTracker.succeeded() {
+		select {
+		case <-ctx.Done():
+			// No need to cancel individual instance contexts, as they inherit the cancellation from ctx.
+			cleanupResultsAlreadyReceived()
+
+			return nil, ctx.Err()
+		case result := <-resultsChan:
+			resultsRemaining--
+			resultTracker.done(result.instance, result.err)
+
+			if result.err == nil {
+				resultsMap[result.instance] = result.result
+			} else if resultTracker.failed() {
+				contextTracker.cancelAllContexts()
+				cleanupResultsAlreadyReceived()
+				return nil, result.err
+			}
+		}
+	}
+
+	results := make([]T, 0, len(r.Instances))
+
+	for i := range r.Instances {
+		instance := &r.Instances[i]
+		result, haveResult := resultsMap[instance]
+
+		if haveResult {
+			if resultTracker.shouldIncludeResultFrom(instance) {
+				results = append(results, result)
+			} else {
+				contextTracker.cancelContextFor(instance)
+				cleanupFunc(result)
+			}
+		} else {
+			// Nothing to clean up (yet) - this will be handled by deferred call above.
+			contextTracker.cancelContextFor(instance)
+		}
+	}
+
+	return results, nil
+}
+
+type instanceResult[T any] struct {
+	result   T
+	err      error
+	instance *InstanceDesc
 }
 
 // Includes returns whether the replication set includes the replica with the provided addr.
@@ -126,6 +241,29 @@ func (r ReplicationSet) GetAddressesWithout(exclude string) []string {
 		}
 	}
 	return addrs
+}
+
+// ZoneCount returns the number of unique zones represented by instances within this replication set.
+func (r *ReplicationSet) ZoneCount() int {
+	// Why not use a map here? Using a slice is faster for the small number of zones we expect to typically use.
+	zones := []string{}
+
+	for _, i := range r.Instances {
+		sawZone := false
+
+		for _, z := range zones {
+			if z == i.Zone {
+				sawZone = true
+				break
+			}
+		}
+
+		if !sawZone {
+			zones = append(zones, i.Zone)
+		}
+	}
+
+	return len(zones)
 }
 
 // HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),

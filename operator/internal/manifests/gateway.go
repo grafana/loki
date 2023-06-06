@@ -10,7 +10,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -82,7 +81,11 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&dpl.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
 
 	return objs, nil
 }
@@ -142,8 +145,11 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.write.endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
+					fmt.Sprintf("--logs.write-timeout=%s", opts.Timeouts.Gateway.UpstreamWriteTimeout),
 					fmt.Sprintf("--rbac.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRbacFileName)),
 					fmt.Sprintf("--tenants.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName)),
+					fmt.Sprintf("--server.read-timeout=%s", opts.Timeouts.Gateway.ReadTimeout),
+					fmt.Sprintf("--server.write-timeout=%s", opts.Timeouts.Gateway.WriteTimeout),
 				},
 				Ports: []corev1.ContainerPort{
 					{
@@ -594,15 +600,4 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	}
 
 	return nil
-}
-
-func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
-	podSpec := d.Spec.Template.Spec
-
-	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
-	for i := range podSpec.Containers {
-		podSpec.Containers[i].SecurityContext = containerSecurityContext()
-	}
-
-	d.Spec.Template.Spec = podSpec
 }
