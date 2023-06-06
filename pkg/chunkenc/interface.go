@@ -144,7 +144,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() Encoding
-	Rebound(start, end time.Time, filter filter.Func) (Chunk, error)
+	Rebound(ctx context.Context, start, end time.Time, filter filter.Func) (Chunk, error)
 }
 
 // Block is a chunk block.

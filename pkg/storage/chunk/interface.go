@@ -49,7 +49,7 @@ type Data interface {
 	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
 	// We do not want to change existing Slice implementations because
 	// it is built specifically for query optimization and is a noop for some of the encodings.
-	Rebound(start, end model.Time, filter filter.Func) (Data, error)
+	Rebound(ctx context.Context, start, end model.Time, filter filter.Func) (Data, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
 	// UncompressedSize returns the length of uncompressed bytes.

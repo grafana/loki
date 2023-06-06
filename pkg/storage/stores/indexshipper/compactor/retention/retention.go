@@ -366,7 +366,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", chunkID, len(chks))
 	}
 
-	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string) bool {
+	newChunkData, err := chks[0].Data.Rebound(ctx, ce.From, ce.Through, func(ts time.Time, s string) bool {
 		if filterFunc(ts, s) {
 			linesDeleted = true
 			return true

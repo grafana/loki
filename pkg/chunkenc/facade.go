@@ -1,6 +1,7 @@
 package chunkenc
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -108,8 +109,8 @@ func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
 
-func (f Facade) Rebound(start, end model.Time, filter filter.Func) (chunk.Data, error) {
-	newChunk, err := f.c.Rebound(start.Time(), end.Time(), filter)
+func (f Facade) Rebound(ctx context.Context, start, end model.Time, filter filter.Func) (chunk.Data, error) {
+	newChunk, err := f.c.Rebound(ctx, start.Time(), end.Time(), filter)
 	if err != nil {
 		return nil, err
 	}

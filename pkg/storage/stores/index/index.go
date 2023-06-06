@@ -55,9 +55,9 @@ func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) Reader
 func (m monitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
 	var chunks []logproto.ChunkRef
 
-	if err := instrument.CollectedRequest(ctx, "chunk_refs", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "chunk_refs", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(innerCtx context.Context) error {
 		var err error
-		chunks, err = m.rw.GetChunkRefs(ctx, userID, from, through, matchers...)
+		chunks, err = m.rw.GetChunkRefs(innerCtx, userID, from, through, matchers...)
 		return err
 	}); err != nil {
 		return nil, err

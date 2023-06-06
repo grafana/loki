@@ -540,18 +540,18 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	response, err := rt.middleware.Wrap(
-		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-			w := newWork(ctx, r)
+		queryrangebase.HandlerFunc(func(innerCtx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			w := newWork(innerCtx, r)
 			select {
 			case intermediate <- w:
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			case <-innerCtx.Done():
+				return nil, innerCtx.Err()
 			}
 			select {
 			case response := <-w.result:
 				return response.response, response.err
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			case <-innerCtx.Done():
+				return nil, innerCtx.Err()
 			}
 		})).Do(ctx, request)
 	if err != nil {

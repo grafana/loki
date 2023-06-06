@@ -272,8 +272,8 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 }
 
 func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
-		return querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetChunkIDs(innerCtx, &logproto.GetChunkIDsRequest{
 			Matchers: convertMatchersToString(matchers),
 			Start:    from.Time(),
 			End:      through.Time(),
