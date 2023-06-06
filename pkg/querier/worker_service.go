@@ -93,9 +93,9 @@ func InitWorkerService(
 			externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(internalRouter))
 		}
 
-		//If no frontend or scheduler address has been configured, then there is no place for the
+		//If no scheduler ring or frontend or scheduler address has been configured, then there is no place for the
 		//querier worker to request work from, so no need to start a worker service
-		if (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
+		if cfg.SchedulerRing == nil && (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
 			return nil, nil
 		}
 
