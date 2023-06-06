@@ -1170,7 +1170,7 @@ func (ProtobufCodec) EncodeResponse(ctx context.Context, res queryrangebase.Resp
 		Header: http.Header{
 			"Content-Type": []string{"application/vnd.google.protobuf"},
 		},
-		Body:       io.NopCloser(&buf),
+		Body:       io.NopCloser(bytes.NewBuffer(buf)),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil
