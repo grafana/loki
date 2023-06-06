@@ -124,7 +124,7 @@ Choose one of these two ways to apply a new configuration:
         ```
         docker-compose down
         ```
-    1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output.
+    1. Edit the `docker-compose.yaml` file.  Within the YAML file, change the `flog.command` field's value to specify your flog output. Refer to the `flog` [command line arguments](https://hub.docker.com/r/mingrammer/flog).
     1. With `evaluate-loki` as the current working directory, instantiate the new test environment:
         ```
         docker-compose up -d
