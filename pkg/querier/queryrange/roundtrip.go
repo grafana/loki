@@ -68,13 +68,16 @@ func NewTripperware(
 		}
 	}
 
-	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
+	// TODO(karsten): make LokiCodec configurable.
+	codec := LokiCodec
+
+	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
@@ -82,29 +85,29 @@ func NewTripperware(
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, LokiCodec, metrics, schema)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, codec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, LokiCodec, metrics, schema)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, LokiCodec, c,
+	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err

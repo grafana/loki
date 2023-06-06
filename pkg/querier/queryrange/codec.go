@@ -1,5 +1,4 @@
 package queryrange
-
 import (
 	"bytes"
 	"container/heap"
@@ -33,9 +32,11 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
-var LokiCodec = &Codec{}
+var LokiCodec queryrangebase.Codec = &JSONCodec{}
 
-type Codec struct{}
+type JSONCodec struct{
+	DefaultRequestCodec
+}
 
 func (r *LokiRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
@@ -200,7 +201,9 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
-func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (queryrangebase.Request, error) {
+type DefaultRequestCodec struct {}
+
+func (DefaultRequestCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -274,7 +277,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 	}
 }
 
-func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
+func (DefaultRequestCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
@@ -409,7 +412,7 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (JSONCodec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
@@ -543,7 +546,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	}
 }
 
-func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+func (JSONCodec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -614,7 +617,7 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 
 // NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 // MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase.Response, error) {
+func (JSONCodec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase.Response, error) {
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
 	}
@@ -1087,4 +1090,88 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
 		},
 	}
+}
+
+
+type ProtobufCodec struct{
+	DefaultRequestCodec
+}
+
+var _ queryrangebase.Codec = &ProtobufCodec{}
+
+func (ProtobufCodec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+	if r.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(r.Body)
+		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
+	}
+
+	var buf []byte
+	var err error
+	if buffer, ok := r.Body.(Buffer); ok {
+		buf = buffer.Bytes()
+	} else {
+		buf, err = io.ReadAll(r.Body)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+	}
+
+	resp := &QueryResponse{}
+	resp.Unmarshal(buf)
+
+	switch req.(type) {
+	case *LokiSeriesRequest:
+		return resp.GetSeries(), nil
+	case *LokiLabelNamesRequest:
+		return resp.GetLabels(), nil
+	case *logproto.IndexStatsRequest:
+		return resp.GetStats(), nil
+	default:
+		switch concrete := resp.Response.(type) {
+		case *QueryResponse_Prom:	
+			return concrete.Prom, nil
+		case *QueryResponse_Streams:
+			return concrete.Streams, nil
+		default:
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", concrete)
+		}
+	}
+}
+
+func (ProtobufCodec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
+	defer sp.Finish()
+
+	p := QueryResponse{}
+
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		p.Response = &QueryResponse_Prom{response}
+	case *LokiResponse:
+		p.Response = &QueryResponse_Streams{response}
+	case *LokiSeriesResponse:
+		p.Response = &QueryResponse_Series{response}
+	case *LokiLabelNamesResponse:
+		p.Response = &QueryResponse_Labels{response}
+	case *IndexStatsResponse:
+		p.Response = &QueryResponse_Stats{response}
+	default:
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+	}
+
+	buf, err := p.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	sp.LogFields(otlog.Int("bytes", len(buf)))
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{"application/vnd.google.protobuf"},
+		},
+		Body:       io.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
 }

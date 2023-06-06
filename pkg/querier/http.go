@@ -94,6 +94,16 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
+
+	accept := r.Header.Get("Accept")
+
+	if accept == "application/vnd.google.protobuf" {
+		//LokiResponse{{
+		// TODO: write protobuf
+		return
+	}
+
+	// Default to JSON
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		serverutil.WriteError(err, w)
 		return

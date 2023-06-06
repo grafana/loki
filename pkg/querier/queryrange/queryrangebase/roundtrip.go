@@ -187,6 +187,7 @@ func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
+	// Call HTTP handler from queryrangebase.RoundTripper
 	response, err := q.next.RoundTrip(request)
 	if err != nil {
 		return nil, err
@@ -196,5 +197,6 @@ func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error
 		response.Body.Close()
 	}()
 
+	// TODO: adhere to accept header
 	return q.codec.DecodeResponse(ctx, response, r)
 }

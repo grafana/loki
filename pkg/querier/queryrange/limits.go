@@ -557,6 +557,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
+	// TODO: adhere to accept header
 	return rt.codec.EncodeResponse(ctx, response)
 }
 
@@ -579,6 +580,7 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 	}
 	defer func() { _ = response.Body.Close() }()
 
+	// TODO: adhere to accept header
 	return rt.codec.DecodeResponse(ctx, response, r)
 }
 
