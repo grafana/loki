@@ -501,6 +501,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			default:
 				return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 			}
+			// TODO(karsten): should we handle sketches here?
 			return &LokiResponse{
 				Status:     resp.Status,
 				Direction:  params.Direction(),
@@ -543,6 +544,8 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	}
 }
 
+// TODO(karsten): should we encode from res to http.Response directly without
+// intermediate allocation?
 func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
@@ -560,6 +563,7 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 				Entries: stream.Entries,
 			}
 		}
+		// TODO(karsten): handle sketches
 		result := logqlmodel.Result{
 			Data:       logqlmodel.Streams(streams),
 			Statistics: response.Statistics,

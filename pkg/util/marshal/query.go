@@ -217,6 +217,7 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream) error {
 }
 
 func encodeResult(v parser.Value, s *jsoniter.Stream) error {
+	// TODO(karsten): handle sketches
 	switch v.Type() {
 	case loghttp.ResultTypeStream:
 		result, ok := v.(logqlmodel.Streams)

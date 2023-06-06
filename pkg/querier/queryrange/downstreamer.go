@@ -219,6 +219,7 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	switch r := resp.(type) {
 	case *LokiResponse:
+		// TODO(karsten): handle sketches
 		if r.Error != "" {
 			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
 		}

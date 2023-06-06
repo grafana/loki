@@ -1,11 +1,12 @@
 package sketch
 
 import (
-	"github.com/stretchr/testify/assert"
 	"math"
 	"math/rand"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLHHTopK(t *testing.T) {

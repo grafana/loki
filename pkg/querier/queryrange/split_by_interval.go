@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/dskit/tenant"
 
