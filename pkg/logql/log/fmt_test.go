@@ -642,8 +642,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
 			labels.Labels{
-				{Name: "foo", Value: "2023-05-26"},
 				{Name: "bar", Value: "19503"},
+				{Name: "foo", Value: "2023-05-26"},
 			},
 		},
 		{
@@ -651,8 +651,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
 			labels.Labels{
-				{Name: "foo", Value: "2023-03-23"},
 				{Name: "bar", Value: "1679577215"},
+				{Name: "foo", Value: "2023-03-23"},
 			},
 		},
 		{
@@ -660,8 +660,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
 			labels.Labels{
-				{Name: "foo", Value: "2009-11-10"},
 				{Name: "bar", Value: "1257894000000"},
+				{Name: "foo", Value: "2009-11-10"},
 			},
 		},
 		{
@@ -669,8 +669,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
 			labels.Labels{
-				{Name: "foo", Value: "2023-01-15"},
 				{Name: "bar", Value: "1673798889902000"},
+				{Name: "foo", Value: "2023-01-15"},
 			},
 		},
 		{
@@ -678,8 +678,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "Jan 2, 2006" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
 			labels.Labels{
-				{Name: "foo", Value: "Sep 9, 2001"},
 				{Name: "bar", Value: "1000000000000000000"},
+				{Name: "foo", Value: "Sep 9, 2001"},
 			},
 		},
 	}
