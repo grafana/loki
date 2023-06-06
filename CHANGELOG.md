@@ -10,6 +10,8 @@
 
 ##### Fixes
 
+* [9629](https://github.com/grafana/loki/pull/9629) **periklis**: Fix duplicate label values from ingester streams.
+
 ##### Changes
 
 #### Promtail
