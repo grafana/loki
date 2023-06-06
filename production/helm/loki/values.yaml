@@ -1012,7 +1012,7 @@ singleBinary:
   # -- Number of replicas for the single binary
   replicas: 0
   autoscaling:
-    # -- Enable autoscaling, this is only used if `queryIndex.enabled: true`
+    # -- Enable autoscaling
     enabled: false
     # -- Minimum autoscaling replicas for the single binary
     minReplicas: 1
@@ -1254,6 +1254,8 @@ gateway:
     ingressClassName: ""
     # -- Annotations for the gateway ingress
     annotations: {}
+    # -- Labels for the gateway ingress
+    labels: {}
     # -- Hosts configuration for the gateway ingress
     hosts:
       - host: gateway.loki.example.com

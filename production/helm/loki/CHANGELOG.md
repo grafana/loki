@@ -13,6 +13,19 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+
+## 5.6.1
+
+- [BUGFIX] Fix HPA for single binary deployment
+
+## 5.6.0
+
+- [ENHANCEMENT] Add `gateway.ingress.labels` to values and ingress-gateway in helm chart.
+
+## 5.5.12
+
+- [BUGFIX] Fix checksum annotation for config in single binary
+
 ## 5.5.11
 
 - [BUGFIX] Add missing metrics section in backend hpa template
