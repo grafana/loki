@@ -251,7 +251,8 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
 			Headers:    resp.GetHeaders(),
 		}, nil
-
+	case *LokiSketch:
+		return logqlmodel.Result{}, fmt.Errorf("TODO: decode sketch")
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}

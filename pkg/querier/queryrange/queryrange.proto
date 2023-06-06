@@ -152,6 +152,10 @@ message QueryResponse {
     IndexStatsResponse stats = 3;
     LokiPromResponse prom = 4;
     LokiResponse streams = 5;
-    // TODO(karsten): add sketch types here.
+    LokiSketch sketch = 6;
   }
+}
+
+message LokiSketch {
+	// TODO: define sketch
 }

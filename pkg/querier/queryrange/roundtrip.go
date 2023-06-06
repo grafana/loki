@@ -68,8 +68,8 @@ func NewTripperware(
 		}
 	}
 
-	// TODO(karsten): make LokiCodec configurable.
-	codec := LokiCodec
+	// TODO(karsten): make codec configurable and ensure frontend respondswith JSON
+	codec := &ProtobufCodec{}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics)

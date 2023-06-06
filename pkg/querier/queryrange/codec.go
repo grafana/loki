@@ -36,6 +36,7 @@ var LokiCodec queryrangebase.Codec = &JSONCodec{}
 
 type JSONCodec struct{
 	DefaultRequestCodec
+	DefaultMergeResponse
 }
 
 func (r *LokiRequest) GetEnd() int64 {
@@ -615,9 +616,11 @@ func (JSONCodec) EncodeResponse(ctx context.Context, res queryrangebase.Response
 	return &resp, nil
 }
 
+type DefaultMergeResponse {}
+
 // NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 // MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-func (JSONCodec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase.Response, error) {
+func (DefaultMergeResponse) MergeResponse(responses ...queryrangebase.Response) (queryrangebase.Response, error) {
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
 	}
@@ -1095,6 +1098,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 
 type ProtobufCodec struct{
 	DefaultRequestCodec
+	DefaultMergeResponse
 }
 
 var _ queryrangebase.Codec = &ProtobufCodec{}
@@ -1132,6 +1136,8 @@ func (ProtobufCodec) DecodeResponse(ctx context.Context, r *http.Response, req q
 			return concrete.Prom, nil
 		case *QueryResponse_Streams:
 			return concrete.Streams, nil
+		case *QueryResponse_Sketch:
+			return concrete.Sketch, nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", concrete)
 		}
