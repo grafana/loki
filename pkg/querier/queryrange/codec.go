@@ -1171,6 +1171,8 @@ func (ProtobufCodec) EncodeResponse(ctx context.Context, res queryrangebase.Resp
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *LokiSketch:
+		p.Response = &QueryResponse_Sketch{response}
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}

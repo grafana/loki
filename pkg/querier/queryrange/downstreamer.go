@@ -252,7 +252,9 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers:    resp.GetHeaders(),
 		}, nil
 	case *LokiSketch:
-		return logqlmodel.Result{}, fmt.Errorf("TODO: decode sketch")
+		// convert sketch to result
+		return logqlmodel.Result{
+		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}

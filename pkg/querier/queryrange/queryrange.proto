@@ -157,9 +157,19 @@ message QueryResponse {
 }
 
 message LokiSketch {
-  // TODO: define sketch
+  uint32 max = 1;
+  Sketch sketch = 2;
+
   repeated definitions.PrometheusResponseHeader Headers = 9 [
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+}
+
+message Sketch {
+  // Encode matrix as packed array.
+  uint32 cols = 1;
+  uint32 rows = 2;
+  repeated uint32 sk = 3 [ packed = true ];
+  repeated uint32 rowCounts = 4;
 }

@@ -71,7 +71,7 @@ func hashn(s string) (h1, h2 uint32) {
 // Reset clears all the values from the sketch.
 func (s *Sketch) Reset() {
 
-	// Complier doesn't yet optimize this into memset: https://code.google.com/p/go/issues/detail?id=5373
+	// Compiler doesn't yet optimize this into memset: https://code.google.com/p/go/issues/detail?id=5373
 	for _, w := range s.sk {
 		for i := range w {
 			w[i] = 0
@@ -83,7 +83,7 @@ func (s *Sketch) Reset() {
 	}
 }
 
-// Add 'count' occurences of the given input
+// Add 'count' occurrences of the given input
 func (s *Sketch) Add(h string, count uint32) (val uint32) {
 	w := len(s.sk[0])
 	d := len(s.sk)
@@ -101,7 +101,7 @@ func (s *Sketch) Add(h string, count uint32) (val uint32) {
 	return val
 }
 
-// Del removes 'count' occurences of the given input
+// Del removes 'count' occurrences of the given input
 func (s *Sketch) Del(h string, count uint32) (val uint32) {
 	w := len(s.sk[0])
 	d := len(s.sk)
