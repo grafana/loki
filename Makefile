@@ -298,6 +298,7 @@ publish: packages
 lint: ## run linters
 	go version
 	golangci-lint version
+	GO111MODULE=on golangci-lint cache clean -v
 	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
