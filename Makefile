@@ -50,7 +50,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
@@ -298,7 +298,6 @@ publish: packages
 lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint cache clean -v
 	GO111MODULE=on golangci-lint run -v
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
