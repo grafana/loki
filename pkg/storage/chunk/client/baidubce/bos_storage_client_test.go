@@ -22,14 +22,3 @@ func Test_ConfigRedactsCredentials(t *testing.T) {
 	require.True(t, bytes.Contains(output, []byte("access key id")))
 	require.False(t, bytes.Contains(output, []byte("secret access id")))
 }
-
-func TestBOSStorageConfig_UnmarshalYAML(t *testing.T) {
-	in := []byte(`bucket_name: foobar`)
-
-	dst := &BOSStorageConfig{}
-	require.NoError(t, yaml.UnmarshalStrict(in, dst))
-	require.Equal(t, "foobar", dst.BucketName)
-
-	// set defaults
-	require.Equal(t, DefaultEndpoint, dst.Endpoint)
-}

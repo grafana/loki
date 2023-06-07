@@ -88,13 +88,6 @@ type StorageConfig struct {
 	S3Config       `yaml:",inline"`
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *StorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues(cfg)
-	type plain StorageConfig
-	return unmarshal((*plain)(cfg))
-}
-
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlags(f)

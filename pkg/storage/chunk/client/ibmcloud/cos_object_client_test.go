@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -144,21 +143,6 @@ func (cosClient *mockCosClient) ListObjectsV2WithContext(ctx context.Context, in
 	return &s3.ListObjectsV2Output{
 		Contents: objects,
 	}, nil
-}
-
-func TestCOSConfig_UnmarshalYAML(t *testing.T) {
-	in := []byte(`endpoint: cos.test
-http_config:
-  idle_conn_timeout: 30s`)
-
-	dst := &COSConfig{}
-	require.NoError(t, yaml.UnmarshalStrict(in, dst))
-
-	// set defaults
-	require.Equal(t, 3*time.Second, dst.BackoffConfig.MaxBackoff)
-
-	// override defaults
-	require.Equal(t, 30*time.Second, dst.HTTPConfig.IdleConnTimeout)
 }
 
 func Test_COSConfig(t *testing.T) {

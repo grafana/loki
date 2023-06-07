@@ -13,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/dskit/flagext"
 	bucket_swift "github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -41,13 +40,6 @@ type SwiftConfig struct {
 // RegisterFlags registers flags.
 func (cfg *SwiftConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *SwiftConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues(cfg)
-	type plain SwiftConfig
-	return unmarshal((*plain)(cfg))
 }
 
 // Validate config and returns error on failure

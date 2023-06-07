@@ -58,13 +58,6 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableHTTP2, prefix+"gcs.enable-http2", true, "Enable HTTP2 connections.")
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *GCSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues(cfg)
-	type plain GCSConfig
-	return unmarshal((*plain)(cfg))
-}
-
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
 func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config) (*GCSObjectClient, error) {
 	return newGCSObjectClient(ctx, cfg, hedgingCfg, storage.NewClient)

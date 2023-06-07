@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 
@@ -33,13 +32,6 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlags registers flags with prefix.
 func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *FSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues(cfg)
-	type plain FSConfig
-	return unmarshal((*plain)(cfg))
 }
 
 func (cfg *FSConfig) ToCortexLocalConfig() local.Config {

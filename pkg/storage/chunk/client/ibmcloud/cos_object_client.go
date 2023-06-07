@@ -114,13 +114,6 @@ func (cfg *COSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.TrustedProfileID, prefix+"cos.trusted-profile-id", "", "ID of the trusted profile.")
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *COSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues(cfg)
-	type plain COSConfig
-	return unmarshal((*plain)(cfg))
-}
-
 type COSObjectClient struct {
 	cfg COSConfig
 

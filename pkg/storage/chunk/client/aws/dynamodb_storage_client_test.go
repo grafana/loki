@@ -6,12 +6,10 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -52,23 +50,4 @@ func TestChunksPartialError(t *testing.T) {
 	chunksWeGot, err := c.GetChunks(ctx, chunks)
 	require.Error(t, err)
 	require.Equal(t, dynamoDBMaxReadBatchSize, len(chunksWeGot))
-}
-
-func TestStorageConfig_UnmarshalYAML(t *testing.T) {
-	in := []byte(`s3: "s3.test"
-storage_class: GLACIER
-dynamodb:
-  dynamodb_url: "dynamo.test"
-`)
-	dst := &StorageConfig{}
-	require.NoError(t, yaml.UnmarshalStrict(in, dst))
-	require.Equal(t, "dynamo.test", dst.DynamoDB.String())
-	require.Equal(t, "s3.test", dst.S3.String())
-
-	// set defaults
-	require.Equal(t, 3*time.Second, dst.S3Config.BackoffConfig.MaxBackoff)
-	require.Equal(t, 50*time.Second, dst.DynamoDBConfig.BackoffConfig.MaxBackoff)
-
-	// override defaults
-	require.Equal(t, storageawscommon.StorageClassGlacier, dst.StorageClass)
 }
