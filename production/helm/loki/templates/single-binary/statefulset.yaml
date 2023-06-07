@@ -9,6 +9,13 @@ metadata:
   labels:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.singleBinary.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   replicas: {{ include "loki.singleBinaryReplicas" . }}
   podManagementPolicy: Parallel
@@ -32,7 +39,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

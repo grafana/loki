@@ -288,6 +288,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	testStreams := []logproto.Stream{
 		{Labels: "{app=\"test\",job=\"varlogs\"}", Entries: entries(5, currentTime)},
 		{Labels: "{app=\"test2\",job=\"varlogs\"}", Entries: entries(5, currentTime.Add(6*time.Nanosecond))},
+		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
 	for _, testStream := range testStreams {
@@ -835,6 +836,23 @@ func TestStreamShardingUsage(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
+}
+
+func TestGetStats(t *testing.T) {
+	instance := defaultInstance(t)
+	resp, err := instance.GetStats(context.Background(), &logproto.IndexStatsRequest{
+		From:     0,
+		Through:  11000,
+		Matchers: `{host="agent"}`,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.IndexStatsResponse{
+		Streams: 2,
+		Chunks:  2,
+		Bytes:   160,
+		Entries: 10,
+	}, resp)
 }
 
 func defaultInstance(t *testing.T) *instance {

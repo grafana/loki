@@ -22,6 +22,7 @@ spec:
   behavior:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  metrics:
   {{- with .Values.backend.autoscaling.targetMemoryUtilizationPercentage }}
     - type: Resource
       resource:

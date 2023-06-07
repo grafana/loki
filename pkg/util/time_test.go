@@ -270,6 +270,12 @@ func TestGetFactorOfTime(t *testing.T) {
 			extentMin: 20, extentMax: 35,
 			exp: 0,
 		},
+		{
+			desc: "factor would be NaN",
+			from: 1685655637000000000, through: 1685656237000000000,
+			extentMin: 1685656107442496000, extentMax: 1685656107442496000,
+			exp: 1,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			factor := GetFactorOfTime(tc.from, tc.through, tc.extentMin, tc.extentMax)

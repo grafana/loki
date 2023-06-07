@@ -482,6 +482,13 @@ rate_store:
   # If enabled, detailed logs and spans will be emitted.
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
+
+# Experimental. Customize the logging of write failures.
+write_failures_logging:
+  # Experimental and subject to change. Log volume allowed (per second).
+  # Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging.rate
+  [rate: <int> | default = 1KB]
 ```
 
 ### querier
@@ -3759,6 +3766,10 @@ background:
   # How many key batches to buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> | default = 10000]
+
+  # Size limit in bytes for background write-back.
+  # CLI flag: -<prefix>.background.write-back-size-limit
+  [writeback_size_limit: <int> | default = 1GB]
 
 memcached:
   # How long keys stay in the memcache.

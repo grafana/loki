@@ -239,6 +239,14 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
+	sp.LogKV(
+		"query", r.GetQuery(),
+		"step", time.UnixMilli(r.GetStep()),
+		"start", time.UnixMilli(r.GetStart()),
+		"end", r.GetEnd(),
+		"key", key,
+	)
+
 	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))

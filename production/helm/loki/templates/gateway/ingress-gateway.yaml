@@ -10,6 +10,9 @@ metadata:
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- range $labelKey, $labelValue := .Values.gateway.ingress.labels }}
+    {{ $labelKey }}: {{ $labelValue | toYaml }}
+    {{- end }}
   {{- with .Values.gateway.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

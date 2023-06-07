@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -63,13 +64,18 @@ type Config struct {
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 
+	// RateStore customizes the rate storing used by stream sharding.
 	RateStore RateStoreConfig `yaml:"rate_store"`
+
+	// WriteFailuresLoggingCfg customizes write failures logging behavior.
+	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
@@ -105,6 +111,10 @@ type Distributor struct {
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
 	labelCache           *lru.Cache
+
+	// Push failures rate limiter.
+	writeFailuresManager *writefailures.Manager
+
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
@@ -184,6 +194,7 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		writeFailuresManager: writefailures.NewManager(util_log.Logger, cfg.WriteFailuresLogging, configs),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
