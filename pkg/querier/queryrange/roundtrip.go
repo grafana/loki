@@ -68,8 +68,12 @@ func NewTripperware(
 		}
 	}
 
-	// TODO(karsten): make codec configurable and ensure frontend respondswith JSON
-	codec := &ProtobufCodec{}
+	// TODO(karsten): We could decide on the response codec based on the response content type header and only set the
+	// accept header here.
+	var codec queryrangebase.Codec = &JSONCodec{}
+	if cfg.AcceptedQueryResponseFormat == "protobuf" {
+		codec = &ProtobufCodec{}
+	}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, c,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics)

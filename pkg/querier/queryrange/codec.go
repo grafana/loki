@@ -1139,7 +1139,7 @@ func (ProtobufCodec) DecodeResponse(ctx context.Context, r *http.Response, req q
 		case *QueryResponse_Sketch:
 			return concrete.Sketch, nil
 		default:
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", concrete)
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
 		}
 	}
 }

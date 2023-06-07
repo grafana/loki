@@ -49,6 +49,9 @@ type Config struct {
 	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+
+	// Accepted format for querier responses
+	AcceptedQueryResponseFormat string `yaml:"accepted_query_response_format"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -59,6 +62,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", false, "Cache index stats query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
+
+	f.StringVar(&cfg.AcceptedQueryResponseFormat, "frontend.accepted-query-response-format", "json", "The downstream querier is request to answer in the format. Can be 'json' 'protobuf'.")
+
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
