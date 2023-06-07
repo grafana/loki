@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
@@ -51,6 +52,13 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.StringVar(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "", "alibabacloud Secret Access Key")
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *OssConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues(cfg)
+	type plain OssConfig
+	return unmarshal((*plain)(cfg))
 }
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.

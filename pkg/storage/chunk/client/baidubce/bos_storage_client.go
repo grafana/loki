@@ -57,6 +57,13 @@ func (cfg *BOSStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.Var(&cfg.SecretAccessKey, prefix+"bos.secret-access-key", "Baidu Cloud Engine (BCE) Secret Access Key.")
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *BOSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues(cfg)
+	type plain BOSStorageConfig
+	return unmarshal((*plain)(cfg))
+}
+
 type BOSObjectStorage struct {
 	cfg    *BOSStorageConfig
 	client *bos.Client

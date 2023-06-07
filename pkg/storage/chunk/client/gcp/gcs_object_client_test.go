@@ -12,9 +12,25 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/api/option"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
+
+func TestGCSConfig_UnmarshalYAML(t *testing.T) {
+	in := []byte(`bucket_name: foobar
+request_timeout: 30s`)
+
+	dst := &GCSConfig{}
+	require.NoError(t, yaml.UnmarshalStrict(in, dst))
+	require.Equal(t, "foobar", dst.BucketName)
+
+	// set defaults
+	require.Equal(t, true, dst.EnableHTTP2)
+
+	// override defaults
+	require.Equal(t, 30*time.Second, dst.RequestTimeout)
+}
 
 func Test_Hedging(t *testing.T) {
 	for _, tc := range []struct {

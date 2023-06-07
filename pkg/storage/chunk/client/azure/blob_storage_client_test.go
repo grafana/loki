@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/atomic"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
@@ -203,6 +204,24 @@ func Test_EndpointSuffixWithBlob(t *testing.T) {
 	bloburl, err := c.getBlobURL("blob", false)
 	require.NoError(t, err)
 	require.Equal(t, *expect, bloburl.URL())
+}
+
+func TestBlobStorageConfig_UnmarshalYAML(t *testing.T) {
+	in := []byte(`environment: AzureGermanCloud
+account_name: foo
+container_name: bar
+`)
+
+	dst := &BlobStorageConfig{}
+	require.NoError(t, yaml.UnmarshalStrict(in, dst))
+	require.Equal(t, "foo", dst.StorageAccountName)
+	require.Equal(t, "bar", dst.ContainerName)
+
+	// set defaults
+	require.Equal(t, 30*time.Second, dst.RequestTimeout)
+
+	// override defaults
+	require.Equal(t, azureGermanCloud, dst.Environment)
 }
 
 func Test_ConfigValidation(t *testing.T) {

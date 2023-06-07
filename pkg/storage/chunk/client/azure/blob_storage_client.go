@@ -137,6 +137,13 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.Var(&c.ClientSecret, prefix+"azure.client-secret", "Azure Service Principal secret key.")
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *BlobStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues(cfg)
+	type plain BlobStorageConfig
+	return unmarshal((*plain)(cfg))
+}
+
 type BlobStorageMetrics struct {
 	requestDuration  *prometheus.HistogramVec
 	egressBytesTotal prometheus.Counter

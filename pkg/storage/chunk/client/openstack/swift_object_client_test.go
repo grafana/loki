@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -18,6 +19,22 @@ type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
+}
+
+func TestSwiftConfig_UnmarshalYAML(t *testing.T) {
+	in := []byte(`container_name: foobar
+request_timeout: 30s
+`)
+
+	dst := &SwiftConfig{}
+	require.NoError(t, yaml.UnmarshalStrict(in, dst))
+	require.Equal(t, "foobar", dst.ContainerName)
+
+	// set defaults
+	require.Equal(t, 10*time.Second, dst.ConnectTimeout)
+
+	// override defaults
+	require.Equal(t, 30*time.Second, dst.RequestTimeout)
 }
 
 func Test_Hedging(t *testing.T) {

@@ -11,9 +11,19 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 )
+
+func TestFSConfig_UnmarshalYAML(t *testing.T) {
+	in := []byte(`directory: foobar
+`)
+
+	dst := &FSConfig{}
+	require.NoError(t, yaml.UnmarshalStrict(in, dst))
+	require.Equal(t, "foobar", dst.Directory)
+}
 
 func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	deleteFilesOlderThan := 10 * time.Minute
