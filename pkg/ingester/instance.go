@@ -480,15 +480,15 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 		}, nil
 	}
 
-	labels := make([]string, 0)
+	labels := util.NewUniqueStrings(0)
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
-				labels = append(labels, label.Value)
+				labels.Add(label.Value)
 				continue
 			}
 			if !req.Values {
-				labels = append(labels, label.Name)
+				labels.Add(label.Name)
 			}
 		}
 		return nil
@@ -498,7 +498,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	return &logproto.LabelResponse{
-		Values: labels,
+		Values: labels.Strings(),
 	}, nil
 }
 
