@@ -101,7 +101,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: extract in middleware or method.
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
-		p, err := ResultToResponse(result)
+		p, err := ResultToResponse(result, params)
 		if err != nil {
 			serverutil.WriteError(err, w)
 			return
@@ -156,7 +156,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 
 	// TODO: extract in middleware or method.
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
-		p, err := ResultToResponse(result)
+		p, err := ResultToResponse(result, params)
 		if err != nil {
 			serverutil.WriteError(err, w)
 			return
@@ -228,9 +228,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: extract in middleware or method.
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
-		p, err := ResultToResponse(result)
-		p.GetStreams().Direction = params.Direction()
-		p.GetStreams().Limit = params.Limit()
+		p, err := ResultToResponse(result, params)
 
 		if err != nil {
 			serverutil.WriteError(err, w)
@@ -252,7 +250,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ResultToResponse(result logqlmodel.Result) (*queryrange.QueryResponse, error) {
+func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*queryrange.QueryResponse, error) {
 	switch data := result.Data.(type) {
 	case promql.Vector:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -317,6 +315,8 @@ func ResultToResponse(result logqlmodel.Result) (*queryrange.QueryResponse, erro
 		return &queryrange.QueryResponse{
 			Response: &queryrange.QueryResponse_Streams{
 				Streams: &queryrange.LokiResponse{
+					Direction: params.Direction(),
+					Limit:     params.Limit(),
 					Data: queryrange.LokiData{
 						ResultType: loghttp.ResultTypeStream,
 						Result:     data,
@@ -570,7 +570,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 			Response: &queryrange.QueryResponse_Series{
 				Series: &queryrange.LokiSeriesResponse{
 					Status:     "success",
-					Version: uint32(loghttp.GetVersion(r.RequestURI)),
+					Version:    uint32(loghttp.GetVersion(r.RequestURI)),
 					Data:       resp.Series,
 					Statistics: statResult,
 				}},
