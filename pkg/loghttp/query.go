@@ -18,7 +18,7 @@ import (
 var (
 	errEndBeforeStart   = errors.New("end timestamp must not be before or equal to start time")
 	errNegativeStep     = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of step parameter")
+	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 	errNegativeInterval = errors.New("interval must be >= 0")
 )
 
