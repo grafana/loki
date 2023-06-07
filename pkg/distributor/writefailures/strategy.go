@@ -12,7 +12,7 @@ func newStrategy(burst int, rate float64) *strategy {
 	}
 }
 
-func (s *strategy) Burst( _ string) int {
+func (s *strategy) Burst(_ string) int {
 	return s.burst
 }
 

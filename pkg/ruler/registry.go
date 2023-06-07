@@ -439,6 +439,6 @@ func newStorageRegistryMetrics(reg prometheus.Registerer) *storageRegistryMetric
 type nullRegistry struct{}
 
 func (n nullRegistry) Appender(_ context.Context) storage.Appender { return discardingAppender{} }
-func (n nullRegistry) isReady(_ string) bool                    { return true }
-func (n nullRegistry) stop()                                         {}
-func (n nullRegistry) configureTenantStorage(_ string)          {}
+func (n nullRegistry) isReady(_ string) bool                       { return true }
+func (n nullRegistry) stop()                                       {}
+func (n nullRegistry) configureTenantStorage(_ string)             {}
