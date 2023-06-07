@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -56,14 +55,20 @@ type Client struct {
 	// Timeout is a cumulative timeout for dial, write and read, defaults to 0 (disabled) - overrides DialTimeout, ReadTimeout,
 	// WriteTimeout when non-zero. Can be overridden with net.Dialer.Timeout (see Client.ExchangeWithDialer and
 	// Client.Dialer) or context.Context.Deadline (see ExchangeContext)
-	Timeout        time.Duration
-	DialTimeout    time.Duration     // net.DialTimeout, defaults to 2 seconds, or net.Dialer.Timeout if expiring earlier - overridden by Timeout when that value is non-zero
-	ReadTimeout    time.Duration     // net.Conn.SetReadTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
-	WriteTimeout   time.Duration     // net.Conn.SetWriteTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
-	TsigSecret     map[string]string // secret(s) for Tsig map[<zonename>]<base64 secret>, zonename must be in canonical form (lowercase, fqdn, see RFC 4034 Section 6.2)
-	TsigProvider   TsigProvider      // An implementation of the TsigProvider interface. If defined it replaces TsigSecret and is used for all TSIG operations.
-	SingleInflight bool              // if true suppress multiple outstanding queries for the same Qname, Qtype and Qclass
-	group          singleflight
+	Timeout      time.Duration
+	DialTimeout  time.Duration     // net.DialTimeout, defaults to 2 seconds, or net.Dialer.Timeout if expiring earlier - overridden by Timeout when that value is non-zero
+	ReadTimeout  time.Duration     // net.Conn.SetReadTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
+	WriteTimeout time.Duration     // net.Conn.SetWriteTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
+	TsigSecret   map[string]string // secret(s) for Tsig map[<zonename>]<base64 secret>, zonename must be in canonical form (lowercase, fqdn, see RFC 4034 Section 6.2)
+	TsigProvider TsigProvider      // An implementation of the TsigProvider interface. If defined it replaces TsigSecret and is used for all TSIG operations.
+
+	// SingleInflight previously serialised multiple concurrent queries for the
+	// same Qname, Qtype and Qclass to ensure only one would be in flight at a
+	// time.
+	//
+	// Deprecated: This is a no-op. Callers should implement their own in flight
+	// query caching if needed. See github.com/miekg/dns/issues/1449.
+	SingleInflight bool
 }
 
 // Exchange performs a synchronous UDP query. It sends the message m to the address
@@ -185,26 +190,7 @@ func (c *Client) ExchangeWithConn(m *Msg, conn *Conn) (r *Msg, rtt time.Duration
 	return c.exchangeWithConnContext(context.Background(), m, conn)
 }
 
-func (c *Client) exchangeWithConnContext(ctx context.Context, m *Msg, conn *Conn) (r *Msg, rtt time.Duration, err error) {
-	if !c.SingleInflight {
-		return c.exchangeContext(ctx, m, conn)
-	}
-
-	q := m.Question[0]
-	key := fmt.Sprintf("%s:%d:%d", q.Name, q.Qtype, q.Qclass)
-	r, rtt, err, shared := c.group.Do(key, func() (*Msg, time.Duration, error) {
-		// When we're doing singleflight we don't want one context cancellation, cancel _all_ outstanding queries.
-		// Hence we ignore the context and use Background().
-		return c.exchangeContext(context.Background(), m, conn)
-	})
-	if r != nil && shared {
-		r = r.Copy()
-	}
-
-	return r, rtt, err
-}
-
-func (c *Client) exchangeContext(ctx context.Context, m *Msg, co *Conn) (r *Msg, rtt time.Duration, err error) {
+func (c *Client) exchangeWithConnContext(ctx context.Context, m *Msg, co *Conn) (r *Msg, rtt time.Duration, err error) {
 	opt := m.IsEdns0()
 	// If EDNS0 is used use that for size.
 	if opt != nil && opt.UDPSize() >= MinMsgSize {

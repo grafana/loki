@@ -7,8 +7,10 @@
 package exported
 
 import (
+	"context"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 )
@@ -57,4 +59,25 @@ func Payload(resp *http.Response) ([]byte, error) {
 	}
 	resp.Body = shared.NewNopClosingBytesReader(bytesBody)
 	return bytesBody, nil
+}
+
+// AccessToken represents an Azure service bearer access token with expiry information.
+// Exported as azcore.AccessToken.
+type AccessToken struct {
+	Token     string
+	ExpiresOn time.Time
+}
+
+// TokenRequestOptions contain specific parameter that may be used by credentials types when attempting to get a token.
+// Exported as policy.TokenRequestOptions.
+type TokenRequestOptions struct {
+	// Scopes contains the list of permission scopes required for the token.
+	Scopes []string
+}
+
+// TokenCredential represents a credential capable of providing an OAuth token.
+// Exported as azcore.TokenCredential.
+type TokenCredential interface {
+	// GetToken requests an access token for the specified set of scopes.
+	GetToken(ctx context.Context, options TokenRequestOptions) (AccessToken, error)
 }

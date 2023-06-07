@@ -44,12 +44,12 @@ func IExportShallow(fset *token.FileSet, pkg *types.Package) ([]byte, error) {
 	return out.Bytes(), err
 }
 
-// IImportShallow decodes "shallow" types.Package data encoded by IExportShallow
-// in the same executable. This function cannot import data from
+// IImportShallow decodes "shallow" types.Package data encoded by
+// IExportShallow in the same executable. This function cannot import data from
 // cmd/compile or gcexportdata.Write.
-func IImportShallow(fset *token.FileSet, imports map[string]*types.Package, data []byte, path string, insert InsertType) (*types.Package, error) {
+func IImportShallow(fset *token.FileSet, getPackage GetPackageFunc, data []byte, path string, insert InsertType) (*types.Package, error) {
 	const bundle = false
-	pkgs, err := iimportCommon(fset, imports, data, bundle, path, insert)
+	pkgs, err := iimportCommon(fset, getPackage, data, bundle, path, insert)
 	if err != nil {
 		return nil, err
 	}
@@ -969,6 +969,16 @@ func constantToFloat(x constant.Value) *big.Float {
 	return &f
 }
 
+func valueToRat(x constant.Value) *big.Rat {
+	// Convert little-endian to big-endian.
+	// I can't believe this is necessary.
+	bytes := constant.Bytes(x)
+	for i := 0; i < len(bytes)/2; i++ {
+		bytes[i], bytes[len(bytes)-1-i] = bytes[len(bytes)-1-i], bytes[i]
+	}
+	return new(big.Rat).SetInt(new(big.Int).SetBytes(bytes))
+}
+
 // mpint exports a multi-precision integer.
 //
 // For unsigned types, small values are written out as a single
@@ -1177,4 +1187,13 @@ func (q *objQueue) popHead() types.Object {
 	obj := q.ring[q.head%len(q.ring)]
 	q.head++
 	return obj
+}
+
+// internalError represents an error generated inside this package.
+type internalError string
+
+func (e internalError) Error() string { return "gcimporter: " + string(e) }
+
+func internalErrorf(format string, args ...interface{}) error {
+	return internalError(fmt.Sprintf(format, args...))
 }

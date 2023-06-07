@@ -100,8 +100,10 @@ func (t *Client) Credential(ctx context.Context, authParams authority.AuthParams
 		scopes := make([]string, len(authParams.Scopes))
 		copy(scopes, authParams.Scopes)
 		params := exported.TokenProviderParameters{
+			Claims:        authParams.Claims,
 			CorrelationID: uuid.New().String(),
 			Scopes:        scopes,
+			TenantID:      authParams.AuthorityInfo.Tenant,
 		}
 		tr, err := cred.TokenProvider(ctx, params)
 		if err != nil {
@@ -138,7 +140,6 @@ func (t *Client) OnBehalfOf(ctx context.Context, authParams authority.AuthParams
 
 	if cred.Secret != "" {
 		return t.AccessTokens.FromUserAssertionClientSecret(ctx, authParams, authParams.UserAssertion, cred.Secret)
-
 	}
 	jwt, err := cred.JWT(ctx, authParams)
 	if err != nil {

@@ -9,10 +9,13 @@ package shared
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -132,4 +135,25 @@ type TransportFunc func(*http.Request) (*http.Response, error)
 // Do implements the Transporter interface for the TransportFunc type.
 func (pf TransportFunc) Do(req *http.Request) (*http.Response, error) {
 	return pf(req)
+}
+
+// ValidateModVer verifies that moduleVersion is a valid semver 2.0 string.
+func ValidateModVer(moduleVersion string) error {
+	modVerRegx := regexp.MustCompile(`^v\d+\.\d+\.\d+(?:-[a-zA-Z0-9_.-]+)?$`)
+	if !modVerRegx.MatchString(moduleVersion) {
+		return fmt.Errorf("malformed moduleVersion param value %s", moduleVersion)
+	}
+	return nil
+}
+
+// ExtractPackageName returns "package" from "package.Client".
+// If clientName is malformed, an error is returned.
+func ExtractPackageName(clientName string) (string, error) {
+	pkg, client, ok := strings.Cut(clientName, ".")
+	if !ok {
+		return "", fmt.Errorf("missing . in clientName %s", clientName)
+	} else if pkg == "" || client == "" {
+		return "", fmt.Errorf("malformed clientName %s", clientName)
+	}
+	return pkg, nil
 }

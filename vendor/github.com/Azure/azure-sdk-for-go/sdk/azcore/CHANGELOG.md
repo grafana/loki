@@ -1,5 +1,21 @@
 # Release History
 
+## 1.3.1 (2023-02-02)
+
+### Other Changes
+* Update dependencies to latest versions.
+
+## 1.3.0 (2023-01-06)
+
+### Features Added
+* Added `BearerTokenOptions.AuthorizationHandler` to enable extending `runtime.BearerTokenPolicy`
+  with custom authorization logic
+* Added `Client` types and matching constructors to the `azcore` and `arm` packages.  These represent a basic client for HTTP and ARM respectively.
+
+### Other Changes
+* Updated `internal` module to latest version.
+* `policy/Request.SetBody()` allows replacing a request's body with an empty one
+
 ## 1.2.0 (2022-11-04)
 
 ### Features Added

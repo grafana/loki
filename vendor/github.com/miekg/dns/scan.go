@@ -10,13 +10,13 @@ import (
 	"strings"
 )
 
-const maxTok = 2048 // Largest token we can return.
+const maxTok = 512 // Token buffer start size, and growth size amount.
 
 // The maximum depth of $INCLUDE directives supported by the
 // ZoneParser API.
 const maxIncludeDepth = 7
 
-// Tokinize a RFC 1035 zone file. The tokenizer will normalize it:
+// Tokenize a RFC 1035 zone file. The tokenizer will normalize it:
 // * Add ownernames if they are left blank;
 // * Suppress sequences of spaces;
 // * Make each RR fit on one line (_NEWLINE is send as last)
@@ -765,8 +765,8 @@ func (zl *zlexer) Next() (lex, bool) {
 	}
 
 	var (
-		str [maxTok]byte // Hold string text
-		com [maxTok]byte // Hold comment text
+		str = make([]byte, maxTok) // Hold string text
+		com = make([]byte, maxTok) // Hold comment text
 
 		stri int // Offset in str (0 means empty)
 		comi int // Offset in com (0 means empty)
@@ -785,14 +785,12 @@ func (zl *zlexer) Next() (lex, bool) {
 		l.line, l.column = zl.line, zl.column
 
 		if stri >= len(str) {
-			l.token = "token length insufficient for parsing"
-			l.err = true
-			return *l, true
+			// if buffer length is insufficient, increase it.
+			str = append(str[:], make([]byte, maxTok)...)
 		}
 		if comi >= len(com) {
-			l.token = "comment length insufficient for parsing"
-			l.err = true
-			return *l, true
+			// if buffer length is insufficient, increase it.
+			com = append(com[:], make([]byte, maxTok)...)
 		}
 
 		switch x {
@@ -816,7 +814,7 @@ func (zl *zlexer) Next() (lex, bool) {
 			if stri == 0 {
 				// Space directly in the beginning, handled in the grammar
 			} else if zl.owner {
-				// If we have a string and its the first, make it an owner
+				// If we have a string and it's the first, make it an owner
 				l.value = zOwner
 				l.token = string(str[:stri])
 

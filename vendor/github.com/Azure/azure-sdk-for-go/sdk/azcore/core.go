@@ -7,25 +7,20 @@
 package azcore
 
 import (
-	"context"
 	"reflect"
-	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing"
 )
 
 // AccessToken represents an Azure service bearer access token with expiry information.
-type AccessToken struct {
-	Token     string
-	ExpiresOn time.Time
-}
+type AccessToken = exported.AccessToken
 
 // TokenCredential represents a credential capable of providing an OAuth token.
-type TokenCredential interface {
-	// GetToken requests an access token for the specified set of scopes.
-	GetToken(ctx context.Context, options policy.TokenRequestOptions) (AccessToken, error)
-}
+type TokenCredential = exported.TokenCredential
 
 // holds sentinel values used to send nulls
 var nullables map[reflect.Type]interface{} = map[reflect.Type]interface{}{}
@@ -73,3 +68,46 @@ func IsNullValue[T any](v T) bool {
 
 // ClientOptions contains configuration settings for a client's pipeline.
 type ClientOptions = policy.ClientOptions
+
+// Client is a basic HTTP client.  It consists of a pipeline and tracing provider.
+type Client struct {
+	pl runtime.Pipeline
+	tr tracing.Tracer
+}
+
+// NewClient creates a new Client instance with the provided values.
+//   - clientName - the fully qualified name of the client ("package.Client"); this is used by the tracing provider when creating spans
+//   - moduleVersion - the semantic version of the containing module; used by the telemetry policy
+//   - plOpts - pipeline configuration options; can be the zero-value
+//   - options - optional client configurations; pass nil to accept the default values
+func NewClient(clientName, moduleVersion string, plOpts runtime.PipelineOptions, options *ClientOptions) (*Client, error) {
+	pkg, err := shared.ExtractPackageName(clientName)
+	if err != nil {
+		return nil, err
+	}
+
+	if options == nil {
+		options = &ClientOptions{}
+	}
+
+	if !options.Telemetry.Disabled {
+		if err := shared.ValidateModVer(moduleVersion); err != nil {
+			return nil, err
+		}
+	}
+
+	pl := runtime.NewPipeline(pkg, moduleVersion, plOpts, options)
+
+	tr := options.TracingProvider.NewTracer(clientName, moduleVersion)
+	return &Client{pl: pl, tr: tr}, nil
+}
+
+// Pipeline returns the pipeline for this client.
+func (c *Client) Pipeline() runtime.Pipeline {
+	return c.pl
+}
+
+// Tracer returns the tracer for this client.
+func (c *Client) Tracer() tracing.Tracer {
+	return c.tr
+}

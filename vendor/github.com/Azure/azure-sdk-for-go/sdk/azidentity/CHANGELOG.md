@@ -1,5 +1,35 @@
 # Release History
 
+## 1.2.1 (2023-01-26)
+
+### Other Changes
+* Upgrade MSAL to v0.8.1
+
+## 1.3.0-beta.2 (2023-01-10)
+
+### Features Added
+* Added `OnBehalfOfCredential` to support the on-behalf-of flow
+  ([#16642](https://github.com/Azure/azure-sdk-for-go/issues/16642))
+
+### Bugs Fixed
+* `AzureCLICredential` reports token expiration in local time (should be UTC)
+
+### Other Changes
+* `AzureCLICredential` imposes its default timeout only when the `Context`
+  passed to `GetToken()` has no deadline
+* Added `NewCredentialUnavailableError()`. This function constructs an error indicating
+  a credential can't authenticate and an encompassing `ChainedTokenCredential` should
+  try its next credential, if any.
+
+## 1.3.0-beta.1 (2022-12-13)
+
+### Features Added
+* `WorkloadIdentityCredential` and `DefaultAzureCredential` support
+  Workload Identity Federation on Kubernetes. `DefaultAzureCredential`
+  support requires environment variable configuration as set by the
+  Workload Identity webhook.
+  ([#15615](https://github.com/Azure/azure-sdk-for-go/issues/15615))
+
 ## 1.2.0 (2022-11-08)
 
 ### Other Changes
