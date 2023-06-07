@@ -17,7 +17,7 @@ import (
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
 // If the config.openshift.io/DNS object is not found the whole lokistack
 // resoure is set to a degraded state.
-func GetOpenShiftBaseDomain(ctx context.Context, k k8s.Client, _ ctrl.Request) (string, error) {
+func GetOpenShiftBaseDomain(ctx context.Context, k k8s.Client, req ctrl.Request) (string, error) {
 	var cluster configv1.DNS
 	key := client.ObjectKey{Name: "cluster"}
 	if err := k.Get(ctx, key, &cluster); err != nil {

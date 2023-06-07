@@ -44,7 +44,7 @@ func (v *RulerConfigValidator) ValidateDelete(_ context.Context, _ runtime.Objec
 	return nil
 }
 
-func (v *RulerConfigValidator) validate(_ context.Context, obj runtime.Object) error {
+func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object) error {
 	rulerConfig, ok := obj.(*lokiv1.RulerConfig)
 	if !ok {
 		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type RulerConfig: %t", obj))
