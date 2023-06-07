@@ -51,7 +51,7 @@ type labelAllowStage struct {
 }
 
 // Process implements Stage
-func (l *labelAllowStage) Process(labels model.LabelSet, _ map[string]interface{},  t *time.Time, _ *string) {
+func (l *labelAllowStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
 	for label := range labels {
 		if _, ok := l.labels[string(label)]; !ok {
 			delete(labels, label)
