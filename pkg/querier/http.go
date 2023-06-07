@@ -252,14 +252,63 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 func ResultToResponse(result logqlmodel.Result) (*queryrange.QueryResponse, error) {
 	switch data := result.Data.(type) {
 	case promql.Vector:
-		pr := queryrangebase.NewEmptyPrometheusResponse()
-		//pr.Data.Result = data
+		sampleStream, err := queryrangebase.FromValue(data)
+		if err != nil {
+			return nil, err
+		}
+
 		return &queryrange.QueryResponse{
 			Response: &queryrange.QueryResponse_Prom{
 				Prom: &queryrange.LokiPromResponse{
-					Response:   pr,
+					Response: &queryrangebase.PrometheusResponse{
+						Status: "success",
+						Data: queryrangebase.PrometheusData{
+							ResultType: loghttp.ResultTypeVector,
+							Result:     sampleStream,
+						},
+					},
 					Statistics: result.Statistics,
-				}},
+				},
+				},
+		}, nil
+	case promql.Matrix:
+		sampleStream, err := queryrangebase.FromValue(data)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Prom{
+				Prom: &queryrange.LokiPromResponse{
+					Response: &queryrangebase.PrometheusResponse{
+						Status: "success",
+						Data: queryrangebase.PrometheusData{
+							ResultType: loghttp.ResultTypeMatrix,
+							Result:     sampleStream,
+						},
+					},
+					Statistics: result.Statistics,
+				},
+				},
+		}, nil
+	case promql.Scalar:
+		sampleStream, err := queryrangebase.FromValue(data)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Prom{
+				Prom: &queryrange.LokiPromResponse{
+					Response: &queryrangebase.PrometheusResponse{
+						Status: "success",
+						Data: queryrangebase.PrometheusData{
+							ResultType: loghttp.ResultTypeScalar,
+							Result:     sampleStream,
+						},
+					},
+					Statistics: result.Statistics,
+				},
+				},
 		}, nil
 	case logqlmodel.Streams:
 		return &queryrange.QueryResponse{
