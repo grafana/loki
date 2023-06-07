@@ -525,6 +525,9 @@ github.com/drone/envsubst/path
 # github.com/dustin/go-humanize v1.0.1
 ## explicit; go 1.16
 github.com/dustin/go-humanize
+# github.com/dustin/go-probably v0.0.0-20180630015634-abe5a07e1c60
+## explicit
+github.com/dustin/go-probably
 # github.com/eapache/go-resiliency v1.3.0
 ## explicit; go 1.13
 github.com/eapache/go-resiliency/breaker
