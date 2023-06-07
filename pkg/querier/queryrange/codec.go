@@ -544,7 +544,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 }
 
 func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
 

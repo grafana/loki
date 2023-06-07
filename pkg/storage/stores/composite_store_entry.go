@@ -42,7 +42,7 @@ func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, thro
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunkRefs")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "storeEntry.GetChunkRefs")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
