@@ -116,8 +116,9 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader      IndexReader
-	chunkFilter chunk.RequestChunkFilterer
+	reader         IndexReader
+	chunkFilter    chunk.RequestChunkFilterer
+	postingsClient PostingsClient
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -128,21 +129,47 @@ func NewTSDBIndexFromFile(location string) (Index, GetRawFileReaderFunc, error) 
 		return nil, nil, err
 	}
 
-	var idx Index
-	if shouldCachePostings {
-		idx = NewCachedPostingsTSDBIndex(reader)
-	} else {
-		idx = NewTSDBIndex(reader)
-	}
+	tsdbIdx := NewTSDBIndex(reader, getPostingsClient(reader))
 
-	return idx, func() (io.ReadSeeker, error) {
+	return tsdbIdx, func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
 
-func NewTSDBIndex(reader IndexReader) *TSDBIndex {
+func getPostingsClient(reader IndexReader) PostingsClient {
+	var postingsClient PostingsClient
+
+	if shouldCachePostings && cacheClient != nil {
+		postingsClient = NewCachedPostingsClient(reader)
+	}
+
+	if postingsClient == nil {
+		postingsClient = DefaultPostingsClient(reader)
+	}
+
+	return postingsClient
+}
+
+func DefaultPostingsClient(reader IndexReader) PostingsClient {
+	return &simpleForPostingsClient{reader: reader}
+}
+
+type simpleForPostingsClient struct {
+	reader IndexReader
+}
+
+func (s *simpleForPostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+	p, err := PostingsForMatchers(s.reader, nil, matchers...)
+	if err != nil {
+		return err
+	}
+	return fn(p)
+}
+
+func NewTSDBIndex(reader IndexReader, postingsClient PostingsClient) *TSDBIndex {
 	return &TSDBIndex{
-		reader: reader,
+		reader:         reader,
+		postingsClient: postingsClient,
 	}
 }
 
@@ -173,7 +200,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 		filterer = i.chunkFilter.ForRequest(ctx)
 	}
 
-	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	return i.postingsClient.ForPostings(ctx, matchers, func(p index.Postings) error {
 		for p.Next() {
 			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
@@ -194,20 +221,6 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 		return p.Err()
 	})
 
-}
-
-func (i *TSDBIndex) forPostings(
-	ctx context.Context,
-	shard *index.ShardAnnotation,
-	from, through model.Time,
-	matchers []*labels.Matcher,
-	fn func(index.Postings) error,
-) error {
-	p, err := PostingsForMatchers(i.reader, shard, matchers...)
-	if err != nil {
-		return err
-	}
-	return fn(p)
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
@@ -279,7 +292,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	return i.postingsClient.ForPostings(ctx, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer

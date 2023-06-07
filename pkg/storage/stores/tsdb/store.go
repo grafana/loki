@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -48,6 +49,7 @@ func NewStore(
 	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
 	logger log.Logger,
+	idxCache cache.Cache,
 ) (
 	index.ReaderWriter,
 	func(),
@@ -62,7 +64,7 @@ func NewStore(
 		logger:            logger,
 	}
 
-	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
 		return nil, nil, err
 	}
 
@@ -70,7 +72,9 @@ func NewStore(
 }
 
 func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
+
+	cacheClient = idxCache
 
 	if indexCfg.cachePostings {
 		shouldCachePostings = true
@@ -87,6 +91,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,
 	)
+
 	if err != nil {
 		return err
 	}

@@ -78,7 +78,7 @@ func TestSingleIdx(t *testing.T) {
 					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
 				}
 				reader := head.Index()
-				return NewTSDBIndex(reader)
+				return NewTSDBIndex(reader, DefaultPostingsClient(reader))
 			},
 		},
 	} {
