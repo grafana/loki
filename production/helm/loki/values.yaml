@@ -1310,6 +1310,8 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Lets you set a custom resolver
+    resolver: null
     # -- Override Read URL
     customReadUrl: null
     # -- Override Write URL

@@ -1205,6 +1205,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.resolver</td>
+			<td>string</td>
+			<td>Lets you set a custom resolver</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.serverSnippet</td>
 			<td>string</td>
 			<td>Allows appending custom configuration to the server block</td>

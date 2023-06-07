@@ -592,7 +592,12 @@ http {
 
   sendfile     on;
   tcp_nopush   on;
+
+  {{- if .Values.gateway.nginxConfig.resolver }}
+    resolver {{ .Values.gateway.nginxConfig.resolver }};
+  {{- else }}
   resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
+  {{- end }}
 
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
   {{- tpl . $ | nindent 2 }}
