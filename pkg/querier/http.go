@@ -365,6 +365,27 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: extract in middleware or method.
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p := queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Labels{
+				Labels: &queryrange.LokiLabelNamesResponse {
+					Status:     "success",
+					Data:       resp.Values,
+					Version: uint32(loghttp.GetVersion(r.RequestURI)),
+					Statistics: statResult,
+				},
+			},
+		}
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
+		return
+	}
+
 	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
 		err = marshal.WriteLabelResponseJSON(*resp, w)
 	} else {

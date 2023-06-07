@@ -1103,6 +1103,16 @@ type ProtobufCodec struct {
 
 var _ queryrangebase.Codec = &ProtobufCodec{}
 
+func (p ProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
+	req, err := p.DefaultRequestCodec.EncodeRequest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/vnd.google.protobuf")
+	return req, nil
+}
+
 func (ProtobufCodec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
