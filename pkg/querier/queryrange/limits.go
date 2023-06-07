@@ -558,7 +558,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		return nil, err
 	}
 	// TODO: adhere to accept header
-	return rt.codec.EncodeResponse(ctx, response)
+	return LokiCodec.EncodeResponse(ctx, response)
 }
 
 func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {

@@ -506,7 +506,7 @@ func NewLabelsTripperware(
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
 			// Do not forward any request header.
-			return queryrangebase.NewRoundTripper(next, codec, nil, queryRangeMiddleware...)
+			return queryrangebase.NewRoundTripper(next, LokiCodec, nil, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -767,6 +767,6 @@ func NewIndexStatsTripperware(
 			)
 		}
 
-		return queryrangebase.NewRoundTripper(next, codec, nil, middlewares...)
+		return queryrangebase.NewRoundTripper(next, LokiCodec, nil, middlewares...)
 	}, nil
 }

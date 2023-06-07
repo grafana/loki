@@ -229,6 +229,9 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: extract in middleware or method.
 	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
 		p, err := ResultToResponse(result)
+		p.GetStreams().Direction = params.Direction()
+		p.GetStreams().Limit = params.Limit()
+
 		if err != nil {
 			serverutil.WriteError(err, w)
 			return
@@ -315,12 +318,13 @@ func ResultToResponse(result logqlmodel.Result) (*queryrange.QueryResponse, erro
 			Response: &queryrange.QueryResponse_Streams{
 				Streams: &queryrange.LokiResponse{
 					Data: queryrange.LokiData{
-						ResultType: string(data.Type()),
-						Result:     logqlmodel.Streams(data),
+						ResultType: loghttp.ResultTypeStream,
+						Result:     data,
 					},
 					Status:     "success",
 					Statistics: result.Statistics,
-				}},
+				},
+			},
 		}, nil
 	}
 
@@ -566,6 +570,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 			Response: &queryrange.QueryResponse_Series{
 				Series: &queryrange.LokiSeriesResponse{
 					Status:     "success",
+					Version: uint32(loghttp.GetVersion(r.RequestURI)),
 					Data:       resp.Series,
 					Statistics: statResult,
 				}},
