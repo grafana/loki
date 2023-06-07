@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGuessShardFactor(t *testing.T) {

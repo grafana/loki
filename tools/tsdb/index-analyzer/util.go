@@ -11,10 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/prometheus/common/model"
 )
 
 const (

@@ -19,10 +19,10 @@ type Manager struct {
 func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
 	logger = log.With(logger, "path", "write", "insight", "true")
 
-	start := newStrategy(cfg.LogRate.Val(), float64(cfg.LogRate.Val()))
+	strat := newStrategy(cfg.LogRate.Val(), float64(cfg.LogRate.Val()))
 
 	return &Manager{
-		limiter:    limiter.NewRateLimiter(start, time.Minute),
+		limiter:    limiter.NewRateLimiter(strat, time.Minute),
 		logger:     logger,
 		tenantCfgs: tenants,
 	}

@@ -8,9 +8,8 @@ import (
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam/token"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
-
 	"github.com/grafana/loki/pkg/util/log"
+	"github.com/pkg/errors"
 )
 
 const (
