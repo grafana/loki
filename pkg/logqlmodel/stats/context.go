@@ -58,6 +58,7 @@ const (
 	ChunkCache       CacheType = "chunk" //nolint:staticcheck
 	IndexCache                 = "index"
 	ResultCache                = "result"
+	StatsResultCache           = "stats-result"
 	WriteDedupeCache           = "write-dedupe"
 )
 

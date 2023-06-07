@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"flag"
 	"fmt"
 
 	"github.com/go-kit/log"
@@ -45,6 +46,19 @@ func (p IndexStatsExtractor) ResponseWithoutHeaders(resp queryrangebase.Response
 	return &IndexStatsResponse{
 		Response: statsRes.Response,
 	}
+}
+
+type IndexStatsCacheConfig struct {
+	queryrangebase.ResultsCacheConfig `yaml:",inline"`
+}
+
+// RegisterFlags registers flags.
+func (cfg *IndexStatsCacheConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.ResultsCacheConfig.RegisterFlagsWithPrefix(f, "frontend.index-stats-results-cache.")
+}
+
+func (cfg *IndexStatsCacheConfig) Validate() error {
+	return cfg.ResultsCacheConfig.Validate()
 }
 
 func NewIndexStatsCacheMiddleware(
