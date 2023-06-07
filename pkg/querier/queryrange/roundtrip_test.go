@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -37,21 +38,35 @@ import (
 
 var (
 	testTime   = time.Date(2019, 12, 2, 11, 10, 10, 10, time.UTC)
-	testConfig = Config{queryrangebase.Config{
-		AlignQueriesWithStep:   true,
-		MaxRetries:             3,
-		CacheResults:           true,
-		CacheIndexStatsResults: true,
-		ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
-			CacheConfig: cache.Config{
-				EnableFifoCache: true,
-				Fifocache: cache.FifoCacheConfig{
-					MaxSizeItems: 1024,
-					TTL:          24 * time.Hour,
+	testConfig = Config{
+		Config: queryrangebase.Config{
+			AlignQueriesWithStep: true,
+			MaxRetries:           3,
+			CacheResults:         true,
+			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					EnableFifoCache: true,
+					Fifocache: cache.FifoCacheConfig{
+						MaxSizeItems: 1024,
+						TTL:          24 * time.Hour,
+					},
 				},
 			},
 		},
-	}, nil}
+		Transformer:            nil,
+		CacheIndexStatsResults: true,
+		StatsCacheConfig: IndexStatsCacheConfig{
+			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					EnableFifoCache: true,
+					Fifocache: cache.FifoCacheConfig{
+						MaxSizeItems: 1024,
+						TTL:          24 * time.Hour,
+					},
+				},
+			},
+		},
+	}
 	testEngineOpts = logql.EngineOpts{
 		Timeout:           30 * time.Second,
 		MaxLookBackPeriod: 30 * time.Second,
@@ -522,6 +537,149 @@ func TestIndexStatsTripperware(t *testing.T) {
 	require.Equal(t, response.Chunks*2, res.Response.Chunks)
 	require.Equal(t, response.Bytes*2, res.Response.Bytes)
 	require.Equal(t, response.Entries*2, res.Response.Entries)
+}
+
+func TestNewTripperware_Caches(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		config      Config
+		numCaches   int
+		equalCaches bool
+		err         string
+	}{
+		{
+			name: "results cache disabled, stats cache disabled",
+			config: Config{
+				Config: queryrangebase.Config{
+					CacheResults: false,
+				},
+				CacheIndexStatsResults: false,
+			},
+			numCaches: 0,
+			err:       "",
+		},
+		{
+			name: "results cache enabled, stats cache disabled",
+			config: Config{
+				Config: queryrangebase.Config{
+					CacheResults: true,
+					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+						CacheConfig: cache.Config{
+							EmbeddedCache: cache.EmbeddedCacheConfig{
+								Enabled: true,
+							},
+						},
+					},
+				},
+				CacheIndexStatsResults: false,
+			},
+			numCaches: 1,
+			err:       "",
+		},
+		{
+			name: "results cache enabled, stats cache enabled",
+			config: Config{
+				Config: queryrangebase.Config{
+					CacheResults: true,
+					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+						CacheConfig: cache.Config{
+							EmbeddedCache: cache.EmbeddedCacheConfig{
+								Enabled: true,
+							},
+						},
+					},
+				},
+				CacheIndexStatsResults: true,
+			},
+			numCaches:   2,
+			equalCaches: true,
+			err:         "",
+		},
+		{
+			name: "results cache enabled, stats cache enabled but different",
+			config: Config{
+				Config: queryrangebase.Config{
+					CacheResults: true,
+					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+						CacheConfig: cache.Config{
+							EmbeddedCache: cache.EmbeddedCacheConfig{
+								Enabled:   true,
+								MaxSizeMB: 2000,
+							},
+						},
+					},
+				},
+				CacheIndexStatsResults: true,
+				StatsCacheConfig: IndexStatsCacheConfig{
+					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+						CacheConfig: cache.Config{
+							EmbeddedCache: cache.EmbeddedCacheConfig{
+								Enabled:   true,
+								MaxSizeMB: 1000,
+							},
+						},
+					},
+				},
+			},
+			numCaches:   2,
+			equalCaches: false,
+			err:         "",
+		},
+		{
+			name: "results cache enabled (no config provided)",
+			config: Config{
+				Config: queryrangebase.Config{
+					CacheResults: true,
+				},
+			},
+			err: fmt.Sprintf("%s cache is not configured", stats.ResultCache),
+		},
+		{
+			name: "results cache disabled, stats cache enabled (no config provided)",
+			config: Config{
+				Config: queryrangebase.Config{
+					CacheResults: false,
+				},
+				CacheIndexStatsResults: true,
+			},
+			numCaches: 0,
+			err:       fmt.Sprintf("%s cache is not configured", stats.StatsResultCache),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, stopper, err := NewTripperware(tc.config, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+			if stopper != nil {
+				defer stopper.Stop()
+			}
+
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.IsType(t, StopperWrapper{}, stopper)
+
+			var caches []cache.Cache
+			for _, s := range stopper.(StopperWrapper) {
+				if s != nil {
+					c, ok := s.(cache.Cache)
+					require.True(t, ok)
+					caches = append(caches, c)
+				}
+			}
+
+			require.Equal(t, tc.numCaches, len(caches))
+
+			if tc.numCaches == 2 {
+				if tc.equalCaches {
+					require.Equal(t, caches[0], caches[1])
+				} else {
+					require.NotEqual(t, caches[0], caches[1])
+				}
+			}
+		})
+	}
 }
 
 func TestLogNoFilter(t *testing.T) {

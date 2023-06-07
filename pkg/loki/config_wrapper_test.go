@@ -959,8 +959,8 @@ query_range:
         endpoint: endpoint.redis.org`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, config.QueryRange.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
+			assert.EqualValues(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
@@ -972,13 +972,46 @@ query_range:
         host: memcached.host.org`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "memcached.host.org", config.QueryRange.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.ResultsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+	})
+
+	t.Run("for the index stats results cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  index_stats_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, config.QueryRange.StatsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  index_stats_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
 		})
 	})
 }

@@ -1112,6 +1112,30 @@ int32
 <p>MaxLineSize defines the maximum line size on ingestion path. Units in Bytes.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>perStreamRateLimit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamRateLimit defines the maximum byte rate per second per stream. Units MB.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>perStreamRateLimitBurst</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamRateLimitBurst defines the maximum burst bytes per stream. Units MB.</p>
+</td>
+</tr>
 </tbody>
 </table>
 

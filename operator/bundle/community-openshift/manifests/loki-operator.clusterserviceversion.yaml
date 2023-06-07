@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-05-22T15:22:48Z"
+    createdAt: "2023-06-05T12:57:30Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -329,6 +329,18 @@ spec:
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -394,6 +406,18 @@ spec:
           Units in Bytes.
         displayName: Max Line Size
         path: limits.tenants.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
@@ -1643,6 +1667,8 @@ spec:
                 kubernetes.io/os: linux
               securityContext:
                 runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
               terminationGracePeriodSeconds: 10
               volumes:
               - configMap:
