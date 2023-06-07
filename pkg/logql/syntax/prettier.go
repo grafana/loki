@@ -125,7 +125,7 @@ func (e *LineFmtExpr) Pretty(level int) string {
 }
 
 // e.g: | decolorize
-func (e *DecolorizeExpr) Pretty(level int) string {
+func (e *DecolorizeExpr) Pretty(_ int) string {
 	return e.String()
 }
 
@@ -184,7 +184,7 @@ func (e *LogRange) Pretty(level int) string {
 // e.g: count_over_time({foo="bar"}[5m] offset 3h)
 // TODO(kavi): why does offset not work in log queries? e.g: `{foo="bar"} offset 1h`? is it bug? or anything else?
 // NOTE: Also offset expression never to be indented. It always goes with its parent expression (usually RangeExpr).
-func (e *OffsetExpr) Pretty(level int) string {
+func (e *OffsetExpr) Pretty(_ int) string {
 	// using `model.Duration` as it can format ignoring zero units.
 	// e.g: time.Duration(2 * Hour) -> "2h0m0s"
 	// but model.Duration(2 * Hour) -> "2h"

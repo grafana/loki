@@ -37,7 +37,7 @@ type RecordingRuleReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
-func (r *RecordingRuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *RecordingRuleReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
 	err := lokistack.AnnotateForDiscoveredRules(ctx, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err

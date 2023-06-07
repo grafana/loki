@@ -360,7 +360,7 @@ func NewEmptySeriesIterator() chunkenc.Iterator {
 	return emptySeriesIterator{}
 }
 
-func (emptySeriesIterator) Seek(t int64) chunkenc.ValueType {
+func (emptySeriesIterator) Seek(_ int64) chunkenc.ValueType {
 	return chunkenc.ValNone
 }
 

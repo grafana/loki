@@ -105,7 +105,7 @@ func Test_Flush(t *testing.T) {
 		lbs        = makeRandomLabels()
 		ctx        = user.InjectOrgID(context.Background(), "foo")
 	)
-	store.onPut = func(ctx context.Context, chunks []chunk.Chunk) error {
+	store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
 		for _, c := range chunks {
 			buf, err := c.Encoded()
 			require.Nil(t, err)
@@ -327,15 +327,15 @@ func (s *testStore) IsLocal() bool {
 	return false
 }
 
-func (s *testStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *testStore) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
 	return nil, nil
 }
 
-func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
 }
 
-func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *testStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -347,7 +347,7 @@ func (s *testStore) Stop() {}
 
 func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (s *testStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{}, nil
 }
 

@@ -459,13 +459,13 @@ func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (st
 	if ok {
 		return s.s, s.ok
 	}
-	new, ok := createNew()
+	newStr, ok := createNew()
 	if len(i) >= MaxInternedStrings {
-		return new, ok
+		return newStr, ok
 	}
 	i[string(data)] = struct {
 		s  string
 		ok bool
-	}{s: new, ok: ok}
-	return new, ok
+	}{s: newStr, ok: ok}
+	return newStr, ok
 }

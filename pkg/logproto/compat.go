@@ -295,17 +295,17 @@ func (m *IndexStatsRequest) GetCachingOptions() (res definitions.CachingOptions)
 
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *IndexStatsRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
-	new := *m
-	new.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
-	new.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
-	return &new
+	clone := *m
+	clone.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
+	clone.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
+	return &clone
 }
 
 // WithQuery clone the current request with a different query.
 func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
-	new := *m
-	new.Matchers = query
-	return &new
+	clone := *m
+	clone.Matchers = query
+	return &clone
 }
 
 // LogToSpan writes information about this request to an OpenTracing span

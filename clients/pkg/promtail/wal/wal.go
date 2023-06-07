@@ -86,11 +86,7 @@ func (w *wrapper) logBatched(record *wal.Record) error {
 	*seriesBuf = record.EncodeSeries(*seriesBuf)
 	*entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, *entriesBuf)
 	// Always write series then entries
-	if err := w.wal.Log(*seriesBuf, *entriesBuf); err != nil {
-		return err
-	}
-	return nil
-}
+  return w.wal.Log(*seriesBuf, *entriesBuf)
 
 // logSingle logs to the WAL series and records in separate WAL operation. This causes a page flush after each operation.
 func (w *wrapper) logSingle(record *wal.Record) error {

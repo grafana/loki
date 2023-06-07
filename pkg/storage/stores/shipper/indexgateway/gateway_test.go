@@ -84,7 +84,7 @@ type mockIndexClient struct {
 	tablesQueried []string
 }
 
-func (m *mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (m *mockIndexClient) QueryPages(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		m.tablesQueried = append(m.tablesQueried, query.TableName)
 		callback(query, m.response)

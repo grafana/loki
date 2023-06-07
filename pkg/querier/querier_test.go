@@ -1212,7 +1212,7 @@ type mockDeleteGettter struct {
 	results []deletion.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

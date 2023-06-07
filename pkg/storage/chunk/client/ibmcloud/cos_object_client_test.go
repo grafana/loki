@@ -65,7 +65,7 @@ func newMockCosClient(data map[string][]byte) *mockCosClient {
 	}
 }
 
-func (cosClient *mockCosClient) GetObjectWithContext(ctx context.Context, input *s3.GetObjectInput, opts ...request.Option) (*s3.GetObjectOutput, error) {
+func (cosClient *mockCosClient) GetObjectWithContext(_ context.Context, input *s3.GetObjectInput, _ ...request.Option) (*s3.GetObjectOutput, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.GetObjectOutput{}, errMissingBucket
 	}
@@ -85,7 +85,7 @@ func (cosClient *mockCosClient) GetObjectWithContext(ctx context.Context, input 
 	return &output, nil
 }
 
-func (cosClient *mockCosClient) PutObjectWithContext(ctx context.Context, input *s3.PutObjectInput, opts ...request.Option) (*s3.PutObjectOutput, error) {
+func (cosClient *mockCosClient) PutObjectWithContext(_ context.Context, input *s3.PutObjectInput, _ ...request.Option) (*s3.PutObjectOutput, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.PutObjectOutput{}, errMissingBucket
 	}
@@ -107,7 +107,7 @@ func (cosClient *mockCosClient) PutObjectWithContext(ctx context.Context, input 
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (cosClient *mockCosClient) DeleteObjectWithContext(ctx context.Context, input *s3.DeleteObjectInput, opts ...request.Option) (*s3.DeleteObjectOutput, error) {
+func (cosClient *mockCosClient) DeleteObjectWithContext(_ context.Context, input *s3.DeleteObjectInput, _ ...request.Option) (*s3.DeleteObjectOutput, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.DeleteObjectOutput{}, errMissingBucket
 	}
@@ -121,7 +121,7 @@ func (cosClient *mockCosClient) DeleteObjectWithContext(ctx context.Context, inp
 	return &s3.DeleteObjectOutput{}, nil
 }
 
-func (cosClient *mockCosClient) ListObjectsV2WithContext(ctx context.Context, input *s3.ListObjectsV2Input, opts ...request.Option) (*s3.ListObjectsV2Output, error) {
+func (cosClient *mockCosClient) ListObjectsV2WithContext(_ context.Context, input *s3.ListObjectsV2Input, _ ...request.Option) (*s3.ListObjectsV2Output, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.ListObjectsV2Output{}, errMissingBucket
 	}
