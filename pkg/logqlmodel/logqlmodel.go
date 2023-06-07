@@ -7,14 +7,10 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/sketch"
 )
 
 // ValueTypeStreams promql.ValueType for log streams
 const ValueTypeStreams = "streams"
-
-// ValueTypeSketches promql.ValueType for sketches
-const ValueTypeSketches = "sketches"
 
 // PackedEntryKey is a special JSON key used by the pack promtail stage and unpack parser
 const PackedEntryKey = "_entry"
@@ -49,15 +45,4 @@ func (streams Streams) Lines() int64 {
 		res += int64(len(s.Entries))
 	}
 	return res
-}
-
-// Sketch is promql.Value
-type Sketches []sketch.Topk
-
-// Type implements `promql.Value`
-func (Sketches) Type() parser.ValueType { return ValueTypeSketches }
-
-// String implements `promql.Value`
-func (Sketches) String() string {
-	return ""
 }

@@ -2,13 +2,12 @@ package client
 
 import (
 	"fmt"
+	"go.uber.org/atomic"
 	"math/rand"
 	"os"
 	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -19,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 )

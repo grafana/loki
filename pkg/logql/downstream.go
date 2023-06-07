@@ -439,8 +439,6 @@ func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, e
 			}
 			return false, 0, nil
 		}, nil, nil)
-	case logqlmodel.Sketches:
-		return nil, fmt.Errorf("todo handle sketches: %v", data)
 	case promql.Matrix:
 		return NewMatrixStepper(start, end, step, data), nil
 	default:
