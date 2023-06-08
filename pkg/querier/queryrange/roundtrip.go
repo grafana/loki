@@ -166,9 +166,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	labelVolumeCfg := cfg
-	labelVolumeCfg.CacheIndexStatsResults = false
-	labelVolumeTripperware, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	labelVolumeTripperware, err := NewLabelVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -743,6 +741,21 @@ func NewInstantMetricTripperware(
 		}
 		return next
 	}, nil
+}
+
+func NewLabelVolumeTripperware(cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	codec queryrangebase.Codec,
+	c cache.Cache,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
+	metrics *Metrics,
+) (queryrangebase.Tripperware, error) {
+	labelVolumeCfg := cfg
+	labelVolumeCfg.CacheIndexStatsResults = false
+	return NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
 }
 
 func NewIndexStatsTripperware(

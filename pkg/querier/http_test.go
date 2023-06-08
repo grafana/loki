@@ -224,9 +224,10 @@ func TestLabelVolumeHandler(t *testing.T) {
 		}, calls[0].Arguments[1])
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[{"name":"foo","value":"bar","volume":38}]}`)
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
-	t.Run("it returns nil when a store doesn't support label volumes", func(t *testing.T) {
+	t.Run("it returns nothing when a store doesn't support label volumes", func(t *testing.T) {
 		querier := newQuerierMock()
 		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(nil, nil)
 
@@ -243,6 +244,7 @@ func TestLabelVolumeHandler(t *testing.T) {
 		require.Len(t, calls, 1)
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[]}`)
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
 	t.Run("it returns error when there's an error in the querier", func(t *testing.T) {
@@ -262,6 +264,6 @@ func TestLabelVolumeHandler(t *testing.T) {
 		require.Len(t, calls, 1)
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `something bad`)
+		require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
 	})
-
 }

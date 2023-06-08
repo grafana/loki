@@ -250,19 +250,7 @@ func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, thro
 		return nil, err
 	}
 
-	// split the query range to align with table intervals i.e. ObjectStorageIndexRequiredPeriod
-	// This is to avoid explicitly deduping chunks by leveraging the table intervals.
-	// The idea is to make each split process chunks that have start time >= start time of the table interval.
-	// In other terms, table interval that contains start time of the chunk, owns it.
-	// For e.g. if the table interval is 10s, and we have chunks 5-7, 8-12, 11-13.
-	// Query with range 6-15 would be split into 6-10, 10-15.
-	// query1 would process chunks 5-7, 8-12 and query2 would process chunks 11-13.
-	// This check is not applied for first query of the split so that
-	// we do not eliminate any chunks that overlaps the original query intervals but starts at the previous table.
-	// For e.g. if the table interval is 10s, and we have chunks 5-7, 8-13, 14-13.
-	// Query with range 11-12 should process chunk 8-13 even though its start time <= start time of table we will query for index.
-	// The caveat here is that we will overestimate the data we will be processing if the index is not compacted yet
-	// since it could have duplicate chunks when RF > 1
+	// Split by interval to query the index in parallel
 	var intervals []model.Interval
 	util.ForInterval(config.ObjectStorageIndexRequiredPeriod, from.Time(), through.Time(), true, func(start, end time.Time) {
 		intervals = append(intervals, model.Interval{

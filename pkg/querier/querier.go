@@ -782,7 +782,7 @@ func (q *SingleTenantQuerier) LabelVolume(ctx context.Context, req *logproto.Lab
 
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/IndexStats")
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/LabelVolume")
 		queryTimeout = q.cfg.QueryTimeout
 	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))

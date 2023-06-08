@@ -121,7 +121,7 @@ func (m monitoredReaderWriter) Stats(ctx context.Context, userID string, from, t
 
 func (m monitoredReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	var vol *logproto.LabelVolumeResponse
-	if err := instrument.CollectedRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "label_volume", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		vol, err = m.rw.LabelVolume(ctx, userID, from, through, limit, matchers...)
 		return err

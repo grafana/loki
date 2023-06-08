@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/pkg/errors"
 	"reflect"
 	"testing"
 
@@ -299,25 +300,44 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 type mockStoreLabelVolume struct {
 	mockStore
 	value *logproto.LabelVolumeResponse
+	err   error
 }
 
 func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	return m.value, nil
+	return m.value, m.err
 }
 
 func TestLabelVolume(t *testing.T) {
-	cs := compositeStore{
-		stores: []compositeStoreEntry{
-			{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore(0), &logproto.LabelVolumeResponse{
-				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
-			}}},
-			{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore(1), &logproto.LabelVolumeResponse{
-				Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 30}}, Limit: 10,
-			}}},
-		},
-	}
+	t.Run("it retuns volumes from all stores", func(t *testing.T) {
+		cs := compositeStore{
+			stores: []compositeStoreEntry{
+				{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore: mockStore(0), value: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
+				}}},
+				{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore: mockStore(1), value: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 30}}, Limit: 10,
+				}}},
+			},
+		}
 
-	volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, 10, nil)
-	require.NoError(t, err)
-	require.Equal(t, []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 45}}, volumes.Volumes)
+		volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, 10, nil)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 45}}, volumes.Volumes)
+	})
+
+	t.Run("it returns an error if any store returns an error", func(t *testing.T) {
+		cs := compositeStore{
+			stores: []compositeStoreEntry{
+				{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore: mockStore(0), value: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
+				}}},
+				{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore: mockStore(1), err: errors.New("something bad")}},
+			},
+		}
+
+		volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, 10, nil)
+		require.Error(t, err, "something bad")
+		require.Nil(t, volumes)
+	})
+
 }
