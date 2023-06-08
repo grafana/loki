@@ -1307,7 +1307,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders", "ClientRequestSource"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1341,6 +1341,7 @@ All Cloudflare logs are in JSON. Here is an example:
 	"ClientRequestReferer": "https://www.foo.com/foo/168855/?offset=8625",
 	"ClientRequestURI": "/foo/15248108/",
 	"ClientRequestUserAgent": "some bot",
+        "ClientRequestSource": "1"
 	"ClientSSLCipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
 	"ClientSSLProtocol": "TLSv1.2",
 	"ClientSrcPort": 39816,
