@@ -264,6 +264,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		return logqlmodel.Result{
 			Data:       logqlmodel.Sketch(topks),
 			Headers:    resp.GetHeaders(),
+			Statistics: r.Statistics,
 		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)

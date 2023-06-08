@@ -159,6 +159,7 @@ message QueryResponse {
 message LokiSketch {
   repeated Topk topks = 1;
 
+  stats.Result statistics = 2 [(gogoproto.nullable) = false];
   repeated definitions.PrometheusResponseHeader Headers = 9 [
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"

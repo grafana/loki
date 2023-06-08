@@ -326,6 +326,22 @@ func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*qu
 				},
 			},
 		}, nil
+	case logqlmodel.Sketch:
+		var topks []*queryrange.Topk
+		for _, t := range topks {
+			topk := &queryrange.Topk{}
+			topk.Max = t.Max
+			// TODO: convert sketch to matrix
+			topks = append(topks, topk)
+		}
+		return &queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Sketch{
+				Sketch: &queryrange.LokiSketch{
+					Topks: topks,
+					Statistics: result.Statistics,
+				},
+			},
+		}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
