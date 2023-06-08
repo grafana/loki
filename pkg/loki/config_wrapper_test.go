@@ -1745,6 +1745,8 @@ func TestNamedStores_applyDefaults(t *testing.T) {
         bucket: foobar
         endpoint: oss.test
 `
+	// make goconst happy
+	bucketName := "foobar"
 
 	config, defaults, err := configWrapperFromYAML(t, namedStoresConfig, nil)
 	require.NoError(t, err)
@@ -1780,7 +1782,7 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		assert.Len(t, config.StorageConfig.NamedStores.BOS, 1)
 
 		expected := defaults.StorageConfig.BOSStorageConfig
-		expected.BucketName = "foobar"
+		expected.BucketName = bucketName
 
 		assert.Equal(t, expected, (baidubce.BOSStorageConfig)(nsCfg.BOS["store-3"]))
 	})
@@ -1789,7 +1791,7 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		assert.Len(t, config.StorageConfig.NamedStores.GCS, 1)
 
 		expected := defaults.StorageConfig.GCSConfig
-		expected.BucketName = "foobar"
+		expected.BucketName = bucketName
 		// override defaults
 		expected.EnableHTTP2 = false
 
@@ -1811,7 +1813,7 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		assert.Len(t, config.StorageConfig.NamedStores.Filesystem, 1)
 
 		expected := defaults.StorageConfig.FSConfig
-		expected.Directory = "foobar"
+		expected.Directory = bucketName
 
 		assert.Equal(t, expected, (local.FSConfig)(nsCfg.Filesystem["store-6"]))
 	})
@@ -1820,7 +1822,7 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		assert.Len(t, config.StorageConfig.NamedStores.Swift, 1)
 
 		expected := defaults.StorageConfig.Swift
-		expected.ContainerName = "foobar"
+		expected.ContainerName = bucketName
 		// override defaults
 		expected.RequestTimeout = 30 * time.Second
 
@@ -1831,7 +1833,7 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		assert.Len(t, config.StorageConfig.NamedStores.AlibabaCloud, 1)
 
 		expected := defaults.StorageConfig.AlibabaStorageConfig
-		expected.Bucket = "foobar"
+		expected.Bucket = bucketName
 		expected.Endpoint = "oss.test"
 
 		assert.Equal(t, expected, (alibaba.OssConfig)(nsCfg.AlibabaCloud["store-8"]))
