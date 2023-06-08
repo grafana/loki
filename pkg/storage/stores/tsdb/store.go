@@ -76,7 +76,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 
 	cacheClient = idxCache
 
-	if indexCfg.cachePostings {
+	if indexCfg.CachePostings {
 		shouldCachePostings = true
 	}
 

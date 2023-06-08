@@ -26,7 +26,7 @@ type ChunkRef struct {
 type IndexCfg struct {
 	indexshipper.Config
 
-	cachePostings bool
+	CachePostings bool `yaml:"cache_postings"`
 }
 
 // Compares by (Start, End)
