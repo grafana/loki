@@ -170,6 +170,6 @@ message Sketch {
   // Encode matrix as packed array.
   uint32 cols = 1;
   uint32 rows = 2;
-  repeated uint32 sk = 3 [ packed = true ];
+  repeated uint32 sk = 3 [packed = true];
   repeated uint32 rowCounts = 4;
 }
