@@ -335,7 +335,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
+	store := t.Store
+	if !t.Cfg.Querier.QueryStoreOnly {
+		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
+	}
+
+	q, err := querier.New(t.Cfg.Querier, store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -362,15 +367,23 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 	}
+
+	logger := log.With(util_log.Logger, "component", "querier")
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+
+	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI)
+
 	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
 			toMerge,
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 		)
-	}
 
-	logger := log.With(util_log.Logger, "component", "querier")
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+		indexStatsHTTPMiddleware = middleware.Merge(
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+			indexStatsHTTPMiddleware,
+		)
+	}
 
 	labelsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Label", t.querierAPI)
 
@@ -403,7 +416,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/label/{name}/values": labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 
 		"/loki/api/v1/series":      querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
-		"/loki/api/v1/index/stats": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+		"/loki/api/v1/index/stats": indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
@@ -592,8 +605,6 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}
 
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		var asyncStore bool
-
 		shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
 		iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
 		if iTy != config.BoltDBShipperType && iTy != config.TSDBType {
@@ -623,9 +634,6 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			if t.Cfg.Querier.QueryStoreOnly {
 				break
 			}
-			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
-			// Only queriers should use the AsyncStore, it should never be used in ingesters.
-			asyncStore = true
 
 			// The legacy Read target includes the index gateway, so disable the index-gateway client in that configuration.
 			if t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read) {
@@ -654,15 +662,12 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			t.Cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 		}
 
-		if asyncStore {
-			t.Cfg.StorageConfig.EnableAsyncStore = true
-			t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
-				IngesterQuerier: t.ingesterQuerier,
-				QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
-					t.Cfg.Querier.QueryIngestersWithin,
-					minIngesterQueryStoreDuration,
-				),
-			}
+		t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
+			IngesterQuerier: t.ingesterQuerier,
+			QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
+				t.Cfg.Querier.QueryIngestersWithin,
+				minIngesterQueryStoreDuration,
+			),
 		}
 	}
 
@@ -1339,7 +1344,12 @@ func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err
 		return nil, fmt.Errorf("could not create delete requests store: %w", err)
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+	store := t.Store
+	if !t.Cfg.Querier.QueryStoreOnly {
+		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
+	}
+
+	q, err := querier.New(t.Cfg.Querier, store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

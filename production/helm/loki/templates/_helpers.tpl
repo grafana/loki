@@ -79,6 +79,26 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 {{- end }}
 
+{{/*
+Cluster label for rules and alerts.
+*/}}
+{{- define "loki.clusterLabel" -}}
+{{- if .Values.clusterLabelOverride }}
+{{- .Values.clusterLabelOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := include "loki.name" . }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{/* Create a default storage config that uses filesystem storage
 This is required for CI, but Loki will not be queryable with this default
 applied, thus it is encouraged that users override this.
@@ -135,11 +155,11 @@ Base template for building docker image reference
 {{- define "loki.baseImage" }}
 {{- $registry := .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
-{{- $tag := .service.tag | default .defaultVersion | toString -}}
+{{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
 {{- if and $registry $repository -}}
-  {{- printf "%s/%s:%s" $registry $repository $tag -}}
+  {{- printf "%s/%s%s" $registry $repository $ref -}}
 {{- else -}}
-  {{- printf "%s%s:%s" $registry $repository $tag -}}
+  {{- printf "%s%s%s" $registry $repository $ref -}}
 {{- end -}}
 {{- end -}}
 
@@ -332,6 +352,29 @@ ruler:
 {{- toYaml .Values.loki.rulerConfig | nindent 2}}
 {{- end }}
 {{- end }}
+
+{{/*
+Calculate the config from structured and unstructred text input
+*/}}
+{{- define "loki.calculatedConfig" -}}
+{{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
+{{- end }}
+
+{{/*
+The volume to mount for loki configuration
+*/}}
+{{- define "loki.configVolume" -}}
+{{- if eq .Values.loki.configStorageType "Secret" -}}
+secret:
+  secretName: {{ tpl .Values.loki.externalConfigSecretName . }}
+{{- else if eq .Values.loki.configStorageType "ConfigMap" -}}
+configMap:
+  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  items:
+    - key: "config.yaml"
+      path: "config.yaml"
+{{- end -}}
+{{- end -}}
 
 {{/*
 Memcached Docker image
@@ -557,6 +600,7 @@ http {
 
   server {
     listen             8080;
+    listen             [::]:8080;
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";
@@ -742,3 +786,12 @@ enableServiceLinks: false
 {{- printf "%s" $compactorAddress }}
 {{- end }}
 
+{{/* Determine query-scheduler address */}}
+{{- define "loki.querySchedulerAddress" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- $schedulerAddress := ""}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- printf "%s" $schedulerAddress }}
+{{- end }}

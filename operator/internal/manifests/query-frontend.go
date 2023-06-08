@@ -38,6 +38,12 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -59,7 +65,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.QueryFrontend),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -128,10 +134,8 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
@@ -140,7 +144,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
 	}
 
 	return &appsv1.Deployment{

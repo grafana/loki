@@ -48,6 +48,7 @@ message StreamRate {
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
   string tenant = 4;
+  uint32 pushes = 5;
 }
 
 message QueryRequest {

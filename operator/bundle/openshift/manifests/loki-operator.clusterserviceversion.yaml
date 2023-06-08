@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-05-02T10:32:20Z"
+    createdAt: "2023-05-24T15:10:20Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -459,8 +459,9 @@ spec:
         path: replication.factor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Zones defines an array of ZoneSpec that the scheduler will try
-          to satisfy.
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
         displayName: Zones Spec
         path: replication.zones
       - description: MaxSkew describes the maximum degree to which Pods can be unevenly
@@ -559,6 +560,12 @@ spec:
       - description: Compactor defines the compaction component spec.
         displayName: Compactor pods
         path: template.compactor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.compactor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.compactor.replicas
@@ -567,6 +574,12 @@ spec:
       - description: Distributor defines the distributor component spec.
         displayName: Distributor pods
         path: template.distributor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.distributor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.distributor.replicas
@@ -575,6 +588,12 @@ spec:
       - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.gateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.gateway.replicas
@@ -583,6 +602,12 @@ spec:
       - description: IndexGateway defines the index gateway component spec.
         displayName: Index Gateway pods
         path: template.indexGateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.indexGateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.indexGateway.replicas
@@ -591,6 +616,12 @@ spec:
       - description: Ingester defines the ingester component spec.
         displayName: Ingester pods
         path: template.ingester
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ingester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
@@ -599,6 +630,12 @@ spec:
       - description: Querier defines the querier component spec.
         displayName: Querier pods
         path: template.querier
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.querier.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.querier.replicas
@@ -607,6 +644,12 @@ spec:
       - description: QueryFrontend defines the query frontend component spec.
         displayName: Query Frontend pods
         path: template.queryFrontend
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.queryFrontend.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.queryFrontend.replicas
@@ -615,6 +658,12 @@ spec:
       - description: Ruler defines the ruler component spec.
         displayName: Ruler pods
         path: template.ruler
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ruler.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ruler.replicas
@@ -1579,6 +1628,8 @@ spec:
                 kubernetes.io/os: linux
               securityContext:
                 runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
               terminationGracePeriodSeconds: 10
               volumes:
               - configMap:

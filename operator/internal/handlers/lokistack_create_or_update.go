@@ -269,6 +269,16 @@ func CreateOrUpdateLokiStack(
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
 	}
 
+	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	if err != nil {
+		ll.Error(err, "failed to parse query timeout")
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
+			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
+		}
+	}
+
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
@@ -286,6 +296,7 @@ func CreateOrUpdateLokiStack(
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
 		},
+		Timeouts: timeoutConfig,
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
