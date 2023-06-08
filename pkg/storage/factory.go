@@ -72,9 +72,10 @@ type StoreLimits interface {
 
 // We cannot implement Unmarshaler directly on aws.StorageConfig or other stores
 // as it would end up overriding values set as part of ApplyDynamicConfig().
-// consider the following test for example:
-// https://github.com/grafana/loki/blob/b0ec15797300427097cc632c37ff7c15c60fffce/pkg/loki/config_wrapper_test.go#L682
-// Implementing the Unmarshaler for Named*StorageConfig types is fine as we don't apply any dynamic config.
+// Note: we unmarshal a second time after applying dynamic configs
+//
+// Implementing the Unmarshaler for Named*StorageConfig types is fine as
+// we do not apply any dynamic config on them.
 
 type NamedAWSStorageConfig aws.StorageConfig
 
