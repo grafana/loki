@@ -3708,6 +3708,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>tableManager.retention_deletes_enabled</td>
+			<td>bool</td>
+			<td>Enable deletes by retention</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_period</td>
+			<td>int</td>
+			<td>Set retention period</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>tableManager.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for table-manager service</td>
