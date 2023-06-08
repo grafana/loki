@@ -10,7 +10,7 @@ Loki uses GitHub to manage reviews of pull requests:
 
 Before creating a large pull request to change or add functionality, please create a _Loki Improvement Document (LID)_. We use LIDs to discuss and vet ideas submitted by maintainers or the community in an open and transparent way. As of Jan 2023, we are starting with a lightweight LID process and we may add more structure, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) approaches.
 
-LIDs must be created as a pull request using [this template](docs/sources/lids/template.md).
+LIDs must be created as a pull request using [this template](docs/sources/community/lids/template.md).
 
 ## Pull Request Prerequisites/Checklist
 

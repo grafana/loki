@@ -163,8 +163,8 @@ loki:
     {{ include "loki.rulerConfig" . }}
 
     table_manager:
-      retention_deletes_enabled: false
-      retention_period: 0
+      retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
+      retention_period: {{ .Values.tableManager.retention_period }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -813,6 +813,11 @@ tableManager:
   nodeSelector: {}
   # -- Tolerations for table-manager pods
   tolerations: []
+  # -- Enable deletes by retention
+  retention_deletes_enabled: false
+  # -- Set retention period
+  retention_period: 0
+
 # Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1012,7 +1017,7 @@ singleBinary:
   # -- Number of replicas for the single binary
   replicas: 0
   autoscaling:
-    # -- Enable autoscaling, this is only used if `queryIndex.enabled: true`
+    # -- Enable autoscaling
     enabled: false
     # -- Minimum autoscaling replicas for the single binary
     minReplicas: 1
@@ -1254,6 +1259,8 @@ gateway:
     ingressClassName: ""
     # -- Annotations for the gateway ingress
     annotations: {}
+    # -- Labels for the gateway ingress
+    labels: {}
     # -- Hosts configuration for the gateway ingress
     hosts:
       - host: gateway.loki.example.com

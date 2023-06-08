@@ -1117,6 +1117,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.ingress.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway ingress</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
 			<td>TLS configuration for the gateway ingress</td>
@@ -3269,7 +3278,7 @@ Hard node and soft zone anti-affinity
 		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
-			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
+			<td>Enable autoscaling</td>
 			<td><pre lang="json">
 false
 </pre>
@@ -3695,6 +3704,24 @@ null
 			<td>Resource requests and limits for the table-manager</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_deletes_enabled</td>
+			<td>bool</td>
+			<td>Enable deletes by retention</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_period</td>
+			<td>int</td>
+			<td>Set retention period</td>
+			<td><pre lang="json">
+0
 </pre>
 </td>
 		</tr>

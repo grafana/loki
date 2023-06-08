@@ -133,6 +133,13 @@ func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float6
 		return 0
 	}
 
+	if minTime == maxTime {
+		// This function is most often used for chunk overlaps
+		// a chunk maxTime == minTime when it has only 1 entry
+		// return factor 1 to count that chunk's entry
+		return 1
+	}
+
 	totalTime := maxTime - minTime
 	leadingTime := utilsMath.Max64(0, from-minTime)
 	trailingTime := utilsMath.Max64(0, maxTime-through)

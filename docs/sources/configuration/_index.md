@@ -482,6 +482,18 @@ rate_store:
   # If enabled, detailed logs and spans will be emitted.
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
+
+# Experimental. Customize the logging of write failures.
+write_failures_logging:
+  # Experimental and subject to change. Log volume allowed (per second).
+  # Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging.rate
+  [rate: <int> | default = 1KB]
+
+  # Experimental and subject to change. Whether a insight=true key should be
+  # logged or not. Default: false.
+  # CLI flag: -distributor.write-failures-logging.add-insights-label
+  [add_insights_label: <boolean> | default = false]
 ```
 
 ### querier
@@ -765,10 +777,6 @@ results_cache:
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
 
-# Cache index stats query results.
-# CLI flag: -querier.cache-index-stats-results
-[cache_index_stats_results: <boolean> | default = false]
-
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
@@ -782,6 +790,23 @@ results_cache:
 # List of headers forwarded by the query Frontend to downstream querier.
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
+
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_index_stats_results is true, the
+# config for the results cache is used.
+index_stats_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.index-stats-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in results cache. Supported values are: 'snappy' and ''
+  # (disable compression).
+  # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -3721,6 +3746,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `frontend`
+- `frontend.index-stats-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
@@ -3745,6 +3771,10 @@ background:
   # How many key batches to buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> | default = 10000]
+
+  # Size limit in bytes for background write-back.
+  # CLI flag: -<prefix>.background.write-back-size-limit
+  [writeback_size_limit: <int> | default = 1GB]
 
 memcached:
   # How long keys stay in the memcache.

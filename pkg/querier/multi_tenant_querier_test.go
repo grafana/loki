@@ -475,6 +475,7 @@ func mockLabelValueRequest() *logproto.LabelVolumeRequest {
 		From:     0,
 		Through:  1000,
 		Matchers: `{foo="bar"}`,
+		Limit:    10,
 	}
 }
 

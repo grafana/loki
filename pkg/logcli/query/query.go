@@ -460,6 +460,8 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	}
 	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
@@ -534,7 +536,7 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*confi
 	errs := multierror.New()
 	for _, name := range names {
 		schema, err := func(name string) (*config.SchemaConfig, error) {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
 			defer cancel()
 			rdr, _, err := oc.GetObject(ctx, name)
 			if err != nil {
