@@ -163,6 +163,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
+	// TODO: base response on header.
 	return q.codec.EncodeResponse(r.Context(), response)
 }
 

@@ -1133,6 +1133,7 @@ func (ProtobufCodec) DecodeResponse(ctx context.Context, r *http.Response, req q
 	resp := &QueryResponse{}
 	resp.Unmarshal(buf)
 
+	// TODO(karsten): set http header in Protobuf response bodies.
 	switch req.(type) {
 	case *LokiSeriesRequest:
 		return resp.GetSeries(), nil
@@ -1176,6 +1177,7 @@ func (ProtobufCodec) EncodeResponse(ctx context.Context, res queryrangebase.Resp
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
+
 
 	buf, err := p.Marshal()
 	if err != nil {
