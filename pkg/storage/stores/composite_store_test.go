@@ -3,10 +3,12 @@ package stores
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/pkg/errors"
 	"reflect"
 	"testing"
+
+	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"

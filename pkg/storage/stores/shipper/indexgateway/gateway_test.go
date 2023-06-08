@@ -3,12 +3,13 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"math"
+	"testing"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/weaveworks/common/user"
-	"math"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

@@ -641,8 +641,8 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
 				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
-					  factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
-					  size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
 				}
 			}
 

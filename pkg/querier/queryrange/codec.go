@@ -6,13 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	io "io"
 	"net/http"
 	"net/url"
 	"sort"
 	strings "strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"

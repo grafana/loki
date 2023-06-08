@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/loghttp"
 	"time"
+
+	"github.com/grafana/loki/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"

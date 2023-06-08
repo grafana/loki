@@ -2,12 +2,14 @@ package querier
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/common/model"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

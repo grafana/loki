@@ -3,9 +3,10 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"

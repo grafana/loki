@@ -2,14 +2,15 @@ package tsdb
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"math/rand"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"

@@ -3,10 +3,11 @@ package loghttp
 import (
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"time"
 	"unsafe"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"

@@ -3,12 +3,13 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/common/model"
 	"runtime"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/prometheus/common/model"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"

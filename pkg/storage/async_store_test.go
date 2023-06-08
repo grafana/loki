@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logproto"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"

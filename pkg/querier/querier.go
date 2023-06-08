@@ -3,9 +3,10 @@ package querier
 import (
 	"context"
 	"flag"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"

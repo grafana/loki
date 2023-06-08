@@ -3,14 +3,16 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/mock"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/mock"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/tenant"

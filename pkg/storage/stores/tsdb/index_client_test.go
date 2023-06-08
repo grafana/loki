@@ -2,10 +2,11 @@ package tsdb
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/logproto"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"

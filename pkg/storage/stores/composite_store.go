@@ -2,8 +2,9 @@ package stores
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"sort"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"

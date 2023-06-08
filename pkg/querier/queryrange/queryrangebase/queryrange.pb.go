@@ -5,20 +5,22 @@ package queryrangebase
 
 import (
 	fmt "fmt"
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
-	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	types "github.com/gogo/protobuf/types"
-	_ "github.com/golang/protobuf/ptypes/duration"
-	github_com_grafana_loki_pkg_logproto "github.com/grafana/loki/pkg/logproto"
-	logproto "github.com/grafana/loki/pkg/logproto"
-	definitions "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	io "io"
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 	time "time"
+
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
+	types "github.com/gogo/protobuf/types"
+	_ "github.com/golang/protobuf/ptypes/duration"
+
+	github_com_grafana_loki_pkg_logproto "github.com/grafana/loki/pkg/logproto"
+	logproto "github.com/grafana/loki/pkg/logproto"
+	definitions "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

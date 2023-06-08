@@ -3,9 +3,10 @@ package indexgateway
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"sort"
 	"sync"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 

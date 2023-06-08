@@ -3,8 +3,9 @@ package stores
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"

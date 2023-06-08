@@ -2,8 +2,9 @@ package tsdb
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"

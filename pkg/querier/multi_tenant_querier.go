@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+
 	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/go-kit/log"
