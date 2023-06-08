@@ -117,7 +117,7 @@ GET /loki/api/v1/query
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
 query parameters support the following values:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
@@ -226,7 +226,7 @@ gave this response:
 ```
 
 If your cluster has
-[Grafana Loki Multi-Tenancy]({{< relref "../operations/multi-tenancy/" >}}) enabled,
+[Grafana Loki Multi-Tenancy]({{< relref "../operations/multi-tenancy" >}}) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
 
@@ -269,7 +269,7 @@ GET /loki/api/v1/query_range
 `/loki/api/v1/query_range` is used to do a query over a range of time and
 accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago. Loki returns results with timestamp greater or equal to this value.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now. Loki returns results with timestamp lower than this value.
@@ -524,7 +524,7 @@ GET /loki/api/v1/tail
 `/loki/api/v1/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return. It defaults to `100`.
@@ -699,7 +699,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki]({{< relref "../operations/observability/" >}})
+[Observing Loki]({{< relref "../operations/observability" >}})
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
@@ -843,7 +843,7 @@ The `/loki/api/v1/index/stats` endpoint can be used to query the index for the n
 
 URL query parameters:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) matchers to check (i.e. `{job="foo", env!="dev"}`)
+- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (i.e. `{job="foo", env!="dev"}`)
 - `start=<nanosecond Unix epoch>`: Start timestamp.
 - `end=<nanosecond Unix epoch>`: End timestamp.
 
@@ -1089,7 +1089,7 @@ PUT /loki/api/v1/delete
 ```
 
 Create a new delete request for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion/" >}}) documentation has configuration details.
+The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1129,7 +1129,7 @@ GET /loki/api/v1/delete
 ```
 
 List the existing delete requests for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion/" >}}) documentation has configuration details.
+The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1166,7 +1166,7 @@ DELETE /loki/api/v1/delete
 ```
 
 Remove a delete request for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion/" >}}) documentation has configuration details.
+The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
@@ -1213,7 +1213,7 @@ curl -u "Tenant1:$API_TOKEN" \
 `/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return
@@ -1262,7 +1262,7 @@ will be sent over the WebSocket multiple times.
 `/api/prom/query` supports doing general queries. The URL query parameters
 support the following values:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.

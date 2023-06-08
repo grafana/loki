@@ -9,4 +9,4 @@ weight: 1100
 
 This section provides reference material for Loki.
 
-1. [Loki HTTP API]({{<relref "api.md">}})
+1. [Loki HTTP API]({{< relref "./api" >}})
