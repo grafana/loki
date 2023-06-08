@@ -4670,21 +4670,21 @@ storage_config:
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
-[aws: <map of string to aws_storage_config>]
+[aws: <map of string to NamedAWSStorageConfig>]
 
-[azure: <map of string to azure_storage_config>]
+[azure: <map of string to NamedBlobStorageConfig>]
 
-[bos: <map of string to bos_storage_config>]
+[bos: <map of string to NamedBOSStorageConfig>]
 
-[filesystem: <map of string to local_storage_config>]
+[filesystem: <map of string to NamedFSConfig>]
 
-[gcs: <map of string to gcs_storage_config>]
+[gcs: <map of string to NamedGCSConfig>]
 
-[alibabacloud: <map of string to alibabacloud_storage_config>]
+[alibabacloud: <map of string to NamedOssConfig>]
 
-[swift: <map of string to swift_storage_config>]
+[swift: <map of string to NamedSwiftConfig>]
 
-[cos: <map of string to cos_storage_config>]
+[cos: <map of string to NamedCOSConfig>]
 ```
 
 ## Runtime Configuration file

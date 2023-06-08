@@ -1694,7 +1694,7 @@ func TestNamedStores_applyDefaults(t *testing.T) {
     gcs:
       store-4:
         bucket_name: foobar
-	enable_http2: false
+        enable_http2: false
     cos:
       store-5:
         endpoint: cos.test
@@ -1723,8 +1723,8 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 
 		// expect the defaults to be set on named store config
 		expected := defaults.StorageConfig.AWSStorageConfig
-		expected.DynamoDB.Set("dynamo.test")
-		expected.S3.Set("s3.test")
+		assert.NoError(t, expected.DynamoDB.Set("dynamo.test"))
+		assert.NoError(t, expected.S3.Set("s3.test"))
 		// override defaults
 		expected.StorageClass = "GLACIER"
 
