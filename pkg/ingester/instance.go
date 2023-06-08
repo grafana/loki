@@ -2,12 +2,13 @@ package ingester
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -640,9 +641,9 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
 				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
-					size += uint64(chk.chunk.UncompressedSize())
+					  factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					  size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
 				}
-
 			}
 
 			for _, l := range s.labels {
