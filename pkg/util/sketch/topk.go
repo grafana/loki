@@ -13,7 +13,7 @@ import (
 // for existence of a particular hash isn't that much more costly than doing so via a map
 // and we avoid the extra memory overhead of using a map.
 type Topk struct {
-	max int
+	Max int
 	// slice of the hashes for things we've seen, tracks
 	currentTop []string
 	heap       *MinHeap
@@ -36,7 +36,7 @@ func NewTopk(k int, numEntries int) (Topk, error) {
 		return Topk{}, err
 	}
 	return Topk{
-		max:        k,
+		Max:        k,
 		currentTop: make([]string, 0, k),
 		heap:       NewMinHeap(k), //make heap,
 		sketch:     s,
@@ -61,7 +61,7 @@ func (t *Topk) Observe(event string) {
 		a := fnv.New64()
 		a.Write([]byte(event))
 		// remove the min event from the heap
-		if len(t.currentTop) == t.max {
+		if len(t.currentTop) == t.Max {
 			min := t.heap.Pop()
 			removeIndex := -1
 			for i, e := range t.currentTop {

@@ -56,3 +56,8 @@ type Sketch []sketch.Topk
 
 // Type implements `promql.Value`
 func (Sketch) Type() parser.ValueType { return ValueTypeSketch }
+
+// String implements `promql.Value`
+func (Sketch) String() string {
+	return ""
+}
