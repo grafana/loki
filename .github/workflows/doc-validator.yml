@@ -16,7 +16,6 @@ jobs:
       - name: "Run doc-validator tool"
         run: >
           doc-validator
-          --include=$(git config --global --add safe.directory $(realpath .); printf '^docs/sources/(%s)$' "$(git --no-pager diff --name-only --diff-filter=ACMRT origin/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.sha }} -- docs/sources | sed 's/^docs\/sources\///' | awk -F'\n' '{if(NR == 1) {printf $0} else {printf "|"$0}}')")
          '--skip-checks=^image'
           ./docs/sources
           /docs/loki/latest
