@@ -87,7 +87,7 @@ We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/
 
 > Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
 
-Loki allows you to run [metric queries]({{< relref "../query/metric_queries" >}}) over your logs, which means
+Loki allows you to run [metric queries]({{<relref "../query/metric_queries">}}) over your logs, which means
 that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your NGINX access log.
 
 ### Example
