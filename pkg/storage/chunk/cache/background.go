@@ -45,6 +45,8 @@ type backgroundCache struct {
 	droppedWriteBackBytes prometheus.Counter
 	queueLength           prometheus.Gauge
 	queueBytes            prometheus.Gauge
+	enqueuedBytes         prometheus.Counter
+	dequeuedBytes         prometheus.Counter
 }
 
 type backgroundWrite struct {
@@ -97,6 +99,20 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheu
 			Help:        "Amount of data in the background writeback queue.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
+
+		enqueuedBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "loki",
+			Name:        "cache_background_enqueued_bytes_total",
+			Help:        "Counter of bytes enqueued over time to the background writeback queue.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+
+		dequeuedBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "loki",
+			Name:        "cache_background_dequeued_bytes_total",
+			Help:        "Counter of bytes dequeued over time from the background writeback queue.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 	}
 
 	c.wg.Add(cfg.WriteBackGoroutines)
@@ -142,6 +158,7 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 			c.size.Add(int64(size))
 			c.queueBytes.Set(float64(c.size.Load()))
 			c.queueLength.Add(float64(num))
+			c.enqueuedBytes.Add(float64(size))
 		default:
 			c.failStore(ctx, size, num, "queue at full capacity")
 			return nil // queue is full; give up
@@ -174,6 +191,7 @@ func (c *backgroundCache) writeBackLoop() {
 
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
 			c.queueBytes.Set(float64(c.size.Load()))
+			c.dequeuedBytes.Add(float64(bgWrite.size()))
 			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
 			if err != nil {
 				level.Warn(util_log.Logger).Log("msg", "backgroundCache writeBackLoop Cache.Store fail", "err", err)

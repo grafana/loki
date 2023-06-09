@@ -489,6 +489,11 @@ write_failures_logging:
   # Default: 1KB.
   # CLI flag: -distributor.write-failures-logging.rate
   [rate: <int> | default = 1KB]
+
+  # Experimental and subject to change. Whether a insight=true key should be
+  # logged or not. Default: false.
+  # CLI flag: -distributor.write-failures-logging.add-insights-label
+  [add_insights_label: <boolean> | default = false]
 ```
 
 ### querier
@@ -772,10 +777,6 @@ results_cache:
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
 
-# Cache index stats query results.
-# CLI flag: -querier.cache-index-stats-results
-[cache_index_stats_results: <boolean> | default = false]
-
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
@@ -789,6 +790,23 @@ results_cache:
 # List of headers forwarded by the query Frontend to downstream querier.
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
+
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_index_stats_results is true, the
+# config for the results cache is used.
+index_stats_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.index-stats-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in results cache. Supported values are: 'snappy' and ''
+  # (disable compression).
+  # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -2390,6 +2408,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 1m]
 
+# Do not cache requests with an end time that falls within Now minus this
+# duration. 0 disables this feature (default).
+# CLI flag: -frontend.max-stats-cache-freshness
+[max_stats_cache_freshness: <duration> | default = 0s]
+
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
 # will handle requests for the tenant. Each frontend (or query-scheduler, if
@@ -3728,6 +3751,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `frontend`
+- `frontend.index-stats-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
