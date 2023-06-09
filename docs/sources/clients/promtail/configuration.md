@@ -1079,7 +1079,7 @@ The `azure_event_hubs` block configures how Promtail receives Azure Event Hubs m
 
 To learn more about streaming Azure logs to an Azure Event Hubs, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
 
-Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
+Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/).
 
 ```yaml
 # Event Hubs namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
@@ -1307,7 +1307,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders", "ClientRequestSource"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1341,6 +1341,7 @@ All Cloudflare logs are in JSON. Here is an example:
 	"ClientRequestReferer": "https://www.foo.com/foo/168855/?offset=8625",
 	"ClientRequestURI": "/foo/15248108/",
 	"ClientRequestUserAgent": "some bot",
+        "ClientRequestSource": "1"
 	"ClientSSLCipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
 	"ClientSSLProtocol": "TLSv1.2",
 	"ClientSrcPort": 39816,
@@ -1372,10 +1373,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
-  "RequestHeaders": [],
-  "ResponseHeaders": [
-    "x-foo": "bar"
-  ],
+        "RequestHeaders": [],
+        "ResponseHeaders": [
+          "x-foo": "bar"
+        ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",

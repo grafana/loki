@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Add loki.memberlistConfig to fully control the memberlist configuration
 
+## 5.6.4
+
+- [FEATURE] Make table manager retention options configurable in values
+
 ## 5.6.3
 
 - [BUGFIX] Fix configmap checksum in read statefulset template
