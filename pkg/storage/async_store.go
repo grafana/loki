@@ -150,6 +150,10 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		return nil, err
 	}
 
+	// TODO: fix inflated stats. This happens because:
+	//       - All ingesters are queried. Since we have a replication factor of 3, we get 3x the stats.
+	//       - For the same timespan, we are querying the store as well. This means we can get duplicated stats for
+	//         chunks that are already in the store but also still in the ingesters.
 	merged := stats.MergeStats(resps...)
 	return &merged, nil
 }
