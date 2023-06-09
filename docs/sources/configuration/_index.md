@@ -489,6 +489,11 @@ write_failures_logging:
   # Default: 1KB.
   # CLI flag: -distributor.write-failures-logging.rate
   [rate: <int> | default = 1KB]
+
+  # Experimental and subject to change. Whether a insight=true key should be
+  # logged or not. Default: false.
+  # CLI flag: -distributor.write-failures-logging.add-insights-label
+  [add_insights_label: <boolean> | default = false]
 ```
 
 ### querier
