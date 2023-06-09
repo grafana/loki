@@ -81,7 +81,7 @@ type ResultsCacheConfig struct {
 func (cfg *ResultsCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix(prefix, "", f)
 
-	f.StringVar(&cfg.Compression, prefix+"compression", "", "Use compression in cache. Supported values are: 'snappy' and ''. Default ''. An empty value (i.e. '') disables compression.")
+	f.StringVar(&cfg.Compression, prefix+"compression", "", "Use compression in cache. The default is an empty value '', which disables compression. Supported values are: 'snappy' and ''.")
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, prefix+"cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
 }

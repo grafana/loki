@@ -763,8 +763,8 @@ results_cache:
   # The CLI flags prefix for this block configuration is: frontend
   [cache: <cache_config>]
 
-  # Use compression in cache. Supported values are: 'snappy' and ''. Default ''.
-  # An empty value (i.e. '') disables compression.
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.compression
   [compression: <string> | default = ""]
 
@@ -798,8 +798,8 @@ index_stats_results_cache:
   # frontend.index-stats-results-cache
   [cache: <cache_config>]
 
-  # Use compression in cache. Supported values are: 'snappy' and ''. Default ''.
-  # An empty value (i.e. '') disables compression.
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.index-stats-results-cache.compression
   [compression: <string> | default = ""]
 ```
