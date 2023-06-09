@@ -655,6 +655,51 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				"bar", "i'm a string, encode me!",
 			),
 		},
+		{
+			"unixToTime days",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
+			labels.Labels{
+				{Name: "bar", Value: "19503"},
+				{Name: "foo", Value: "2023-05-26"},
+			},
+		},
+		{
+			"unixToTime seconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
+			labels.Labels{
+				{Name: "bar", Value: "1679577215"},
+				{Name: "foo", Value: "2023-03-23"},
+			},
+		},
+		{
+			"unixToTime milliseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
+			labels.Labels{
+				{Name: "bar", Value: "1257894000000"},
+				{Name: "foo", Value: "2009-11-10"},
+			},
+		},
+		{
+			"unixToTime microseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
+			labels.Labels{
+				{Name: "bar", Value: "1673798889902000"},
+				{Name: "foo", Value: "2023-01-15"},
+			},
+		},
+		{
+			"unixToTime nanoseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "Jan 2, 2006" }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
+			labels.Labels{
+				{Name: "bar", Value: "1000000000000000000"},
+				{Name: "foo", Value: "Sep 9, 2001"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -860,4 +905,12 @@ func TestDecolorizer(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestInvalidUnixTimes(t *testing.T) {
+	_, err := unixToTime("abc")
+	require.Error(t, err)
+
+	_, err = unixToTime("464")
+	require.Error(t, err)
 }
