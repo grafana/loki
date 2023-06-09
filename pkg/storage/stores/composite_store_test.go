@@ -310,7 +310,7 @@ func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, fr
 }
 
 func TestLabelVolume(t *testing.T) {
-	t.Run("it retuns volumes from all stores", func(t *testing.T) {
+	t.Run("it returns volumes from all stores", func(t *testing.T) {
 		cs := compositeStore{
 			stores: []compositeStoreEntry{
 				{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore: mockStore(0), value: &logproto.LabelVolumeResponse{

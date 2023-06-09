@@ -363,6 +363,7 @@ func TestIngesterQuerier_LabelVolume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 		)
+		require.NoError(t, err)
 
 		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1, 10)
 		require.NoError(t, err)
@@ -382,6 +383,7 @@ func TestIngesterQuerier_LabelVolume(t *testing.T) {
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
 		)
+		require.NoError(t, err)
 
 		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1, 10)
 		require.NoError(t, err)

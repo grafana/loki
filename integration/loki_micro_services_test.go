@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
+
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/querylimits"
 )

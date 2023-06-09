@@ -873,7 +873,7 @@ func TestInstance_LabelVolume(t *testing.T) {
 		}, volumes.Volumes)
 	})
 
-	t.Run("exludes streams outside of time bounds", func(t *testing.T) {
+	t.Run("excludes streams outside of time bounds", func(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
 			From:     5,

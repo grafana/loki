@@ -472,7 +472,7 @@ func (s *mockStore) Stats(ctx context.Context, userID string, from, through mode
 func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return &logproto.LabelVolumeResponse{
 		Volumes: []logproto.LabelVolume{
-			{"foo", "bar", 38},
+			{Name: "foo", Value: "bar", Volume: 38},
 		},
 		Limit: limit,
 	}, nil
@@ -1060,6 +1060,8 @@ func TestStats(t *testing.T) {
 	require.NoError(t, err)
 
 	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
 	i.instances["test"] = defaultInstance(t)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -1085,6 +1087,8 @@ func TestLabelVolume(t *testing.T) {
 	require.NoError(t, err)
 
 	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
 	i.instances["test"] = defaultInstance(t)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
