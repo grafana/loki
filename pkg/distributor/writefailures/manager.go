@@ -17,7 +17,10 @@ type Manager struct {
 }
 
 func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
-	logger = log.With(logger, "path", "write", "insight", "true")
+	logger = log.With(logger, "path", "write")
+	if cfg.AddInsightsLabel {
+		logger = log.With(logger, "insight", "true")
+	}
 
 	strat := newStrategy(cfg.LogRate.Val(), float64(cfg.LogRate.Val()))
 

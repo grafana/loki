@@ -16,10 +16,14 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
@@ -1700,5 +1704,138 @@ common:
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+}
+
+func TestNamedStores_applyDefaults(t *testing.T) {
+	namedStoresConfig := `storage_config:
+  named_stores:
+    aws:
+      store-1:
+        s3: "s3.test"
+        storage_class: GLACIER
+        dynamodb:
+          dynamodb_url: "dynamo.test"
+    azure:
+      store-2:
+        environment: AzureGermanCloud
+        account_name: foo
+        container_name: bar
+    bos:
+      store-3:
+        bucket_name: foobar
+    gcs:
+      store-4:
+        bucket_name: foobar
+        enable_http2: false
+    cos:
+      store-5:
+        endpoint: cos.test
+        http_config:
+          idle_conn_timeout: 30s
+    filesystem:
+      store-6:
+        directory: foobar
+    swift:
+      store-7:
+        container_name: foobar
+        request_timeout: 30s
+    alibabacloud:
+      store-8:
+        bucket: foobar
+        endpoint: oss.test
+`
+	// make goconst happy
+	bucketName := "foobar"
+
+	config, defaults, err := configWrapperFromYAML(t, namedStoresConfig, nil)
+	require.NoError(t, err)
+
+	nsCfg := config.StorageConfig.NamedStores
+
+	t.Run("aws", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.AWS, 1)
+
+		// expect the defaults to be set on named store config
+		expected := defaults.StorageConfig.AWSStorageConfig
+		assert.NoError(t, expected.DynamoDB.Set("dynamo.test"))
+		assert.NoError(t, expected.S3.Set("s3.test"))
+		// override defaults
+		expected.StorageClass = "GLACIER"
+
+		assert.Equal(t, expected, (aws.StorageConfig)(nsCfg.AWS["store-1"]))
+	})
+
+	t.Run("azure", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.Azure, 1)
+
+		expected := defaults.StorageConfig.AzureStorageConfig
+		expected.StorageAccountName = "foo"
+		expected.ContainerName = "bar"
+		// override defaults
+		expected.Environment = "AzureGermanCloud"
+
+		assert.Equal(t, expected, (azure.BlobStorageConfig)(nsCfg.Azure["store-2"]))
+	})
+
+	t.Run("bos", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.BOS, 1)
+
+		expected := defaults.StorageConfig.BOSStorageConfig
+		expected.BucketName = bucketName
+
+		assert.Equal(t, expected, (baidubce.BOSStorageConfig)(nsCfg.BOS["store-3"]))
+	})
+
+	t.Run("gcs", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.GCS, 1)
+
+		expected := defaults.StorageConfig.GCSConfig
+		expected.BucketName = bucketName
+		// override defaults
+		expected.EnableHTTP2 = false
+
+		assert.Equal(t, expected, (gcp.GCSConfig)(nsCfg.GCS["store-4"]))
+	})
+
+	t.Run("cos", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.COS, 1)
+
+		expected := defaults.StorageConfig.COSConfig
+		expected.Endpoint = "cos.test"
+		// override defaults
+		expected.HTTPConfig.IdleConnTimeout = 30 * time.Second
+
+		assert.Equal(t, expected, (ibmcloud.COSConfig)(nsCfg.COS["store-5"]))
+	})
+
+	t.Run("filesystem", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.Filesystem, 1)
+
+		expected := defaults.StorageConfig.FSConfig
+		expected.Directory = bucketName
+
+		assert.Equal(t, expected, (local.FSConfig)(nsCfg.Filesystem["store-6"]))
+	})
+
+	t.Run("swift", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.Swift, 1)
+
+		expected := defaults.StorageConfig.Swift
+		expected.ContainerName = bucketName
+		// override defaults
+		expected.RequestTimeout = 30 * time.Second
+
+		assert.Equal(t, expected, (openstack.SwiftConfig)(nsCfg.Swift["store-7"]))
+	})
+
+	t.Run("alibabacloud", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.AlibabaCloud, 1)
+
+		expected := defaults.StorageConfig.AlibabaStorageConfig
+		expected.Bucket = bucketName
+		expected.Endpoint = "oss.test"
+
+		assert.Equal(t, expected, (alibaba.OssConfig)(nsCfg.AlibabaCloud["store-8"]))
 	})
 }
