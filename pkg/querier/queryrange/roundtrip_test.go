@@ -1093,6 +1093,7 @@ type fakeLimits struct {
 	requiredNumberLabels    int
 	maxQueryBytesRead       int
 	maxQuerierBytesRead     int
+	maxStatsCacheFreshness  time.Duration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1163,6 +1164,10 @@ func (f fakeLimits) RequiredLabels(context.Context, string) []string {
 
 func (f fakeLimits) RequiredNumberLabels(ctx context.Context, s string) int {
 	return f.requiredNumberLabels
+}
+
+func (f fakeLimits) MaxStatsCacheFreshness(ctx context.Context, s string) time.Duration {
+	return f.maxStatsCacheFreshness
 }
 
 func counter() (*int, http.Handler) {

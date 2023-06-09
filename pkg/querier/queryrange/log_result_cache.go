@@ -88,7 +88,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if l.shouldCache != nil && !l.shouldCache(req) {
+	if l.shouldCache != nil && !l.shouldCache(ctx, req) {
 		return l.next.Do(ctx, req)
 	}
 
