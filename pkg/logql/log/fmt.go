@@ -68,6 +68,8 @@ var (
 		"unixEpochNanos":   unixEpochNanos,
 		"toDateInZone":     toDateInZone,
 		"unixToTime":       unixToTime,
+		"alignLeft":        alignLeft,
+		"alignRight":       alignRight,
 	}
 
 	// sprig template functions
@@ -424,6 +426,32 @@ func trunc(c int, s string) string {
 		return string(runes[:c])
 	}
 	return s
+}
+
+func alignLeft(count int, src string) string {
+	runes := []rune(src)
+	l := len(runes)
+	if count < 0 || count == l {
+		return src
+	}
+	pad := count - l
+	if pad > 0 {
+		return src + strings.Repeat(" ", pad)
+	}
+	return string(runes[:count])
+}
+
+func alignRight(count int, src string) string {
+	runes := []rune(src)
+	l := len(runes)
+	if count < 0 || count == l {
+		return src
+	}
+	pad := count - l
+	if pad > 0 {
+		return strings.Repeat(" ", pad) + src
+	}
+	return string(runes[l-count:])
 }
 
 type Decolorizer struct{}

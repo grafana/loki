@@ -459,6 +459,24 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.FromStrings("foo", "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"),
 			[]byte("1"),
 		},
+		{
+			"alignLeft",
+			newMustLineFormatter("{{ alignLeft 4 .foo }}"),
+			labels.FromStrings("foo", "hello"),
+			1656353124120000000,
+			[]byte("hell"),
+			labels.FromStrings("foo", "hello"),
+			[]byte("1"),
+		},
+		{
+			"alignRight",
+			newMustLineFormatter("{{ alignRight 4 .foo }}"),
+			labels.FromStrings("foo", "hello"),
+			1656353124120000000,
+			[]byte("ello"),
+			labels.FromStrings("foo", "hello"),
+			[]byte("1"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -761,6 +779,48 @@ func Test_trunc(t *testing.T) {
 		t.Run(fmt.Sprintf("%s%d", tt.s, tt.c), func(t *testing.T) {
 			if got := trunc(tt.c, tt.s); got != tt.want {
 				t.Errorf("trunc() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_AlignLeft(t *testing.T) {
+	tests := []struct {
+		s    string
+		c    int
+		want string
+	}{
+		{"Hello, 世界", -1, "Hello, 世界"},
+		{"Hello, 世界", 0, ""},
+		{"Hello, 世界", 1, "H"},
+		{"Hello, 世界", 8, "Hello, 世"},
+		{"Hello, 世界", 20, "Hello, 世界           "},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s%d", tt.s, tt.c), func(t *testing.T) {
+			if got := alignLeft(tt.c, tt.s); got != tt.want {
+				t.Errorf("alignLeft() = %q, want %q for %q with %v", got, tt.want, tt.s, tt.c)
+			}
+		})
+	}
+}
+
+func Test_AlignRight(t *testing.T) {
+	tests := []struct {
+		s    string
+		c    int
+		want string
+	}{
+		{"Hello, 世界", -1, "Hello, 世界"},
+		{"Hello, 世界", 0, ""},
+		{"Hello, 世界", 1, "界"},
+		{"Hello, 世界", 2, "世界"},
+		{"Hello, 世界", 20, "           Hello, 世界"},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s%d", tt.s, tt.c), func(t *testing.T) {
+			if got := alignRight(tt.c, tt.s); got != tt.want {
+				t.Errorf("alignRight() = %q, want %q for %q with %v", got, tt.want, tt.s, tt.c)
 			}
 		})
 	}
