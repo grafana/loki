@@ -1005,7 +1005,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 		},
 		{
 			name: "always no cache",
-			shouldCache: func(r Request) bool {
+			shouldCache: func(_ context.Context, _ Request) bool {
 				return false
 			},
 			requests:     []Request{parsedRequest, parsedRequest},
@@ -1013,7 +1013,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 		},
 		{
 			name: "check cache based on request",
-			shouldCache: func(r Request) bool {
+			shouldCache: func(_ context.Context, r Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
 			requests:     []Request{noCacheRequest, noCacheRequest},
