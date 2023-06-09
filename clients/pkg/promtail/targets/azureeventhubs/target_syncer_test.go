@@ -7,9 +7,10 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_validateConfig(t *testing.T) {
