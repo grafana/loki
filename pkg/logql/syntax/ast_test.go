@@ -652,6 +652,31 @@ func TestFilterReodering(t *testing.T) {
 	})
 }
 
+func TestGlobalFilter(t *testing.T) {
+	for _, tc := range []struct {
+		in  string
+		out bool
+	}{
+		{
+			in:  `{job="varlogs", filename="/var/log/install.log"}|=": "|="softwareupdated["| regexp ".*: (?P<testLabel>.*):.*" |testLabel!=""| line_format "{{.testLabel}}"`,
+			out: false,
+		},
+		{
+			in: `{job="varlogs", filename="/var/log/install.log"}|=": "|="softwareupdated["| regexp ".*: (?P<testLabel>.*):.*" |testLabel="SUOSUServiceDaemon" 
+|="SUOSUServiceDaemon"|distinct testLabel`,
+			out: true,
+		},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			l, err := ParseExpr(tc.in)
+			require.NoError(t, err)
+			expr := l.(LogSelectorExpr)
+			require.Equal(t, tc.out, IsGlobalFilter(expr))
+		})
+	}
+
+}
+
 var result bool
 
 func BenchmarkReorderedPipeline(b *testing.B) {

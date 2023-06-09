@@ -302,7 +302,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		}
 
 		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
+		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval(), q.params.Query())
 		return streams, err
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
@@ -503,14 +503,31 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration, logql string) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
+
+	globalPipeline, err := syntax.ParseGlobalPipeline(logql)
+	if err != nil {
+		return nil, err
+	}
 	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
+
+		if globalPipeline != nil {
+			lbs, err := syntax.ParseLabels(labels)
+			if err != nil {
+				return nil, err
+			}
+			_, _, matches := globalPipeline.ForStream(lbs).ProcessString(entry.Timestamp.UnixNano(), entry.Line)
+			if !matches {
+				continue
+			}
+		}
+
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
 		backwardShouldOutput := dir == logproto.BACKWARD &&
