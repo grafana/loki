@@ -688,6 +688,19 @@ Examples:
 {{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpochNanos }}
 ```
 
+## unixToTime
+
+Converts the string epoch to the time value it represents. Epoch times in days, seconds, milliseconds, microseconds and nanoseconds are supported.
+
+Signature: `unixToTime(epoch string) time.Time`
+
+Examples:
+
+Consider the following log line `{"from": "1679577215","to":"1679587215","message":"some message"}`. To print the `from` field as human readable add the following at the end of the LogQL query:
+```logql
+... | json | line_format `from="{{date "2006-01-02" (unixToTime .from)}}"`
+```
+
 ## default
 
 Checks whether the string(`src`) is set, and returns default(`d`) if not set.
