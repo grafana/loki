@@ -57,6 +57,7 @@ The following key-value pairs would be created in the set of extracted data:
 - `app`: `loki`
 - `duration`: `125`
 
+```
 ### Using extracted data
 
 For the given pipeline:
@@ -86,3 +87,16 @@ The second stage will parse the value of `extra` from the extracted data as logf
 and append the following key-value pairs to the set of extracted data:
 
 - `user`: `foo`
+
+Noted that it requires a `label` stage too that takes data from the extracted map and sent to Loki. 
+Example: 
+```yaml 
+- logfmt:
+    mapping:
+      extra:
+- logfmt:
+    mapping:
+      user:
+    source: extra
+- labels:
+    user: 
