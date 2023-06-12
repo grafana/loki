@@ -712,11 +712,11 @@ func (c *indexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID
 }
 
 // old index stores do not implement stats -- skip
-func (c *indexReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *indexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
 // old index stores do not implement label volume -- skip
-func (c *indexReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (c *indexReaderWriter) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }

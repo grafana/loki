@@ -173,7 +173,7 @@ func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, 
 	return false, nil
 }
 
-func (c *storeEntry) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (c *storeEntry) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return c.fetcher
 }
 

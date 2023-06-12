@@ -39,7 +39,7 @@ func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return args.Get(0).(*fetcher.Fetcher)
 }
 
-func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (s *storeMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := s.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {
@@ -63,7 +63,7 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (i *ingesterQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *ingesterQuerierMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {

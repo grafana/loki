@@ -27,7 +27,7 @@ type testWriteTo struct {
 	ReceivedSeriesReset []int
 }
 
-func (t *testWriteTo) StoreSeries(series []record.RefSeries, i int) {
+func (t *testWriteTo) StoreSeries(series []record.RefSeries, _ int) {
 	for _, seriesRec := range series {
 		t.series[uint64(seriesRec.Ref)] = util.MapToModelLabelSet(seriesRec.Labels.Map())
 	}

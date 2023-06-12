@@ -173,12 +173,12 @@ func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
 
-func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
-func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+func (m *mockChunkStore) Put(_ context.Context, _ []chunk.Chunk) error { return nil }
+func (m *mockChunkStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }
 
-func (m *mockChunkStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+func (m *mockChunkStore) GetSeries(ctx context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	result := make([]labels.Labels, 0, len(m.chunks))
 	unique := map[uint64]struct{}{}
 Outer:
@@ -204,11 +204,11 @@ Outer:
 	return result, nil
 }
 
-func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
 	return nil, nil
 }
 
@@ -216,15 +216,15 @@ func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
 	m.f = f
 }
 
-func (m *mockChunkStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+func (m *mockChunkStore) DeleteChunk(_ context.Context, _, _ model.Time, _, _ string, _ labels.Labels, _ *model.Interval) error {
 	return nil
 }
 
-func (m *mockChunkStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+func (m *mockChunkStore) DeleteSeriesIDs(_ context.Context, _, _ model.Time, _ string, _ labels.Labels) error {
 	return nil
 }
 func (m *mockChunkStore) Stop() {}
-func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (m *mockChunkStore) Get(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
 
@@ -232,7 +232,7 @@ func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m *mockChunkStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
@@ -255,11 +255,11 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
 }
 
-func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*index_stats.Stats, error) {
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m *mockChunkStore) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }
 
@@ -272,11 +272,11 @@ func (m mockChunkStoreClient) Stop() {
 	panic("implement me")
 }
 
-func (m mockChunkStoreClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (m mockChunkStoreClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
 	return nil
 }
 
-func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (m mockChunkStoreClient) GetChunks(_ context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	var res []chunk.Chunk
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
@@ -289,7 +289,7 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	return res, nil
 }
 
-func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+func (m mockChunkStoreClient) DeleteChunk(_ context.Context, _, _ string) error {
 	return nil
 }
 

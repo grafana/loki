@@ -27,7 +27,7 @@ type fakePusher struct {
 	err      error
 }
 
-func (p *fakePusher) Push(ctx context.Context, r *logproto.WriteRequest) (*logproto.WriteResponse, error) {
+func (p *fakePusher) Push(_ context.Context, r *logproto.WriteRequest) (*logproto.WriteResponse, error) {
 	p.request = r
 	return p.response, p.err
 }

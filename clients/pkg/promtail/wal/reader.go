@@ -14,11 +14,11 @@ import (
 
 // ReadWAL will read all entries in the WAL located under dir. Mainly used for testing
 func ReadWAL(dir string) ([]api.Entry, error) {
-	reader, close, err := walUtils.NewWalReader(dir, -1)
+	reader, closeFn, err := walUtils.NewWalReader(dir, -1)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { close.Close() }()
+	defer func() { closeFn.Close() }()
 
 	seenSeries := make(map[uint64]model.LabelSet)
 	seenEntries := []api.Entry{}

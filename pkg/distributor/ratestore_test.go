@@ -288,7 +288,7 @@ type fakeRing struct {
 	err            error
 }
 
-func (r *fakeRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *fakeRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, r.err
 }
 
@@ -325,7 +325,7 @@ type fakeStreamDataClient struct {
 	callCount    int
 }
 
-func (c *fakeStreamDataClient) GetStreamRates(ctx context.Context, in *logproto.StreamRatesRequest, opts ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
+func (c *fakeStreamDataClient) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest, _ ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
 	if c.maxResponses > 0 && c.callCount > c.maxResponses {
 		return nil, c.err
 	}

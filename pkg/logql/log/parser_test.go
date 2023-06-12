@@ -1139,12 +1139,12 @@ func Test_unpackParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
-			copy := string(tt.line)
+			cp := string(tt.line)
 			l, _ := j.Process(0, tt.line, b)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, tt.wantLine, l)
-			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
+			require.Equal(t, cp, string(tt.line), "the original log line should not be mutated")
 		})
 	}
 }

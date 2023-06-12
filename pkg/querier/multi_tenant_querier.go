@@ -30,7 +30,7 @@ type MultiTenantQuerier struct {
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
-func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
+func NewMultiTenantQuerier(querier Querier, _ log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
 		Querier: querier,
 	}
