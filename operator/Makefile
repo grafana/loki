@@ -174,6 +174,10 @@ scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundle
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run --timeout=5m ./...
 
+.PHONY: lint-fix
+lint-fix: $(GOLANGCI_LINT) ## Attempt to automatically fix lint issues in source code.
+	$(GOLANGCI_LINT) run --fix --timeout=5m ./...
+
 .PHONY: lint-prometheus
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-*.yaml
