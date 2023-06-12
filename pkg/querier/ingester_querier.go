@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -291,7 +293,7 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 	return chunkIDs, nil
 }
 
-func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetStats(ctx, &logproto.IndexStatsRequest{
 			From:     from,
@@ -315,6 +317,38 @@ func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, throug
 
 	merged := index_stats.MergeStats(casted...)
 	return &merged, nil
+}
+
+func (q *IngesterQuerier) LabelVolume(ctx context.Context, _ string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	matcherString := "{}"
+	if len(matchers) > 0 {
+		matcherString = syntax.MatchersString(matchers)
+	}
+
+	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: matcherString,
+			Limit:    limit,
+		})
+	})
+
+	if err != nil {
+		if isUnimplementedCallError(err) {
+			// Handle communication with older ingesters gracefully
+			return &logproto.LabelVolumeResponse{}, nil
+		}
+		return nil, err
+	}
+
+	casted := make([]*logproto.LabelVolumeResponse, 0, len(resps))
+	for _, resp := range resps {
+		casted = append(casted, resp.response.(*logproto.LabelVolumeResponse))
+	}
+
+	merged := labelvolume.Merge(casted, limit)
+	return merged, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
@@ -22,6 +25,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -156,6 +160,51 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	//         chunks that are already in the store but also still in the ingesters.
 	merged := stats.MergeStats(resps...)
 	return &merged, nil
+}
+
+func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	matchersStr := syntax.MatchersString(matchers)
+	type f func() (*logproto.LabelVolumeResponse, error)
+	var jobs []f
+
+	if a.shouldQueryIngesters(through, model.Now()) {
+		jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
+			vols, err := a.ingesterQuerier.LabelVolume(ctx, userID, from, through, limit, matchers...)
+			level.Debug(logger).Log(
+				"msg", "queried label volumes",
+				"matchers", matchersStr,
+				"source", "ingesters",
+			)
+			return vols, err
+		})
+	}
+	jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
+		vols, err := a.Store.LabelVolume(ctx, userID, from, through, limit, matchers...)
+		level.Debug(logger).Log(
+			"msg", "queried label volume",
+			"matchers", matchersStr,
+			"source", "store",
+		)
+		return vols, err
+	})
+
+	resps := make([]*logproto.LabelVolumeResponse, len(jobs))
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		len(jobs),
+		func(ctx context.Context, i int) error {
+			resp, err := jobs[i]()
+			resps[i] = resp
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := labelvolume.Merge(resps, limit)
+	return merged, nil
 }
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {

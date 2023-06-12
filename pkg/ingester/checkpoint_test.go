@@ -524,9 +524,9 @@ func Benchmark_SeriesIterator(b *testing.B) {
 
 type noOpWalLogger struct{}
 
-func (noOpWalLogger) Log(recs ...[]byte) error { return nil }
-func (noOpWalLogger) Close() error             { return nil }
-func (noOpWalLogger) Dir() string              { return "" }
+func (noOpWalLogger) Log(_ ...[]byte) error { return nil }
+func (noOpWalLogger) Close() error          { return nil }
+func (noOpWalLogger) Dir() string           { return "" }
 
 func Benchmark_CheckpointWrite(b *testing.B) {
 	writer := WALCheckpointWriter{

@@ -7,6 +7,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -342,4 +344,36 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func ParseLabelVolumeQuery(r *http.Request) (*RangeQuery, error) {
+	err := labelVolumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func labelVolumeLimit(r *http.Request) error {
+	l, err := parseInt(r.Form.Get("limit"), labelvolume.DefaultLimit)
+	if err != nil {
+		return err
+	}
+
+	if l == 0 {
+		r.Form.Set("limit", fmt.Sprint(labelvolume.DefaultLimit))
+		return nil
+	}
+
+	if l <= 0 {
+		return errors.New("limit must be a positive value")
+	}
+
+	return nil
 }

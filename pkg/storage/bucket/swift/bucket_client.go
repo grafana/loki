@@ -9,7 +9,7 @@ import (
 )
 
 // NewBucketClient creates a new Swift bucket client
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, _ string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := swift.Config{
 		AuthVersion:       cfg.AuthVersion,
 		AuthUrl:           cfg.AuthURL,

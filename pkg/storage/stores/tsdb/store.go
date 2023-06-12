@@ -42,7 +42,7 @@ func NewStore(
 	name string,
 	indexShipperCfg IndexCfg,
 	schemaCfg config.SchemaConfig,
-	f *fetcher.Fetcher,
+	_ *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
