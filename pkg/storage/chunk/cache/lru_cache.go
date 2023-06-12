@@ -2,9 +2,9 @@ package cache
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/go-kit/log"
@@ -37,43 +37,27 @@ const (
 
 var ulidSize = uint64(len(ulid.ULID{}))
 
-// This FIFO cache implementation supports two eviction methods - based on number of items in the cache, and based on memory usage.
-// For the memory-based eviction, set FifoCacheConfig.MaxSizeBytes to a positive integer, indicating upper limit of memory allocated by items in the cache.
-// Alternatively, set FifoCacheConfig.MaxSizeItems to a positive integer, indicating maximum number of items in the cache.
-// If both parameters are set, both methods are enforced, whichever hits first.
-
-// FifoCacheConfig holds config for the FifoCache.
 type LRUCacheConfig struct {
 	MaxSizeBytes string `yaml:"max_size_bytes"`
 
-	Enabled bool
-
-	PurgeInterval time.Duration
+	Enabled bool `yaml:"enabled"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-// func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-// 	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "1GB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
-// 	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"deprecated: Maximum number of entries in the cache.")
-// 	f.DurationVar(&cfg.TTL, prefix+"fifocache.ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
+func (cfg *LRUCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
+	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "500MB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
+}
 
-// 	f.DurationVar(&cfg.DeprecatedValidity, prefix+"fifocache.duration", 0, "Deprecated (use ttl instead): "+description+"The expiry duration for the cache.")
-// 	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "Deprecated (use max-size-items or max-size-bytes instead): "+description+"The number of entries to cache.")
-// }
+func (cfg *LRUCacheConfig) Validate() error {
+	_, err := parsebytes(cfg.MaxSizeBytes)
+	return err
+}
 
-// func (cfg *FifoCacheConfig) Validate() error {
-// 	_, err := parsebytes(cfg.MaxSizeBytes)
-// 	return err
-// }
-
-// FifoCache is a simple string -> interface{} cache which uses a fifo slide to
-// manage evictions.  O(1) inserts and updates, O(1) gets.
 type LRUCache struct {
 	cacheType stats.CacheType
 
 	done chan struct{}
 
-	// important ones below
 	mtx sync.Mutex
 
 	logger           log.Logger
@@ -91,16 +75,10 @@ type LRUCache struct {
 	overflow    *prometheus.CounterVec
 }
 
-// TODO: better description: NewLRUCache returns a new initialised LRU cache of size.
 func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (*LRUCache, error) {
 	util_log.WarnExperimentalUse(fmt.Sprintf("In-memory (LRU) cache - %s", name), logger)
 
 	maxSizeBytes, _ := parsebytes(cfg.MaxSizeBytes)
-
-	// This can be overwritten to a smaller value in tests
-	if cfg.PurgeInterval == 0 {
-		cfg.PurgeInterval = 1 * time.Minute
-	}
 
 	c := &LRUCache{
 		cacheType: cacheType,
