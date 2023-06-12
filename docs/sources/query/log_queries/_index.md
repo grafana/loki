@@ -463,14 +463,14 @@ The **logfmt** parser can operate in two modes:
     "fwd_ip" => "124.133.124.161"
     ```
 
-logfmt parser also supports `--strict` flag to enable strict parsing.
+The logfmt parser also supports using the `--strict` flag to enable strict parsing.
 
 ```
 | logfmt --strict
 | logfmt --strict host, fwd_ip="fwd"
 ```
 
-With strict parsing enabled, logfmt parser stops scanning the log line and returns early with an error if it encounters any poorly formatted key=value pair.
+With strict parsing enabled, the logfmt parser immediately stops scanning the log line and returns early with an error when it encounters any poorly formatted key=value pair.
 ```
 // accepted
 key=value key="value in double quotes" standalone_key
@@ -481,8 +481,8 @@ foo=bar=buzz
 fo"o=bar
 ```
 
-By default, the parser skips the invalid tokens and continues parsing the rest of the log line.
-This offers the flexibility to parse semi-structed log lines, though note that this is only best-effort and the resulting label set might not always contain what you expect.
+Without the `--strict` flag the parser skips the invalid tokens and continues parsing the rest of the log line.
+Non-strict mode offers the flexibility to parse semi-structed log lines, though note that this is only best-effort and the resulting label set might not always contain what you expect.
 
 #### Pattern
 
