@@ -263,10 +263,6 @@ func (m *mockChunkStore) LabelVolume(_ context.Context, _ string, _, _ model.Tim
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	return nil, nil
-}
-
 type mockChunkStoreClient struct {
 	chunks []chunk.Chunk
 	scfg   config.SchemaConfig

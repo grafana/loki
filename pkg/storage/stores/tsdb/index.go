@@ -84,7 +84,3 @@ func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 func (NoopIndex) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ LabelVolumeAccumulator, _ *index.ShardAnnotation, _ shouldIncludeChunk, _ ...*labels.Matcher) error {
 	return nil
 }
-
-func (NoopIndex) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	return nil
-}

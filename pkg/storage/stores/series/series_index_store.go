@@ -720,8 +720,3 @@ func (c *indexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, 
 func (c *indexReaderWriter) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }
-
-// old index stores do not implement label volume -- skip
-func (c *indexReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	return nil, nil
-}
