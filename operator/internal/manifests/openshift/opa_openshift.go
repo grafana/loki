@@ -5,10 +5,10 @@ import (
 	"os"
 	"path"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 const (
