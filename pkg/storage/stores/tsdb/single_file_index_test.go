@@ -89,9 +89,7 @@ func TestSingleIdx(t *testing.T) {
 		t.Run(variant.desc, func(t *testing.T) {
 			idx := variant.fn()
 			t.Run("GetChunkRefs", func(t *testing.T) {
-				var err error
-				refs := make([]ChunkRef, 0, 8)
-				refs, err = idx.GetChunkRefs(context.Background(), "fake", 1, 5, refs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 				require.Nil(t, err)
 
 				expected := []ChunkRef{
@@ -132,9 +130,7 @@ func TestSingleIdx(t *testing.T) {
 					Shard: 1,
 					Of:    2,
 				}
-				var err error
-				refs := make([]ChunkRef, 0, 8)
-				refs, err = idx.GetChunkRefs(context.Background(), "fake", 1, 5, refs, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				shardedRefs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 
 				require.Nil(t, err)
 
@@ -144,7 +140,7 @@ func TestSingleIdx(t *testing.T) {
 					Start:       1,
 					End:         10,
 					Checksum:    3,
-				}}, refs)
+				}}, shardedRefs)
 
 			})
 
@@ -257,13 +253,10 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	var err error
 	for i := 0; i < b.N; i++ {
-		chkRefs := ChunkRefsPool.Get()
-		chkRefs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, chkRefs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Len(b, chkRefs, numChunksToMatch*2)
-		ChunkRefsPool.Put(chkRefs)
 	}
 }
 

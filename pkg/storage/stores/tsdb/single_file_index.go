@@ -202,8 +202,14 @@ func (i *TSDBIndex) forPostings(
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	if res == nil {
+		res = ChunkRefsPool.Get()
+	}
+	res = res[:0]
+
 	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		for _, chk := range chks {
+
 			res = append(res, ChunkRef{
 				User:        userID, // assumed to be the same, will be enforced by caller.
 				Fingerprint: fp,
