@@ -2,13 +2,12 @@ package ingester
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -618,7 +617,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
-func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil && req.Matchers != labelvolume.MatchAny {
 		return nil, err
@@ -660,7 +659,7 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	res := labelvolume.MapToLabelVolumeResponse(volumes, int(req.Limit))
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 

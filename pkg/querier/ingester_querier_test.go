@@ -345,17 +345,17 @@ func TestConvertMatchersToString(t *testing.T) {
 	}
 }
 
-func TestIngesterQuerier_LabelVolume(t *testing.T) {
+func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 	t.Run("it gets label volumes from all the ingesters", func(t *testing.T) {
-		ret := &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
+		ret := &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
 				{Name: "foo", Value: "bar", Volume: 38},
 			},
 			Limit: 10,
 		}
 
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetLabelVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		ingesterQuerier, err := newIngesterQuerier(
 			mockIngesterClientConfig(),
@@ -365,17 +365,17 @@ func TestIngesterQuerier_LabelVolume(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1, 10)
+		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10)
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
+		require.Equal(t, []logproto.Volume{
 			{Name: "foo", Value: "bar", Volume: 76},
 		}, volumes.Volumes)
 	})
 
 	t.Run("it returns an empty result when an unimplemented error happens", func(t *testing.T) {
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetLabelVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
+		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
 
 		ingesterQuerier, err := newIngesterQuerier(
 			mockIngesterClientConfig(),
@@ -385,9 +385,9 @@ func TestIngesterQuerier_LabelVolume(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.LabelVolume(context.Background(), "", 0, 1, 10)
+		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10)
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume(nil), volumes.Volumes)
+		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)
 	})
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -48,9 +48,9 @@ type IndexStatsAccumulator interface {
 	Stats() stats.Stats
 }
 
-type LabelVolumeAccumulator interface {
+type SeriesVolumeAccumulator interface {
 	AddVolumes(map[string]map[string]uint64)
-	Volumes() *logproto.LabelVolumeResponse
+	Volumes() *logproto.VolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -243,7 +243,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
-func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -258,9 +258,9 @@ func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, thro
 		})
 	})
 
-	acc := labelvolume.NewAccumulator(limit)
+	acc := seriesvolume.NewAccumulator(limit)
 	for _, interval := range intervals {
-		if err := c.idx.LabelVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := c.idx.SeriesVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
 			return nil, err
 		}
 	}

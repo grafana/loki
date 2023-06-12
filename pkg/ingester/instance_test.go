@@ -838,10 +838,10 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
-func TestInstance_LabelVolume(t *testing.T) {
+func TestInstance_SeriesVolume(t *testing.T) {
 	t.Run("no matchers", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  11000,
 			Matchers: "{}",
@@ -849,7 +849,7 @@ func TestInstance_LabelVolume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
+		require.Equal(t, []logproto.Volume{
 			{Name: "host", Value: "agent", Volume: 160},
 			{Name: "job", Value: "3", Volume: 160},
 			{Name: "log_stream", Value: "dispatcher", Volume: 90},
@@ -858,7 +858,7 @@ func TestInstance_LabelVolume(t *testing.T) {
 
 	t.Run("with matchers", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  11000,
 			Matchers: "{log_stream=\"dispatcher\"}",
@@ -866,7 +866,7 @@ func TestInstance_LabelVolume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
+		require.Equal(t, []logproto.Volume{
 			{Name: "host", Value: "agent", Volume: 90},
 			{Name: "job", Value: "3", Volume: 90},
 			{Name: "log_stream", Value: "dispatcher", Volume: 90},
@@ -875,7 +875,7 @@ func TestInstance_LabelVolume(t *testing.T) {
 
 	t.Run("excludes streams outside of time bounds", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     5,
 			Through:  11,
 			Matchers: "{}",
@@ -883,7 +883,7 @@ func TestInstance_LabelVolume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
+		require.Equal(t, []logproto.Volume{
 			{Name: "host", Value: "agent", Volume: 71},
 			{Name: "job", Value: "3", Volume: 71},
 			{Name: "log_stream", Value: "dispatcher", Volume: 45},

@@ -130,8 +130,8 @@ func (c *IndexGatewayClientStore) Stats(ctx context.Context, userID string, from
 	return resp, nil
 }
 
-func (c *IndexGatewayClientStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	resp, err := c.client.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
+func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	resp, err := c.client.GetSeriesVolume(ctx, &logproto.VolumeRequest{
 		From:     from,
 		Through:  through,
 		Matchers: (&syntax.MatchersExpr{Mts: matchers}).String(),
@@ -142,7 +142,7 @@ func (c *IndexGatewayClientStore) LabelVolume(ctx context.Context, userID string
 			// Note: this is likely a noop anyway since only
 			// tsdb+ enables this and the prior index returns an
 			// empty response.
-			return c.fallbackStore.LabelVolume(ctx, userID, from, through, limit, matchers...)
+			return c.fallbackStore.SeriesVolume(ctx, userID, from, through, limit, matchers...)
 		}
 		return nil, err
 	}

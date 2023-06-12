@@ -469,9 +469,9 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	}, nil
 }
 
-func (s *mockStore) LabelVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	return &logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{
+func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return &logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
 			{Name: "foo", Value: "bar", Volume: 38},
 		},
 		Limit: limit,
@@ -1081,7 +1081,7 @@ func TestStats(t *testing.T) {
 	}, resp)
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestSeriesVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -1092,7 +1092,7 @@ func TestLabelVolume(t *testing.T) {
 	i.instances["test"] = defaultInstance(t)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	volumes, err := i.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
+	volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
 		From:     0,
 		Through:  10000,
 		Matchers: "{}",
@@ -1100,7 +1100,7 @@ func TestLabelVolume(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, []logproto.LabelVolume{
+	require.Equal(t, []logproto.Volume{
 		{Name: "host", Value: "agent", Volume: 160},
 		{Name: "job", Value: "3", Volume: 160},
 		{Name: "log_stream", Value: "dispatcher", Volume: 90},

@@ -1,4 +1,4 @@
-package labelvolume
+package seriesvolume
 
 import (
 	"sort"
@@ -41,14 +41,14 @@ func (acc *Accumulator) AddVolumes(v map[string]map[string]uint64) {
 	}
 }
 
-func (acc *Accumulator) Volumes() *logproto.LabelVolumeResponse {
+func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
 	acc.lock.RLock()
 	defer acc.lock.RUnlock()
 
-	return MapToLabelVolumeResponse(acc.volumes, int(acc.limit))
+	return MapToSeriesVolumeResponse(acc.volumes, int(acc.limit))
 }
 
-func Merge(responses []*logproto.LabelVolumeResponse, limit int32) *logproto.LabelVolumeResponse {
+func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
 	mergedVolumes := make(map[string]map[string]uint64)
 	for _, res := range responses {
 		if res == nil {
@@ -64,14 +64,14 @@ func Merge(responses []*logproto.LabelVolumeResponse, limit int32) *logproto.Lab
 		}
 	}
 
-	return MapToLabelVolumeResponse(mergedVolumes, int(limit))
+	return MapToSeriesVolumeResponse(mergedVolumes, int(limit))
 }
 
-func MapToLabelVolumeResponse(mergedVolumes map[string]map[string]uint64, limit int) *logproto.LabelVolumeResponse {
-	volumes := make([]logproto.LabelVolume, 0, len(mergedVolumes))
+func MapToSeriesVolumeResponse(mergedVolumes map[string]map[string]uint64, limit int) *logproto.VolumeResponse {
+	volumes := make([]logproto.Volume, 0, len(mergedVolumes))
 	for name, v := range mergedVolumes {
 		for value, volume := range v {
-			volumes = append(volumes, logproto.LabelVolume{
+			volumes = append(volumes, logproto.Volume{
 				Name:   name,
 				Value:  value,
 				Volume: volume,
@@ -95,7 +95,7 @@ func MapToLabelVolumeResponse(mergedVolumes map[string]map[string]uint64, limit 
 		volumes = volumes[:limit]
 	}
 
-	return &logproto.LabelVolumeResponse{
+	return &logproto.VolumeResponse{
 		Volumes: volumes,
 		Limit:   int32(limit),
 	}

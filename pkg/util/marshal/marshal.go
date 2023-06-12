@@ -101,7 +101,7 @@ func WriteIndexStatsResponseJSON(r *stats.Stats, w io.Writer) error {
 
 // WriteIndexStatsResponseJSON marshals a gatewaypb.Stats to JSON and then
 // writes it to the provided io.Writer.
-func WriteLabelVolumeResponseJSON(r *logproto.LabelVolumeResponse, w io.Writer) error {
+func WriteSeriesVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	s.WriteVal(r)

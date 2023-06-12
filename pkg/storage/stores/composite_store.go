@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -195,10 +195,10 @@ func (c compositeStore) Stats(ctx context.Context, userID string, from, through 
 	return &res, err
 }
 
-func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	volumes := make([]*logproto.LabelVolumeResponse, 0, len(c.stores))
+func (c compositeStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	volumes := make([]*logproto.VolumeResponse, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		volume, err := store.LabelVolume(innerCtx, userID, from, through, limit, matchers...)
+		volume, err := store.SeriesVolume(innerCtx, userID, from, through, limit, matchers...)
 		volumes = append(volumes, volume)
 		return err
 	})
@@ -207,7 +207,7 @@ func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, th
 		return nil, err
 	}
 
-	res := labelvolume.Merge(volumes, limit)
+	res := seriesvolume.Merge(volumes, limit)
 	return res, err
 }
 
