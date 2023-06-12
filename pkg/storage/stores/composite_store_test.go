@@ -60,6 +60,10 @@ func (m mockStore) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ i
 	return nil, nil
 }
 
+func (m mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	return nil, nil
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {
