@@ -115,10 +115,8 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
-	chks := ChunkRefsPool.Get()
-	defer ChunkRefsPool.Put(chks)
-
-	chks, err = c.idx.GetChunkRefs(ctx, userID, from, through, chks, shard, matchers...)
+	// TODO(owen-d): use a pool to reduce allocs here
+	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 	kvps = append(kvps,
 		"chunks", len(chks),
 		"indexErr", err,
