@@ -538,7 +538,7 @@ func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Dur
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
 }
 
-func (o *Overrides) MaxStatsCacheFreshness(ctx context.Context, userID string) time.Duration {
+func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxStatsCacheFreshness)
 }
 

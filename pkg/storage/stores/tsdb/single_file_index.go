@@ -309,7 +309,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	})
 }
 
-func (i *TSDBIndex) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) LabelVolume(ctx context.Context, _ string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	volumes := make(map[string]map[string]uint64)
 
 	err := i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {

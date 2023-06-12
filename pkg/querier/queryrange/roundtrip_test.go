@@ -1226,7 +1226,7 @@ func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 	return f.requiredNumberLabels
 }
 
-func (f fakeLimits) MaxStatsCacheFreshness(ctx context.Context, s string) time.Duration {
+func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxStatsCacheFreshness
 }
 

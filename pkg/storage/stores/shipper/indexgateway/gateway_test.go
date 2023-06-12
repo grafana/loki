@@ -272,7 +272,7 @@ func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
 }
 
-func (i *indexQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *indexQuerierMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {

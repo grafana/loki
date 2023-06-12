@@ -56,7 +56,7 @@ func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*lab
 	return nil, nil
 }
 
-func (m mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m mockStore) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return nil, nil
 }
 
@@ -305,7 +305,7 @@ type mockStoreLabelVolume struct {
 	err   error
 }
 
-func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m mockStoreLabelVolume) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return m.value, m.err
 }
 
