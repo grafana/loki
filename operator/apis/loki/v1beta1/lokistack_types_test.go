@@ -3,11 +3,12 @@ package v1beta1_test
 import (
 	"testing"
 
-	v1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 )
 
 func TestConvertToV1_LokiStack(t *testing.T) {
