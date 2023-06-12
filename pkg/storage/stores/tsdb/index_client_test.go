@@ -24,7 +24,7 @@ func (m mockIndexShipperIndexIterator) ForEachConcurrent(ctx context.Context, ta
 	return m.ForEach(ctx, tableName, userID, callback)
 }
 
-func (m mockIndexShipperIndexIterator) ForEach(ctx context.Context, tableName, userID string, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ string, callback index_shipper.ForEachIndexCallback) error {
 	indexes := m.tables[tableName]
 	for _, idx := range indexes {
 		if err := callback(false, idx); err != nil {

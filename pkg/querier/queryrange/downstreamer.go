@@ -302,7 +302,7 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 	}
 }
 
-func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc logqlmodel.Result) error {
+func (a *downstreamAccumulator) Accumulate(_ context.Context, index int, acc logqlmodel.Result) error {
 	// on first pass, determine which accumulator to use
 	if a.acc == nil {
 		a.build(acc)

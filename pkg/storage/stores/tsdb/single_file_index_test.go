@@ -470,12 +470,12 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 
 type filterAll struct{}
 
-func (f *filterAll) ForRequest(ctx context.Context) chunk.Filterer {
+func (f *filterAll) ForRequest(_ context.Context) chunk.Filterer {
 	return &filterAllFilterer{}
 }
 
 type filterAllFilterer struct{}
 
-func (f *filterAllFilterer) ShouldFilter(metric labels.Labels) bool {
+func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 	return true
 }

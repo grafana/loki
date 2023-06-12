@@ -284,18 +284,18 @@ func (ts *TargetSyncer) loop() {
 // fetchTopics fetches and return new topics, if there's a difference with previous found topics
 // it will return true as second return value.
 func (ts *TargetSyncer) fetchTopics() ([]string, bool, error) {
-	new, err := ts.topicManager.Topics()
+	newTopics, err := ts.topicManager.Topics()
 	if err != nil {
 		return nil, false, err
 	}
-	if len(ts.previousTopics) != len(new) {
-		ts.previousTopics = new
-		return new, true, nil
+	if len(ts.previousTopics) != len(newTopics) {
+		ts.previousTopics = newTopics
+		return newTopics, true, nil
 	}
 	for i, v := range ts.previousTopics {
-		if v != new[i] {
-			ts.previousTopics = new
-			return new, true, nil
+		if v != newTopics[i] {
+			ts.previousTopics = newTopics
+			return newTopics, true, nil
 		}
 	}
 	return nil, false, nil
@@ -336,7 +336,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		return &runnableDroppedTarget{
 			Target: target.NewDroppedTarget("dropping target, no labels", discoveredLabels),
 			runFn: func() {
-				for range claim.Messages() {
+				for range claim.Messages() { //nolint:revive
 				}
 			},
 		}, nil

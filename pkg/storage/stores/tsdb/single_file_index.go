@@ -188,9 +188,9 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 }
 
 func (i *TSDBIndex) forPostings(
-	ctx context.Context,
+	_ context.Context,
 	shard *index.ShardAnnotation,
-	from, through model.Time,
+	_, _ model.Time,
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
@@ -275,7 +275,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
@@ -309,7 +309,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through mode
 	})
 }
 
-func (i *TSDBIndex) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) LabelVolume(ctx context.Context, _ string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	volumes := make(map[string]map[string]uint64)
 
 	err := i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {

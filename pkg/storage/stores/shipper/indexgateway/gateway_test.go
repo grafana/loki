@@ -84,7 +84,7 @@ type mockIndexClient struct {
 	tablesQueried []string
 }
 
-func (m *mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (m *mockIndexClient) QueryPages(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		m.tablesQueried = append(m.tablesQueried, query.TableName)
 		callback(query, m.response)
@@ -272,7 +272,7 @@ func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
 }
 
-func (i *indexQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *indexQuerierMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {

@@ -48,29 +48,29 @@ func (r *LokiRequest) GetStart() int64 {
 }
 
 func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &new
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
 }
 
 func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
-	new := *r
-	new.StartTs = s
-	new.EndTs = e
-	return &new
+	clone := *r
+	clone.StartTs = s
+	clone.EndTs = e
+	return &clone
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	new.Query = query
-	return &new
+	clone := *r
+	clone.Query = query
+	return &clone
 }
 
 func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
-	new := *r
-	new.Shards = shards.Encode()
-	return &new
+	clone := *r
+	clone.Shards = shards.Encode()
+	return &clone
 }
 
 func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
@@ -100,22 +100,22 @@ func (r *LokiInstantRequest) GetStart() int64 {
 	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
-func (r *LokiInstantRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.TimeTs = time.Unix(0, s*int64(time.Millisecond))
-	return &new
+func (r *LokiInstantRequest) WithStartEnd(s int64, _ int64) queryrangebase.Request {
+	clone := *r
+	clone.TimeTs = time.Unix(0, s*int64(time.Millisecond))
+	return &clone
 }
 
 func (r *LokiInstantRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	new.Query = query
-	return &new
+	clone := *r
+	clone.Query = query
+	return &clone
 }
 
 func (r *LokiInstantRequest) WithShards(shards logql.Shards) *LokiInstantRequest {
-	new := *r
-	new.Shards = shards.Encode()
-	return &new
+	clone := *r
+	clone.Shards = shards.Encode()
+	return &clone
 }
 
 func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
@@ -139,15 +139,15 @@ func (r *LokiSeriesRequest) GetStart() int64 {
 }
 
 func (r *LokiSeriesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &new
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
 }
 
-func (r *LokiSeriesRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	return &new
+func (r *LokiSeriesRequest) WithQuery(_ string) queryrangebase.Request {
+	clone := *r
+	return &clone
 }
 
 func (r *LokiSeriesRequest) GetQuery() string {
@@ -178,15 +178,15 @@ func (r *LokiLabelNamesRequest) GetStart() int64 {
 }
 
 func (r *LokiLabelNamesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &new
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
 }
 
-func (r *LokiLabelNamesRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	return &new
+func (r *LokiLabelNamesRequest) WithQuery(_ string) queryrangebase.Request {
+	clone := *r
+	return &clone
 }
 
 func (r *LokiLabelNamesRequest) GetStep() int64 {
@@ -202,7 +202,7 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
-func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (queryrangebase.Request, error) {
+func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -442,7 +442,7 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
