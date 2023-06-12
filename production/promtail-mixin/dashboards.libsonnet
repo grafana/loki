@@ -4,7 +4,7 @@ local loki_mixin_utils = import 'loki-mixin/dashboards/dashboard-utils.libsonnet
 local utils = import 'mixin-utils/utils.libsonnet';
 
 {
-  grafanaDashboards+: {
+  grafanaDashboards+:: {
     local dashboard = (
       loki_mixin_utils {
         _config+:: configfile._config,
@@ -12,7 +12,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ),
     local dashboards = self,
 
-    // local labelsSelector = 'cluster=~"$cluster", namespace=~"$namespace"',
     local labelsSelector = dashboard._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
     local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail"',
 
@@ -20,7 +19,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        local cfg = self,
                      } +
                      dashboard.dashboard('Loki / Promtail', uid='promtail')
-                     .addCluster()
+                     .addTemplate('cluster', 'promtail_build_info', dashboard._config.per_cluster_label)
                      .addTag()
                      .addTemplate('namespace', 'promtail_build_info{' + dashboard._config.per_cluster_label + '=~"$cluster"}', 'namespace')
                      .addRow(
