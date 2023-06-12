@@ -91,6 +91,7 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
+	level.Warn(util_log.Logger).Log("msg", "NEW SHIPPABLE TSDB FILE")
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
@@ -139,8 +140,8 @@ func NewTSDBIndexFromFile(location string) (Index, GetRawFileReaderFunc, error) 
 func getPostingsClient(reader IndexReader) PostingsClient {
 	var postingsClient PostingsClient
 
-	if shouldCachePostings && cacheClient != nil {
-		postingsClient = NewCachedPostingsClient(reader)
+	if shouldCachePostings && sharedCacheClient != nil {
+		postingsClient = NewCachedPostingsClient(reader, util_log.Logger, sharedCacheClient)
 	}
 
 	if postingsClient == nil {
@@ -151,14 +152,14 @@ func getPostingsClient(reader IndexReader) PostingsClient {
 }
 
 func DefaultPostingsClient(reader IndexReader) PostingsClient {
-	return &simpleForPostingsClient{reader: reader}
+	return &simplePostingsClient{reader: reader}
 }
 
-type simpleForPostingsClient struct {
+type simplePostingsClient struct {
 	reader IndexReader
 }
 
-func (s *simpleForPostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+func (s *simplePostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	p, err := PostingsForMatchers(s.reader, nil, matchers...)
 	if err != nil {
 		return err

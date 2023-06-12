@@ -209,6 +209,16 @@ func (c *InMemoryIndexCache) get(key cacheKey) ([]byte, bool) {
 	return v.([]byte), true
 }
 
+// Store(ctx context.Context, key []string, buf [][]byte) error
+// Stop()
+// // GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
+// GetCacheType() stats.CacheType
+
+// func (c *InMemoryIndexCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+// 	got, ok := c.get(cacheKeyPostings{})
+
+// }
+
 func (c *InMemoryIndexCache) set(key cacheKey, val []byte) {
 	typ := key.typ()
 	size := sliceSize(val)

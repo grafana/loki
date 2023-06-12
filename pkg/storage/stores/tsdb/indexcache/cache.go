@@ -16,8 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"golang.org/x/crypto/blake2b"
-
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 const (
@@ -81,45 +79,6 @@ func sumBytes[T comparable](res map[T][]byte) int {
 		sum += len(v)
 	}
 	return sum
-}
-
-// IndexCacheClient is the interface exported by index cache backends.
-type Client interface {
-	StorePostings(matchers []*labels.Matcher, postings index.Postings)
-	FetchPostings(matchers []*labels.Matcher) (index.Postings, bool)
-
-	StoreSeriesForPostings(matchers []*labels.Matcher, refs []storage.SeriesRef)
-
-	// FetchSeriesForPostings(ctx context.Context, userID string, blockID ulid.ULID, postingsKey PostingsKey) ([]byte, bool)
-
-	// // StoreSeriesForRef stores a single series.
-	// StoreSeriesForRef(userID string, blockID ulid.ULID, id storage.SeriesRef, v []byte)
-
-	// // FetchMultiSeriesForRefs fetches multiple series - each identified by ID - from the cache
-	// // and returns a map containing cache hits, along with a list of missing IDs.
-	// // The order of the returned misses should be the same as their relative order in the provided ids.
-	// FetchMultiSeriesForRefs(ctx context.Context, userID string, blockID ulid.ULID, ids []storage.SeriesRef) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef)
-
-	// // StoreExpandedPostings stores the result of ExpandedPostings, encoded with an unspecified codec.
-	// StoreExpandedPostings(userID string, blockID ulid.ULID, key LabelMatchersKey, postingsSelectionStrategy string, v []byte)
-
-	// // FetchExpandedPostings fetches the result of ExpandedPostings, encoded with an unspecified codec.
-	// FetchExpandedPostings(ctx context.Context, userID string, blockID ulid.ULID, key LabelMatchersKey, postingsSelectionStrategy string) ([]byte, bool)
-
-	// StoreSeriesForPostings stores a series set for the provided postings.
-	// StoreSeriesForPostings(matchers []*labels.Matcher, postings index.Postings)
-	// FetchSeriesForPostings fetches a series set for the provided postings.
-	// FetchSeriesForPostings(ctx context.Context, matchers []*labels.Matcher) (index.Postings, bool)
-
-	// // StoreLabelNames stores the result of a LabelNames() call.
-	// StoreLabelNames(userID string, blockID ulid.ULID, matchersKey LabelMatchersKey, v []byte)
-	// // FetchLabelNames fetches the result of a LabelNames() call.
-	// FetchLabelNames(ctx context.Context, userID string, blockID ulid.ULID, matchersKey LabelMatchersKey) ([]byte, bool)
-
-	// // StoreLabelValues stores the result of a LabelValues() call.
-	// StoreLabelValues(userID string, blockID ulid.ULID, labelName string, matchersKey LabelMatchersKey, v []byte)
-	// // FetchLabelValues fetches the result of a LabelValues() call.
-	// FetchLabelValues(ctx context.Context, userID string, blockID ulid.ULID, labelName string, matchersKey LabelMatchersKey) ([]byte, bool)
 }
 
 // PostingsKey represents a canonical key for a []storage.SeriesRef slice

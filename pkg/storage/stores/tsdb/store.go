@@ -74,7 +74,7 @@ func NewStore(
 func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
 
-	cacheClient = idxCache
+	sharedCacheClient = idxCache
 
 	if indexCfg.CachePostings {
 		shouldCachePostings = true

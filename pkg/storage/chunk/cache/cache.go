@@ -35,6 +35,7 @@ type Config struct {
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
 	EmbeddedCache  EmbeddedCacheConfig   `yaml:"embedded_cache"`
+	LRUCache       LRUCacheConfig        `yaml:"lru_cache"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // deprecated
 
 	// This is to name the cache metrics properly.
@@ -141,6 +142,18 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		}
 
 		if cache := NewFifoCache(cfg.Prefix+"embedded-cache", fifocfg, reg, logger, cacheType); cache != nil {
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
+		}
+	}
+
+	if cfg.LRUCache.Enabled {
+		cache, err := NewLRUCache(cfg.Prefix+"embedded-cache", cfg.LRUCache, reg, logger, cacheType)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to initialize LRU cache", "err", err)
+			return nil, err
+		}
+
+		if cache != nil {
 			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
 		}
 	}
