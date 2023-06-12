@@ -711,7 +711,7 @@ Examples:
 
 ```template
 {{ default "-" "" }} // output: -
-{{ default "" "foo" }} // output: foo
+{{ default "-" "foo" }} // output: foo
 ```
 
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:
