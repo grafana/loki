@@ -223,20 +223,6 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 
 }
 
-func (i *TSDBIndex) forPostings(
-	_ context.Context,
-	shard *index.ShardAnnotation,
-	_, _ model.Time,
-	matchers []*labels.Matcher,
-	fn func(index.Postings) error,
-) error {
-	p, err := PostingsForMatchers(i.reader, shard, matchers...)
-	if err != nil {
-		return err
-	}
-	return fn(p)
-}
-
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	if res == nil {
 		res = ChunkRefsPool.Get()
@@ -312,7 +298,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	return i.postingsClient.ForPostings(ctx, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
@@ -348,7 +334,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 func (i *TSDBIndex) LabelVolume(ctx context.Context, _ string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	volumes := make(map[string]map[string]uint64)
 
-	err := i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	err := i.postingsClient.ForPostings(ctx, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		var filterer chunk.Filterer
 		if i.chunkFilter != nil {
