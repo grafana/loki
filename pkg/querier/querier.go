@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
@@ -86,6 +88,7 @@ type Querier interface {
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error)
 }
 
 type Limits interface {
@@ -762,5 +765,36 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		model.TimeFromUnixNano(end.UnixNano()),
 		matchers...,
 	)
+}
 
+func (q *SingleTenantQuerier) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != labelvolume.MatchAny {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+
+	// TODO: remove this clause once we remove the deprecated query-timeout flag.
+	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/LabelVolume")
+		queryTimeout = q.cfg.QueryTimeout
+	}
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
+
+	return q.store.LabelVolume(
+		ctx,
+		userID,
+		req.From,
+		req.Through,
+		req.Limit,
+		matchers...,
+	)
 }

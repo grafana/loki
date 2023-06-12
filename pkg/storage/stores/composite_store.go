@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -191,6 +193,22 @@ func (c compositeStore) Stats(ctx context.Context, userID string, from, through 
 	}
 	res := stats.MergeStats(xs...)
 	return &res, err
+}
+
+func (c compositeStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	volumes := make([]*logproto.LabelVolumeResponse, 0, len(c.stores))
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		volume, err := store.LabelVolume(innerCtx, userID, from, through, limit, matchers...)
+		volumes = append(volumes, volume)
+		return err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	res := labelvolume.Merge(volumes, limit)
+	return res, err
 }
 
 func (c compositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {

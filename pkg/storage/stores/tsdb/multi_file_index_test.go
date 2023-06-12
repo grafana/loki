@@ -67,9 +67,7 @@ func TestMultiIndex(t *testing.T) {
 	idx := NewMultiIndex(IndexSlice(indices))
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
-		var err error
-		refs := make([]ChunkRef, 0, 8)
-		refs, err = idx.GetChunkRefs(context.Background(), "fake", 2, 5, refs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []ChunkRef{

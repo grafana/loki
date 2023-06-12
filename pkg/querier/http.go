@@ -7,6 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
@@ -433,6 +437,37 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = marshal.WriteIndexStatsResponseJSON(resp, w)
 	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+}
+
+// LabelVolumeHandler queries the index label volumes related to the passed matchers
+func (q *QuerierAPI) LabelVolumeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseLabelVolumeQuery(r)
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	req := &logproto.LabelVolumeRequest{
+		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers: rawReq.Query,
+		Limit:    int32(rawReq.Limit),
+	}
+
+	resp, err := q.querier.LabelVolume(r.Context(), req)
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	if resp == nil { // Some stores don't implement this
+		resp = &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{}}
+	}
+
+	if marshal.WriteLabelVolumeResponseJSON(resp, w) != nil {
 		serverutil.WriteError(err, w)
 		return
 	}

@@ -103,14 +103,14 @@ func mkExtent(start, end int64) Extent {
 
 func mkExtentWithStep(start, end, step int64) Extent {
 	res := mkAPIResponse(start, end, step)
-	any, err := types.MarshalAny(res)
+	anyRes, err := types.MarshalAny(res)
 	if err != nil {
 		panic(err)
 	}
 	return Extent{
 		Start:    start,
 		End:      end,
-		Response: any,
+		Response: anyRes,
 	}
 }
 
@@ -774,7 +774,7 @@ func TestResultsCache(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -1045,7 +1045,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
-			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				calls++
 				return parsedResponse, nil
 			}))
@@ -1067,7 +1067,7 @@ func newMockCacheGenNumberLoader() CacheGenNumberLoader {
 	return mockCacheGenNumberLoader{}
 }
 
-func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
+func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(_ []string) string {
 	return ""
 }
 

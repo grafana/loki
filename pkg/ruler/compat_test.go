@@ -68,6 +68,6 @@ func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (
 
 type fakeChecker struct{}
 
-func (f fakeChecker) isReady(tenant string) bool {
+func (f fakeChecker) isReady(_ string) bool {
 	return true
 }

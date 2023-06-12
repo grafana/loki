@@ -686,7 +686,7 @@ type wrappedValue struct {
 	parser.Value
 }
 
-func (w wrappedValue) Generate(rand *rand.Rand, size int) reflect.Value {
+func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 	types := []string{
 		loghttp.ResultTypeMatrix,
 		loghttp.ResultTypeScalar,

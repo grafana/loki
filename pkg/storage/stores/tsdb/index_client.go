@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -44,6 +46,11 @@ type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
 	AddChunkStats(s index.ChunkStats)
 	Stats() stats.Stats
+}
+
+type LabelVolumeAccumulator interface {
+	AddVolumes(map[string]map[string]uint64)
+	Volumes() *logproto.LabelVolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -115,10 +122,8 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
-	chks := ChunkRefsPool.Get()
-	defer ChunkRefsPool.Put(chks)
-
-	chks, err = c.idx.GetChunkRefs(ctx, userID, from, through, chks, shard, matchers...)
+	// TODO(owen-d): use a pool to reduce allocs here
+	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 	kvps = append(kvps,
 		"chunks", len(chks),
 		"indexErr", err,
@@ -236,6 +241,35 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	)
 
 	return &res, nil
+}
+
+func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	matchers, shard, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Split by interval to query the index in parallel
+	var intervals []model.Interval
+	util.ForInterval(config.ObjectStorageIndexRequiredPeriod, from.Time(), through.Time(), true, func(start, end time.Time) {
+		intervals = append(intervals, model.Interval{
+			Start: model.TimeFromUnixNano(start.UnixNano()),
+			End:   model.TimeFromUnixNano(end.UnixNano()),
+		})
+	})
+
+	acc := labelvolume.NewAccumulator(limit)
+	for _, interval := range intervals {
+		if err := c.idx.LabelVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+			return nil, err
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return acc.Volumes(), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
