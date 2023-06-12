@@ -91,7 +91,6 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	level.Warn(util_log.Logger).Log("msg", "NEW SHIPPABLE TSDB FILE")
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
