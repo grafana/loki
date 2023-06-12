@@ -384,7 +384,7 @@ func NewLogFilterTripperware(
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
 func NewLimitedTripperware(
-	cfg Config,
+	_ Config,
 	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,

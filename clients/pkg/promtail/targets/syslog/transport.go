@@ -150,10 +150,7 @@ func NewConnPipe(addr net.Addr) *ConnPipe {
 }
 
 func (pipe *ConnPipe) Close() error {
-	if err := pipe.PipeWriter.Close(); err != nil {
-		return err
-	}
-	return nil
+	return pipe.PipeWriter.Close()
 }
 
 type TCPTransport struct {

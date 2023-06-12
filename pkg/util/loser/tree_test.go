@@ -108,10 +108,10 @@ func TestMerge(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			numCloses := 0
-			close := func(s *List) {
+			closeFn := func(_ *List) {
 				numCloses++
 			}
-			lt := loser.New(tt.args, math.MaxUint64, at, less, close)
+			lt := loser.New(tt.args, math.MaxUint64, at, less, closeFn)
 			checkIterablesEqual(t, tt.want, lt, at, at2, less)
 			if numCloses != len(tt.args) {
 				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)
@@ -127,10 +127,10 @@ func TestPush(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			numCloses := 0
-			close := func(s *List) {
+			closeFn := func(_ *List) {
 				numCloses++
 			}
-			lt := loser.New(nil, math.MaxUint64, at, less, close)
+			lt := loser.New(nil, math.MaxUint64, at, less, closeFn)
 			for _, s := range tt.args {
 				lt.Push(s)
 			}

@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/tools/querytee"
 )
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, opts querytee.SampleComparisonOptions) error {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, _ querytee.SampleComparisonOptions) error {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)

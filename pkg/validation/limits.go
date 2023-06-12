@@ -432,21 +432,21 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
-func (o *Overrides) MaxQueryLength(ctx context.Context, userID string) time.Duration {
+func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
 }
 
 // Compatibility with Cortex interface, this method is set to be removed in 1.12,
 // so nooping in Loki until then.
-func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int { return 0 }
+func (o *Overrides) MaxChunksPerQueryFromStore(_ string) int { return 0 }
 
 // MaxQueryLength returns the limit of the series of metric queries.
-func (o *Overrides) MaxQuerySeries(ctx context.Context, userID string) int {
+func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
 // MaxQueryRange returns the limit for the max [range] value that can be in a range query
-func (o *Overrides) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+func (o *Overrides) MaxQueryRange(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryRange)
 }
 
@@ -462,13 +462,13 @@ func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
 
 // TSDBMaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel for TSDB schemas.
-func (o *Overrides) TSDBMaxQueryParallelism(ctx context.Context, userID string) int {
+func (o *Overrides) TSDBMaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).TSDBMaxQueryParallelism
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
-func (o *Overrides) MaxQueryParallelism(ctx context.Context, userID string) int {
+func (o *Overrides) MaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
 }
 
@@ -483,7 +483,7 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 }
 
 // MaxStreamsMatchersPerQuery returns the limit to number of streams matchers per query.
-func (o *Overrides) MaxStreamsMatchersPerQuery(ctx context.Context, userID string) int {
+func (o *Overrides) MaxStreamsMatchersPerQuery(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
 }
 
@@ -508,7 +508,7 @@ func (o *Overrides) MaxQuerierBytesRead(_ context.Context, userID string) int {
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
-func (o *Overrides) MaxConcurrentTailRequests(ctx context.Context, userID string) int {
+func (o *Overrides) MaxConcurrentTailRequests(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxConcurrentTailRequests
 }
 
@@ -523,20 +523,20 @@ func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
-func (o *Overrides) MaxEntriesLimitPerQuery(ctx context.Context, userID string) int {
+func (o *Overrides) MaxEntriesLimitPerQuery(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
-func (o *Overrides) QueryTimeout(ctx context.Context, userID string) time.Duration {
+func (o *Overrides) QueryTimeout(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
 }
 
-func (o *Overrides) MaxCacheFreshness(ctx context.Context, userID string) time.Duration {
+func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
 }
 
 // MaxQueryLookback returns the max lookback period of queries.
-func (o *Overrides) MaxQueryLookback(ctx context.Context, userID string) time.Duration {
+func (o *Overrides) MaxQueryLookback(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
 }
 
@@ -694,15 +694,15 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
-func (o *Overrides) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
+func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
 }
 
-func (o *Overrides) RequiredLabels(ctx context.Context, userID string) []string {
+func (o *Overrides) RequiredLabels(_ context.Context, userID string) []string {
 	return o.getOverridesForUser(userID).RequiredLabels
 }
 
-func (o *Overrides) RequiredNumberLabels(ctx context.Context, userID string) int {
+func (o *Overrides) RequiredNumberLabels(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).RequiredNumberLabels
 }
 

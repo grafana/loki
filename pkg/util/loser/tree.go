@@ -144,6 +144,7 @@ func (t *Tree[E, S]) Push(sequence S) {
 	}
 	// We need to expand the tree. Pick the next biggest power of 2 to amortise resizing cost.
 	size := 1
+	//nolint: revive
 	for ; size <= len(t.nodes)/2; size *= 2 {
 	}
 	newPos := size + len(t.nodes)/2

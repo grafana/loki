@@ -973,7 +973,7 @@ func (badResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader { ret
 
 type badReader struct{}
 
-func (badReader) Read(p []byte) (n int, err error) {
+func (badReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("")
 }
 

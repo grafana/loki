@@ -60,7 +60,7 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
@@ -298,7 +298,7 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 
 type failingIndexClient struct{}
 
-func (f failingIndexClient) QueryPages(ctx context.Context, queries []seriesindex.Query, callback seriesindex.QueryPagesCallback) error {
+func (f failingIndexClient) QueryPages(_ context.Context, _ []seriesindex.Query, _ seriesindex.QueryPagesCallback) error {
 	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
 }
 

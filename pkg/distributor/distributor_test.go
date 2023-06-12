@@ -1161,7 +1161,7 @@ type mockIngester struct {
 	pushed       []*logproto.PushRequest
 }
 
-func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...grpc.CallOption) (*logproto.PushResponse, error) {
 	if i.failAfter > 0 {
 		time.Sleep(i.failAfter)
 		return nil, fmt.Errorf("push request failed")
@@ -1177,7 +1177,7 @@ func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts 
 	return nil, nil
 }
 
-func (i *mockIngester) GetStreamRates(ctx context.Context, in *logproto.StreamRatesRequest, opts ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
+func (i *mockIngester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest, _ ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
 	return &logproto.StreamRatesResponse{}, nil
 }
 

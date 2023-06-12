@@ -594,7 +594,7 @@ func (i *Ingester) loop() {
 // source can trigger a safe termination through a signal to the process.
 // The handler is deprecated and usage is discouraged. Use ShutdownHandler
 // instead.
-func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request) {
+func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, _ *http.Request) {
 	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
@@ -1110,7 +1110,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		ctx,
 		len(jobs),
 		2,
-		func(ctx context.Context, idx int) error {
+		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
 			resps[idx] = res
 			return err
@@ -1187,7 +1187,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 }
 
 // TailersCount returns count of active tail requests from a user
-func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

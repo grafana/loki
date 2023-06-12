@@ -2211,13 +2211,13 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 type statsQuerier struct{}
 
-func (statsQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
 	return iter.NoopIterator, nil
 }
 
-func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
 	return iter.NoopIterator, nil
@@ -2243,7 +2243,7 @@ func TestEngine_Stats(t *testing.T) {
 
 type metaQuerier struct{}
 
-func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (metaQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{
 			Name:   "Header",
@@ -2253,7 +2253,7 @@ func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.Entr
 	return iter.NoopIterator, nil
 }
 
-func (metaQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{Name: "Header", Values: []string{"value"}},
 	})
@@ -2343,11 +2343,11 @@ type errorIteratorQuerier struct {
 	entries []iter.EntryIterator
 }
 
-func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	return iter.NewSortEntryIterator(e.entries, p.Direction), nil
 }
 
-func (e errorIteratorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	return iter.NewSortSampleIterator(e.samples), nil
 }
 
@@ -2678,7 +2678,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	}
 }
 
-func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (q *querierRecorder) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	if !q.match {
 		for _, s := range q.streams {
 			return iter.NewStreamsIterator(s, p.Direction), nil
@@ -2692,7 +2692,7 @@ func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (it
 	return iter.NewStreamsIterator(streams, p.Direction), nil
 }
 
-func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
 			return iter.NewMultiSeriesIterator(s), nil

@@ -45,7 +45,7 @@ type slowConnectionSimulator struct {
 	didTimeout bool
 }
 
-func (s *slowConnectionSimulator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *slowConnectionSimulator) ServeHTTP(_ http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := ctx.Err(); err != nil {
 		panic(fmt.Sprintf("context already errored: %s", err))

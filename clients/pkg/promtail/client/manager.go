@@ -105,6 +105,7 @@ func (m *Manager) start() {
 	go func() {
 		defer m.wg.Done()
 		// discard read entries
+		//nolint:revive
 		for range m.entries {
 		}
 	}()
