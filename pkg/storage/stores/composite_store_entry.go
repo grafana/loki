@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -126,6 +128,20 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 	}
 
 	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
+}
+
+func (c *storeEntry) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelVolume")
+	defer sp.Finish()
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.indexReader.LabelVolume(ctx, userID, from, through, limit, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

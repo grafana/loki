@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
@@ -171,6 +173,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
+	LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1135,6 +1138,50 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	)
 
 	return &merged, nil
+}
+
+func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	user, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(user)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != labelvolume.MatchAny {
+		return nil, err
+	}
+
+	type f func() (*logproto.LabelVolumeResponse, error)
+	jobs := []f{
+		f(func() (*logproto.LabelVolumeResponse, error) {
+			return instance.GetLabelVolume(ctx, req)
+		}),
+		f(func() (*logproto.LabelVolumeResponse, error) {
+			return i.store.LabelVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
+		}),
+	}
+	resps := make([]*logproto.LabelVolumeResponse, len(jobs))
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(ctx context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := labelvolume.Merge(resps, req.Limit)
+	return merged, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.

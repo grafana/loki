@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/loghttp"
+
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -19,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -102,6 +103,15 @@ func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChu
 		return (*logproto.GetChunkIDsResponse)(nil), args.Error(1)
 	}
 	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
+}
+
+func (c *querierClientMock) GetLabelVolume(ctx context.Context, in *logproto.LabelVolumeRequest, opts ...grpc.CallOption) (*logproto.LabelVolumeResponse, error) {
+	args := c.Called(ctx, in, opts)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.LabelVolumeResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.LabelVolumeResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Context() context.Context {
@@ -355,6 +365,11 @@ func (s *storeMock) Stats(ctx context.Context, userID string, from, through mode
 	return nil, nil
 }
 
+func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	args := s.Called(ctx, userID, from, through, matchers)
+	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+}
+
 func (s *storeMock) Stop() {
 }
 
@@ -519,4 +534,16 @@ func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tai
 
 func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	return nil, nil
+}
+
+func (q *querierMock) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	args := q.MethodCalled("LabelVolume", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.LabelVolumeResponse), err
 }

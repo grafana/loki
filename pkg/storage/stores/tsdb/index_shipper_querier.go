@@ -125,6 +125,15 @@ func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, th
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
+func (i *indexShipperQuerier) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return err
+	}
+
+	return idx.LabelVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+}
+
 type resultAccumulator struct {
 	mtx   sync.Mutex
 	items []interface{}

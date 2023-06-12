@@ -6,6 +6,11 @@ import (
 	"math"
 	"testing"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
+	"github.com/weaveworks/common/user"
+
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -13,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_test "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -237,4 +243,41 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 	require.ElementsMatch(t, gateway.indexClients[2].IndexClient.(*mockIndexClient).tablesQueried, []string{})
 
 	require.Len(t, expectedQueries, 0)
+}
+
+func TestLabelVolume(t *testing.T) {
+	indexQuerier := newIngesterQuerierMock()
+	indexQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+		{Name: "bar", Value: "baz", Volume: 38},
+	}}, nil)
+
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	vol, err := gateway.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{Matchers: "{}"})
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+		{Name: "bar", Value: "baz", Volume: 38},
+	}}, vol)
+}
+
+type indexQuerierMock struct {
+	IndexQuerier
+	util_test.ExtendedMock
+}
+
+func newIngesterQuerierMock() *indexQuerierMock {
+	return &indexQuerierMock{}
+}
+
+func (i *indexQuerierMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	args := i.Called(userID, from, through, matchers)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
 }

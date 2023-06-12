@@ -461,7 +461,21 @@ func (s *mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 }
 
 func (s *mockStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	return &stats.Stats{}, nil
+	return &stats.Stats{
+		Streams: 2,
+		Chunks:  5,
+		Bytes:   25,
+		Entries: 100,
+	}, nil
+}
+
+func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	return &logproto.LabelVolumeResponse{
+		Volumes: []logproto.LabelVolume{
+			{Name: "foo", Value: "bar", Volume: 38},
+		},
+		Limit: limit,
+	}, nil
 }
 
 func (s *mockStore) Stop() {}
@@ -1038,6 +1052,60 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		require.False(t, it.Next())
 		require.NoError(t, it.Error())
 	})
+}
+
+func TestStats(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
+	i.instances["test"] = defaultInstance(t)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	resp, err := i.GetStats(ctx, &logproto.IndexStatsRequest{
+		From:     0,
+		Through:  11000,
+		Matchers: `{host="agent"}`,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.IndexStatsResponse{
+		Streams: 4,
+		Chunks:  7,
+		Bytes:   185,
+		Entries: 110,
+	}, resp)
+}
+
+func TestLabelVolume(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
+	i.instances["test"] = defaultInstance(t)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	volumes, err := i.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
+		From:     0,
+		Through:  10000,
+		Matchers: "{}",
+		Limit:    4,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []logproto.LabelVolume{
+		{Name: "host", Value: "agent", Volume: 160},
+		{Name: "job", Value: "3", Volume: 160},
+		{Name: "log_stream", Value: "dispatcher", Volume: 90},
+		{Name: "log_stream", Value: "worker", Volume: 70},
+	}, volumes.Volumes)
 }
 
 type ingesterClient struct {

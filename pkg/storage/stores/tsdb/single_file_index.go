@@ -307,5 +307,48 @@ func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through mode
 		}
 		return p.Err()
 	})
+}
 
+func (i *TSDBIndex) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	volumes := make(map[string]map[string]uint64)
+
+	err := i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+		var ls labels.Labels
+		var filterer chunk.Filterer
+		if i.chunkFilter != nil {
+			filterer = i.chunkFilter.ForRequest(ctx)
+		}
+
+		for p.Next() {
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			if err != nil {
+				return err
+			}
+
+			// skip series that belong to different shards
+			if shard != nil && !shard.Match(model.Fingerprint(fp)) {
+				continue
+			}
+
+			if filterer != nil && filterer.ShouldFilter(ls) {
+				continue
+			}
+
+			if stats.Entries > 0 {
+				for _, l := range []labels.Label(ls) {
+					if _, ok := volumes[l.Name]; !ok {
+						volumes[l.Name] = make(map[string]uint64)
+					}
+					volumes[l.Name][l.Value] += stats.KB << 10 // Return bytes
+				}
+			}
+		}
+		return p.Err()
+	})
+	if err != nil {
+		return err
+	}
+
+	acc.AddVolumes(volumes)
+	return nil
 }

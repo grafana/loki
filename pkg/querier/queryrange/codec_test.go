@@ -101,6 +101,31 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
+		{"label_volume", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.LabelVolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+				Limit:    3,
+			})
+		}, &logproto.LabelVolumeRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
+			Limit:    3,
+		}, false},
+		{"label_volume_default_limit", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.LabelVolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+			})
+		}, &logproto.LabelVolumeRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
+			Limit:    100,
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -231,6 +256,18 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					Chunks:  2,
 					Bytes:   3,
 					Entries: 4,
+				},
+			}, false,
+		},
+		{
+			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelVolumeString))},
+			&logproto.LabelVolumeRequest{},
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{Name: "foo", Value: "bar", Volume: 38},
+					},
+					Limit: 100,
 				},
 			}, false,
 		},
@@ -479,6 +516,17 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Entries: 4,
 				},
 			}, indexStatsString, false,
+		},
+		{
+			"label volume",
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{Name: "foo", Value: "bar", Volume: 38},
+					},
+					Limit: 100,
+				},
+			}, labelVolumeString, false,
 		},
 	}
 	for _, tt := range tests {
@@ -1208,6 +1256,16 @@ var (
 		"chunks": 2,
 		"bytes": 3,
 		"entries": 4
+		}`
+	labelVolumeString = `{
+		  "volumes": [
+			{
+			  "name": "foo",
+			  "value": "bar",
+			  "volume": 38
+			}
+		  ],
+		  "limit": 100
 		}`
 	labelsData  = []string{"foo", "bar"}
 	statsResult = stats.Result{

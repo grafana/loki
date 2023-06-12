@@ -21,10 +21,11 @@ import (
 	"github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
 
 var (

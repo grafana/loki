@@ -3,6 +3,8 @@ package querier
 import (
 	"context"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
@@ -184,6 +186,27 @@ func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQ
 	merged := stats.MergeStats(responses...)
 
 	return &merged, nil
+}
+
+func (q *MultiTenantQuerier) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]*logproto.LabelVolumeResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.LabelVolume(singleContext, req)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	merged := labelvolume.Merge(responses, req.Limit)
+	return merged, nil
 }
 
 // removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
