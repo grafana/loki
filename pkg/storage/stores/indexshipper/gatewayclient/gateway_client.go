@@ -196,7 +196,7 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 	})
 }
 
-func (s *GatewayClient) QueryIndex(ctx context.Context, in *logproto.QueryIndexRequest, opts ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
+func (s *GatewayClient) QueryIndex(_ context.Context, _ *logproto.QueryIndexRequest, _ ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
 	panic("not implemented")
 }
 
@@ -386,7 +386,7 @@ func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
 	panic("unsupported")
 }
 
-func (s *GatewayClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
+func (s *GatewayClient) BatchWrite(_ context.Context, _ index.WriteBatch) error {
 	panic("unsupported")
 }
 

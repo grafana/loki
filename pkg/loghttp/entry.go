@@ -113,7 +113,7 @@ func readTimestamp(iter *jsoniter.Iterator) (time.Time, bool) {
 
 type EntryEncoder struct{}
 
-func (EntryEncoder) IsEmpty(ptr unsafe.Pointer) bool {
+func (EntryEncoder) IsEmpty(_ unsafe.Pointer) bool {
 	// we don't omit-empty with log entries.
 	return false
 }
