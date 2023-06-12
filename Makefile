@@ -748,9 +748,9 @@ test-fuzz:
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec gofmt -w -s {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
 
 GIT_TARGET_BRANCH ?= main
