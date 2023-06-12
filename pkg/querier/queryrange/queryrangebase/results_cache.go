@@ -78,13 +78,17 @@ type ResultsCacheConfig struct {
 	Compression string       `yaml:"compression"`
 }
 
+func (cfg *ResultsCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	cfg.CacheConfig.RegisterFlagsWithPrefix(prefix, "", f)
+
+	f.StringVar(&cfg.Compression, prefix+"compression", "", "Use compression in cache. The default is an empty value '', which disables compression. Supported values are: 'snappy' and ''.")
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, prefix+"cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
+}
+
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
-
-	f.StringVar(&cfg.Compression, "frontend.compression", "", "Use compression in results cache. Supported values are: 'snappy' and '' (disable compression).")
-	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
-	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
+	cfg.RegisterFlagsWithPrefix(f, "frontend.")
 }
 
 func (cfg *ResultsCacheConfig) Validate() error {
@@ -152,7 +156,7 @@ func (t constSplitter) GenerateCacheKey(_ context.Context, userID string, r Requ
 
 // ShouldCacheFn checks whether the current request should go to cache
 // or not. If not, just send the request to next handler.
-type ShouldCacheFn func(r Request) bool
+type ShouldCacheFn func(ctx context.Context, r Request) bool
 
 type resultsCache struct {
 	logger   log.Logger
@@ -221,7 +225,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if s.shouldCache != nil && !s.shouldCache(r) {
+	if s.shouldCache != nil && !s.shouldCache(ctx, r) {
 		return s.next.Do(ctx, r)
 	}
 

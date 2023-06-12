@@ -1023,7 +1023,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 				},
 				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
 				NamedStores: NamedStores{
-					Filesystem: map[string]local.FSConfig{
+					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
 					},
 				},
