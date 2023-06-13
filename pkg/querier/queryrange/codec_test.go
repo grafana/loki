@@ -1012,6 +1012,178 @@ func Test_codec_MergeResponse(t *testing.T) {
 	}
 }
 
+func Test_codec_MergeResponse_LabelVolume(t *testing.T) {
+	t.Run("converts to prometheus response, merging results for the same timestamp", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{
+							Name:      "job",
+							Value:     "prometheus",
+							Volume:    150,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+						{
+							Name:      "job",
+							Value:     "loki",
+							Volume:    300,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+					},
+					Limit: 5,
+				},
+			},
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{
+							Name:      "job",
+							Value:     "prometheus",
+							Volume:    100,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+						{
+							Name:      "job",
+							Value:     "loki",
+							Volume:    200,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+					},
+					Limit: 5,
+				},
+			},
+		}
+
+		got, err := LokiCodec.MergeResponse(responses...)
+		require.NoError(t, err)
+
+		expected := got.(*queryrangebase.PrometheusResponse)
+
+		require.Equal(t, expected.Status, "success")
+		require.Equal(t, expected.Data.ResultType, "vector")
+
+		require.Len(t, expected.Data.Result, 2)
+		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "loki"}},
+			Samples: []logproto.LegacySample{{Value: 500, TimestampMs: 1e3}},
+		})
+		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "prometheus"}},
+			Samples: []logproto.LegacySample{{Value: 250, TimestampMs: 1e3}},
+		})
+	})
+
+	t.Run("converts to prometheus response, combining samples per series sorted by timestamp", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{
+							Name:      "job",
+							Value:     "prometheus",
+							Volume:    150,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+						{
+							Name:      "job",
+							Value:     "loki",
+							Volume:    300,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+					},
+					Limit: 5,
+				},
+			},
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{
+							Name:      "job",
+							Value:     "prometheus",
+							Volume:    100,
+							Timestamp: 2e9, //Value here is nanoseconds
+						},
+						{
+							Name:      "job",
+							Value:     "loki",
+							Volume:    200,
+							Timestamp: 2e9, //Value here is nanoseconds
+						},
+					},
+					Limit: 5,
+				},
+			},
+		}
+
+		got, err := LokiCodec.MergeResponse(responses...)
+		require.NoError(t, err)
+
+		expected := got.(*queryrangebase.PrometheusResponse)
+
+		require.Len(t, expected.Data.Result, 2)
+		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "prometheus"}},
+			Samples: []logproto.LegacySample{{Value: 150, TimestampMs: 1e3}, {Value: 100, TimestampMs: 2e3}},
+		})
+		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "loki"}},
+			Samples: []logproto.LegacySample{{Value: 300, TimestampMs: 1e3}, {Value: 200, TimestampMs: 2e3}},
+		})
+	})
+
+	t.Run("limits number of series return to limit parameter", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{
+							Name:      "job",
+							Value:     "prometheus",
+							Volume:    150,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+						{
+							Name:      "cluster",
+							Value:     "dev",
+							Volume:    300,
+							Timestamp: 1e9, //Value here is nanoseconds
+						},
+					},
+					Limit: 1,
+				},
+			},
+			&LabelVolumeResponse{
+				Response: &logproto.LabelVolumeResponse{
+					Volumes: []logproto.LabelVolume{
+						{
+							Name:      "job",
+							Value:     "prometheus",
+							Volume:    100,
+							Timestamp: 2e9, //Value here is nanoseconds
+						},
+						{
+							Name:      "cluster",
+							Value:     "dev",
+							Volume:    200,
+							Timestamp: 2e9, //Value here is nanoseconds
+						},
+					},
+					Limit: 1,
+				},
+			},
+		}
+
+		got, err := LokiCodec.MergeResponse(responses...)
+		require.NoError(t, err)
+
+		expected := got.(*queryrangebase.PrometheusResponse)
+
+		require.Len(t, expected.Data.Result, 1)
+		require.Len(t, expected.Data.Result[0].Samples, 2)
+	})
+}
+
 type badResponse struct{}
 
 func (badResponse) Reset()                                                 {}

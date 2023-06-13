@@ -49,7 +49,7 @@ type IndexStatsAccumulator interface {
 }
 
 type LabelVolumeAccumulator interface {
-	AddVolumes(map[string]map[string]uint64)
+	AddVolumes(map[string]map[string]uint64, int64)
 	Volumes() *logproto.LabelVolumeResponse
 }
 

@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -744,20 +745,100 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}, nil
 	case *LabelVolumeResponse:
 		resp0 := responses[0].(*LabelVolumeResponse)
-		headers := resp0.Headers
+		headers := make([]*definitions.PrometheusResponseHeader, len(resp0.Headers))
+		for i, header := range resp0.Headers {
+			headers[i] = &header
+		}
 
 		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
 		for _, r := range responses {
 			resps = append(resps, r.(*LabelVolumeResponse).Response)
 		}
 
-		return &LabelVolumeResponse{
-			Response: labelvolume.Merge(resps, resp0.Response.Limit),
-			Headers:  headers,
+		return &queryrangebase.PrometheusResponse{
+			Status:  "success",
+			Data:    MergeToPrometheusResponse(resps, resp0.Response.Limit),
+			Headers: headers,
 		}, nil
-
 	default:
 		return nil, errors.New("unknown response in merging responses")
+	}
+}
+
+func MergeToPrometheusResponse(responses []*logproto.LabelVolumeResponse, limit int32) queryrangebase.PrometheusData {
+	mergedVolumes := labelvolume.MergeVolumes(responses...)
+	return mapToPrometheusResponse(mergedVolumes, int(limit))
+}
+
+func mapToPrometheusResponse(mergedVolumes map[int64]map[string]map[string]uint64, limit int) queryrangebase.PrometheusData {
+	samplesByTsAndStream := map[int64]map[logproto.LabelAdapter]*logproto.LegacySample{}
+
+	for ts, vs := range mergedVolumes {
+		for name, v := range vs {
+			for value, volume := range v {
+				tsMs := ts / 1e6 //convert ns to ms
+
+				if _, ok := samplesByTsAndStream[tsMs]; !ok {
+					samplesByTsAndStream[tsMs] = map[logproto.LabelAdapter]*logproto.LegacySample{}
+				}
+
+				streamKey := logproto.LabelAdapter{
+					Name:  name,
+					Value: value,
+				}
+				if _, ok := samplesByTsAndStream[tsMs][streamKey]; !ok {
+					samplesByTsAndStream[tsMs][streamKey] = &logproto.LegacySample{
+						TimestampMs: tsMs,
+					}
+				}
+
+				samplesByTsAndStream[tsMs][streamKey].Value += float64(volume)
+			}
+		}
+	}
+
+	samplesByStream := map[logproto.LabelAdapter][]logproto.LegacySample{}
+	for _, streams := range samplesByTsAndStream {
+		for stream, sample := range streams {
+			key := logproto.LabelAdapter{
+				Name:  stream.Name,
+				Value: stream.Value,
+			}
+
+			if _, ok := samplesByStream[key]; !ok {
+				samplesByStream[key] = []logproto.LegacySample{}
+			}
+
+			// TODO(trevorwhitney): if we kept the slice sorted when adding samples, we could
+			// remove the additional loop below doing the sorting
+			samplesByStream[key] = append(samplesByStream[key], *sample)
+		}
+	}
+
+	result := make([]queryrangebase.SampleStream, 0, len(samplesByStream))
+	for stream, samples := range samplesByStream {
+		// TODO(trevorwhitney): see above, potential optimization?
+		sort.Slice(samples, func(i, j int) bool {
+			if samples[i].TimestampMs == samples[j].TimestampMs {
+				return samples[i].Value < samples[j].Value
+			}
+
+			return samples[i].TimestampMs < samples[j].TimestampMs
+		})
+
+		result = append(result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{stream},
+			Samples: samples,
+		})
+	}
+
+	if limit < len(result) {
+		result = result[:limit]
+	}
+
+	return queryrangebase.PrometheusData{
+		ResultType: "vector",
+		Result:     result,
 	}
 }
 
