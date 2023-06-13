@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -60,7 +62,7 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
@@ -296,9 +298,23 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
+func (g *Gateway) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != labelvolume.MatchAny {
+		return nil, err
+	}
+
+	return g.indexQuerier.LabelVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
+}
+
 type failingIndexClient struct{}
 
-func (f failingIndexClient) QueryPages(ctx context.Context, queries []seriesindex.Query, callback seriesindex.QueryPagesCallback) error {
+func (f failingIndexClient) QueryPages(_ context.Context, _ []seriesindex.Query, _ seriesindex.QueryPagesCallback) error {
 	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
 }
 

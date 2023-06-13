@@ -51,17 +51,17 @@ type prometheusCodec struct{}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
-	new := *q
-	new.Start = start
-	new.End = end
-	return &new
+	clone := *q
+	clone.Start = start
+	clone.End = end
+	return &clone
 }
 
 // WithQuery clones the current `PrometheusRequest` with a new query.
 func (q *PrometheusRequest) WithQuery(query string) Request {
-	new := *q
-	new.Query = query
-	return &new
+	clone := *q
+	clone.Query = query
+	return &clone
 }
 
 // LogToSpan logs the current `PrometheusRequest` parameters to the specified span.

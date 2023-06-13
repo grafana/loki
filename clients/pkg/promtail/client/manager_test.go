@@ -28,7 +28,7 @@ func (n notifier) SubscribeCleanup(subscriber wal.CleanupEventSubscriber) {
 	n(subscriber)
 }
 
-func (n notifier) SubscribeWrite(subscriber wal.WriteEventSubscriber) {
+func (n notifier) SubscribeWrite(_ wal.WriteEventSubscriber) {
 }
 
 func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {

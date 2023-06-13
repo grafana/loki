@@ -7,12 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -85,9 +89,7 @@ func TestSingleIdx(t *testing.T) {
 		t.Run(variant.desc, func(t *testing.T) {
 			idx := variant.fn()
 			t.Run("GetChunkRefs", func(t *testing.T) {
-				var err error
-				refs := make([]ChunkRef, 0, 8)
-				refs, err = idx.GetChunkRefs(context.Background(), "fake", 1, 5, refs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 				require.Nil(t, err)
 
 				expected := []ChunkRef{
@@ -128,9 +130,7 @@ func TestSingleIdx(t *testing.T) {
 					Shard: 1,
 					Of:    2,
 				}
-				var err error
-				refs := make([]ChunkRef, 0, 8)
-				refs, err = idx.GetChunkRefs(context.Background(), "fake", 1, 5, refs, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				shardedRefs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, &shard, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 
 				require.Nil(t, err)
 
@@ -140,7 +140,7 @@ func TestSingleIdx(t *testing.T) {
 					Start:       1,
 					End:         10,
 					Checksum:    3,
-				}}, refs)
+				}}, shardedRefs)
 
 			})
 
@@ -253,13 +253,10 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	var err error
 	for i := 0; i < b.N; i++ {
-		chkRefs := ChunkRefsPool.Get()
-		chkRefs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, chkRefs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Len(b, chkRefs, numChunksToMatch*2)
-		ChunkRefsPool.Put(chkRefs)
 	}
 }
 
@@ -371,4 +368,114 @@ func TestTSDBIndex_Stats(t *testing.T) {
 			require.Equal(t, tc.expected, *acc)
 		})
 	}
+}
+
+func TestTSDBIndex_LabelVolume(t *testing.T) {
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 2,
+					Entries:  20,
+					KB:       20,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 4,
+					Entries:  40,
+					KB:       40,
+				},
+			},
+		},
+	}
+
+	// Create the TSDB index
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series)
+
+	t.Run("it matches all the series", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+		acc := labelvolume.NewAccumulator(10)
+		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024},
+				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
+				{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024},
+			},
+			Limit: 10}, acc.Volumes())
+	})
+
+	t.Run("it matches none of the series", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "baz")
+		acc := labelvolume.NewAccumulator(10)
+		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{},
+			Limit:   10}, acc.Volumes())
+	})
+
+	t.Run("it matches a subset", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "ping", "pong")
+		acc := labelvolume.NewAccumulator(10)
+		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: (30 + 40) * 1024},
+				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
+			},
+			Limit: 10}, acc.Volumes())
+	})
+
+	t.Run("it can filter chunks", func(t *testing.T) {
+		tsdbIndex.SetChunkFilterer(&filterAll{})
+		defer tsdbIndex.SetChunkFilterer(nil)
+
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+		acc := labelvolume.NewAccumulator(10)
+		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+
+		require.NoError(t, err)
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{},
+			Limit:   10}, acc.Volumes())
+	})
+}
+
+type filterAll struct{}
+
+func (f *filterAll) ForRequest(_ context.Context) chunk.Filterer {
+	return &filterAllFilterer{}
+}
+
+type filterAllFilterer struct{}
+
+func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
+	return true
 }

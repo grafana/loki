@@ -343,4 +343,4 @@ type exprAdapter struct {
 func (exprAdapter) PositionRange() parser.PositionRange { return parser.PositionRange{} }
 func (exprAdapter) PromQLExpr()                         {}
 func (exprAdapter) Type() parser.ValueType              { return parser.ValueType("unimplemented") }
-func (exprAdapter) Pretty(level int) string             { return "" }
+func (exprAdapter) Pretty(_ int) string                 { return "" }
