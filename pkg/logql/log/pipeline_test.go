@@ -142,11 +142,11 @@ func (p *stubStreamPipeline) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamPipeline) Process(_ int64, _ []byte) ([]byte, LabelsResult, bool) {
+func (p *stubStreamPipeline) Process(_ int64, _ []byte, _ ...labels.Label) ([]byte, LabelsResult, bool) {
 	return nil, nil, true
 }
 
-func (p *stubStreamPipeline) ProcessString(_ int64, _ string) (string, LabelsResult, bool) {
+func (p *stubStreamPipeline) ProcessString(_ int64, _ string, _ ...labels.Label) (string, LabelsResult, bool) {
 	return "", nil, true
 }
 

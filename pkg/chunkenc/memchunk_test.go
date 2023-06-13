@@ -770,10 +770,10 @@ func BenchmarkWrite(b *testing.B) {
 type nomatchPipeline struct{}
 
 func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (nomatchPipeline) Process(_ int64, line []byte) ([]byte, log.LabelsResult, bool) {
+func (nomatchPipeline) Process(ts int64, line []byte, metadataLabels ...labels.Label) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
-func (nomatchPipeline) ProcessString(_ int64, line string) (string, log.LabelsResult, bool) {
+func (nomatchPipeline) ProcessString(ts int64, line string, metadataLabels ...labels.Label) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
