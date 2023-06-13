@@ -851,14 +851,14 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	}
 }
 
-func Test_labelvolume_splitByInterval_Do(t *testing.T) {
+func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &VolumeResponse{
 			Response: &logproto.VolumeResponse{
 				Volumes: []logproto.Volume{
-					{Name: "foo", Value: "bar", Volume: 38},
-					{Name: "bar", Value: "baz", Volume: 28},
+					{Name: `{foo="bar"}`, Value: "", Volume: 38},
+					{Name: `{bar="baz"}`, Value: "", Volume: 28},
 				},
 				Limit: 1},
 			Headers: nil,
@@ -890,7 +890,7 @@ func Test_labelvolume_splitByInterval_Do(t *testing.T) {
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 76},
+						{Name: `{foo="bar"}`, Value: "", Volume: 76},
 					},
 					Limit: 1,
 				},

@@ -129,10 +129,10 @@ var (
 		},
 	}
 
-	labelVolume = logproto.VolumeResponse{
+	seriesVolume = logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: "foo", Value: "bar", Volume: 1024},
-			{Name: "bar", Value: "baz", Volume: 3350},
+			{Name: `{foo="bar"}`, Value: "", Volume: 1024},
+			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
 		},
 		Limit: 10,
 	}
@@ -585,8 +585,8 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 
 	expected := logproto.VolumeResponse{
 		Volumes: []logproto.Volume{ // add volumes from across shards
-			{Name: "bar", Value: "baz", Volume: 6700},
-			{Name: "foo", Value: "bar", Volume: 2048},
+			{Name: `{bar="baz"}`, Value: "", Volume: 6700},
+			{Name: `{foo="bar"}`, Value: "", Volume: 2048},
 		},
 	}
 

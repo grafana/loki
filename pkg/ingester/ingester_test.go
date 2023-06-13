@@ -472,7 +472,7 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: "foo", Value: "bar", Volume: 38},
+			{Name: `{foo="bar"}`, Value: "", Volume: 38},
 		},
 		Limit: limit,
 	}, nil
@@ -1095,16 +1095,14 @@ func TestSeriesVolume(t *testing.T) {
 	volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
 		From:     0,
 		Through:  10000,
-		Matchers: "{}",
-		Limit:    4,
+		Matchers: `{log_stream=~"dispatcher|worker"}`,
+		Limit:    2,
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, []logproto.Volume{
-		{Name: "host", Value: "agent", Volume: 160},
-		{Name: "job", Value: "3", Volume: 160},
-		{Name: "log_stream", Value: "dispatcher", Volume: 90},
-		{Name: "log_stream", Value: "worker", Volume: 70},
+		{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90},
+		{Name: `{log_stream="worker"}`, Value: "", Volume: 70},
 	}, volumes.Volumes)
 }
 

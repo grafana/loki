@@ -419,7 +419,7 @@ func TestSeriesVolume(t *testing.T) {
 			desc:  "multiple tenants are aggregated",
 			orgID: "1|2",
 			expectedSeriesVolumes: []logproto.Volume{
-				{Name: "foo", Value: "bar", Volume: 76},
+				{Name: `{foo="bar"}`, Value: "", Volume: 76},
 			},
 		},
 
@@ -427,7 +427,7 @@ func TestSeriesVolume(t *testing.T) {
 			desc:  "single tenant",
 			orgID: "2",
 			expectedSeriesVolumes: []logproto.Volume{
-				{Name: "foo", Value: "bar", Volume: 38},
+				{Name: `{foo="bar"}`, Value: "", Volume: 38},
 			},
 		},
 	} {
@@ -481,7 +481,7 @@ func mockLabelValueRequest() *logproto.VolumeRequest {
 
 func mockLabelValueResponse() *logproto.VolumeResponse {
 	return &logproto.VolumeResponse{Volumes: []logproto.Volume{
-		{Name: "foo", Value: "bar", Volume: 38},
+		{Name: `{foo="bar"}`, Value: "", Volume: 38},
 	},
 		Limit: 10,
 	}

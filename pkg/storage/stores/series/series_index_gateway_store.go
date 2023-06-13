@@ -135,6 +135,7 @@ func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, userID strin
 		From:     from,
 		Through:  through,
 		Matchers: (&syntax.MatchersExpr{Mts: matchers}).String(),
+		Limit:    limit,
 	})
 	if err != nil {
 		if isUnimplementedCallError(err) && c.fallbackStore != nil {

@@ -314,24 +314,24 @@ func TestSeriesVolume(t *testing.T) {
 		cs := compositeStore{
 			stores: []compositeStoreEntry{
 				{model.TimeFromUnix(10), mockStoreSeriesVolume{mockStore: mockStore(0), value: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
+					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Value: "", Volume: 15}}, Limit: 10,
 				}}},
 				{model.TimeFromUnix(20), mockStoreSeriesVolume{mockStore: mockStore(1), value: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{{Name: "foo", Value: "bar", Volume: 30}}, Limit: 10,
+					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Value: "", Volume: 30}}, Limit: 10,
 				}}},
 			},
 		}
 
 		volumes, err := cs.SeriesVolume(context.Background(), "fake", 10001, 20001, 10, nil)
 		require.NoError(t, err)
-		require.Equal(t, []logproto.Volume{{Name: "foo", Value: "bar", Volume: 45}}, volumes.Volumes)
+		require.Equal(t, []logproto.Volume{{Name: `{foo="bar"}`, Value: "", Volume: 45}}, volumes.Volumes)
 	})
 
 	t.Run("it returns an error if any store returns an error", func(t *testing.T) {
 		cs := compositeStore{
 			stores: []compositeStoreEntry{
 				{model.TimeFromUnix(10), mockStoreSeriesVolume{mockStore: mockStore(0), value: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
+					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Value: "", Volume: 15}}, Limit: 10,
 				}}},
 				{model.TimeFromUnix(20), mockStoreSeriesVolume{mockStore: mockStore(1), err: errors.New("something bad")}},
 			},

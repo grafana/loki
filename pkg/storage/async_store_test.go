@@ -315,7 +315,7 @@ func TestSeriesVolume(t *testing.T) {
 	store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: "foo", Value: "bar", Volume: 38},
+				{Name: `{foo="bar"}`, Value: "", Volume: 38},
 			},
 			Limit: 10,
 		}, nil)
@@ -323,7 +323,7 @@ func TestSeriesVolume(t *testing.T) {
 	ingesterQuerier := newIngesterQuerierMock()
 	ingesterQuerier.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: "bar", Value: "baz", Volume: 38},
+			{Name: `{bar="baz"}`, Value: "", Volume: 38},
 		},
 		Limit: 10,
 	}, nil)
@@ -339,8 +339,8 @@ func TestSeriesVolume(t *testing.T) {
 
 	require.Equal(t, &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: "bar", Value: "baz", Volume: 38},
-			{Name: "foo", Value: "bar", Volume: 38},
+			{Name: `{bar="baz"}`, Value: "", Volume: 38},
+			{Name: `{foo="bar"}`, Value: "", Volume: 38},
 		},
 		Limit: 10,
 	}, vol)

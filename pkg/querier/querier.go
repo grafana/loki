@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"github.com/opentracing/opentracing-go"
 	"net/http"
 	"time"
 
@@ -768,6 +769,9 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 }
 
 func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.SeriesVolume")
+	defer sp.Finish()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -788,6 +792,14 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
+
+	sp.LogKV(
+		"user", userID,
+		"from", req.From.Time(),
+		"through", req.Through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", req.Limit,
+	)
 
 	return q.store.SeriesVolume(
 		ctx,

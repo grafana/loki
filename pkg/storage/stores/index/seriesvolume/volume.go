@@ -15,30 +15,26 @@ const (
 // TODO(masslessparticle): Lock striping to reduce contention on this map
 type Accumulator struct {
 	lock    sync.RWMutex
-	volumes map[string]map[string]uint64
+	volumes map[string]uint64
 	limit   int32
 }
 
 func NewAccumulator(limit int32) *Accumulator {
 	return &Accumulator{
-		volumes: make(map[string]map[string]uint64),
+		volumes: make(map[string]uint64),
 		limit:   limit,
 	}
 }
 
-func (acc *Accumulator) AddVolumes(v map[string]map[string]uint64) {
+func (acc *Accumulator) AddVolumes(volumes map[string]uint64) {
 	acc.lock.Lock()
 	defer acc.lock.Unlock()
 
-	for name, values := range v {
-		if _, ok := acc.volumes[name]; !ok {
-			acc.volumes[name] = make(map[string]uint64)
-		}
-
-		for value, size := range values {
-			acc.volumes[name][value] += size
-		}
+	for name, size := range volumes {
+		acc.volumes[name] += size
 	}
+
+	return
 }
 
 func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
@@ -49,7 +45,8 @@ func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
 }
 
 func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
-	mergedVolumes := make(map[string]map[string]uint64)
+	mergedVolumes := make(map[string]uint64)
+
 	for _, res := range responses {
 		if res == nil {
 			// Some stores return nil responses
@@ -57,26 +54,21 @@ func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeRe
 		}
 
 		for _, v := range res.Volumes {
-			if _, ok := mergedVolumes[v.Name]; !ok {
-				mergedVolumes[v.Name] = make(map[string]uint64)
-			}
-			mergedVolumes[v.Name][v.Value] += v.GetVolume()
+			mergedVolumes[v.Name] += v.GetVolume()
 		}
 	}
 
 	return MapToSeriesVolumeResponse(mergedVolumes, int(limit))
 }
 
-func MapToSeriesVolumeResponse(mergedVolumes map[string]map[string]uint64, limit int) *logproto.VolumeResponse {
+func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.VolumeResponse {
 	volumes := make([]logproto.Volume, 0, len(mergedVolumes))
-	for name, v := range mergedVolumes {
-		for value, volume := range v {
-			volumes = append(volumes, logproto.Volume{
-				Name:   name,
-				Value:  value,
-				Volume: volume,
-			})
-		}
+	for name, size := range mergedVolumes {
+		volumes = append(volumes, logproto.Volume{
+			Name:   name,
+			Value:  "",
+			Volume: size,
+		})
 	}
 
 	sort.Slice(volumes, func(i, j int) bool {

@@ -49,7 +49,7 @@ type IndexStatsAccumulator interface {
 }
 
 type SeriesVolumeAccumulator interface {
-	AddVolumes(map[string]map[string]uint64)
+	AddVolumes(map[string]uint64)
 	Volumes() *logproto.VolumeResponse
 }
 
@@ -244,6 +244,9 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 }
 
 func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.SeriesVolume")
+	defer sp.Finish()
+
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -264,6 +267,15 @@ func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, thr
 			return nil, err
 		}
 	}
+
+	sp.LogKV(
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"intervals", len(intervals),
+		"limit", limit,
+	)
 
 	if err != nil {
 		return nil, err

@@ -272,26 +272,27 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
 
-	t.Run("it returns label volumes from the whole index", func(t *testing.T) {
+	t.Run("it returns series volumes from the whole index", func(t *testing.T) {
 		vol, err := indexClient.SeriesVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 10, nil...)
 		require.NoError(t, err)
 
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: "foo", Value: "bar", Volume: 300 * 1024},
-				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
-				{Name: "ping", Value: "pong", Volume: 100 * 1024},
+				{Name: `{foo="bar"}`, Value: "", Volume: 200 * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Value: "", Volume: 100 * 1024},
+				{Name: `{fizz="buzz"}`, Value: "", Volume: 100 * 1024},
+				{Name: `{ping="pong"}`, Value: "", Volume: 100 * 1024},
 			},
 			Limit: 10}, vol)
 	})
 
-	t.Run("it returns largest label from the index", func(t *testing.T) {
+	t.Run("it returns largest series from the index", func(t *testing.T) {
 		vol, err := indexClient.SeriesVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 1, nil...)
 		require.NoError(t, err)
 
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+				{Name: `{foo="bar"}`, Value: "", Volume: 200 * 1024},
 			},
 			Limit: 1}, vol)
 	})

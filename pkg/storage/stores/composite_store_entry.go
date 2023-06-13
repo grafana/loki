@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -140,6 +141,15 @@ func (c *storeEntry) SeriesVolume(ctx context.Context, userID string, from, thro
 	} else if shortcut {
 		return nil, nil
 	}
+
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"err", err,
+		"limit", limit,
+	)
 
 	return c.indexReader.SeriesVolume(ctx, userID, from, through, limit, matchers...)
 }

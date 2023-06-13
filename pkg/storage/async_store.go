@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/opentracing/opentracing-go"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -163,6 +164,9 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.SeriesVolume")
+	defer sp.Finish()
+
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
 	type f func() (*logproto.VolumeResponse, error)
@@ -202,6 +206,14 @@ func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, thro
 	); err != nil {
 		return nil, err
 	}
+
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", limit,
+	)
 
 	merged := seriesvolume.Merge(resps, limit)
 	return merged, nil
