@@ -835,7 +835,7 @@ func Test_store_SelectSample(t *testing.T) {
 
 type fakeChunkFilterer struct{}
 
-func (f fakeChunkFilterer) ForRequest(ctx context.Context) chunk.Filterer {
+func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
 	return f
 }
 
@@ -954,7 +954,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			"unsharded",
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 			},
 		},
@@ -968,7 +968,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				nil,
 			),
 			[]*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba(?-s:.)*?"),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
 				labels.MustNewMatcher(
 					labels.MatchEqual,
@@ -1022,7 +1022,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 				},
 				TSDBShipperConfig: shipperConfig,
 				NamedStores: NamedStores{
-					Filesystem: map[string]local.FSConfig{
+					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
 					},
 				},

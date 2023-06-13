@@ -34,7 +34,7 @@ type fakeRequestsClient struct {
 	reqs []DeleteRequest
 }
 
-func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
+func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
 	return c.reqs, nil
 }
 

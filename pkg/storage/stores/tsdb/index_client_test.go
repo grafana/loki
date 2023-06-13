@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -22,7 +24,7 @@ func (m mockIndexShipperIndexIterator) ForEachConcurrent(ctx context.Context, ta
 	return m.ForEach(ctx, tableName, userID, callback)
 }
 
-func (m mockIndexShipperIndexIterator) ForEach(ctx context.Context, tableName, userID string, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ string, callback index_shipper.ForEachIndexCallback) error {
 	indexes := m.tables[tableName]
 	for _, idx := range indexes {
 		if err := callback(false, idx); err != nil {
@@ -213,4 +215,84 @@ func TestIndexClient_Stats(t *testing.T) {
 			require.Equal(t, tc.expectedNumBytes, stats.Bytes)
 		})
 	}
+}
+
+func TestIndexClient_LabelVolume(t *testing.T) {
+	tempDir := t.TempDir()
+	tableRange := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.PeriodicTableConfig{
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
+		},
+	}
+
+	indexStartToday := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+	indexStartYesterday := indexStartToday.Add(-config.ObjectStorageIndexRequiredPeriod)
+
+	tables := map[string][]*TSDBFile{
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{fizz="buzz"}`),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
+				},
+			}),
+		},
+
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{ping="pong"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+			}),
+		},
+	}
+
+	idx := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, config.TableRange{
+		Start:        0,
+		End:          math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{},
+	})
+
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+
+	t.Run("it returns label volumes from the whole index", func(t *testing.T) {
+		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 10, nil...)
+		require.NoError(t, err)
+
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
+				{Name: "ping", Value: "pong", Volume: 100 * 1024},
+			},
+			Limit: 10}, vol)
+	})
+
+	t.Run("it returns largest label from the index", func(t *testing.T) {
+		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 1, nil...)
+		require.NoError(t, err)
+
+		require.Equal(t, &logproto.LabelVolumeResponse{
+			Volumes: []logproto.LabelVolume{
+				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+			},
+			Limit: 1}, vol)
+	})
 }

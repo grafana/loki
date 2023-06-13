@@ -21,11 +21,10 @@ func Test_DistinctFilter(t *testing.T) {
 	}{
 		name:  "distinct test",
 		label: []string{"id", "time", "none"},
-		lbs: labels.Labels{
-			{Name: logqlmodel.ErrorLabel, Value: errJSON},
-			{Name: "status", Value: "200"},
-			{Name: "method", Value: "POST"},
-		},
+		lbs: labels.FromStrings(logqlmodel.ErrorLabel, errJSON,
+			"status", "200",
+			"method", "POST",
+		),
 		input: []string{
 			`{"event": "access", "id": "1", "time": "1"}`,
 			`{"event": "access", "id": "1", "time": "2"}`,

@@ -10,31 +10,31 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, req []DeleteRequest) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, _ []DeleteRequest) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
+func (d *noOpDeleteRequestsStore) UpdateStatus(_ context.Context, _ DeleteRequest, _ DeleteRequestStatus) error {
 	return nil
 }
 
-func (d *noOpDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, _, _ string) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+func (d *noOpDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, _ []DeleteRequest) error {
 	return nil
 }
 
-func (d *noOpDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+func (d *noOpDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
 	return "", nil
 }
 

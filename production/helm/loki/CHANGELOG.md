@@ -13,7 +13,61 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-- [CHANGE] Add clusterLabelOverride for alert label overrides.
+## 5.6.4
+
+- [FEATURE] Make table manager retention options configurable in values
+
+## 5.6.3
+
+- [BUGFIX] Fix configmap checksum in read statefulset template
+
+## 5.6.2
+
+- [BUGFIX] Fix configmap checksum in table manager deployment template
+
+## 5.6.1
+
+- [BUGFIX] Fix HPA for single binary deployment
+
+## 5.6.0
+
+- [ENHANCEMENT] Add `gateway.ingress.labels` to values and ingress-gateway in helm chart.
+
+## 5.5.12
+
+- [BUGFIX] Fix checksum annotation for config in single binary
+
+## 5.5.11
+
+- [BUGFIX] Add missing metrics section in backend hpa template
+
+## 5.5.10
+
+- [CHANGE] Make the gateway listen on IPv6 as well as IPv4
+
+## 5.5.9
+
+- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
+
+## 5.5.8
+
+- [CHANGE] Add support for annotations on all Deployments and StatefulSets
+
+## 5.5.7
+
+- [BUGFIX] Fix breaking helm upgrade by changing sts podManagementPolicy from Parallel to OrderedReady which fails since that field cannot be modified on sts.
+
+## 5.5.6
+
+- [FEATURE] Add hpa templates for read, write and backend.
+
+## 5.5.5
+
+- [BUGFIX] Quote tenantId value in logsInstance
+
+## 5.5.4
+
+- [CHANGE] Add extraVolumeClaimTemplates for StatefulSet of the write component.
 
 ## 5.5.3
 
@@ -21,6 +75,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.5.2
 
+- [BUGFIX] Use $.Release.Namespace consistently
+- [CHANGE] Add clusterLabelOverride for alert label overrides.
 - [BUGFIX] Use $.Release.Namespace consistently
 
 ## 5.5.1

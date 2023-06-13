@@ -8,7 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -479,15 +482,15 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 		}, nil
 	}
 
-	labels := make([]string, 0)
+	labels := util.NewUniqueStrings(0)
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
-				labels = append(labels, label.Value)
+				labels.Add(label.Value)
 				continue
 			}
 			if !req.Values {
-				labels = append(labels, label.Name)
+				labels.Add(label.Name)
 			}
 		}
 		return nil
@@ -497,7 +500,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	return &logproto.LabelResponse{
-		Values: labels,
+		Values: labels.Strings(),
 	}, nil
 }
 
@@ -560,6 +563,9 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "instance.GetStats")
+	defer sp.Finish()
+
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -599,6 +605,62 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
+	sp.LogKV(
+		"from", from,
+		"through", through,
+		"matchers", syntax.MatchersString(matchers),
+		"streams", res.Streams,
+		"chunks", res.Chunks,
+		"bytes", res.Bytes,
+		"entries", res.Entries,
+	)
+
+	return res, nil
+}
+
+func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != labelvolume.MatchAny {
+		return nil, err
+	}
+
+	from, through := req.From.Time(), req.Through.Time()
+
+	volumes := make(map[string]map[string]uint64)
+	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
+		// Consider streams which overlap our time range
+		if shouldConsiderStream(s, from, through) {
+			s.chunkMtx.RLock()
+
+			var size uint64
+			for _, chk := range s.chunks {
+				// Consider chunks which overlap our time range
+				// and haven't been flushed.
+				// Flushed chunks will already be counted
+				// by the TSDB manager+shipper
+				chkFrom, chkThrough := chk.chunk.Bounds()
+
+				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
+				}
+			}
+
+			for _, l := range s.labels {
+				if _, ok := volumes[l.Name]; !ok {
+					volumes[l.Name] = make(map[string]uint64)
+				}
+				volumes[l.Name][l.Value] += size
+			}
+
+			s.chunkMtx.RUnlock()
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	res := labelvolume.MapToLabelVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 
