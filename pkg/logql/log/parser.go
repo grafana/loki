@@ -337,9 +337,13 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		val := l.dec.Value()
+		if len(val) == 0 {
+			continue
+		}
+
 		// the rune error replacement is rejected by Prometheus, so we skip it.
 		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+			continue
 		}
 
 		lbs.Set(key, string(val))
@@ -496,6 +500,9 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			continue
 		}
 		val := l.dec.Value()
+		if len(val) == 0 {
+			continue
+		}
 
 		for id, orig := range keys {
 			if key == orig {
@@ -505,7 +512,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+			continue
 		}
 
 		if _, ok := l.expressions[key]; ok {

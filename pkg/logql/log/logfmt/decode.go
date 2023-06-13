@@ -67,24 +67,18 @@ key:
 				dec.key = line[start:dec.pos]
 				if multibyte && bytes.ContainsRune(dec.key, utf8.RuneError) {
 					dec.syntaxError(invalidKeyError)
-					// skip this byte for the next ScanKeyval call
-					dec.pos++
-					return false
+					goto skip_value
 				}
 			}
 			if dec.key == nil {
 				dec.unexpectedByte(c)
-				// skip this byte for the next ScanKeyval call
-				dec.pos++
-				return false
+				goto skip_value
 			}
 			goto equal
 		case c == '"':
 			dec.pos += p
 			dec.unexpectedByte(c)
-			// skip this byte for the next ScanKeyval call
-			dec.pos++
-			return false
+			goto skip_value
 		case c <= ' ':
 			dec.pos += p
 			if dec.pos > start {
@@ -128,9 +122,7 @@ equal:
 		case c == '=' || c == '"':
 			dec.pos += p
 			dec.unexpectedByte(c)
-			// skip this byte for the next ScanKeyval call
-			dec.pos++
-			return false
+			goto skip_value
 		case c <= ' ':
 			dec.pos += p
 			if dec.pos > start {
@@ -144,6 +136,17 @@ equal:
 		dec.value = line[start:dec.pos]
 	}
 	return true
+
+skip_value:
+	for p, c := range line[dec.pos:] {
+		if c == ' ' {
+			dec.pos += p
+			return false
+		}
+	}
+
+	dec.pos = len(line)
+	return false
 
 qvalue:
 	const (
