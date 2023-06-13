@@ -54,7 +54,7 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
-func NewOssObjectClient(ctx context.Context, cfg OssConfig) (client.ObjectClient, error) {
+func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, error) {
 	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey)
 	if err != nil {
 		return nil, err

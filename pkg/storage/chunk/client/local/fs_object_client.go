@@ -108,7 +108,7 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 
 // List implements chunk.ObjectClient.
 // FSObjectClient assumes that prefix is a directory, and only supports "" and "/" delimiters.
-func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (f *FSObjectClient) List(_ context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	if delimiter != "" && delimiter != "/" {
 		return nil, nil, fmt.Errorf("unsupported delimiter: %q", delimiter)
 	}
@@ -171,7 +171,7 @@ func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	return storageObjects, commonPrefixes, err
 }
 
-func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+func (f *FSObjectClient) DeleteObject(_ context.Context, objectKey string) error {
 	// inspired from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L195
 	file := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
 
@@ -195,7 +195,7 @@ func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 }
 
 // DeleteChunksBefore implements BucketClient
-func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) error {
+func (f *FSObjectClient) DeleteChunksBefore(_ context.Context, ts time.Time) error {
 	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() && info.ModTime().Before(ts) {
 			level.Info(util_log.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())

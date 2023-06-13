@@ -3,15 +3,16 @@
 //line pkg/logql/syntax/expr.y:2
 package syntax
 
-import __yyfmt__ "fmt"
+import (
+	__yyfmt__ "fmt"
+	"time"
+
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logql/log"
+)
 
 //line pkg/logql/syntax/expr.y:2
-
-import (
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/prometheus/prometheus/model/labels"
-	"time"
-)
 
 //line pkg/logql/syntax/expr.y:12
 type exprSymType struct {

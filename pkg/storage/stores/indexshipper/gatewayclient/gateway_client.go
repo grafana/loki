@@ -196,7 +196,7 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 	})
 }
 
-func (s *GatewayClient) QueryIndex(ctx context.Context, in *logproto.QueryIndexRequest, opts ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
+func (s *GatewayClient) QueryIndex(_ context.Context, _ *logproto.QueryIndexRequest, _ ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
 	panic("not implemented")
 }
 
@@ -273,6 +273,21 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 		return resp, err
 	}
 	return s.grpcClient.GetStats(ctx, in, opts...)
+}
+
+func (s *GatewayClient) GetLabelVolume(ctx context.Context, in *logproto.LabelVolumeRequest, opts ...grpc.CallOption) (*logproto.LabelVolumeResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *logproto.LabelVolumeResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client logproto.IndexGatewayClient) error {
+			resp, err = client.GetLabelVolume(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.GetLabelVolume(ctx, in, opts...)
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
@@ -386,7 +401,7 @@ func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
 	panic("unsupported")
 }
 
-func (s *GatewayClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
+func (s *GatewayClient) BatchWrite(_ context.Context, _ index.WriteBatch) error {
 	panic("unsupported")
 }
 
