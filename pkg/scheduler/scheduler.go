@@ -753,7 +753,7 @@ func SafeReadRing(s *Scheduler) ring.ReadRing {
 	return s.ring
 }
 
-func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
+func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the scheduler instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.
