@@ -1171,7 +1171,7 @@ func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		ctx,
 		len(jobs),
 		2,
-		func(ctx context.Context, idx int) error {
+		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
 			resps[idx] = res
 			return err

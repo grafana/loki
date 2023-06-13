@@ -472,7 +472,7 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 func (s *mockStore) LabelVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
 	return &logproto.LabelVolumeResponse{
 		Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 38},
+			{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e9},
 		},
 		Limit: limit,
 	}, nil
@@ -1094,18 +1094,18 @@ func TestLabelVolume(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 	volumes, err := i.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
 		From:     0,
-		Through:  10000,
+		Through:  1e3, // Through is in milliseconds
 		Matchers: "{}",
-		Limit:    4,
+		Limit:    5,
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, []logproto.LabelVolume{
-		{Name: "host", Value: "agent", Volume: 160},
-		{Name: "job", Value: "3", Volume: 160},
-		{Name: "log_stream", Value: "dispatcher", Volume: 90},
-		{Name: "log_stream", Value: "worker", Volume: 70},
-	}, volumes.Volumes)
+	require.Len(t, volumes.Volumes, 5)
+	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "host", Value: "agent", Volume: 160, Timestamp: 1e9})
+	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "job", Value: "3", Volume: 160, Timestamp: 1e9})
+	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "log_stream", Value: "dispatcher", Volume: 90, Timestamp: 1e9})
+	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "log_stream", Value: "worker", Volume: 70, Timestamp: 1e9})
+	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e9})
 }
 
 type ingesterClient struct {

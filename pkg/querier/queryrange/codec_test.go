@@ -522,7 +522,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			&LabelVolumeResponse{
 				Response: &logproto.LabelVolumeResponse{
 					Volumes: []logproto.LabelVolume{
-						{Name: "foo", Value: "bar", Volume: 38},
+            {Name: "foo", Timestamp: 0, Value: "bar", Volume: 38},
 					},
 					Limit: 100,
 				},
@@ -1433,6 +1433,7 @@ var (
 		  "volumes": [
 			{
 			  "name": "foo",
+        "ts": 0,
 			  "value": "bar",
 			  "volume": 38
 			}
