@@ -844,7 +844,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string", labels.Labels{{"foo", "foo"}}); err != nil {
+				if err := h.Append(int64(i), "this is the append string", labels.Labels{{Name: "foo", Value: "foo"}}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -868,7 +868,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string", labels.Labels{{"foo", "foo"}}); err != nil {
+				if err := h.Append(int64(i), "this is the append string", labels.Labels{{Name: "foo", Value: "foo"}}); err != nil {
 					b.Fatal(err)
 				}
 			}

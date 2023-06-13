@@ -14,13 +14,13 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util/filter"

@@ -33,7 +33,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 func Test_forEntriesEarlyReturn(t *testing.T) {
 	hb := newUnorderedHeadBlock()
 	for i := 0; i < 10; i++ {
-		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{"i", fmt.Sprint(i)}}))
+		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "i", Value: fmt.Sprint(i)}}))
 	}
 
 	// forward
