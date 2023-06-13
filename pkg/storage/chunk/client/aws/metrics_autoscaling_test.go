@@ -542,7 +542,7 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	}
 }
 
-func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.Range, opts ...promV1.Option) (model.Value, promV1.Warnings, error) {
+func (m *mockPrometheus) QueryRange(_ context.Context, _ string, _ promV1.Range, _ ...promV1.Option) (model.Value, promV1.Warnings, error) {
 	if len(m.rangeValues) == 0 {
 		return nil, nil, errors.New("mockPrometheus.QueryRange: out of values")
 	}

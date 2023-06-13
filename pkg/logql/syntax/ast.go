@@ -143,6 +143,7 @@ func combineFilters(in []*LineFilterExpr) StageExpr {
 
 func leafNode(in *LineFilterExpr) *LineFilterExpr {
 	current := in
+	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
 	}
 	return current
@@ -705,30 +706,10 @@ func (l *LogfmtExpressionParser) String() string {
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
-	if t == labels.MatchRegexp || t == labels.MatchNotRegexp {
-		return simplifyRegexMatcher(t, n, v)
-	}
-
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
-	return m
-}
-
-func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matcher {
-	reg, err := syntax.Parse(value, syntax.Perl)
-	if err != nil {
-		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
-	}
-	reg = reg.Simplify()
-
-	m, ok := simplify(typ, name, reg)
-	if !ok {
-		util.AllNonGreedy(reg)
-		return labels.MustNewMatcher(typ, name, reg.String())
-	}
-
 	return m
 }
 
@@ -1101,9 +1082,14 @@ type Grouping struct {
 // impls Stringer
 func (g Grouping) String() string {
 	var sb strings.Builder
+
+	if g.Groups == nil {
+		return ""
+	}
+
 	if g.Without {
 		sb.WriteString(" without ")
-	} else if len(g.Groups) > 0 {
+	} else {
 		sb.WriteString(" by ")
 	}
 
@@ -1111,6 +1097,9 @@ func (g Grouping) String() string {
 		sb.WriteString("(")
 		sb.WriteString(strings.Join(g.Groups, ","))
 		sb.WriteString(")")
+	}
+	if len(g.Groups) == 0 {
+		sb.WriteString("()")
 	}
 
 	return sb.String()

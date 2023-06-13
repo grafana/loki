@@ -356,7 +356,7 @@ is restarted to allow it to continue from where it left off.
 ## scrape_configs
 
 The `scrape_configs` block configures how Promtail can scrape logs from a series
-of targets using a specified discovery method:
+of targets using a specified discovery method. Promtail uses the same [Prometheus scrape_configs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config). This means if you already own a Prometheus instance, the config will be very similar:
 
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
@@ -592,7 +592,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
+a configurable [LogQL]({{<relref "../../query/">}}) stream selector.
 
 ```yaml
 match:
@@ -917,7 +917,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../api#push-log-entries-to-loki">}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../reference/api#push-log-entries-to-loki">}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1050,7 +1050,7 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
 
@@ -1079,7 +1079,7 @@ The `azure_event_hubs` block configures how Promtail receives Azure Event Hubs m
 
 To learn more about streaming Azure logs to an Azure Event Hubs, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
 
-Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/). 
+Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/).
 
 ```yaml
 # Event Hubs namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
@@ -1108,11 +1108,9 @@ connection_string: <string> | default = "range"
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
-
-**Available Labels:**
 
 - `__azure_event_hubs_category`: The log category of the message when a message is an application log.
 
@@ -1211,7 +1209,7 @@ labels:
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
-**Available Labels:**
+#### Available Labels
 
 The list of labels below are discovered when consuming kafka:
 
@@ -1255,7 +1253,7 @@ use_incoming_timestamp: <bool>
 
 ```
 
-**Available Labels:**
+#### Available Labels
 
 - `__gelf_message_level`: The GELF level as string.
 - `__gelf_message_host`: The host sending the GELF message.
@@ -1309,7 +1307,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders", "ClientRequestSource"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1343,6 +1341,7 @@ All Cloudflare logs are in JSON. Here is an example:
 	"ClientRequestReferer": "https://www.foo.com/foo/168855/?offset=8625",
 	"ClientRequestURI": "/foo/15248108/",
 	"ClientRequestUserAgent": "some bot",
+        "ClientRequestSource": "1"
 	"ClientSSLCipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
 	"ClientSSLProtocol": "TLSv1.2",
 	"ClientSrcPort": 39816,
@@ -1374,10 +1373,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
-  "RequestHeaders": [],
-  "ResponseHeaders": [
-    "x-foo": "bar"
-  ],
+        "RequestHeaders": [],
+        "ResponseHeaders": [
+          "x-foo": "bar"
+        ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",

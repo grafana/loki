@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
+
 	"github.com/grafana/loki/pkg/storage"
 )
 
@@ -311,7 +312,12 @@ func checkUserLabelAndMetricValue(t *testing.T, metricName, metrics, tenantID st
 
 func checkMetricValue(t *testing.T, metricName, metrics string, expectedValue float64) {
 	t.Helper()
+	require.Equal(t, expectedValue, getMetricValue(t, metricName, metrics))
+}
+
+func getMetricValue(t *testing.T, metricName, metrics string) float64 {
+	t.Helper()
 	val, _, err := extractMetric(metricName, metrics)
 	require.NoError(t, err)
-	require.Equal(t, expectedValue, val)
+	return val
 }

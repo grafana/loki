@@ -27,6 +27,9 @@ service Querier {
   // Note: this MUST be the same as the variant defined in
   // indexgateway.proto on the IndexGateway service.
   rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetLabelVolume(LabelVolumeRequest) returns (LabelVolumeResponse) {}
 }
 
 service Ingester {
@@ -48,6 +51,7 @@ message StreamRate {
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
   string tenant = 4;
+  uint32 pushes = 5;
 }
 
 message QueryRequest {
@@ -375,4 +379,28 @@ message IndexStatsResponse {
   uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
   uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
   uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
+}
+
+message LabelVolumeRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  int32 limit = 4;
+}
+
+message LabelVolumeResponse {
+  repeated LabelVolume volumes = 1 [(gogoproto.nullable) = false];
+  int32 limit = 2;
+}
+
+message LabelVolume {
+  string name = 1 [(gogoproto.jsontag) = "name"];
+  string value = 2 [(gogoproto.jsontag) = "value"];
+  uint64 volume = 3 [(gogoproto.jsontag) = "volume"];
 }

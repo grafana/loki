@@ -288,6 +288,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	testStreams := []logproto.Stream{
 		{Labels: "{app=\"test\",job=\"varlogs\"}", Entries: entries(5, currentTime)},
 		{Labels: "{app=\"test2\",job=\"varlogs\"}", Entries: entries(5, currentTime.Add(6*time.Nanosecond))},
+		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
 	for _, testStream := range testStreams {
@@ -612,13 +613,13 @@ func Test_Iterator(t *testing.T) {
 	sort.Slice(res.Streams, func(i, j int) bool {
 		return res.Streams[i].Entries[0].Timestamp.UnixNano() > res.Streams[j].Entries[0].Timestamp.UnixNano()
 	})
-	require.Equal(t, int64(9), res.Streams[0].Entries[0].Timestamp.UnixNano())
-	require.Equal(t, int64(8), res.Streams[1].Entries[0].Timestamp.UnixNano())
+	require.Equal(t, int64(9*1e6), res.Streams[0].Entries[0].Timestamp.UnixNano())
+	require.Equal(t, int64(8*1e6), res.Streams[1].Entries[0].Timestamp.UnixNano())
 }
 
 type testFilter struct{}
 
-func (t *testFilter) ForRequest(ctx context.Context) chunk.Filterer {
+func (t *testFilter) ForRequest(_ context.Context) chunk.Filterer {
 	return t
 }
 
@@ -667,17 +668,17 @@ func Test_QueryWithDelete(t *testing.T) {
 					{
 						Selector: `{log_stream="worker"}`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"}`,
 						Start:    0,
-						End:      5,
+						End:      5 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"} |= "9"`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 				},
 			},
@@ -702,22 +703,22 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 			SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: `count_over_time({job="3"}[5m])`,
 				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, 100000000),
+				End:      time.Unix(0, 110000000),
 				Deletes: []*logproto.Delete{
 					{
 						Selector: `{log_stream="worker"}`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"}`,
 						Start:    0,
-						End:      5,
+						End:      5 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"} |= "9"`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 				},
 			},
@@ -837,6 +838,76 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
+func TestInstance_LabelVolume(t *testing.T) {
+	t.Run("no matchers", func(t *testing.T) {
+		instance := defaultInstance(t)
+		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+			From:     0,
+			Through:  11000,
+			Matchers: "{}",
+			Limit:    3,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.LabelVolume{
+			{Name: "host", Value: "agent", Volume: 160},
+			{Name: "job", Value: "3", Volume: 160},
+			{Name: "log_stream", Value: "dispatcher", Volume: 90},
+		}, volumes.Volumes)
+	})
+
+	t.Run("with matchers", func(t *testing.T) {
+		instance := defaultInstance(t)
+		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+			From:     0,
+			Through:  11000,
+			Matchers: "{log_stream=\"dispatcher\"}",
+			Limit:    3,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.LabelVolume{
+			{Name: "host", Value: "agent", Volume: 90},
+			{Name: "job", Value: "3", Volume: 90},
+			{Name: "log_stream", Value: "dispatcher", Volume: 90},
+		}, volumes.Volumes)
+	})
+
+	t.Run("excludes streams outside of time bounds", func(t *testing.T) {
+		instance := defaultInstance(t)
+		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+			From:     5,
+			Through:  11,
+			Matchers: "{}",
+			Limit:    3,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.LabelVolume{
+			{Name: "host", Value: "agent", Volume: 71},
+			{Name: "job", Value: "3", Volume: 71},
+			{Name: "log_stream", Value: "dispatcher", Volume: 45},
+		}, volumes.Volumes)
+	})
+}
+
+func TestGetStats(t *testing.T) {
+	instance := defaultInstance(t)
+	resp, err := instance.GetStats(context.Background(), &logproto.IndexStatsRequest{
+		From:     0,
+		Through:  11000,
+		Matchers: `{host="agent"}`,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.IndexStatsResponse{
+		Streams: 2,
+		Chunks:  2,
+		Bytes:   160,
+		Entries: 10,
+	}, resp)
+}
+
 func defaultInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
@@ -860,6 +931,7 @@ func defaultInstance(t *testing.T) *instance {
 	return instance
 }
 
+// inserts 160 bytes into the instance. 90 for the dispatcher label and 70 for the worker label
 func insertData(t *testing.T, instance *instance) {
 	for i := 0; i < 10; i++ {
 		// nolint
@@ -867,13 +939,14 @@ func insertData(t *testing.T, instance *instance) {
 		if i%2 == 0 {
 			stream = "worker"
 		}
+
 		require.NoError(t,
 			instance.Push(context.TODO(), &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
 						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
 						Entries: []logproto.Entry{
-							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+							{Timestamp: time.Unix(0, int64(i)*1e6), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
 						},
 					},
 				},

@@ -32,6 +32,10 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	_, err = s.Write(rc)
+	if err != nil {
+		return nil, "", err
+	}
 	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
@@ -172,6 +176,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
+		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,

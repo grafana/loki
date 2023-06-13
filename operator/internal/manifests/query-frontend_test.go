@@ -126,43 +126,23 @@ func TestNewQueryFrontendDeployment_TopologySpreadConstraints(t *testing.T) {
 			MaxSkew:           1,
 			TopologyKey:       "zone",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "query-frontend",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 		{
 			MaxSkew:           2,
 			TopologyKey:       "region",
 			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "query-frontend",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
-}
-
-func TestQueryFrontendPodAntiAffinity(t *testing.T) {
-	sts := NewQueryFrontendDeployment(Options{
-		Name:      "abcd",
-		Namespace: "efgh",
-		Stack: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				QueryFrontend: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-				},
-			},
-		},
-	})
-	expectedPodAntiAffinity := &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": LabelQueryFrontendComponent,
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
-					TopologyKey: "kubernetes.io/hostname",
-				},
-			},
-		},
-	}
-	require.NotNil(t, sts.Spec.Template.Spec.Affinity)
-	require.Equal(t, expectedPodAntiAffinity, sts.Spec.Template.Spec.Affinity.PodAntiAffinity)
 }

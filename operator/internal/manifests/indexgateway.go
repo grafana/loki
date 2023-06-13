@@ -44,6 +44,12 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&statefulSet.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -65,7 +71,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(l, opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelIndexGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.IndexGateway),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -122,10 +128,8 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
@@ -134,7 +138,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 
 	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication)
+		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

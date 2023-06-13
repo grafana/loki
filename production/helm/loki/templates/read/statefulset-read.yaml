@@ -5,12 +5,15 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.readFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
 spec:
+{{- if not .Values.read.autoscaling.enabled }}
   replicas: {{ .Values.read.replicas }}
-  podManagementPolicy: Parallel
+{{- end }}
+  podManagementPolicy: {{ .Values.read.podManagementPolicy }}
   updateStrategy:
     rollingUpdate:
       partition: 0
@@ -31,7 +34,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

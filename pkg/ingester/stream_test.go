@@ -78,13 +78,13 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s',\n",
 					time.Unix(int64(i), 0).String(),
 					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
-			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d", numLogs, numLogs)
+			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
 			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false)
@@ -196,21 +196,21 @@ func TestStreamIterator(t *testing.T) {
 
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(chunks*entries - 1)
-				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+				length := rand.Intn(chunks*entries-from) + 1
+				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
 				require.NotNil(t, iter)
 				require.NoError(t, err)
-				testIteratorForward(t, iter, int64(from), int64(from+len))
+				testIteratorForward(t, iter, int64(from), int64(from+length))
 				_ = iter.Close()
 			}
 
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(entries - 1)
-				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
+				length := rand.Intn(chunks*entries-from) + 1
+				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
 				require.NotNil(t, iter)
 				require.NoError(t, err)
-				testIteratorBackward(t, iter, int64(from), int64(from+len))
+				testIteratorBackward(t, iter, int64(from), int64(from+length))
 				_ = iter.Close()
 			}
 		})

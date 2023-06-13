@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -44,6 +46,11 @@ type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
 	AddChunkStats(s index.ChunkStats)
 	Stats() stats.Stats
+}
+
+type LabelVolumeAccumulator interface {
+	AddVolumes(map[string]map[string]uint64)
+	Volumes() *logproto.LabelVolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -172,6 +179,9 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Stats")
+	defer sp.Finish()
+
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -218,7 +228,48 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 	res := acc.Stats()
 
+	sp.LogKV(
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"intervals", len(intervals),
+		"streams", res.Streams,
+		"chunks", res.Chunks,
+		"bytes", res.Bytes,
+		"entries", res.Entries,
+	)
+
 	return &res, nil
+}
+
+func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+	matchers, shard, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Split by interval to query the index in parallel
+	var intervals []model.Interval
+	util.ForInterval(config.ObjectStorageIndexRequiredPeriod, from.Time(), through.Time(), true, func(start, end time.Time) {
+		intervals = append(intervals, model.Interval{
+			Start: model.TimeFromUnixNano(start.UnixNano()),
+			End:   model.TimeFromUnixNano(end.UnixNano()),
+		})
+	})
+
+	acc := labelvolume.NewAccumulator(limit)
+	for _, interval := range intervals {
+		if err := c.idx.LabelVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+			return nil, err
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return acc.Volumes(), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
