@@ -691,7 +691,7 @@ type CountOverTime struct {
 	count float64
 }
 
-func (a *CountOverTime) agg(sample promql.FPoint) {
+func (a *CountOverTime) agg(_ promql.FPoint) {
 	a.count++
 }
 

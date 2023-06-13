@@ -295,7 +295,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 }
 
 func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
-	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
+	dispatch := func(_ Recoverer, b []byte, inputs []chan recoveryInput) error {
 		s := &Series{}
 		if err := decodeCheckpointRecord(b, s); err != nil {
 			return err

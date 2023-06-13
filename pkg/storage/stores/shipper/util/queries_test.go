@@ -16,7 +16,7 @@ type mockTableQuerier struct {
 	queries map[string]index.Query
 }
 
-func (m *mockTableQuerier) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (m *mockTableQuerier) MultiQueries(_ context.Context, queries []index.Query, _ index.QueryPagesCallback) error {
 	m.Lock()
 	defer m.Unlock()
 

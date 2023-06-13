@@ -25,7 +25,7 @@ type fakeLimits struct {
 	limits *validation.Limits
 }
 
-func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
+func (f fakeLimits) TenantLimits(_ string) *validation.Limits {
 	return f.limits
 }
 
