@@ -24,7 +24,7 @@ func NewKeepLabels(dl []KeepLabel) *KeepLabels {
 	return &KeepLabels{keepLabels: dl}
 }
 
-func (kl *KeepLabels) Process(ts int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
+func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
 	if len(kl.keepLabels) == 0 {
 		return line, true
 	}
