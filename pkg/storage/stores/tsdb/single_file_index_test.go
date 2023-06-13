@@ -423,9 +423,9 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.LabelVolumeResponse{
 			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024},
-				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
-				{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024},
+				{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024, Timestamp: 20 * 1e6},
+				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024, Timestamp: 20 * 1e6},
+				{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024, Timestamp: 20 * 1e6},
 			},
 			Limit: 10}, acc.Volumes())
 	})
@@ -447,8 +447,8 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.LabelVolumeResponse{
 			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: (30 + 40) * 1024},
-				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
+				{Name: "foo", Value: "bar", Volume: (30 + 40) * 1024, Timestamp: 20 * 1e6},
+				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024, Timestamp: 20 * 1e6},
 			},
 			Limit: 10}, acc.Volumes())
 	})

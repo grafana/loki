@@ -272,27 +272,55 @@ func TestIndexClient_LabelVolume(t *testing.T) {
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
 
-	t.Run("it returns label volumes from the whole index", func(t *testing.T) {
-		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 10, nil...)
+	through := indexStartToday + 1000
+	intervals := getIntervalEndpoints(config.ObjectStorageIndexRequiredPeriod, indexStartYesterday.Time(), through.Time(), true)
+
+	t.Run("it returns label volumes from the whole index, separated by ts of interval end", func(t *testing.T) {
+		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, through, 10, nil...)
 		require.NoError(t, err)
 
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: 300 * 1024},
-				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
-				{Name: "ping", Value: "pong", Volume: 100 * 1024},
-			},
-			Limit: 10}, vol)
+		require.Len(t, vol.Volumes, 5)
+		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 1024 * 200, Timestamp: intervals[0].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 1024 * 100, Timestamp: intervals[1].UnixNano()})
+
+		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "fizz", Value: "buzz", Volume: 1024 * 100, Timestamp: intervals[0].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "fizz", Value: "buzz", Volume: 1024 * 100, Timestamp: intervals[1].UnixNano()})
+
+		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "ping", Value: "pong", Volume: 1024 * 100, Timestamp: intervals[0].UnixNano()})
+
+		require.Equal(t, int32(10), vol.Limit)
 	})
 
-	t.Run("it returns largest label from the index", func(t *testing.T) {
-		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 1, nil...)
+	t.Run("it returns largest label for an interval from the index", func(t *testing.T) {
+		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, through, 1, nil...)
 		require.NoError(t, err)
 
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: 300 * 1024},
-			},
-			Limit: 1}, vol)
+		require.Len(t, vol.Volumes, 1)
+		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 1024 * 200, Timestamp: intervals[0].UnixNano()})
 	})
+}
+
+func getIntervalEndpoints(interval time.Duration, start, end time.Time, endTimeInclusive bool) []time.Time {
+	intervals := []time.Time{}
+
+	startNs := start.UnixNano()
+	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
+	firstInterval := true
+
+	for start := start; start.Before(end); start = start.Add(interval) {
+		newEnd := start.Add(interval)
+		if !newEnd.Before(end) {
+			newEnd = end
+		} else if endTimeInclusive {
+			newEnd = newEnd.Add(-time.Millisecond)
+		}
+		if firstInterval {
+			intervals = append(intervals, newEnd)
+			firstInterval = false
+			continue
+		}
+		intervals = append(intervals, newEnd)
+	}
+
+	return intervals
 }

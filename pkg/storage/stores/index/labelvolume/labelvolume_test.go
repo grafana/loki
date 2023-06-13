@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_AddVolumeS(t *testing.T) {
+func Test_AddVolumes(t *testing.T) {
 	t.Run("sorts label value pairs by volume", func(t *testing.T) {
 		acc := NewAccumulator(5)
 		volumes := map[string]map[string]uint64{
@@ -27,24 +27,28 @@ func Test_AddVolumeS(t *testing.T) {
 		require.Equal(t, &logproto.LabelVolumeResponse{
 			Volumes: []logproto.LabelVolume{
 				{
-					Name:   "cluster",
-					Value:  "prod",
-					Volume: 50,
+					Name:      "cluster",
+					Value:     "prod",
+					Volume:    50,
+					Timestamp: 1,
 				},
 				{
-					Name:   "cluster",
-					Value:  "dev",
-					Volume: 25,
+					Name:      "cluster",
+					Value:     "dev",
+					Volume:    25,
+					Timestamp: 1,
 				},
 				{
-					Name:   "job",
-					Value:  "prometheus",
-					Volume: 10,
+					Name:      "job",
+					Value:     "prometheus",
+					Volume:    10,
+					Timestamp: 1,
 				},
 				{
-					Name:   "job",
-					Value:  "loki",
-					Volume: 5,
+					Name:      "job",
+					Value:     "loki",
+					Volume:    5,
+					Timestamp: 1,
 				},
 			},
 			Limit: 5,
