@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
-
 	"github.com/grafana/loki/pkg/storage"
 )
 
@@ -100,18 +100,22 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 				{
 					strconv.FormatInt(now.Add(-48*time.Hour).UnixNano(), 10),
 					"lineA",
+					labels.Labels{}.String(),
 				},
 				{
 					strconv.FormatInt(now.Add(-48*time.Hour).UnixNano(), 10),
 					"lineB",
+					labels.Labels{}.String(),
 				},
 				{
 					strconv.FormatInt(now.Add(-time.Minute).UnixNano(), 10),
 					"lineC",
+					labels.Labels{}.String(),
 				},
 				{
 					strconv.FormatInt(now.Add(-time.Minute).UnixNano(), 10),
 					"lineD",
+					labels.Labels{}.String(),
 				},
 			},
 		})
