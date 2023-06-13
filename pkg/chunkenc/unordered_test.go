@@ -249,8 +249,8 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(), &headBlock{}
 	for i := 0; i < 100; i++ {
-		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), labels.Labels{{"foo", fmt.Sprint(99 - i)}}))
-		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{"foo", fmt.Sprint(i)}}))
+		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}))
+		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}}))
 	}
 
 	// turn to bytes
@@ -337,13 +337,13 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 				writes = append(writes, entry{
 					t:          ts,
 					s:          fmt.Sprint("line:", ts),
-					metaLabels: labels.Labels{{"foo", fmt.Sprint(ts)}},
+					metaLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}},
 				})
 			} else {
 				writes = append(writes, entry{
 					t:          int64(i),
 					s:          fmt.Sprint("line:", i),
-					metaLabels: labels.Labels{{"foo", fmt.Sprint(i)}},
+					metaLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}},
 				})
 			}
 		}
