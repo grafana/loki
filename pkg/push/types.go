@@ -105,12 +105,12 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	n1, err1 := StdTimeMarshalTo(m.Timestamp, dAtA[i-SizeOfStdTime(m.Timestamp):])
-	if err1 != nil {
-		return 0, err1
+	n7, err7 := StdTimeMarshalTo(m.Timestamp, dAtA[i-SizeOfStdTime(m.Timestamp):])
+	if err7 != nil {
+		return 0, err7
 	}
-	i -= n1
-	i = encodeVarintPush(dAtA, i, uint64(n1))
+	i -= n7
+	i = encodeVarintPush(dAtA, i, uint64(n7))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
