@@ -647,7 +647,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 		"ordered":   &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, b.Append(1, "foo", labels.Labels{{"foo", "bar"}}))
+			require.NoError(t, b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}}))
 			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
 
 			for eit.Next() {
