@@ -660,9 +660,9 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-  volumesByTs := map[int64]map[string]map[string]uint64{
-    through.UnixNano(): volumes,
-  }
+	volumesByTs := map[int64]map[string]map[string]uint64{
+		through.UnixNano(): volumes,
+	}
 	res := labelvolume.MapToLabelVolumeResponse(volumesByTs, int(req.Limit))
 	return res, nil
 }

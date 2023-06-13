@@ -747,7 +747,8 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		resp0 := responses[0].(*LabelVolumeResponse)
 		headers := make([]*definitions.PrometheusResponseHeader, len(resp0.Headers))
 		for i, header := range resp0.Headers {
-			headers[i] = &header
+			h := header
+			headers[i] = &h
 		}
 
 		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))

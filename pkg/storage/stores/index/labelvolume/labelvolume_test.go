@@ -3,8 +3,9 @@ package labelvolume
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_AddVolumes(t *testing.T) {
