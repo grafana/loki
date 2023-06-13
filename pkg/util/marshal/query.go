@@ -315,6 +315,8 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
+		s.WriteMore()
+		s.WriteString(e.MetadataLabels)
 		s.WriteArrayEnd()
 
 		s.Flush()

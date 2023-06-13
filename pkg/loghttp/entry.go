@@ -16,8 +16,9 @@ func init() {
 
 // Entry represents a log entry.  It includes a log message and the time it occurred at.
 type Entry struct {
-	Timestamp time.Time
-	Line      string
+	Timestamp      time.Time
+	Line           string
+	MetadataLabels string
 }
 
 func (e *Entry) UnmarshalJSON(data []byte) error {
@@ -46,6 +47,13 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 				return
 			}
 			e.Line = v
+		case 2: // metadataLabels
+			il, err := jsonparser.ParseString(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.MetadataLabels = il
 		}
 		i++
 	})
@@ -67,6 +75,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		i := 0
 		var ts time.Time
 		var line string
+		var metadataLabels string
 		ok := iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
 			var ok bool
 			switch i {
@@ -81,6 +90,13 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 					return false
 				}
 				return true
+			case 2:
+				metadataLabels = iter.ReadString()
+				i++
+				if iter.Error != nil {
+					return false
+				}
+				return true
 			default:
 				iter.ReportError("error reading entry", "array must contains 2 values")
 				return false
@@ -88,8 +104,9 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		})
 		if ok {
 			*((*[]Entry)(ptr)) = append(*((*[]Entry)(ptr)), Entry{
-				Timestamp: ts,
-				Line:      line,
+				Timestamp:      ts,
+				Line:           line,
+				MetadataLabels: metadataLabels,
 			})
 			return true
 		}
@@ -113,7 +130,7 @@ func readTimestamp(iter *jsoniter.Iterator) (time.Time, bool) {
 
 type EntryEncoder struct{}
 
-func (EntryEncoder) IsEmpty(_ unsafe.Pointer) bool {
+func (EntryEncoder) IsEmpty(ptr unsafe.Pointer) bool {
 	// we don't omit-empty with log entries.
 	return false
 }
@@ -126,6 +143,8 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteRaw(`"`)
 	stream.WriteMore()
 	stream.WriteStringWithHTMLEscaped(e.Line)
+	stream.WriteMore()
+	stream.WriteString(e.MetadataLabels)
 	stream.WriteArrayEnd()
 }
 

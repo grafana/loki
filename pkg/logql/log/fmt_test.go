@@ -676,10 +676,10 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"unixToTime milliseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1686641739000"}},
 			labels.Labels{
-				{Name: "bar", Value: "1257894000000"},
-				{Name: "foo", Value: "2009-11-10"},
+				{Name: "bar", Value: "1686641739000"},
+				{Name: "foo", Value: "2023-06-13"},
 			},
 		},
 		{
