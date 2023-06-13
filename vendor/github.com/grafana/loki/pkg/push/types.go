@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -17,8 +19,9 @@ type Stream struct {
 
 // Entry is a log entry with a timestamp.
 type Entry struct {
-	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	Timestamp      time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line           string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	MetadataLabels string    `protobuf:"bytes,3,opt,name=labels,proto3" json:"metadataLabels"`
 }
 
 func (m *Stream) Marshal() (dAtA []byte, err error) {
@@ -90,6 +93,13 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.MetadataLabels) > 0 {
+		i -= len(m.MetadataLabels)
+		copy(dAtA[i:], m.MetadataLabels)
+		i = encodeVarintPush(dAtA, i, uint64(len(m.MetadataLabels)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if len(m.Line) > 0 {
 		i -= len(m.Line)
 		copy(dAtA[i:], m.Line)
@@ -97,12 +107,12 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	n7, err7 := StdTimeMarshalTo(m.Timestamp, dAtA[i-SizeOfStdTime(m.Timestamp):])
-	if err7 != nil {
-		return 0, err7
+	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err1 != nil {
+		return 0, err1
 	}
-	i -= n7
-	i = encodeVarintPush(dAtA, i, uint64(n7))
+	i -= n1
+	i = encodeVarintPush(dAtA, i, uint64(n1))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -305,7 +315,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -340,6 +350,38 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Line = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataLabels", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataLabels = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -397,6 +439,10 @@ func (m *Entry) Size() (n int) {
 	l = SizeOfStdTime(m.Timestamp)
 	n += 1 + l + sovPush(uint64(l))
 	l = len(m.Line)
+	if l > 0 {
+		n += 1 + l + sovPush(uint64(l))
+	}
+	l = len(m.MetadataLabels)
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
@@ -459,6 +505,9 @@ func (m *Entry) Equal(that interface{}) bool {
 		return false
 	}
 	if m.Line != that1.Line {
+		return false
+	}
+	if m.MetadataLabels != that1.MetadataLabels {
 		return false
 	}
 	return true

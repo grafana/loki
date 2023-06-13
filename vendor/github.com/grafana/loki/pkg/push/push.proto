@@ -37,4 +37,8 @@ message EntryAdapter {
     (gogoproto.jsontag) = "ts"
   ];
   string line = 2 [(gogoproto.jsontag) = "line"];
+  // TODO: maybe we can use the labels.Labels type here?
+  //       So we can avoid the conversion to and from string.
+  //       Leaving it as string for now to be consistent with `labels` field in `StreamAdapter`.
+  string metadataLabels = 3 [(gogoproto.jsontag) = "metadataLabels"];
 }
