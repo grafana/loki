@@ -625,6 +625,8 @@ monitoring:
     enabled: true
     # -- Additional annotations for the `loki-canary` Daemonset
     annotations: {}
+    # -- Additional labels for each `loki-canary` pod
+    podLabels: {}
     # -- Additional CLI arguments for the `loki-canary' command
     extraArgs: []
     # -- Environment variables to add to the canary pods
