@@ -22,6 +22,7 @@ func TestLazyChunkIterator(t *testing.T) {
 		chunk    *LazyChunk
 		expected []logproto.Stream
 	}{
+		// TODO: Add tests for metadata labels.
 		{
 			newLazyChunk(logproto.Stream{
 				Labels: fooLabelsWithName.String(),
@@ -39,8 +40,9 @@ func TestLazyChunkIterator(t *testing.T) {
 					Hash:   fooLabels.Hash(),
 					Entries: []logproto.Entry{
 						{
-							Timestamp: from,
-							Line:      "1",
+							Timestamp:      from,
+							Line:           "1",
+							MetadataLabels: labels.Labels{}.String(),
 						},
 					},
 				},

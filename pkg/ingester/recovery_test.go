@@ -270,8 +270,9 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 			Labels: lbls.String(),
 			Entries: []logproto.Entry{
 				{
-					Timestamp: time.Unix(1, 0),
-					Line:      "line 1",
+					Timestamp:      time.Unix(1, 0),
+					Line:           "line 1",
+					MetadataLabels: labels.Labels{}.String(),
 				},
 			},
 			Hash: lbls.Hash(),

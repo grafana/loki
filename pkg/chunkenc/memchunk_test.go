@@ -75,57 +75,69 @@ func TestBlock(t *testing.T) {
 			cases := []struct {
 				ts  int64
 				str string
+				lbs string
 				cut bool
 			}{
 				{
 					ts:  1,
 					str: "hello, world!",
+					lbs: labels.Labels{}.String(),
 				},
 				{
 					ts:  2,
 					str: "hello, world2!",
+					lbs: `{app="myapp"}`,
 				},
 				{
 					ts:  3,
 					str: "hello, world3!",
+					lbs: `{a="a", b="b"}`,
 				},
 				{
 					ts:  4,
 					str: "hello, world4!",
+					lbs: labels.Labels{}.String(),
 				},
 				{
 					ts:  5,
 					str: "hello, world5!",
+					lbs: labels.Labels{}.String(),
 				},
 				{
 					ts:  6,
 					str: "hello, world6!",
+					lbs: labels.Labels{}.String(),
 					cut: true,
 				},
 				{
 					ts:  7,
 					str: "hello, world7!",
+					lbs: labels.Labels{}.String(),
 				},
 				{
 					ts:  8,
 					str: "hello, worl\nd8!",
+					lbs: `{a="a2", b="b"}`,
 				},
 				{
 					ts:  8,
 					str: "hello, world 8, 2!",
+					lbs: labels.Labels{}.String(),
 				},
 				{
 					ts:  8,
 					str: "hello, world 8, 3!",
+					lbs: labels.Labels{}.String(),
 				},
 				{
 					ts:  9,
 					str: "",
+					lbs: labels.Labels{}.String(),
 				},
 			}
 
 			for _, c := range cases {
-				require.NoError(t, chk.Append(logprotoEntry(c.ts, c.str)))
+				require.NoError(t, chk.Append(logprotoEntryWithMetadata(c.ts, c.str, c.lbs)))
 				if c.cut {
 					require.NoError(t, chk.cut())
 				}
@@ -139,6 +151,7 @@ func TestBlock(t *testing.T) {
 				e := it.Entry()
 				require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 				require.Equal(t, cases[idx].str, e.Line)
+				require.Equal(t, cases[idx].lbs, e.MetadataLabels)
 				idx++
 			}
 
@@ -146,6 +159,7 @@ func TestBlock(t *testing.T) {
 			require.NoError(t, it.Close())
 			require.Equal(t, len(cases), idx)
 
+			// TODO: Test labels and metadata labels here.
 			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 			idx = 0
 			for sampleIt.Next() {
@@ -830,7 +844,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string"); err != nil {
+				if err := h.Append(int64(i), "this is the append string", labels.Labels{{"foo", "foo"}}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -854,7 +868,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string"); err != nil {
+				if err := h.Append(int64(i), "this is the append string", labels.Labels{{"foo", "foo"}}); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -21,8 +21,9 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
 		require.Equal(t, logproto.Entry{
-			Timestamp: time.Unix(0, exp[i].t),
-			Line:      exp[i].s,
+			Timestamp:      time.Unix(0, exp[i].t),
+			Line:           exp[i].s,
+			MetadataLabels: labels.Labels{}.String(),
 		}, got.Entry())
 		i++
 	}
@@ -32,7 +33,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 func Test_forEntriesEarlyReturn(t *testing.T) {
 	hb := newUnorderedHeadBlock()
 	for i := 0; i < 10; i++ {
-		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i)))
+		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{"i", fmt.Sprint(i)}}))
 	}
 
 	// forward
@@ -43,7 +44,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, line string) error {
+		func(ts int64, _ string, _ labels.Labels) error {
 			forwardCt++
 			forwardStop = ts
 			if ts == 5 {
@@ -64,7 +65,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.BACKWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, line string) error {
+		func(ts int64, _ string, _ labels.Labels) error {
 			backwardCt++
 			backwardStop = ts
 			if ts == 5 {
@@ -84,80 +85,81 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		input, exp []entry
 		dir        logproto.Direction
 	}{
+		// TODO: add metaLabels?
 		{
 			desc: "simple forward",
 			input: []entry{
-				{0, "a"}, {1, "b"}, {2, "c"},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
 			},
 			exp: []entry{
-				{0, "a"}, {1, "b"}, {2, "c"},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
 			},
 		},
 		{
 			desc: "simple backward",
 			input: []entry{
-				{0, "a"}, {1, "b"}, {2, "c"},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
 			},
 			exp: []entry{
-				{2, "c"}, {1, "b"}, {0, "a"},
+				{2, "c", nil}, {1, "b", nil}, {0, "a", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "unordered forward",
 			input: []entry{
-				{1, "b"}, {0, "a"}, {2, "c"},
+				{1, "b", nil}, {0, "a", nil}, {2, "c", nil},
 			},
 			exp: []entry{
-				{0, "a"}, {1, "b"}, {2, "c"},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
 			},
 		},
 		{
 			desc: "unordered backward",
 			input: []entry{
-				{1, "b"}, {0, "a"}, {2, "c"},
+				{1, "b", nil}, {0, "a", nil}, {2, "c", nil},
 			},
 			exp: []entry{
-				{2, "c"}, {1, "b"}, {0, "a"},
+				{2, "c", nil}, {1, "b", nil}, {0, "a", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "ts collision forward",
 			input: []entry{
-				{0, "a"}, {0, "b"}, {1, "c"},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
 			},
 			exp: []entry{
-				{0, "a"}, {0, "b"}, {1, "c"},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
 			},
 		},
 		{
 			desc: "ts collision backward",
 			input: []entry{
-				{0, "a"}, {0, "b"}, {1, "c"},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
 			},
 			exp: []entry{
-				{1, "c"}, {0, "b"}, {0, "a"},
+				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "ts remove exact dupe forward",
 			input: []entry{
-				{0, "a"}, {0, "b"}, {1, "c"}, {0, "b"},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", nil},
 			},
 			exp: []entry{
-				{0, "a"}, {0, "b"}, {1, "c"},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
 			},
 			dir: logproto.FORWARD,
 		},
 		{
 			desc: "ts remove exact dupe backward",
 			input: []entry{
-				{0, "a"}, {0, "b"}, {1, "c"}, {0, "b"},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", nil},
 			},
 			exp: []entry{
-				{1, "c"}, {0, "b"}, {0, "a"},
+				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
@@ -165,7 +167,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock()
 			for _, e := range tc.input {
-				require.Nil(t, hb.Append(e.t, e.s))
+				require.Nil(t, hb.Append(e.t, e.s, e.metaLabels))
 			}
 
 			itr := hb.Iterator(
@@ -189,15 +191,16 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		input      []entry
 		exp        []entry
 	}{
+		// TODO: Add metaLabels?
 		{
 			desc: "simple",
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a"}, {1, "b"}, {2, "c"}, {3, "d"}, {4, "e"},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
 			},
 			exp: []entry{
-				{1, "b"}, {2, "c"}, {3, "d"},
+				{1, "b", nil}, {2, "c", nil}, {3, "d", nil},
 			},
 		},
 		{
@@ -205,10 +208,10 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a"}, {1, "b"}, {2, "c"}, {3, "d"}, {4, "e"},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
 			},
 			exp: []entry{
-				{3, "d"}, {2, "c"}, {1, "b"},
+				{3, "d", nil}, {2, "c", nil}, {1, "b", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
@@ -217,17 +220,17 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a"}, {2, "c"}, {1, "b"}, {4, "e"}, {3, "d"},
+				{0, "a", nil}, {2, "c", nil}, {1, "b", nil}, {4, "e", nil}, {3, "d", nil},
 			},
 			exp: []entry{
-				{1, "b"}, {2, "c"}, {3, "d"},
+				{1, "b", nil}, {2, "c", nil}, {3, "d", nil},
 			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock()
 			for _, e := range tc.input {
-				require.Nil(t, hb.Append(e.t, e.s))
+				require.Nil(t, hb.Append(e.t, e.s, e.metaLabels))
 			}
 
 			itr := hb.Iterator(
@@ -246,8 +249,8 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(), &headBlock{}
 	for i := 0; i < 100; i++ {
-		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i)))
-		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i)))
+		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), labels.Labels{{"foo", fmt.Sprint(99 - i)}}))
+		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{"foo", fmt.Sprint(i)}}))
 	}
 
 	// turn to bytes
@@ -291,23 +294,23 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	// current default block size of 256kb with 75b avg log lines =~ 5.2k lines/block
 	nWrites := (256 << 10) / 50
 
-	headBlockFn := func() func(int64, string) {
+	headBlockFn := func() func(int64, string, labels.Labels) {
 		hb := &headBlock{}
-		return func(ts int64, line string) {
-			_ = hb.Append(ts, line)
+		return func(ts int64, line string, metaLabels labels.Labels) {
+			_ = hb.Append(ts, line, metaLabels)
 		}
 	}
 
-	unorderedHeadBlockFn := func() func(int64, string) {
+	unorderedHeadBlockFn := func() func(int64, string, labels.Labels) {
 		hb := newUnorderedHeadBlock()
-		return func(ts int64, line string) {
-			_ = hb.Append(ts, line)
+		return func(ts int64, line string, metaLabels labels.Labels) {
+			_ = hb.Append(ts, line, metaLabels)
 		}
 	}
 
 	for _, tc := range []struct {
 		desc            string
-		fn              func() func(int64, string)
+		fn              func() func(int64, string, labels.Labels)
 		unorderedWrites bool
 	}{
 		{
@@ -332,13 +335,15 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			if tc.unorderedWrites {
 				ts := rnd.Int63()
 				writes = append(writes, entry{
-					t: ts,
-					s: fmt.Sprint("line:", ts),
+					t:          ts,
+					s:          fmt.Sprint("line:", ts),
+					metaLabels: labels.Labels{{"foo", fmt.Sprint(ts)}},
 				})
 			} else {
 				writes = append(writes, entry{
-					t: int64(i),
-					s: fmt.Sprint("line:", i),
+					t:          int64(i),
+					s:          fmt.Sprint("line:", i),
+					metaLabels: labels.Labels{{"foo", fmt.Sprint(i)}},
 				})
 			}
 		}
@@ -347,7 +352,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				writeFn := tc.fn()
 				for _, w := range writes {
-					writeFn(w.t, w.s)
+					writeFn(w.t, w.s, w.metaLabels)
 				}
 			}
 		})
@@ -642,7 +647,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 		"ordered":   &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, b.Append(1, "foo"))
+			require.NoError(t, b.Append(1, "foo", labels.Labels{{"foo", "bar"}}))
 			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
 
 			for eit.Next() {

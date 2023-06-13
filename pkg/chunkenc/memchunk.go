@@ -14,6 +14,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -31,8 +32,9 @@ const (
 	chunkFormatV1
 	chunkFormatV2
 	chunkFormatV3
+	chunkFormatV4
 
-	DefaultChunkFormat = chunkFormatV3 // the currently used chunk format
+	DefaultChunkFormat = chunkFormatV4 // the currently used chunk format
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
@@ -159,12 +161,12 @@ func (hb *headBlock) Reset() {
 
 func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
 
-func (hb *headBlock) Append(ts int64, line string) error {
+func (hb *headBlock) Append(ts int64, line string, metaLabels labels.Labels) error {
 	if !hb.IsEmpty() && hb.maxt > ts {
 		return ErrOutOfOrder
 	}
 
-	hb.entries = append(hb.entries, entry{ts, line})
+	hb.entries = append(hb.entries, entry{ts, line, metaLabels})
 	if hb.mint == 0 || hb.mint > ts {
 		hb.mint = ts
 	}
@@ -193,6 +195,19 @@ func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
 		inBuf.Write(encBuf[:n])
 
 		inBuf.WriteString(logEntry.s)
+
+		// Serialize metadata labels
+		n = binary.PutUvarint(encBuf, uint64(len(logEntry.metaLabels)))
+		inBuf.Write(encBuf[:n])
+		for _, l := range logEntry.metaLabels {
+			n = binary.PutUvarint(encBuf, uint64(len(l.Name)))
+			inBuf.Write(encBuf[:n])
+			inBuf.WriteString(l.Name)
+
+			n = binary.PutUvarint(encBuf, uint64(len(l.Value)))
+			inBuf.Write(encBuf[:n])
+			inBuf.WriteString(l.Value)
+		}
 	}
 
 	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
@@ -223,6 +238,13 @@ func (hb *headBlock) CheckpointSize() int {
 
 	for _, e := range hb.entries {
 		size += len(e.s)
+
+		size += binary.MaxVarintLen32                           // len of meta labels
+		size += (binary.MaxVarintLen32 * 2) * len(e.metaLabels) // len of name and value of each meta label
+		for _, l := range e.metaLabels {
+			size += len(l.Name)
+			size += len(l.Value)
+		}
 	}
 	return size
 }
@@ -265,6 +287,33 @@ func (hb *headBlock) CheckpointTo(w io.Writer) error {
 		if err != nil {
 			return errors.Wrap(err, "write headblock entry line")
 		}
+
+		// metadata
+		eb.putUvarint(len(entry.metaLabels))
+		_, err = w.Write(eb.get())
+		if err != nil {
+			return errors.Wrap(err, "write headBlock entry meta labels length")
+		}
+		eb.reset()
+		for _, l := range entry.metaLabels {
+			eb.putUvarint(len(l.Name))
+			eb.putUvarint(len(l.Value))
+			_, err = w.Write(eb.get())
+			if err != nil {
+				return errors.Wrap(err, "write headBlock entry meta label name and value length")
+			}
+			eb.reset()
+
+			_, err = io.WriteString(w, l.Name)
+			if err != nil {
+				return errors.Wrap(err, "write headBlock entry meta label name")
+			}
+			_, err = io.WriteString(w, l.Value)
+			if err != nil {
+				return errors.Wrap(err, "write headBlock entry meta label value")
+			}
+		}
+
 	}
 	return nil
 }
@@ -281,7 +330,7 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 		return errors.Wrap(db.err(), "verifying headblock header")
 	}
 	switch version {
-	case chunkFormatV1, chunkFormatV2, chunkFormatV3:
+	case chunkFormatV1, chunkFormatV2, chunkFormatV3, chunkFormatV4:
 	default:
 		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", version)
 	}
@@ -301,6 +350,26 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 		entry.t = db.varint64()
 		lineLn := db.uvarint()
 		entry.s = string(db.bytes(lineLn))
+
+		// TODO: Fix this:
+		//       At CheckpointTo we write the version with eb.putByte(byte(hb.Format())), which returns OrderedHeadBlockFmt (3)
+		//       but here we pretend to use the version to distinguish between V1-V4, which is not correct.
+		//       We should probably write both the version and the format.
+		//       See: https://raintank-corp.slack.com/archives/C029V4SSS9L/p1686046591132639
+		if true /*version >= chunkFormatV4*/ {
+			metaLn := db.uvarint()
+			entry.metaLabels = make(labels.Labels, metaLn)
+			for j := 0; j < metaLn && db.err() == nil; j++ {
+				var label labels.Label
+				nameLn := db.uvarint()
+				valueLn := db.uvarint()
+				label.Name = string(db.bytes(nameLn))
+				label.Value = string(db.bytes(valueLn))
+
+				entry.metaLabels[j] = label
+			}
+		}
+
 		hb.entries[i] = entry
 	}
 
@@ -318,7 +387,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	out := newUnorderedHeadBlock()
 
 	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s); err != nil {
+		if err := out.Append(e.t, e.s, e.metaLabels); err != nil {
 			return nil, err
 		}
 	}
@@ -326,8 +395,9 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 }
 
 type entry struct {
-	t int64
-	s string
+	t          int64
+	s          string
+	metaLabels labels.Labels
 }
 
 // NewMemChunk returns a new in-mem chunk.
@@ -366,7 +436,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	switch version {
 	case chunkFormatV1:
 		bc.encoding = EncGZIP
-	case chunkFormatV2, chunkFormatV3:
+	case chunkFormatV2, chunkFormatV3, chunkFormatV4:
 		// format v2+ has a byte for block encoding.
 		enc := Encoding(db.byte())
 		if db.err() != nil {
@@ -401,7 +471,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 
 		// Read offset and length.
 		blk.offset = db.uvarint()
-		if version == chunkFormatV3 {
+		if version >= chunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
@@ -460,7 +530,7 @@ func (c *MemChunk) BytesSize() int {
 		size += binary.MaxVarintLen64 // mint
 		size += binary.MaxVarintLen64 // maxt
 		size += binary.MaxVarintLen32 // offset
-		if c.format == chunkFormatV3 {
+		if c.format >= chunkFormatV3 {
 			size += binary.MaxVarintLen32 // uncompressed size
 		}
 		size += binary.MaxVarintLen32 // len(b)
@@ -534,7 +604,7 @@ func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
 		eb.putVarint64(b.mint)
 		eb.putVarint64(b.maxt)
 		eb.putUvarint(b.offset)
-		if c.format == chunkFormatV3 {
+		if c.format >= chunkFormatV3 {
 			eb.putUvarint(b.uncompressedSize)
 		}
 		eb.putUvarint(len(b.b))
@@ -674,7 +744,12 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	if err := c.head.Append(entryTimestamp, entry.Line); err != nil {
+	entryLabels, err := syntax.ParseLabels(entry.MetadataLabels)
+	if err != nil {
+		return err
+	}
+
+	if err := c.head.Append(entryTimestamp, entry.Line, entryLabels); err != nil {
 		return err
 	}
 
@@ -1024,8 +1099,9 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			streams[labels] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: time.Unix(0, e.t),
-			Line:      newLine,
+			Timestamp:      time.Unix(0, e.t),
+			Line:           newLine,
+			MetadataLabels: e.metaLabels.String(),
 		})
 	}
 
@@ -1125,6 +1201,9 @@ type bufferedIterator struct {
 	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
+	metaLabelsBuf      [][]byte // The buffer for a single entry's metadata labels.
+	currMetadataLabels [][]byte // The current labels.
+
 	closed bool
 }
 
@@ -1154,7 +1233,7 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, ok := si.moveNext()
+	ts, line, metaLabels, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
@@ -1165,11 +1244,12 @@ func (si *bufferedIterator) Next() bool {
 
 	si.currTs = ts
 	si.currLine = line
+	si.currMetadataLabels = metaLabels
 	return true
 }
 
 // moveNext moves the buffer to the next entry
-func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
+func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	var ts int64
 	var tWidth, lWidth, lineSize, lastAttempt int
 	for lWidth == 0 { // Read until both varints have enough bytes.
@@ -1178,14 +1258,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, false
+				return 0, nil, nil, false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, false
+				return 0, nil, nil, false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, false
+				return 0, nil, nil, false
 			}
 		}
 		var l uint64
@@ -1197,7 +1277,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, false
+		return 0, nil, nil, false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1208,7 +1288,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, false
+			return 0, nil, nil, false
 		}
 	}
 	si.buf = si.buf[:lineSize]
@@ -1228,10 +1308,110 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 				continue
 			}
 			si.err = err
-			return 0, nil, false
+			return 0, nil, nil, false
 		}
 	}
-	return ts, si.buf[:lineSize], true
+
+	// TODO: This is pretty similar to how we read the line size, and the metadata name and value sizes
+	//       Maybe we can extract it to a separate function and reuse it?
+	var labelsWidth, nLabels int
+	for labelsWidth == 0 { // Read until we have enough bytes for the labels.
+		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+		si.readBufValid += n
+		if err != nil {
+			if err != io.EOF {
+				si.err = err
+				return 0, nil, nil, false
+			}
+			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+				return 0, nil, nil, false
+			}
+			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+				si.err = fmt.Errorf("invalid data in chunk")
+				return 0, nil, nil, false
+			}
+		}
+		var l uint64
+		l, labelsWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
+		nLabels = int(l)
+		lastAttempt = si.readBufValid
+	}
+
+	// Shift down what is still left in the fixed-size read buffer, if any.
+	si.readBufValid = copy(si.readBuf[:], si.readBuf[labelsWidth:si.readBufValid])
+
+	// If not enough space for the labels, create a new buffer slice and put the old one back in the pool.
+	if nLabels*2 > cap(si.metaLabelsBuf) {
+		if si.metaLabelsBuf != nil {
+			for i := range si.metaLabelsBuf {
+				BytesBufferPool.Put(si.metaLabelsBuf[i])
+			}
+		}
+		si.metaLabelsBuf = make([][]byte, nLabels*2)
+	}
+
+	// Read all the label-value pairs, into the buffer slice.
+	for i := 0; i < nLabels*2; i++ {
+		// Read the length of the label.
+		var labelWidth, labelSize int
+		for labelWidth == 0 { // Read until we have enough bytes for the name.
+			n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+			si.readBufValid += n
+			if err != nil {
+				if err != io.EOF {
+					si.err = err
+					return 0, nil, nil, false
+				}
+				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+					return 0, nil, nil, false
+				}
+				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+					si.err = fmt.Errorf("invalid data in chunk")
+					return 0, nil, nil, false
+				}
+			}
+			var l uint64
+			l, labelWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
+			labelSize = int(l)
+			lastAttempt = si.readBufValid
+		}
+
+		// If the buffer is not yet initialize or too small, we get a new one.
+		if si.metaLabelsBuf[i] == nil || labelSize > cap(si.metaLabelsBuf[i]) {
+			// in case of a replacement we replace back the buffer in the pool
+			if si.metaLabelsBuf[i] != nil {
+				BytesBufferPool.Put(si.metaLabelsBuf[i])
+			}
+			si.metaLabelsBuf[i] = BytesBufferPool.Get(labelSize).([]byte)
+			if labelSize > cap(si.metaLabelsBuf[i]) {
+				si.err = fmt.Errorf("could not get a label buffer of size %d, actual %d", labelSize, cap(si.metaLabelsBuf[i]))
+				return 0, nil, nil, false
+			}
+		}
+
+		si.metaLabelsBuf[i] = si.metaLabelsBuf[i][:labelSize]
+		// Take however many bytes are left in the read buffer.
+		n := copy(si.metaLabelsBuf[i], si.readBuf[labelWidth:si.readBufValid])
+		// Shift down what is still left in the fixed-size read buffer, if any.
+		si.readBufValid = copy(si.readBuf[:], si.readBuf[labelWidth+n:si.readBufValid])
+
+		// Then process reading the label.
+		for n < labelSize {
+			r, err := si.reader.Read(si.metaLabelsBuf[i][n:labelSize])
+			n += r
+			if err != nil {
+				// We might get EOF after reading enough bytes to fill the buffer, which is OK.
+				// EOF and zero bytes read when the buffer isn't full is an error.
+				if err == io.EOF && r != 0 {
+					continue
+				}
+				si.err = err
+				return 0, nil, nil, false
+			}
+		}
+	}
+
+	return ts, si.buf[:lineSize], si.metaLabelsBuf[:nLabels*2], true
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
@@ -1254,6 +1434,14 @@ func (si *bufferedIterator) close() {
 		BytesBufferPool.Put(si.buf)
 		si.buf = nil
 	}
+
+	if si.metaLabelsBuf != nil {
+		for _, b := range si.metaLabelsBuf {
+			BytesBufferPool.Put(b)
+		}
+		si.metaLabelsBuf = nil
+	}
+
 	si.origBytes = nil
 }
 
@@ -1282,13 +1470,26 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
+		if len(e.currMetadataLabels)%2 != 0 {
+			e.err = fmt.Errorf("expected even number of metadata labels, got %d", len(e.currMetadataLabels))
+			return false
+		}
+
+		metaLabels := make(labels.Labels, len(e.currMetadataLabels)/2)
+		for i := 0; i < len(e.currMetadataLabels); i += 2 {
+			metaLabels[i/2].Name = string(e.currMetadataLabels[i])
+			metaLabels[i/2].Value = string(e.currMetadataLabels[i+1])
+		}
+
 		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
 		if !matches {
 			continue
 		}
+
+		e.currLabels = lbs
+		e.cur.MetadataLabels = metaLabels.String()
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
-		e.currLabels = lbs
 		return true
 	}
 	return false

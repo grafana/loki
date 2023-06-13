@@ -412,12 +412,14 @@ var (
 		Labels: labels.Labels{labels.Label{Name: "stream", Value: "1"}}.String(),
 		Entries: []logproto.Entry{
 			{
-				Timestamp: time.Unix(0, 1),
-				Line:      "1",
+				Timestamp:      time.Unix(0, 1),
+				Line:           "1",
+				MetadataLabels: labels.Labels{}.String(),
 			},
 			{
-				Timestamp: time.Unix(0, 2),
-				Line:      "2",
+				Timestamp:      time.Unix(0, 2),
+				Line:           "2",
+				MetadataLabels: labels.Labels{}.String(),
 			},
 		},
 	}
@@ -425,12 +427,14 @@ var (
 		Labels: labels.Labels{labels.Label{Name: "stream", Value: "2"}}.String(),
 		Entries: []logproto.Entry{
 			{
-				Timestamp: time.Unix(0, 1),
-				Line:      "3",
+				Timestamp:      time.Unix(0, 1),
+				Line:           "3",
+				MetadataLabels: labels.Labels{}.String(),
 			},
 			{
-				Timestamp: time.Unix(0, 2),
-				Line:      "4",
+				Timestamp:      time.Unix(0, 2),
+				Line:           "4",
+				MetadataLabels: labels.Labels{}.String(),
 			},
 		},
 	}
