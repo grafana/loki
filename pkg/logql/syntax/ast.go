@@ -742,7 +742,7 @@ func (l *LogfmtExpressionParser) Shardable() bool { return true }
 func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
 
 func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
-	return log.NewLogfmtExpressionParser(l.Expressions, l.Strict, l.KeepEmpty)
+	return log.NewLogfmtExpressionParser(l.Expressions, l.Strict)
 }
 
 func (l *LogfmtExpressionParser) String() string {

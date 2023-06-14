@@ -483,6 +483,7 @@ The logfmt parser also supports the following flags:
 - `--keep-empty` to retain standalone keys with empty value
 
     With `--keep-empty` flag set, the logfmt parser retains standalone keys(keys without a value) as labels with value set to empty string.
+    If the standalone key is explicitly requested using label extraction parameters, there is no need to add this flag.
 
 Note: flags if any should appear right after logfmt and before label extraction parameters
 ```

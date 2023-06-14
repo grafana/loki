@@ -436,7 +436,7 @@ func BenchmarkLogfmtParser(b *testing.B) {
 func BenchmarkLogfmtExpressionParser(b *testing.B) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("timestamp", "ts"),
-	}, false, false)
+	}, false)
 	if err != nil {
 		b.Fatal("cannot create new logfmt expression parser:", err.Error())
 	}

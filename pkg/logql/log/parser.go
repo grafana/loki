@@ -425,10 +425,9 @@ type LogfmtExpressionParser struct {
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 	strict      bool
-	keepEmpty   bool
 }
 
-func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict, keepEmpty bool) (*LogfmtExpressionParser, error) {
+func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
 	if len(expressions) == 0 {
 		return nil, fmt.Errorf("no logfmt expression provided")
 	}
@@ -450,7 +449,6 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict, keepEm
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 		strict:      strict,
-		keepEmpty:   keepEmpty,
 	}, nil
 }
 
@@ -507,10 +505,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		val := l.dec.Value()
 		if bytes.ContainsRune(val, utf8.RuneError) {
 			val = nil
-		}
-
-		if !l.keepEmpty && len(val) == 0 {
-			continue
 		}
 
 		for id, orig := range keys {

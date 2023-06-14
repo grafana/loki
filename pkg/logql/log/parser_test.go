@@ -179,7 +179,7 @@ func TestLabelShortCircuit(t *testing.T) {
 	}{
 		{"json", NewJSONParser(), simpleJsn},
 		{"logfmt", NewLogfmtParser(false, false), logFmt},
-		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false, false)), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
 	}
 	for _, tt := range tests {
 		lbs.Reset()
@@ -628,7 +628,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 	}{
 		{"json", NewJSONParser(), simpleJsn},
 		{"logfmt", NewLogfmtParser(false, false), logFmt},
-		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false, false)), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
@@ -727,7 +727,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 	}
 }
 
-func Test_logfmtParser_Parse(t *testing.T) {
+func TestLogfmtParser_parse(t *testing.T) {
 	tests := []struct {
 		name       string
 		line       []byte
@@ -967,6 +967,74 @@ func Test_logfmtParser_Parse(t *testing.T) {
 	})
 }
 
+func TestLogfmtParser_keepEmpty(t *testing.T) {
+	tests := []struct {
+		name      string
+		line      []byte
+		keepEmpty bool
+		lbs       labels.Labels
+		want      labels.Labels
+	}{
+		{
+			"without keep empty",
+			[]byte("foo bar=buzz"),
+			false,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"bar", "buzz"),
+		},
+		{
+			"with keep empty",
+			[]byte("foo bar=buzz"),
+			true,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "",
+				"bar", "buzz"),
+		},
+		{
+			"utf8 error rune without keep empty",
+			[]byte("foo=b�r bar=buzz"),
+			false,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"bar", "buzz"),
+		},
+		{
+			"utf8 error rune with keep empty",
+			[]byte("foo=b�r bar=buzz"),
+			true,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "",
+				"bar", "buzz"),
+		},
+	}
+
+	for _, strict := range []bool{false, true} {
+		name := "strict"
+		if !strict {
+			name = "not " + name
+		}
+
+		t.Run(name, func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+					b.Reset()
+
+					p := NewLogfmtParser(strict, tt.keepEmpty)
+					_, _ = p.Process(0, tt.line, b)
+
+					want := tt.want
+					sort.Sort(want)
+					require.Equal(t, want, b.LabelsResult().Labels())
+				})
+			}
+		})
+	}
+}
+
 func TestLogfmtExpressionParser(t *testing.T) {
 	testLine := []byte(`app=foo level=error spaces="value with ÜFT8👌" ts=2021-02-12T19:18:10.037940878Z`)
 
@@ -1077,7 +1145,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l, err := NewLogfmtExpressionParser(tt.expressions, false, false)
+			l, err := NewLogfmtExpressionParser(tt.expressions, false)
 			if err != nil {
 				t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
 			}
@@ -1104,7 +1172,7 @@ func TestXExpressionParserFailures(t *testing.T) {
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false, false)
+			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false)
 
 			require.NotNil(t, err)
 			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))
