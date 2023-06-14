@@ -13,7 +13,7 @@ import (
 	strings "strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -271,13 +271,13 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Through:  through,
 			Matchers: req.Query,
 		}, err
-	case LabelVolumeOp:
-		req, err := loghttp.ParseLabelVolumeQuery(r)
+	case SeriesVolumeOp:
+		req, err := loghttp.ParseSeriesVolumeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
-		return &logproto.LabelVolumeRequest{
+		return &logproto.VolumeRequest{
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
@@ -414,7 +414,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
-	case *logproto.LabelVolumeRequest:
+	case *logproto.VolumeRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
@@ -422,7 +422,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			"limit": []string{fmt.Sprintf("%d", request.Limit)},
 		}
 		u := &url.URL{
-			Path:     "/loki/api/v1/index/label_volume",
+			Path:     "/loki/api/v1/index/series_volume",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -500,12 +500,12 @@ func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangeb
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
-	case *logproto.LabelVolumeRequest:
-		var resp logproto.LabelVolumeResponse
+	case *logproto.VolumeRequest:
+		var resp logproto.VolumeResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
-		return &LabelVolumeResponse{
+		return &VolumeResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
@@ -637,8 +637,8 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
-	case *LabelVolumeResponse:
-		if err := marshal.WriteLabelVolumeResponseJSON(response.Response, &buf); err != nil {
+	case *VolumeResponse:
+		if err := marshal.WriteSeriesVolumeResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
 	default:
@@ -742,17 +742,17 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: &mergedIndexStats,
 			Headers:  headers,
 		}, nil
-	case *LabelVolumeResponse:
-		resp0 := responses[0].(*LabelVolumeResponse)
+	case *VolumeResponse:
+		resp0 := responses[0].(*VolumeResponse)
 		headers := resp0.Headers
 
-		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
+		resps := make([]*logproto.VolumeResponse, 0, len(responses))
 		for _, r := range responses {
-			resps = append(resps, r.(*LabelVolumeResponse).Response)
+			resps = append(resps, r.(*VolumeResponse).Response)
 		}
 
-		return &LabelVolumeResponse{
-			Response: labelvolume.Merge(resps, resp0.Response.Limit),
+		return &VolumeResponse{
+			Response: seriesvolume.Merge(resps, resp0.Response.Limit),
 			Headers:  headers,
 		}, nil
 

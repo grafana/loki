@@ -317,31 +317,31 @@ func (m *IndexStatsRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
-// Satisfy definitions.Request for LabelVolume
+// Satisfy definitions.Request for Volume
 
 // GetStart returns the start timestamp of the request in milliseconds.
-func (m *LabelVolumeRequest) GetStart() int64 {
+func (m *VolumeRequest) GetStart() int64 {
 	return int64(m.From)
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
-func (m *LabelVolumeRequest) GetEnd() int64 {
+func (m *VolumeRequest) GetEnd() int64 {
 	return int64(m.Through)
 }
 
 // GetStep returns the step of the request in milliseconds.
-func (m *LabelVolumeRequest) GetStep() int64 { return 0 }
+func (m *VolumeRequest) GetStep() int64 { return 0 }
 
 // GetQuery returns the query of the request.
-func (m *LabelVolumeRequest) GetQuery() string {
+func (m *VolumeRequest) GetQuery() string {
 	return m.Matchers
 }
 
 // GetCachingOptions returns the caching options.
-func (m *LabelVolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
-func (m *LabelVolumeRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
+func (m *VolumeRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
 	clone := *m
 	clone.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
 	clone.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
@@ -349,14 +349,14 @@ func (m *LabelVolumeRequest) WithStartEnd(startTime int64, endTime int64) defini
 }
 
 // WithQuery clone the current request with a different query.
-func (m *LabelVolumeRequest) WithQuery(query string) definitions.Request {
+func (m *VolumeRequest) WithQuery(query string) definitions.Request {
 	clone := *m
 	clone.Matchers = query
 	return &clone
 }
 
 // LogToSpan writes information about this request to an OpenTracing span
-func (m *LabelVolumeRequest) LogToSpan(sp opentracing.Span) {
+func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", m.GetQuery()),
 		otlog.String("start", timestamp.Time(m.GetStart()).String()),

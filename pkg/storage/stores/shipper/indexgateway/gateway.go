@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -298,18 +298,18 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
-func (g *Gateway) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (g *Gateway) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil && req.Matchers != labelvolume.MatchAny {
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
-	return g.indexQuerier.LabelVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
+	return g.indexQuerier.SeriesVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
 }
 
 type failingIndexClient struct{}
