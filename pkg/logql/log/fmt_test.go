@@ -657,47 +657,47 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		},
 		{
 			"unixToTime days",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" | toDateInZone "2006-01-02" "UTC" | date "2006-01-02" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" | toDateInZone "2006-01-02" "UTC" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
 			labels.Labels{
 				{Name: "bar", Value: "19503"},
-				{Name: "foo", Value: "2023-05-26"},
+				{Name: "foo", Value: "2023-05-26 00:00:00 +0000 UTC"},
 			},
 		},
 		{
 			"unixToTime seconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" | date "2006-01-02 15:04:05"}}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
 			labels.Labels{
 				{Name: "bar", Value: "1679577215"},
-				{Name: "foo", Value: "2023-03-23 13:13:35"},
+				{Name: "foo", Value: "2023-03-23 13:13:35 +0000 UTC"},
 			},
 		},
 		{
 			"unixToTime milliseconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" | date "2006-01-02 15:04:05"}}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
 			labels.Labels{
 				{Name: "bar", Value: "1257894000000"},
-				{Name: "foo", Value: "2009-11-10 23:00:00"},
+				{Name: "foo", Value: "2009-11-10 23:00:00 +0000 UTC"},
 			},
 		},
 		{
 			"unixToTime microseconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" | toDateInZone "2006-01-02" "UTC" | date "2006-01-02"}}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
 			labels.Labels{
 				{Name: "bar", Value: "1673798889902000"},
-				{Name: "foo", Value: "2023-01-15"},
+				{Name: "foo", Value: "2023-01-15 16:08:09 +0000 UTC"},
 			},
 		},
 		{
 			"unixToTime nanoseconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "Jan 2, 2006" | toDateInZone "Jan 2, 2006" "UTC" | date "Jan 2, 2006"}}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "Jan 2, 2006 15:04:05" | toDateInZone "Jan 2, 2006 15:04:05" "UTC" }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
 			labels.Labels{
 				{Name: "bar", Value: "1000000000000000000"},
-				{Name: "foo", Value: "Sep 9, 2001"},
+				{Name: "foo", Value: "2001-09-09 02:46:40 +0000 UTC"},
 			},
 		},
 	}
