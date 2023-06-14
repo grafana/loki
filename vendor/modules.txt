@@ -152,6 +152,9 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/o
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
+# github.com/DmitriyVTitov/size v1.5.0
+## explicit; go 1.14
+github.com/DmitriyVTitov/size
 # github.com/IBM/go-sdk-core/v5 v5.13.1
 ## explicit; go 1.18
 github.com/IBM/go-sdk-core/v5/core
@@ -525,9 +528,6 @@ github.com/drone/envsubst/path
 # github.com/dustin/go-humanize v1.0.1
 ## explicit; go 1.16
 github.com/dustin/go-humanize
-# github.com/dustin/go-probably v0.0.0-20180630015634-abe5a07e1c60
-## explicit
-github.com/dustin/go-probably
 # github.com/eapache/go-resiliency v1.3.0
 ## explicit; go 1.13
 github.com/eapache/go-resiliency/breaker

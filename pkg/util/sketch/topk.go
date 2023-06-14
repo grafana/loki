@@ -1,97 +1,69 @@
 package sketch
 
 import (
-	"hash/fnv"
-
-	"github.com/dustin/go-probably"
+	"sort"
 )
 
-// Topk is a structure that uses a Count Min Sketch, Min-Heap, and slice of int64,
+// Topk is a structure that uses a Count Min Sketch, Min-Heap, and map of string -> uint32,
 // the latter two of which have len(k), to track the top k events by frequency.
-// The reason the last element is a slice is that we're likely getting the TopK
-// where k is a small amount, say 10 or 100. In that case, traversing the slice to check
-// for existence of a particular hash isn't that much more costly than doing so via a map
-// and we avoid the extra memory overhead of using a map.
 type Topk struct {
-	max int
-	// slice of the hashes for things we've seen, tracks
-	currentTop []string
-	heap       *MinHeap
-	sketch     *probably.Sketch
+	max               int
+	currentTop        map[string]uint32
+	heap              MinHeap
+	sketch            *CountMinSketch
+	hashfuncs, rowlen int
 }
 
-func NewTopk(k int, numEntries int) (Topk, error) {
-	// this is the amount we're okay with overcounting by in the sketch
-	// for example; if a keys real value was 100 we might receive an estimate of 105
-	// but if a keys real value is 0 we also might receive an estimate of 5
-	diff := 5
-
-	// we need to choose the sketch size
-	// todo: derive the
-	eps := float64(diff) / float64(numEntries/2)
-
-	// we want a 99.9% probability of being within the range of exact value to exact value + diff
-	s, err := NewCountMinSketch(eps, 0.001)
+func NewCMSTopK(k, w, d int) (Topk, error) {
+	s, err := NewCountMinSketch(w, d)
 	if err != nil {
-		return Topk{}, err
+		return Topk{}, nil
 	}
 	return Topk{
 		max:        k,
-		currentTop: make([]string, 0, k),
-		heap:       NewMinHeap(k), //make heap,
+		currentTop: make(map[string]uint32, k),
+		heap:       MinHeap{},
 		sketch:     s,
 	}, nil
 }
 
 func (t *Topk) Observe(event string) {
-	t.sketch.Add(event, 1)
-	// todo: do we want to use our own sketch implementation, keep cast here, or change the heap types
-	estimate := int64(t.sketch.Count(event))
+	t.sketch.ConservativeIncrement(event)
+	estimate := t.sketch.Count(event)
+
 	// check if the event is already in the topk, if it is we should update it's count
 	if t.InTopk(event) {
-		t.heap.UpdateValue(event)
+		t.heap.update(event, estimate)
+		t.currentTop[event] = estimate
 		return
 	}
-	if len(t.currentTop) < t.heap.max {
-		t.heap.Push(event, estimate)
-		t.currentTop = append(t.currentTop, event)
+
+	if len(t.currentTop) < t.max {
+		t.heap.Push(&node{event: event, count: estimate})
+		t.currentTop[event] = estimate
 		return
 	}
-	if estimate > t.heap.min().count {
-		a := fnv.New64()
-		a.Write([]byte(event))
-		// remove the min event from the heap
+
+	if estimate > t.heap.Peek().(*node).count {
 		if len(t.currentTop) == t.max {
-			min := t.heap.Pop()
-			removeIndex := -1
-			for i, e := range t.currentTop {
-				if e == min.event {
-					removeIndex = i
-				}
-			}
-			// just to be safe, but this should never happen
-			if removeIndex > -1 {
-				t.currentTop[removeIndex] = t.currentTop[len(t.currentTop)-1]
-				t.currentTop = t.currentTop[:len(t.currentTop)-1]
+			min := t.heap.Pop().(*node)
+			// todo: refactor so we have a nicer way of not calling pop if the
+			// heap length is 0
+			if min != nil {
+				delete(t.currentTop, min.event)
 			}
 		}
 
-		insertEstimate := t.sketch.Count(event)
-		// insert the new event onto the heap
-		t.heap.Push(event, int64(insertEstimate))
-		t.currentTop = append(t.currentTop, event)
+		ele := node{event: event, count: estimate}
+		t.heap.Push(&ele)
+		t.currentTop[event] = estimate
 	}
 }
 
 // InTopk checks to see if an event is already in the topk for this query
 func (t *Topk) InTopk(event string) bool {
-	// check for the thing
-	for _, e := range t.currentTop {
-		if e == event {
-			return true
-		}
-	}
-	return false
+	_, ok := t.currentTop[event]
+	return ok
 }
 
 type element struct {
@@ -108,12 +80,13 @@ func (t TopKResult) Less(i, j int) bool { return t[i].Count > t[j].Count }
 func (t TopKResult) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
 
 func (t *Topk) Topk() TopKResult {
-	res := make(TopKResult, len(t.currentTop))
-	for i, e := range t.currentTop {
-		res[i] = element{
+	res := make(TopKResult, 0, len(t.currentTop))
+	for e := range t.currentTop {
+		res = append(res, element{
 			Event: e,
 			Count: int64(t.sketch.Count(e)),
-		}
+		})
 	}
-	return res
+	sort.Sort(res)
+	return res[:t.max]
 }
