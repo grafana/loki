@@ -1,4 +1,4 @@
-// Copyright 2021-2022 The NATS Authors
+// Copyright 2021-2023 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,7 +16,6 @@ package nats
 import (
 	"bufio"
 	"bytes"
-	"compress/flate"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
@@ -30,6 +29,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/klauspost/compress/flate"
 )
 
 type wsOpCode int
@@ -448,8 +449,12 @@ func (w *websocketWriter) Write(p []byte) (int, error) {
 			} else {
 				w.compressor.Reset(buf)
 			}
-			w.compressor.Write(p)
-			w.compressor.Close()
+			if n, err = w.compressor.Write(p); err != nil {
+				return n, err
+			}
+			if err = w.compressor.Flush(); err != nil {
+				return n, err
+			}
 			b := buf.Bytes()
 			p = b[:len(b)-4]
 		}
@@ -550,7 +555,7 @@ func wsFillFrameHeader(fh []byte, compressed bool, frameType wsOpCode, l int) (i
 
 func (nc *Conn) wsInitHandshake(u *url.URL) error {
 	compress := nc.Opts.Compression
-	tlsRequired := u.Scheme == wsSchemeTLS || nc.Opts.Secure || nc.Opts.TLSConfig != nil
+	tlsRequired := u.Scheme == wsSchemeTLS || nc.Opts.Secure || nc.Opts.TLSConfig != nil || nc.Opts.TLSCertCB != nil || nc.Opts.RootCAsCB != nil
 	// Do TLS here as needed.
 	if tlsRequired {
 		if err := nc.makeTLSConn(); err != nil {
@@ -692,6 +697,9 @@ func (nc *Conn) wsEnqueueCloseMsgLocked(status int, payload string) {
 	wr.cm = frame
 	wr.cmDone = true
 	nc.bw.flush()
+	if c := wr.compressor; c != nil {
+		c.Close()
+	}
 }
 
 func (nc *Conn) wsEnqueueControlMsg(needsLock bool, frameType wsOpCode, payload []byte) {

@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 
+	loki_nats "github.com/grafana/loki/pkg/nats"
+
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -80,7 +82,7 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+func New(cfg Config, natsCfg loki_nats.Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	queueMetrics := queue.NewMetrics("query_frontend", registerer)
 	f := &Frontend{
 		cfg:          cfg,
@@ -94,10 +96,14 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics)
+	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, queueMetrics)
+	if err != nil {
+		return nil, err
+	}
+	f.requestQueue = rq
+
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
-	var err error
 	f.subservices, err = services.NewManager(f.requestQueue, f.activeUsers)
 	if err != nil {
 		return nil, err

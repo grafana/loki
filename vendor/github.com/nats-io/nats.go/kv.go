@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nats-io/nats.go/internal/parser"
 )
 
 // KeyValueManager is used to manage KeyValue stores.
@@ -889,7 +891,7 @@ func (kv *kvs) Watch(keys string, opts ...WatchOpt) (KeyWatcher, error) {
 	w := &watcher{updates: make(chan KeyValueEntry, 256), ctx: o.ctx}
 
 	update := func(m *Msg) {
-		tokens, err := getMetadataFields(m.Reply)
+		tokens, err := parser.GetMetadataFields(m.Reply)
 		if err != nil {
 			return
 		}
@@ -907,7 +909,7 @@ func (kv *kvs) Watch(keys string, opts ...WatchOpt) (KeyWatcher, error) {
 				op = KeyValuePurge
 			}
 		}
-		delta := uint64(parseNum(tokens[ackNumPendingTokenPos]))
+		delta := parser.ParseNum(tokens[ackNumPendingTokenPos])
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if !o.ignoreDeletes || (op != KeyValueDelete && op != KeyValuePurge) {
@@ -915,8 +917,8 @@ func (kv *kvs) Watch(keys string, opts ...WatchOpt) (KeyWatcher, error) {
 				bucket:   kv.name,
 				key:      subj,
 				value:    m.Data,
-				revision: uint64(parseNum(tokens[ackStreamSeqTokenPos])),
-				created:  time.Unix(0, parseNum(tokens[ackTimestampSeqTokenPos])),
+				revision: parser.ParseNum(tokens[ackStreamSeqTokenPos]),
+				created:  time.Unix(0, int64(parser.ParseNum(tokens[ackTimestampSeqTokenPos]))),
 				delta:    delta,
 				op:       op,
 			}

@@ -1110,7 +1110,7 @@ func (js *js) getMsg(name string, mreq *apiMsgGetRequest, opts ...JSOpt) (*RawSt
 
 	var hdr Header
 	if len(msg.Header) > 0 {
-		hdr, err = decodeHeadersMsg(msg.Header)
+		hdr, err = DecodeHeadersMsg(msg.Header)
 		if err != nil {
 			return nil, err
 		}

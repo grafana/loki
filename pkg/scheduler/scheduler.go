@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
@@ -114,7 +115,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, natsCfg nats.Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
@@ -124,6 +125,12 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 	}
 
 	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
+
+	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, queueMetrics)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
@@ -133,7 +140,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 		connectedFrontends: map[string]*connectedFrontend{},
 		queueMetrics:       queueMetrics,
 		ringManager:        ringManager,
-		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
+		requestQueue:       rq,
 	}
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
@@ -172,7 +179,6 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 		s.shouldRun.Store(true)
 	}
 
-	var err error
 	s.subservices, err = services.NewManager(svcs...)
 	if err != nil {
 		return nil, err

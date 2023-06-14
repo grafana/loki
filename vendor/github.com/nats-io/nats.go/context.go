@@ -136,9 +136,8 @@ func (s *Subscription) nextMsgWithContext(ctx context.Context, pullSubInternal, 
 		}
 		if err := s.processNextMsgDelivered(msg); err != nil {
 			return nil, err
-		} else {
-			return msg, nil
 		}
+		return msg, nil
 	default:
 		// If internal and we don't want to wait, signal that there is no
 		// message in the internal queue.

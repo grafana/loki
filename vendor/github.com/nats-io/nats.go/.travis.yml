@@ -5,6 +5,7 @@ go:
 go_import_path: github.com/nats-io/nats.go
 install:
 - go get -t ./...
+- curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
 - if [[ "$TRAVIS_GO_VERSION" =~ 1.20 ]]; then
     go install github.com/mattn/goveralls@latest;
     go install github.com/wadey/gocovmerge@latest;
@@ -18,6 +19,7 @@ before_script:
     find . -type f -name "*.go" | xargs misspell -error -locale US;
     GOFLAGS="-mod=mod -modfile=go_test.mod" staticcheck ./...;
   fi
+- golangci-lint run ./jetstream/...
 script:
 - go test -modfile=go_test.mod -v -run=TestNoRace -p=1 ./... --failfast -vet=off
 - if [[ "$TRAVIS_GO_VERSION" =~ 1.20 ]]; then ./scripts/cov.sh TRAVIS; else go test -modfile=go_test.mod -race -v -p=1 ./... --failfast -vet=off; fi

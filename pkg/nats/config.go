@@ -12,7 +12,7 @@ type Config struct {
 	ClientPort      int    `yaml:"client_port"`
 	TraceLogging    bool   `yaml:"trace_logging"`
 	DataPath        string `yaml:"data_path"`
-	PushStreams     int    `yaml:"push_streams"`
+	QueryStreams    int    `yaml:"query_streams"`
 
 	Cluster bool `yaml:"-"`
 }
@@ -23,5 +23,5 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ClientPort, "nats.client-port", 4222, "NATS client port.")
 	f.BoolVar(&cfg.TraceLogging, "nats.trace-logging", false, "Enable NATS trace logging.")
 	f.StringVar(&cfg.DataPath, "nats.data-path", "/tmp/nats/", "NATS data path.")
-	f.IntVar(&cfg.PushStreams, "nats.push-streams", 16, "Number of streams to push to NATS.")
+	f.IntVar(&cfg.QueryStreams, "nats.query-streams", 16, "Number of streams to push to NATS.")
 }

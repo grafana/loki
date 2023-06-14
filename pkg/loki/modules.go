@@ -792,6 +792,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
 		combinedCfg,
 		scheduler.SafeReadRing(t.querySchedulerRingManager),
+		t.Cfg.NATS,
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
@@ -1238,7 +1239,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
-	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, t.querySchedulerRingManager, prometheus.DefaultRegisterer)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Cfg.NATS, t.Overrides, util_log.Logger, t.querySchedulerRingManager, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

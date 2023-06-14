@@ -31,6 +31,7 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 )
@@ -127,9 +128,10 @@ func TestFrontendCheckReady(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			qm := queue.NewMetrics("query_frontend", nil)
+			q, _ := queue.NewRequestQueue(5, 0, loki_nats.Config{}, qm)
 			f := &Frontend{
 				log:          log.NewNopLogger(),
-				requestQueue: queue.NewRequestQueue(5, 0, qm),
+				requestQueue: q,
 			}
 			for i := 0; i < tt.connectedClients; i++ {
 				f.requestQueue.RegisterQuerierConnection("test")
@@ -239,7 +241,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	v1, err := New(config, limits{}, logger, reg)
+	v1, err := New(config, loki_nats.Config{}, limits{}, logger, reg)
 	require.NoError(t, err)
 	require.NotNil(t, v1)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))

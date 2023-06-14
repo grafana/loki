@@ -120,7 +120,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.55
 	github.com/nats-io/nats-server/v2 v2.9.16-0.20230404221524-d14968cb4fac
-	github.com/nats-io/nats.go v1.25.0
+	github.com/nats-io/nats.go v1.27.0
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204

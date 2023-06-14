@@ -265,5 +265,5 @@ func (c *EncodedConn) Drain() error {
 
 // LastError reports the last error encountered via the Connection.
 func (c *EncodedConn) LastError() error {
-	return c.Conn.err
+	return c.Conn.LastError()
 }

@@ -29,7 +29,7 @@ When using or transitioning to Go modules support:
 ```bash
 # Go client latest or explicit version
 go get github.com/nats-io/nats.go/@latest
-go get github.com/nats-io/nats.go/@v1.25.0
+go get github.com/nats-io/nats.go/@v1.27.0
 
 # For latest NATS Server, add /v2 at the end
 go get github.com/nats-io/nats-server/v2
@@ -91,6 +91,13 @@ nc.Close()
 ```
 
 ## JetStream Basic Usage
+
+> __NOTE__
+>
+> We encourage you to try out a new, simplified version on JetStream API.
+> The new API is currently in preview and is available under `jetstream` package.
+>
+> You can find more information on the new API [here](https://github.com/nats-io/nats.go/blob/main/jetstream/README.md)
 
 ```go
 import "github.com/nats-io/nats.go"
