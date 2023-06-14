@@ -2,11 +2,14 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +19,7 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go/jetstream"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -478,6 +482,28 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	// Make sure to cancel request at the end to cleanup resources.
 	defer s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID)
 
+	url, err := url.Parse(req.request.Url)
+	if err != nil {
+		return err
+	}
+
+	queryParams := url.Query()
+	isAsync, err := strconv.ParseBool(queryParams.Get("async"))
+	if err != nil {
+		return err
+	}
+
+	if isAsync {
+		ack, err := s.requestQueue.PublishAsyncQueryRequest(req.ctx, req)
+		if err != nil {
+			return err
+		}
+
+		s.forwardAsyncAckToFronend(req.ctx, req, ack)
+
+		return nil
+	}
+
 	// Handle the stream sending & receiving on a goroutine so we can
 	// monitoring the contexts in a select and cancel things appropriately.
 	errCh := make(chan error, 1)
@@ -513,6 +539,50 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			s.forwardErrorToFrontend(req.ctx, req, err)
 		}
 		return err
+	}
+}
+
+func (s *Scheduler) forwardAsyncAckToFronend(ctx context.Context, req *schedulerRequest, ack *jetstream.PubAck) {
+	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
+		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+		middleware.ClientUserHeaderInterceptor,
+	},
+		nil)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report async ack", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return
+	}
+
+	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return
+	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	b, err := json.Marshal(ack)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to marshal async ack to JSON", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return
+	}
+
+	client := frontendv2pb.NewFrontendForQuerierClient(conn)
+
+	userCtx := user.InjectOrgID(ctx, req.tenantID)
+	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
+		QueryID: req.queryID,
+		HttpResponse: &httpgrpc.HTTPResponse{
+			Code: http.StatusAccepted,
+			Body: b,
+		},
+	})
+
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to forward async ack to frontend", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return
 	}
 }
 

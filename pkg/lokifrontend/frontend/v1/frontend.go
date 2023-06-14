@@ -2,9 +2,12 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -228,11 +231,48 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			continue
 		}
 
+		url, err := url.Parse(req.request.Url)
+		if err != nil {
+			return err
+		}
+
+		queryParams := url.Query()
+		isAsync, err := strconv.ParseBool(queryParams.Get("async"))
+		if err != nil {
+			return err
+		}
+
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
 		resps := make(chan *frontendv1pb.ClientToFrontend, 1)
 		errs := make(chan error, 1)
 		go func() {
+			if isAsync {
+				ack, err := f.requestQueue.PublishAsyncQueryRequest(req.originalCtx, req)
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				b, err := json.Marshal(ack)
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				// Build a fake response for returning the jetstream ack here
+				resp := &frontendv1pb.ClientToFrontend{
+					HttpResponse: &httpgrpc.HTTPResponse{
+						Code: http.StatusAccepted,
+						Body: b,
+					},
+				}
+
+				resps <- resp
+
+				return
+			}
+
 			err = server.Send(&frontendv1pb.FrontendToClient{
 				Type:         frontendv1pb.HTTP_REQUEST,
 				HttpRequest:  req.request,

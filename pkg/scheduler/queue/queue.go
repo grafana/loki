@@ -62,7 +62,7 @@ type RequestQueue struct {
 	// Nats
 	natsConnProvider *loki_nats.ConnProvider
 	conn             *nats.Conn
-	stream           jetstream.Stream
+	stream           jetstream.JetStream
 
 	connectedQuerierWorkers *atomic.Int32
 
@@ -260,7 +260,7 @@ func (q *RequestQueue) starting(ctx context.Context) error {
 	}
 	q.conn = conn
 
-	stream, err := q.createOrUpdateStream(ctx, "query", "query.*")
+	stream, err := q.createJetStream(ctx, "query", "query.*")
 	if err != nil {
 		return err
 	}
@@ -269,33 +269,41 @@ func (q *RequestQueue) starting(ctx context.Context) error {
 	return nil
 }
 
-func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string) (jetstream.Stream, error) {
+func (q *RequestQueue) createJetStream(ctx context.Context, name, sb string) (jetstream.JetStream, error) {
 	js, err := jetstream.New(q.conn)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
 
-	opts := jetstream.StreamConfig{
-		Name:      name,
-		Subjects:  []string{sb},
-		Replicas:  3,
-		MaxAge:    4 * time.Hour,
-		Retention: jetstream.LimitsPolicy,
-		Discard:   jetstream.DiscardOld,
+	// opts := jetstream.StreamConfig{
+	//	Name:      name,
+	//	Subjects:  []string{sb},
+	//	Replicas:  3,
+	//	MaxAge:    4 * time.Hour,
+	//	Retention: jetstream.LimitsPolicy,
+	//	Discard:   jetstream.DiscardOld,
+	// }
+
+	// s, err := js.UpdateStream(ctx, opts)
+	// if err != nil {
+	//	if err == jetstream.ErrStreamNotFound {
+	//		s, err := js.CreateStream(ctx, opts)
+	//		if err != nil {
+	//			return nil, errors.Wrap(err, "failed to add stream")
+	//		}
+	//		return s, nil
+	//	}
+	//	return nil, errors.Wrap(err, "failed to update stream")
+	// }
+	return js, nil
+}
+
+func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request) (*jetstream.PubAck, error) {
+	if q.stream == nil {
+		return nil, nil
 	}
 
-	s, err := js.UpdateStream(ctx, opts)
-	if err != nil {
-		if err == jetstream.ErrStreamNotFound {
-			s, err := js.CreateStream(ctx, opts)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to add stream")
-			}
-			return s, nil
-		}
-		return nil, errors.Wrap(err, "failed to update stream")
-	}
-	return s, nil
+	return q.stream.Publish(ctx, "query", nil)
 }
 
 func (q *RequestQueue) stopping(_ error) error {
