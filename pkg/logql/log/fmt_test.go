@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -498,6 +499,14 @@ func newMustLineFormatter(tmpl string) *LineFormatter {
 }
 
 func Test_labelsFormatter_Format(t *testing.T) {
+	// These variables are used to test unixToTime.
+	// They resolve to the local timezone so it works everywhere.
+	epoch_day_19503 := time.Unix(19503*86400, 0)
+	epoch_seconds_1679577215 := time.Unix(1679577215, 0)
+	epoch_milliseconds_1257894000000 := time.UnixMilli(1257894000000)
+	epoch_microseconds_1673798889902000 := time.UnixMicro(1673798889902000)
+	epoch_nanoseconds_1000000000000000000 := time.Unix(0, 1000000000000000000)
+
 	tests := []struct {
 		name  string
 		fmter *LabelsFormatter
@@ -657,47 +666,47 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		},
 		{
 			"unixToTime days",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02" | toDateInZone "2006-01-02" "UTC" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
 			labels.Labels{
 				{Name: "bar", Value: "19503"},
-				{Name: "foo", Value: "2023-05-26 00:00:00 +0000 UTC"},
+				{Name: "foo", Value: epoch_day_19503.String()},
 			},
 		},
 		{
 			"unixToTime seconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
 			labels.Labels{
 				{Name: "bar", Value: "1679577215"},
-				{Name: "foo", Value: "2023-03-23 13:13:35 +0000 UTC"},
+				{Name: "foo", Value: epoch_seconds_1679577215.String()},
 			},
 		},
 		{
 			"unixToTime milliseconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
 			labels.Labels{
 				{Name: "bar", Value: "1257894000000"},
-				{Name: "foo", Value: "2009-11-10 23:00:00 +0000 UTC"},
+				{Name: "foo", Value: epoch_milliseconds_1257894000000.String()},
 			},
 		},
 		{
 			"unixToTime microseconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "2006-01-02 15:04:05" | toDateInZone "2006-01-02 15:04:05" "UTC" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
 			labels.Labels{
 				{Name: "bar", Value: "1673798889902000"},
-				{Name: "foo", Value: "2023-01-15 16:08:09 +0000 UTC"},
+				{Name: "foo", Value: epoch_microseconds_1673798889902000.String()},
 			},
 		},
 		{
 			"unixToTime nanoseconds",
-			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime | date "Jan 2, 2006 15:04:05" | toDateInZone "Jan 2, 2006 15:04:05" "UTC" }}`)}),
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
 			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
 			labels.Labels{
 				{Name: "bar", Value: "1000000000000000000"},
-				{Name: "foo", Value: "2001-09-09 02:46:40 +0000 UTC"},
+				{Name: "foo", Value: epoch_nanoseconds_1000000000000000000.String()},
 			},
 		},
 	}
