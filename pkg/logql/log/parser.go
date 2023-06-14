@@ -284,18 +284,20 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtParser struct {
-	strict bool
-	dec    *logfmt.Decoder
-	keys   internedStringSet
+	strict    bool
+	keepEmpty bool
+	dec       *logfmt.Decoder
+	keys      internedStringSet
 }
 
 // NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
 // Each keyval is extracted into a respective label.
-func NewLogfmtParser(strict bool) *LogfmtParser {
+func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 	return &LogfmtParser{
-		strict: strict,
-		dec:    logfmt.NewDecoder(nil),
-		keys:   internedStringSet{},
+		strict:    strict,
+		keepEmpty: keepEmpty,
+		dec:       logfmt.NewDecoder(nil),
+		keys:      internedStringSet{},
 	}
 }
 
@@ -337,7 +339,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		val := l.dec.Value()
-		if len(val) == 0 {
+		if !l.keepEmpty && len(val) == 0 {
 			continue
 		}
 
@@ -423,9 +425,10 @@ type LogfmtExpressionParser struct {
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 	strict      bool
+	keepEmpty   bool
 }
 
-func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
+func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict, keepEmpty bool) (*LogfmtExpressionParser, error) {
 	if len(expressions) == 0 {
 		return nil, fmt.Errorf("no logfmt expression provided")
 	}
@@ -447,6 +450,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
 		strict:      strict,
+		keepEmpty:   keepEmpty,
 	}, nil
 }
 
@@ -499,8 +503,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		if !ok {
 			continue
 		}
+
 		val := l.dec.Value()
-		if len(val) == 0 {
+		if !l.keepEmpty && len(val) == 0 {
+			continue
+		}
+
+		if bytes.ContainsRune(val, utf8.RuneError) {
 			continue
 		}
 
@@ -509,10 +518,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				key = id
 				break
 			}
-		}
-
-		if bytes.ContainsRune(val, utf8.RuneError) {
-			continue
 		}
 
 		if _, ok := l.expressions[key]; ok {

@@ -145,7 +145,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__",
 			[]Stage{
-				NewLogfmtParser(true),
+				NewLogfmtParser(true, false),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -182,7 +182,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__ with matching value",
 			[]Stage{
-				NewLogfmtParser(true),
+				NewLogfmtParser(true, false),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -237,7 +237,7 @@ func Benchmark_Pipeline(b *testing.B) {
 
 	stages := []Stage{
 		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
-		NewLogfmtParser(false),
+		NewLogfmtParser(false, false),
 		NewAndLabelFilter(
 			NewDurationLabelFilter(LabelFilterGreaterThan, "duration", 10*time.Millisecond),
 			NewNumericLabelFilter(LabelFilterEqual, "status", 200.0),
@@ -430,13 +430,13 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkLogfmtParser(b *testing.B) {
-	logfmtBenchmark(b, NewLogfmtParser(false))
+	logfmtBenchmark(b, NewLogfmtParser(false, false))
 }
 
 func BenchmarkLogfmtExpressionParser(b *testing.B) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("timestamp", "ts"),
-	}, false)
+	}, false, false)
 	if err != nil {
 		b.Fatal("cannot create new logfmt expression parser:", err.Error())
 	}

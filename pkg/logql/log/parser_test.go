@@ -138,7 +138,7 @@ func TestKeyShortCircuit(t *testing.T) {
 	}{
 		{"json", jsonLine, NewJSONParser(), labels.MustNewMatcher(labels.MatchEqual, "response_latency_seconds", "nope")},
 		{"unpack", packedLike, NewUnpackParser(), labels.MustNewMatcher(labels.MatchEqual, "pod", "nope")},
-		{"logfmt", logfmtLine, NewLogfmtParser(false), labels.MustNewMatcher(labels.MatchEqual, "info", "nope")},
+		{"logfmt", logfmtLine, NewLogfmtParser(false, false), labels.MustNewMatcher(labels.MatchEqual, "info", "nope")},
 		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
 		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
 	} {
@@ -178,8 +178,8 @@ func TestLabelShortCircuit(t *testing.T) {
 		line []byte
 	}{
 		{"json", NewJSONParser(), simpleJsn},
-		{"logfmt", NewLogfmtParser(false), logFmt},
-		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
+		{"logfmt", NewLogfmtParser(false, false), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false, false)), logFmt},
 	}
 	for _, tt := range tests {
 		lbs.Reset()
@@ -567,7 +567,7 @@ func Benchmark_Parser(b *testing.B) {
 		{"jsonParser-not json line", nginxline, NewJSONParser(), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
 		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
 		{"unpack-not json line", nginxline, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
-		{"logfmt", logfmtLine, NewLogfmtParser(false), []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
+		{"logfmt", logfmtLine, NewLogfmtParser(false, false), []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
 		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
 		{"regex status digits", nginxline, mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)), []string{"statuscode"}, labels.MustNewMatcher(labels.MatchEqual, "status_code", "nope")},
 		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
@@ -627,8 +627,8 @@ func BenchmarkKeyExtraction(b *testing.B) {
 		line []byte
 	}{
 		{"json", NewJSONParser(), simpleJsn},
-		{"logfmt", NewLogfmtParser(false), logFmt},
-		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
+		{"logfmt", NewLogfmtParser(false, false), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false, false)), logFmt},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
@@ -937,7 +937,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 	}
 
 	{
-		p := NewLogfmtParser(false)
+		p := NewLogfmtParser(false, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
@@ -949,7 +949,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 	}
 
 	t.Run("strict", func(t *testing.T) {
-		p := NewLogfmtParser(true)
+		p := NewLogfmtParser(true, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
@@ -1077,7 +1077,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l, err := NewLogfmtExpressionParser(tt.expressions, false)
+			l, err := NewLogfmtExpressionParser(tt.expressions, false, false)
 			if err != nil {
 				t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
 			}
@@ -1104,7 +1104,7 @@ func TestXExpressionParserFailures(t *testing.T) {
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false)
+			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false, false)
 
 			require.NotNil(t, err)
 			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))

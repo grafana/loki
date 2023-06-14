@@ -387,12 +387,24 @@ func (e *LineFilterExpr) Stage() (log.Stage, error) {
 }
 
 type LogfmtParserExpr struct {
-	Strict bool
+	Strict    bool
+	KeepEmpty bool
+
 	implicit
 }
 
-func newLogfmtParserExpr(strict bool) *LogfmtParserExpr {
-	return &LogfmtParserExpr{Strict: strict}
+func newLogfmtParserExpr(flags []string) *LogfmtParserExpr {
+	e := LogfmtParserExpr{}
+	for _, f := range flags {
+		switch f {
+		case OpStrict:
+			e.Strict = true
+		case OpKeepEmpty:
+			e.KeepEmpty = true
+		}
+	}
+
+	return &e
 }
 
 func (e *LogfmtParserExpr) Shardable() bool { return true }
@@ -400,7 +412,7 @@ func (e *LogfmtParserExpr) Shardable() bool { return true }
 func (e *LogfmtParserExpr) Walk(f WalkFn) { f(e) }
 
 func (e *LogfmtParserExpr) Stage() (log.Stage, error) {
-	return log.NewLogfmtParser(e.Strict), nil
+	return log.NewLogfmtParser(e.Strict, e.KeepEmpty), nil
 }
 
 func (e *LogfmtParserExpr) String() string {
@@ -411,7 +423,12 @@ func (e *LogfmtParserExpr) String() string {
 
 	if e.Strict {
 		sb.WriteString(" ")
-		sb.WriteString("--strict")
+		sb.WriteString(OpStrict)
+	}
+
+	if e.KeepEmpty {
+		sb.WriteString(" ")
+		sb.WriteString(OpKeepEmpty)
 	}
 
 	return sb.String()
@@ -696,17 +713,27 @@ type internedStringSet map[string]struct {
 }
 
 type LogfmtExpressionParser struct {
-	Expressions []log.LabelExtractionExpr
-	Strict      bool
+	Expressions       []log.LabelExtractionExpr
+	Strict, KeepEmpty bool
 
 	implicit
 }
 
-func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr, strict bool) *LogfmtExpressionParser {
-	return &LogfmtExpressionParser{
+func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr, flags []string) *LogfmtExpressionParser {
+	e := LogfmtExpressionParser{
 		Expressions: expressions,
-		Strict:      strict,
 	}
+
+	for _, flag := range flags {
+		switch flag {
+		case OpStrict:
+			e.Strict = true
+		case OpKeepEmpty:
+			e.KeepEmpty = true
+		}
+	}
+
+	return &e
 }
 
 func (l *LogfmtExpressionParser) Shardable() bool { return true }
@@ -714,15 +741,22 @@ func (l *LogfmtExpressionParser) Shardable() bool { return true }
 func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
 
 func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
-	return log.NewLogfmtExpressionParser(l.Expressions, l.Strict)
+	return log.NewLogfmtExpressionParser(l.Expressions, l.Strict, l.KeepEmpty)
 }
 
 func (l *LogfmtExpressionParser) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
 	if l.Strict {
-		sb.WriteString("--strict ")
+		sb.WriteString(OpStrict)
+		sb.WriteString(" ")
 	}
+
+	if l.KeepEmpty {
+		sb.WriteString(OpKeepEmpty)
+		sb.WriteString(" ")
+	}
+
 	for i, exp := range l.Expressions {
 		sb.WriteString(exp.Identifier)
 		sb.WriteString("=")
@@ -952,7 +986,8 @@ const (
 	OpDrop = "drop"
 
 	// parser flags
-	OpStrict = "--strict"
+	OpStrict    = "--strict"
+	OpKeepEmpty = "--keep-empty"
 )
 
 func IsComparisonOperator(op string) bool {

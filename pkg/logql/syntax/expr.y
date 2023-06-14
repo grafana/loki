@@ -43,6 +43,7 @@ import (
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
   DistinctLabel           []string
+  ParserFlags             []string
   DistinctFilter          *DistinctFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
@@ -108,6 +109,7 @@ import (
 %type <LineFilter>            lineFilter
 %type <DistinctFilter>        distinctFilter
 %type <DistinctLabel>         distinctLabel
+%type <ParserFlags>           parserFlags
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
 %type <DropLabelsExpr>        dropLabelsExpr
@@ -126,14 +128,14 @@ import (
 %type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
-%token <str>      IDENTIFIER STRING NUMBER
+%token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON DISTINCT REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE DROP STRICT
+                  DECOLORIZE DROP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -290,9 +292,14 @@ lineFilters:
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
+parserFlags:
+    PARSER_FLAG               { $$ = []string{ $1 } }
+  | parserFlags PARSER_FLAG   { $$ = append($1, $2) }
+  ;
+
 logfmtParser:
-    LOGFMT STRICT       { $$ = newLogfmtParserExpr(true) }
-  | LOGFMT              { $$ = newLogfmtParserExpr(false) }
+    LOGFMT                   { $$ = newLogfmtParserExpr(nil) }
+  | LOGFMT parserFlags       { $$ = newLogfmtParserExpr($2) }
   ;
 
 labelParser:
@@ -306,8 +313,8 @@ jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
 
 logfmtExpressionParser:
-    LOGFMT STRICT labelExtractionExpressionList   { $$ = newLogfmtExpressionParser($3, true)}
-  | LOGFMT labelExtractionExpressionList          { $$ = newLogfmtExpressionParser($2, false)}
+    LOGFMT parserFlags labelExtractionExpressionList   { $$ = newLogfmtExpressionParser($3, $2)}
+  | LOGFMT labelExtractionExpressionList               { $$ = newLogfmtExpressionParser($2, nil)}
   ;
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };

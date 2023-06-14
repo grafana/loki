@@ -78,8 +78,9 @@ var tokens = map[string]int{
 	OpDrop: DROP,
 }
 
-var flagTokens = map[string]int{
-	OpStrict: STRICT,
+var parserFlags = map[string]struct{}{
+	OpStrict:    struct{}{},
+	OpKeepEmpty: struct{}{},
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
@@ -164,8 +165,9 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return NUMBER
 	case '-': // handle flags and negative durations
 		if l.Peek() == '-' {
-			if tok, ok := tryScanFlag(&l.Scanner); ok {
-				return tok
+			if flag, ok := tryScanFlag(&l.Scanner); ok {
+				lval.str = flag
+				return PARSER_FLAG
 			}
 		}
 
@@ -246,9 +248,9 @@ func (l *lexer) Error(msg string) {
 	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
 }
 
-// tryScanFlag scans for a parser flag and returns it's token
-// it advances the scanner only if a valid token is found
-func tryScanFlag(l *Scanner) (int, bool) {
+// tryScanFlag scans for a parser flag and returns it on success
+// it advances the scanner only if a valid flag is found
+func tryScanFlag(l *Scanner) (string, bool) {
 	var sb strings.Builder
 	sb.WriteString(l.TokenText())
 
@@ -262,9 +264,9 @@ func tryScanFlag(l *Scanner) (int, bool) {
 		consumed++
 	}
 
-	tok, ok := flagTokens[sb.String()]
-	if !ok {
-		return 0, false
+	flag := sb.String()
+	if _, ok := parserFlags[flag]; !ok {
+		return "", false
 	}
 
 	// consume the scanner
@@ -272,7 +274,7 @@ func tryScanFlag(l *Scanner) (int, bool) {
 		_ = l.Next()
 	}
 
-	return tok, true
+	return flag, true
 }
 
 func tryScanDuration(number string, l *Scanner) (time.Duration, bool) {
