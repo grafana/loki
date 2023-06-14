@@ -119,7 +119,7 @@ func New(logger log.Logger, jobName *string, stageType string,
 			return nil, err
 		}
 	case StageTypeCRI:
-		s, err = NewCRI(logger, registerer)
+		s, err = NewCRI(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
