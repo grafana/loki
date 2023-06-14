@@ -638,10 +638,6 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
-	case *LabelVolumeResponse:
-		if err := marshal.WriteLabelVolumeResponseJSON(response.Response, &buf); err != nil {
-			return nil, err
-		}
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
@@ -756,10 +752,15 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			resps = append(resps, r.(*LabelVolumeResponse).Response)
 		}
 
-		return &queryrangebase.PrometheusResponse{
-			Status:  "success",
+		promResponse := queryrangebase.PrometheusResponse{
+			Status:  loghttp.QueryStatusSuccess,
 			Data:    MergeToPrometheusResponse(resps, resp0.Response.Limit),
 			Headers: headers,
+		}
+
+		return &LokiPromResponse{
+			Response:   &promResponse,
+			Statistics: stats.Result{},
 		}, nil
 	default:
 		return nil, errors.New("unknown response in merging responses")
@@ -808,7 +809,7 @@ func mapToPrometheusResponse(mergedVolumes map[int64]map[string]map[string]uint6
 		})
 	}
 
-  // Sort and limit to top N results
+	// Sort and limit to top N results
 	sort.Slice(result, func(i, j int) bool {
 		labelI := result[i].Labels[0]
 		sampleI := result[i].Samples[0]
@@ -833,7 +834,7 @@ func mapToPrometheusResponse(mergedVolumes map[int64]map[string]map[string]uint6
 	}
 
 	return queryrangebase.PrometheusData{
-		ResultType: "vector",
+		ResultType: loghttp.ResultTypeVector,
 		Result:     result,
 	}
 }

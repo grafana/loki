@@ -24,6 +24,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -131,10 +132,10 @@ var (
 
 	labelVolume = logproto.LabelVolumeResponse{
 		Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 1024},
-			{Name: "bar", Value: "baz", Volume: 3350},
+			{Name: "foo", Value: "bar", Volume: 1024, Timestamp: 1 * 1e9}, //nanoseconds
+			{Name: "bar", Value: "baz", Volume: 3350, Timestamp: 1 * 1e9}, //nanoseconds
 		},
-		Limit: 10,
+    Limit: 5,
 	}
 )
 
@@ -548,7 +549,15 @@ func TestIndexStatsTripperware(t *testing.T) {
 }
 
 func TestLabelVolumeTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(
+		testConfig,
+		testEngineOpts,
+		util_log.Logger,
+		fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1, maxSeries: 5},
+		config.SchemaConfig{Configs: testSchemas},
+		nil,
+		false,
+		nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -580,19 +589,39 @@ func TestLabelVolumeTripperware(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, *count) // 2 queries from splitting
 
-	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, nil)
 	require.NoError(t, err)
 
-	expected := logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{ // add volumes from across shards
-			{Name: "bar", Value: "baz", Volume: 6700},
-			{Name: "foo", Value: "bar", Volume: 2048},
+	expected := queryrangebase.PrometheusData{
+		ResultType: loghttp.ResultTypeVector,
+		Result: []queryrangebase.SampleStream{
+			{
+				Labels: []logproto.LabelAdapter{{
+					Name:  "bar",
+					Value: "baz",
+				}},
+				Samples: []logproto.LegacySample{{
+					Value:       6700,
+					TimestampMs: 1e3,
+				}},
+			},
+			{
+				Labels: []logproto.LabelAdapter{{
+					Name:  "foo",
+					Value: "bar",
+				}},
+				Samples: []logproto.LegacySample{{
+					Value:       2048,
+					TimestampMs: 1e3,
+				}},
+			},
 		},
 	}
 
-	res, ok := volumeResp.(*LabelVolumeResponse)
+	res, ok := volumeResp.(*LokiPromResponse)
 	require.Equal(t, true, ok)
-	require.Equal(t, expected.Volumes, res.Response.Volumes)
+	require.Equal(t, "success", res.Response.Status)
+	require.Equal(t, expected, res.Response.Data)
 }
 
 func TestNewTripperware_Caches(t *testing.T) {
