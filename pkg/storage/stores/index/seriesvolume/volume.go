@@ -33,8 +33,6 @@ func (acc *Accumulator) AddVolumes(volumes map[string]uint64) {
 	for name, size := range volumes {
 		acc.volumes[name] += size
 	}
-
-	return
 }
 
 func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
