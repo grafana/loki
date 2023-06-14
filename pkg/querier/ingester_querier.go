@@ -2,10 +2,11 @@ package querier
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/ring"

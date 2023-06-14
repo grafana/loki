@@ -2,12 +2,13 @@ package ingester
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"

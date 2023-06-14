@@ -3,8 +3,9 @@ package stores
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"time"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
 
 	"github.com/grafana/loki/pkg/logproto"
 

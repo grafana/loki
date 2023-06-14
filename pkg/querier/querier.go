@@ -3,9 +3,10 @@ package querier
 import (
 	"context"
 	"flag"
-	"github.com/opentracing/opentracing-go"
 	"net/http"
 	"time"
+
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 

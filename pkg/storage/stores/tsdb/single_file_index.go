@@ -3,11 +3,12 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"github.com/opentracing/opentracing-go"
 	"io"
 	"math"
 	"path/filepath"
 	"time"
+
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
