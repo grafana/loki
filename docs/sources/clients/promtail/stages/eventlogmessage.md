@@ -31,7 +31,7 @@ eventlogmessage:
 The extracted data can hold non-string values and this stage does not do any
 type conversions; downstream stages will need to perform correct type
 conversion of these values as necessary. Please refer to the
-[the `template` stage]({{<relref "template">}}) for how to do this.
+[the `template` stage]({{< relref "./template" >}}) for how to do this.
 
 ## Example combined with json
 

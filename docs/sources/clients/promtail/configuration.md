@@ -35,8 +35,8 @@ defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
 For more detailed information on configuring how to discover and scrape logs from
-targets, see [Scraping]({{<relref "scraping">}}). For more information on transforming logs
-from scraped targets, see [Pipelines]({{<relref "pipelines">}}).
+targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
+from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
 
 ### Use environment variables in the configuration
 
@@ -446,7 +446,7 @@ docker_sd_configs:
 
 ### pipeline_stages
 
-[Pipeline]({{<relref "pipelines">}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
+[Pipeline]({{< relref "./pipelines" >}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
 In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
@@ -592,7 +592,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{<relref "../../query/">}}) stream selector.
+a configurable [LogQL]({{< relref "../../query" >}}) stream selector.
 
 ```yaml
 match:
@@ -862,8 +862,8 @@ Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
-[syslog-ng]({{<relref "scraping#syslog-ng-output-configuration">}}) and
-[rsyslog]({{<relref "scraping#rsyslog-output-configuration">}}). Both configurations enable
+[syslog-ng]({{< relref "./scraping#syslog-ng-output-configuration" >}}) and
+[rsyslog]({{< relref "./scraping#rsyslog-output-configuration" >}}). Both configurations enable
 IETF Syslog with octet-counting.
 
 You may need to increase the open files limit for the Promtail process
@@ -917,7 +917,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../reference/api#push-log-entries-to-loki">}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1235,7 +1235,7 @@ Each GELF message received will be encoded in JSON as the log line. For example:
 {"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
 ```
 
-You can leverage [pipeline stages]({{<relref "./stages">}}) with the GELF target,
+You can leverage [pipeline stages]({{< relref "./stages" >}}) with the GELF target,
 if for example, you want to parse the log line and extract more labels or change the log line format.
 
 ```yaml
@@ -1392,7 +1392,7 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You can leverage [pipeline stages]({{<relref "./stages">}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You can leverage [pipeline stages]({{< relref "./stages" >}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### heroku_drain
 
@@ -2097,7 +2097,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 ## Example Docker Config
 
-It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{< relref "../docker-driver" >}}) for local Docker installs or Docker Compose.
 
 If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 

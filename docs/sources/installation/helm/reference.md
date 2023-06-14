@@ -2422,6 +2422,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `loki-canary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
