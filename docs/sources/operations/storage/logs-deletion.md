@@ -11,7 +11,6 @@ Log entries that fall within a specified time window and match an optional line 
 
 {{% admonition type="note" %}} 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
-
 Log entry deletion is _only_ supported for self-hosted Grafana instances, it is not supported for Grafana Cloud.
 {{%/admonition %}}
 
