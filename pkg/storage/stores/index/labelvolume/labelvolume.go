@@ -27,22 +27,55 @@ func NewAccumulator(limit int32) *Accumulator {
 }
 
 // AddVolumes adds the given volumes to the accumulator at the given nanosecond timestamp.
+// The limit is enforced here so that only N volumes are kept per timestamp.
 func (acc *Accumulator) AddVolumes(v map[string]map[string]uint64, timestamp int64) {
 	acc.lock.Lock()
 	defer acc.lock.Unlock()
 
-	if _, ok := acc.volumes[timestamp]; !ok {
-		acc.volumes[timestamp] = make(map[string]map[string]uint64)
+  // TODO(trevorwhitney): this new data structure is no longer needed once we flatten the
+  // input to a map of selectors to volumes.
+	volumes := make([]logproto.LabelVolume, 0, len(v))
+	for label, vs := range v {
+		for value, volume := range vs {
+			volumes = append(volumes, logproto.LabelVolume{
+				Name:      label,
+				Value:     value,
+				Volume:    volume,
+				Timestamp: timestamp,
+			})
+		}
 	}
 
-	for name, values := range v {
-		if _, ok := acc.volumes[timestamp][name]; !ok {
-			acc.volumes[timestamp][name] = make(map[string]uint64)
+	sort.Slice(volumes, func(i, j int) bool {
+		if volumes[i].Volume == volumes[j].Volume {
+			if volumes[i].Name == volumes[j].Name {
+				return volumes[i].Value < volumes[j].Value
+			}
+
+			return volumes[i].Name < volumes[j].Name
 		}
 
-		for value, size := range values {
-			acc.volumes[timestamp][name][value] += size
+		return volumes[i].Volume > volumes[j].Volume
+	})
+
+	if acc.limit < int32(len(volumes)) {
+		volumes = volumes[:acc.limit]
+	}
+
+	for _, v := range volumes {
+		if _, ok := acc.volumes[v.Timestamp]; !ok {
+			acc.volumes[v.Timestamp] = make(map[string]map[string]uint64)
 		}
+
+		if _, ok := acc.volumes[v.Timestamp][v.Name]; !ok {
+			acc.volumes[v.Timestamp][v.Name] = make(map[string]uint64)
+		}
+
+		if _, ok := acc.volumes[v.Timestamp][v.Name][v.Value]; !ok {
+			acc.volumes[v.Timestamp][v.Name][v.Value] = 0
+		}
+
+		acc.volumes[v.Timestamp][v.Name][v.Value] += v.Volume
 	}
 }
 
@@ -87,10 +120,6 @@ func MapToLabelVolumeResponse(mergedVolumes map[int64]map[string]map[string]uint
 		}
 		return volumes[i].Timestamp < volumes[j].Timestamp
 	})
-
-	if limit < len(volumes) {
-		volumes = volumes[:limit]
-	}
 
 	return &logproto.LabelVolumeResponse{
 		Volumes: volumes,

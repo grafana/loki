@@ -772,66 +772,61 @@ func MergeToPrometheusResponse(responses []*logproto.LabelVolumeResponse, limit 
 }
 
 func mapToPrometheusResponse(mergedVolumes map[int64]map[string]map[string]uint64, limit int) queryrangebase.PrometheusData {
-	samplesByTsAndStream := map[int64]map[logproto.LabelAdapter]*logproto.LegacySample{}
+	samplesByStream := map[logproto.LabelAdapter]*logproto.LegacySample{}
 
+	// Aggregate samples into single sample with latest timestamp
 	for ts, vs := range mergedVolumes {
 		for name, v := range vs {
 			for value, volume := range v {
 				tsMs := ts / 1e6 //convert ns to ms
 
-				if _, ok := samplesByTsAndStream[tsMs]; !ok {
-					samplesByTsAndStream[tsMs] = map[logproto.LabelAdapter]*logproto.LegacySample{}
-				}
-
 				streamKey := logproto.LabelAdapter{
 					Name:  name,
 					Value: value,
 				}
-				if _, ok := samplesByTsAndStream[tsMs][streamKey]; !ok {
-					samplesByTsAndStream[tsMs][streamKey] = &logproto.LegacySample{
+				if sample, ok := samplesByStream[streamKey]; !ok {
+					samplesByStream[streamKey] = &logproto.LegacySample{
 						TimestampMs: tsMs,
+						Value:       float64(volume),
 					}
+				} else {
+					if sample.TimestampMs < tsMs {
+						sample.TimestampMs = tsMs
+					}
+
+					sample.Value += float64(volume)
 				}
-
-				samplesByTsAndStream[tsMs][streamKey].Value += float64(volume)
 			}
-		}
-	}
-
-	samplesByStream := map[logproto.LabelAdapter][]logproto.LegacySample{}
-	for _, streams := range samplesByTsAndStream {
-		for stream, sample := range streams {
-			key := logproto.LabelAdapter{
-				Name:  stream.Name,
-				Value: stream.Value,
-			}
-
-			if _, ok := samplesByStream[key]; !ok {
-				samplesByStream[key] = []logproto.LegacySample{}
-			}
-
-			// TODO(trevorwhitney): if we kept the slice sorted when adding samples, we could
-			// remove the additional loop below doing the sorting
-			samplesByStream[key] = append(samplesByStream[key], *sample)
 		}
 	}
 
 	result := make([]queryrangebase.SampleStream, 0, len(samplesByStream))
-	for stream, samples := range samplesByStream {
-		// TODO(trevorwhitney): see above, potential optimization?
-		sort.Slice(samples, func(i, j int) bool {
-			if samples[i].TimestampMs == samples[j].TimestampMs {
-				return samples[i].Value < samples[j].Value
-			}
-
-			return samples[i].TimestampMs < samples[j].TimestampMs
-		})
-
+	for stream, sample := range samplesByStream {
 		result = append(result, queryrangebase.SampleStream{
 			Labels:  []logproto.LabelAdapter{stream},
-			Samples: samples,
+			Samples: []logproto.LegacySample{*sample},
 		})
 	}
+
+  // Sort and limit to top N results
+	sort.Slice(result, func(i, j int) bool {
+		labelI := result[i].Labels[0]
+		sampleI := result[i].Samples[0]
+
+		labelJ := result[j].Labels[0]
+		sampleJ := result[j].Samples[0]
+
+		if sampleI.Value == sampleJ.Value {
+			if sampleI.TimestampMs == sampleJ.TimestampMs {
+				if labelI.Name == labelJ.Name {
+					return labelI.Value < labelJ.Value
+				}
+				return labelI.Name < labelJ.Name
+			}
+			return sampleI.TimestampMs > sampleJ.TimestampMs
+		}
+		return sampleI.Value > sampleJ.Value
+	})
 
 	if limit < len(result) {
 		result = result[:limit]

@@ -348,7 +348,6 @@ func (i *TSDBIndex) LabelVolume(ctx context.Context, _ string, from, through mod
 	if err != nil {
 		return err
 	}
-
 	acc.AddVolumes(volumes, through.UnixNano())
 	return nil
 }
