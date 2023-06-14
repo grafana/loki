@@ -2,6 +2,8 @@ package log
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 type KeepLabels struct {
@@ -20,8 +22,8 @@ func NewKeepLabel(matcher *labels.Matcher, name string) KeepLabel {
 	}
 }
 
-func NewKeepLabels(dl []KeepLabel) *KeepLabels {
-	return &KeepLabels{keepLabels: dl}
+func NewKeepLabels(kl []KeepLabel) *KeepLabels {
+	return &KeepLabels{keepLabels: kl}
 }
 
 func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
@@ -31,6 +33,10 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 
 	// TODO: Reuse buf?
 	for _, lb := range lbls.UnsortedLabels(nil) {
+		if isSpecialLabel(lb.Name) {
+			continue
+		}
+
 		var keep bool
 		for _, keepLabel := range kl.keepLabels {
 			if keepLabel.Matcher != nil && keepLabel.Matcher.Name == lb.Name && keepLabel.Matcher.Matches(lb.Value) {
@@ -54,4 +60,13 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 
 func (kl *KeepLabels) RequiredLabelNames() []string {
 	return []string{}
+}
+
+func isSpecialLabel(lblName string) bool {
+	switch lblName {
+	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, logqlmodel.PreserveErrorLabel:
+		return true
+	}
+
+	return false
 }

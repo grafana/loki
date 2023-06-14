@@ -5,6 +5,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_KeepLabels(t *testing.T) {
@@ -65,6 +67,10 @@ func Test_KeepLabels(t *testing.T) {
 					nil,
 					"app",
 				},
+				{
+					nil,
+					"fizz",
+				},
 			},
 			labels.FromStrings(
 				"app", "foo",
@@ -75,6 +81,31 @@ func Test_KeepLabels(t *testing.T) {
 			labels.FromStrings(
 				"app", "foo",
 				"namespace", "prod",
+			),
+		},
+		{
+			"preserve special labels",
+			[]KeepLabel{
+				{
+					labels.MustNewMatcher(labels.MatchEqual, "namespace", "prod"),
+					"",
+				},
+				{
+					nil,
+					"app",
+				},
+			},
+			labels.FromStrings(
+				"app", "foo",
+				"namespace", "prod",
+				"env", "prod",
+				"pod_uuid", "foo",
+				logqlmodel.PreserveErrorLabel, "true",
+			),
+			labels.FromStrings(
+				"app", "foo",
+				"namespace", "prod",
+				logqlmodel.PreserveErrorLabel, "true",
 			),
 		},
 	} {
