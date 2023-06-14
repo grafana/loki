@@ -835,7 +835,7 @@ func Test_store_SelectSample(t *testing.T) {
 
 type fakeChunkFilterer struct{}
 
-func (f fakeChunkFilterer) ForRequest(ctx context.Context) chunk.Filterer {
+func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
 	return f
 }
 
@@ -1022,7 +1022,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 				},
 				TSDBShipperConfig: shipperConfig,
 				NamedStores: NamedStores{
-					Filesystem: map[string]local.FSConfig{
+					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
 					},
 				},

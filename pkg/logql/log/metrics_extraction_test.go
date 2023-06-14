@@ -314,7 +314,7 @@ type stubExtractor struct {
 	sp *stubStreamExtractor
 }
 
-func (p *stubExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+func (p *stubExtractor) ForStream(_ labels.Labels) StreamSampleExtractor {
 	return p.sp
 }
 
@@ -325,10 +325,10 @@ func (p *stubStreamExtractor) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (p *stubStreamExtractor) Process(_ int64, _ []byte) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }
 
-func (p *stubStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (p *stubStreamExtractor) ProcessString(_ int64, _ string) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }

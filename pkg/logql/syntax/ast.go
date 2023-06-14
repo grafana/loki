@@ -142,6 +142,7 @@ func combineFilters(in []*LineFilterExpr) StageExpr {
 
 func leafNode(in *LineFilterExpr) *LineFilterExpr {
 	current := in
+	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
 	}
 	return current

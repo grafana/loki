@@ -106,6 +106,15 @@ var queryTests = []struct {
 							"requests": 0,
 							"downloadTime": 0
 						},
+						"statsResult": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
+						},
 						"result": {
 							"entriesFound": 0,
 							"entriesRequested": 0,
@@ -235,6 +244,15 @@ var queryTests = []struct {
 						"downloadTime": 0
 					},
 					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -393,6 +411,15 @@ var queryTests = []struct {
 						"downloadTime": 0
 					},
 					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -659,7 +686,7 @@ type wrappedValue struct {
 	parser.Value
 }
 
-func (w wrappedValue) Generate(rand *rand.Rand, size int) reflect.Value {
+func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 	types := []string{
 		loghttp.ResultTypeMatrix,
 		loghttp.ResultTypeScalar,

@@ -63,6 +63,7 @@ type Limits interface {
 	RequiredNumberLabels(context.Context, string) int
 	MaxQueryBytesRead(context.Context, string) int
 	MaxQuerierBytesRead(context.Context, string) int
+	MaxStatsCacheFreshness(context.Context, string) time.Duration
 }
 
 type limits struct {

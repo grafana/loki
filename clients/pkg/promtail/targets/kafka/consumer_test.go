@@ -83,7 +83,7 @@ func Test_ComsumerConsume(t *testing.T) {
 	c.stop()
 }
 
-func Test_ComsumerRetry(t *testing.T) {
+func Test_ComsumerRetry(_ *testing.T) {
 	var (
 		group = &testConsumerGroupHandler{
 			returnErr: errors.New("foo"),

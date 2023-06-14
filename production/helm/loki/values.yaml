@@ -163,8 +163,8 @@ loki:
     {{ include "loki.rulerConfig" . }}
 
     table_manager:
-      retention_deletes_enabled: false
-      retention_period: 0
+      retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
+      retention_period: {{ .Values.tableManager.retention_period }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -625,6 +625,8 @@ monitoring:
     enabled: true
     # -- Additional annotations for the `loki-canary` Daemonset
     annotations: {}
+    # -- Additional labels for each `loki-canary` pod
+    podLabels: {}
     # -- Additional CLI arguments for the `loki-canary' command
     extraArgs: []
     # -- Environment variables to add to the canary pods
@@ -813,6 +815,11 @@ tableManager:
   nodeSelector: {}
   # -- Tolerations for table-manager pods
   tolerations: []
+  # -- Enable deletes by retention
+  retention_deletes_enabled: false
+  # -- Set retention period
+  retention_period: 0
+
 # Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read

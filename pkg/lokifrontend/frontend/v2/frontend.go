@@ -147,7 +147,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	return f, nil
 }
 
-func (f *Frontend) starting(ctx context.Context) error {
+func (f *Frontend) starting(_ context.Context) error {
 	// Instead of re-using `ctx` from the frontend service, `schedulerWorkers`
 	// needs to use their own service context, because we want to control the
 	// stopping process in the `stopping` function of the frontend. If we would

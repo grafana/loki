@@ -113,6 +113,16 @@ spec:
                               on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
+                          perStreamRateLimit:
+                            description: PerStreamRateLimit defines the maximum byte
+                              rate per second per stream. Units MB.
+                            format: int32
+                            type: integer
+                          perStreamRateLimitBurst:
+                            description: PerStreamRateLimitBurst defines the maximum
+                              burst bytes per stream. Units MB.
+                            format: int32
+                            type: integer
                         type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
@@ -223,6 +233,16 @@ spec:
                             maxLineSize:
                               description: MaxLineSize defines the maximum line size
                                 on ingestion path. Units in Bytes.
+                              format: int32
+                              type: integer
+                            perStreamRateLimit:
+                              description: PerStreamRateLimit defines the maximum
+                                byte rate per second per stream. Units MB.
+                              format: int32
+                              type: integer
+                            perStreamRateLimitBurst:
+                              description: PerStreamRateLimitBurst defines the maximum
+                                burst bytes per stream. Units MB.
                               format: int32
                               type: integer
                           type: object
@@ -464,6 +484,7 @@ spec:
                 description: Size defines one of the support Loki deployment scale
                   out sizes.
                 enum:
+                - 1x.demo
                 - 1x.extra-small
                 - 1x.small
                 - 1x.medium

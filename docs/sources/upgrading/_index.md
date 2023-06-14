@@ -431,7 +431,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs]({{<relref "../operations/storage/retention">}}) for more info.
+See the [retention docs]({{< relref "../operations/storage/retention" >}}) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -893,7 +893,7 @@ If you happen to have `results_cache.max_freshness` set please use `limits_confi
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration/#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration#pipeline_stages" >}}) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 

@@ -107,7 +107,7 @@ type stubPipeline struct {
 	sp *stubStreamPipeline
 }
 
-func (p *stubPipeline) ForStream(labels labels.Labels) StreamPipeline {
+func (p *stubPipeline) ForStream(_ labels.Labels) StreamPipeline {
 	return p.sp
 }
 
@@ -118,11 +118,11 @@ func (p *stubStreamPipeline) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+func (p *stubStreamPipeline) Process(_ int64, _ []byte) ([]byte, LabelsResult, bool) {
 	return nil, nil, true
 }
 
-func (p *stubStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+func (p *stubStreamPipeline) ProcessString(_ int64, _ string) (string, LabelsResult, bool) {
 	return "", nil, true
 }
 

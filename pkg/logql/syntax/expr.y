@@ -313,8 +313,8 @@ jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
 
 logfmtExpressionParser:
-    LOGFMT parserFlags labelExtractionExpressionList   { $$ = newLogfmtExpressionParser($3, $2)}
-  | LOGFMT labelExtractionExpressionList               { $$ = newLogfmtExpressionParser($2, nil)}
+    LOGFMT parserFlags labelExtractionExpressionList  { $$ = newLogfmtExpressionParser($3, $2)}
+  | LOGFMT labelExtractionExpressionList              { $$ = newLogfmtExpressionParser($2, nil)}
   ;
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
