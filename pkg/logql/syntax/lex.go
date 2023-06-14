@@ -79,8 +79,8 @@ var tokens = map[string]int{
 }
 
 var parserFlags = map[string]struct{}{
-	OpStrict:    struct{}{},
-	OpKeepEmpty: struct{}{},
+	OpStrict:    {},
+	OpKeepEmpty: {},
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
