@@ -91,8 +91,8 @@ func Merge(responses []*logproto.LabelVolumeResponse, limit int32) *logproto.Lab
 }
 
 func MapToLabelVolumeResponse(mergedVolumes map[int64]map[string]map[string]uint64, limit int) *logproto.LabelVolumeResponse {
-  // Aggregate volumes into single value per label/value pair
-  // adopting the latest timestamp seen
+	// Aggregate volumes into single value per label/value pair
+	// adopting the latest timestamp seen
 	acc := make(map[string]map[string]*volume)
 	for timestamp, series := range mergedVolumes {
 		for name, vs := range series {
@@ -117,7 +117,7 @@ func MapToLabelVolumeResponse(mergedVolumes map[int64]map[string]map[string]uint
 		}
 	}
 
-  // Convert aggregation into slice of logproto.LabelVolume
+	// Convert aggregation into slice of logproto.LabelVolume
 	volumes := make([]logproto.LabelVolume, 0, len(mergedVolumes)*len(mergedVolumes[0]))
 	for name, vs := range acc {
 		for value, v := range vs {
@@ -130,8 +130,8 @@ func MapToLabelVolumeResponse(mergedVolumes map[int64]map[string]map[string]uint
 		}
 	}
 
-  // Sort the LabelVolume response by timestamp, volume, name, value
-  // to ensure consistency in responses
+	// Sort the LabelVolume response by timestamp, volume, name, value
+	// to ensure consistency in responses
 	sort.Slice(volumes, func(i, j int) bool {
 		if volumes[i].Timestamp == volumes[j].Timestamp {
 			if volumes[i].Volume == volumes[j].Volume {
@@ -147,7 +147,7 @@ func MapToLabelVolumeResponse(mergedVolumes map[int64]map[string]map[string]uint
 		return volumes[i].Timestamp < volumes[j].Timestamp
 	})
 
-  // Apply the limit
+	// Apply the limit
 	if len(volumes) > limit {
 		volumes = volumes[:limit]
 	}
