@@ -236,10 +236,14 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			return err
 		}
 
+		var isAsync bool
 		queryParams := url.Query()
-		isAsync, err := strconv.ParseBool(queryParams.Get("async"))
-		if err != nil {
-			return err
+		async := queryParams.Get("async")
+		if async != "" {
+			isAsync, err = strconv.ParseBool(async)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Handle the stream sending & receiving on a goroutine so we can
@@ -259,6 +263,8 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 					errs <- err
 					return
 				}
+
+				level.Info(f.log).Log("msg", "received ack from jetstream publish action", "ack", string(b))
 
 				// Build a fake response for returning the jetstream ack here
 				resp := &frontendv1pb.ClientToFrontend{

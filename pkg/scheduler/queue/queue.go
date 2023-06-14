@@ -275,26 +275,6 @@ func (q *RequestQueue) createJetStream(ctx context.Context, name, sb string) (je
 		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
 
-	// opts := jetstream.StreamConfig{
-	//	Name:      name,
-	//	Subjects:  []string{sb},
-	//	Replicas:  3,
-	//	MaxAge:    4 * time.Hour,
-	//	Retention: jetstream.LimitsPolicy,
-	//	Discard:   jetstream.DiscardOld,
-	// }
-
-	// s, err := js.UpdateStream(ctx, opts)
-	// if err != nil {
-	//	if err == jetstream.ErrStreamNotFound {
-	//		s, err := js.CreateStream(ctx, opts)
-	//		if err != nil {
-	//			return nil, errors.Wrap(err, "failed to add stream")
-	//		}
-	//		return s, nil
-	//	}
-	//	return nil, errors.Wrap(err, "failed to update stream")
-	// }
 	return js, nil
 }
 

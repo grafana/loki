@@ -487,10 +487,14 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 		return err
 	}
 
+	var isAsync bool
 	queryParams := url.Query()
-	isAsync, err := strconv.ParseBool(queryParams.Get("async"))
-	if err != nil {
-		return err
+	async := queryParams.Get("async")
+	if async != "" {
+		isAsync, err = strconv.ParseBool(async)
+		if err != nil {
+			return err
+		}
 	}
 
 	if isAsync {
