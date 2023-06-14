@@ -276,6 +276,16 @@ func (q *RequestQueue) createJetStream(ctx context.Context, name, sb string) (je
 		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
 
+	// Create a stream
+	_, _ = js.CreateStream(ctx, jetstream.StreamConfig{
+		Name:      "queries",
+		Subjects:  []string{"query"},
+		Replicas:  3,
+		MaxAge:    4 * time.Hour,
+		Retention: jetstream.LimitsPolicy,
+		Discard:   jetstream.DiscardOld,
+	})
+
 	return js, nil
 }
 
