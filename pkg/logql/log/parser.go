@@ -339,12 +339,12 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		val := l.dec.Value()
-		if !l.keepEmpty && len(val) == 0 {
-			continue
-		}
-
 		// the rune error replacement is rejected by Prometheus, so we skip it.
 		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
+		}
+
+		if !l.keepEmpty && len(val) == 0 {
 			continue
 		}
 
@@ -505,11 +505,11 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		val := l.dec.Value()
-		if !l.keepEmpty && len(val) == 0 {
-			continue
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
 		}
 
-		if bytes.ContainsRune(val, utf8.RuneError) {
+		if !l.keepEmpty && len(val) == 0 {
 			continue
 		}
 

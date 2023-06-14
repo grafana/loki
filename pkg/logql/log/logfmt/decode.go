@@ -139,7 +139,7 @@ equal:
 
 skip_value:
 	for p, c := range line[dec.pos:] {
-		if c == ' ' {
+		if c <= ' ' {
 			dec.pos += p
 			return false
 		}
