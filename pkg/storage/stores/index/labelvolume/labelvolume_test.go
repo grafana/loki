@@ -9,8 +9,8 @@ import (
 )
 
 func Test_AddVolumes(t *testing.T) {
-	t.Run("applies limt when adding, so only N volume allowed per timestamp", func(t *testing.T) {
-		acc := NewAccumulator(3)
+	t.Run("always accumulates values for the same label/value pair into the latest timestamp", func(t *testing.T) {
+		acc := NewAccumulator(4)
 		volumes := map[string]map[string]uint64{
 			"job": {
 				"loki":       5,
@@ -45,14 +45,20 @@ func Test_AddVolumes(t *testing.T) {
 					Volume:    10,
 					Timestamp: 1,
 				},
+				{
+					Name:      "job",
+					Value:     "loki",
+					Volume:    5,
+					Timestamp: 1,
+				},
 			},
-			Limit: 3,
+			Limit: 4,
 		}, resp)
 
 		volumes = map[string]map[string]uint64{
 			"job": {
-				"loki":       10,
-				"prometheus": 5,
+				"loki":       5,
+				"prometheus": 10,
 			},
 			"cluster": {
 				"dev":  25,
@@ -68,31 +74,19 @@ func Test_AddVolumes(t *testing.T) {
 				{
 					Name:      "cluster",
 					Value:     "prod",
-					Volume:    50,
-					Timestamp: 1,
-				},
-				{
-					Name:      "cluster",
-					Value:     "dev",
-					Volume:    25,
-					Timestamp: 1,
-				},
-				{
-					Name:      "job",
-					Value:     "prometheus",
-					Volume:    10,
-					Timestamp: 1,
-				},
-				{
-					Name:      "cluster",
-					Value:     "prod",
-					Volume:    50,
+					Volume:    100,
 					Timestamp: 2,
 				},
 				{
 					Name:      "cluster",
 					Value:     "dev",
-					Volume:    25,
+					Volume:    50,
+					Timestamp: 2,
+				},
+				{
+					Name:      "job",
+					Value:     "prometheus",
+					Volume:    20,
 					Timestamp: 2,
 				},
 				{
@@ -102,7 +96,7 @@ func Test_AddVolumes(t *testing.T) {
 					Timestamp: 2,
 				},
 			},
-			Limit: 3,
+			Limit: 4,
 		}, resp)
 	})
 
@@ -191,12 +185,13 @@ func Test_AddVolumes(t *testing.T) {
 		}, resp)
 	})
 
-	t.Run("only accumulate volumes for the same timstamp and sorts by timestamp before volume", func(t *testing.T) {
-		acc := NewAccumulator(5)
+	t.Run("aggregate volumes to latest timestamp for series and apply limit", func(t *testing.T) {
+		acc := NewAccumulator(2)
 		volumes := map[string]map[string]uint64{
 			"job": {
 				"loki":       5,
 				"prometheus": 10,
+				"mimir":      1,
 			},
 		}
 		acc.AddVolumes(volumes, 1)
@@ -205,6 +200,7 @@ func Test_AddVolumes(t *testing.T) {
 			"job": {
 				"loki":       20,
 				"prometheus": 30,
+				"mimir":      1,
 			},
 		}
 		acc.AddVolumes(volumes, 2)
@@ -215,29 +211,17 @@ func Test_AddVolumes(t *testing.T) {
 				{
 					Name:      "job",
 					Value:     "prometheus",
-					Volume:    10,
-					Timestamp: 1,
-				},
-				{
-					Name:      "job",
-					Value:     "loki",
-					Volume:    5,
-					Timestamp: 1,
-				},
-				{
-					Name:      "job",
-					Value:     "prometheus",
-					Volume:    30,
+					Volume:    40,
 					Timestamp: 2,
 				},
 				{
 					Name:      "job",
 					Value:     "loki",
-					Volume:    20,
+					Volume:    25,
 					Timestamp: 2,
 				},
 			},
-			Limit: 5,
+			Limit: 2,
 		}, resp)
 	})
 }
