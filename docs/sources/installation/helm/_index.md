@@ -22,4 +22,4 @@ This guide references the Loki Helm chart version 3.0 or greater and contains th
 
 ## Reference
 
-[Values reference]({{<relref "reference">}})
+[Values reference]({{< relref "./reference" >}})
