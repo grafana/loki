@@ -843,16 +843,16 @@ func TestInstance_LabelVolume(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
 			From:     0,
-			Through:  11000,
+			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{}",
 			Limit:    3,
 		})
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.LabelVolume{
-			{Name: "host", Value: "agent", Volume: 160},
-			{Name: "job", Value: "3", Volume: 160},
-			{Name: "log_stream", Value: "dispatcher", Volume: 90},
+			{Name: "host", Value: "agent", Volume: 160, Timestamp: 1.1 * 1e9}, //nanoseconds
+			{Name: "job", Value: "3", Volume: 160, Timestamp: 1.1 * 1e9},
+			{Name: "log_stream", Value: "dispatcher", Volume: 90, Timestamp: 1.1 * 1e9},
 		}, volumes.Volumes)
 	})
 
@@ -860,16 +860,16 @@ func TestInstance_LabelVolume(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
 			From:     0,
-			Through:  11000,
+			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{log_stream=\"dispatcher\"}",
 			Limit:    3,
 		})
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.LabelVolume{
-			{Name: "host", Value: "agent", Volume: 90},
-			{Name: "job", Value: "3", Volume: 90},
-			{Name: "log_stream", Value: "dispatcher", Volume: 90},
+			{Name: "host", Value: "agent", Volume: 90, Timestamp: 1.1 * 1e9}, //nanoseconds
+			{Name: "job", Value: "3", Volume: 90, Timestamp: 1.1 * 1e9},
+			{Name: "log_stream", Value: "dispatcher", Volume: 90, Timestamp: 1.1 * 1e9},
 		}, volumes.Volumes)
 	})
 
@@ -877,16 +877,16 @@ func TestInstance_LabelVolume(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
 			From:     5,
-			Through:  11,
+			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{}",
 			Limit:    3,
 		})
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.LabelVolume{
-			{Name: "host", Value: "agent", Volume: 71},
-			{Name: "job", Value: "3", Volume: 71},
-			{Name: "log_stream", Value: "dispatcher", Volume: 45},
+			{Name: "host", Value: "agent", Volume: 71, Timestamp: 1.1 * 1e9}, //nanoseconds
+			{Name: "job", Value: "3", Volume: 71, Timestamp: 1.1 * 1e9},
+			{Name: "log_stream", Value: "dispatcher", Volume: 45, Timestamp: 1.1 * 1e9},
 		}, volumes.Volumes)
 	})
 }
