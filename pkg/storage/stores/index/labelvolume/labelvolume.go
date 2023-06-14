@@ -32,7 +32,8 @@ func NewAccumulator(limit int32) *Accumulator {
 }
 
 // AddVolumes adds the given volumes to the accumulator at the given nanosecond timestamp.
-// The limit is enforced here so that only N volumes are kept per timestamp.
+// We only keep one value per label/value combination, so if a volume already exists, add to
+// it and update the timestamp for the series to be the latest timestamp seen.
 func (acc *Accumulator) AddVolumes(mergedVolumes map[string]map[string]uint64, timestamp int64) {
 	acc.lock.Lock()
 	defer acc.lock.Unlock()
