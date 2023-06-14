@@ -845,7 +845,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 			From:     0,
 			Through:  11000,
 			Matchers: "{}",
-			Limit:    3,
+			Limit:    2,
 		})
 		require.NoError(t, err)
 
@@ -861,7 +861,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 			From:     0,
 			Through:  11000,
 			Matchers: `{log_stream="dispatcher"}`,
-			Limit:    3,
+			Limit:    2,
 		})
 		require.NoError(t, err)
 
@@ -883,6 +883,21 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		require.Equal(t, []logproto.Volume{
 			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 45},
 			{Name: `{host="agent", job="3", log_stream="worker"}`, Value: "", Volume: 26},
+		}, volumes.Volumes)
+	})
+
+	t.Run("enforces the limit", func(t *testing.T) {
+		instance := defaultInstance(t)
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+			From:     0,
+			Through:  11000,
+			Matchers: "{}",
+			Limit:    1,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 90},
 		}, volumes.Volumes)
 	})
 }

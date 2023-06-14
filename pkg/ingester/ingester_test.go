@@ -1092,18 +1092,51 @@ func TestSeriesVolume(t *testing.T) {
 	i.instances["test"] = defaultInstance(t)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
-		From:     0,
-		Through:  10000,
-		Matchers: `{log_stream=~"dispatcher|worker"}`,
-		Limit:    2,
-	})
-	require.NoError(t, err)
 
-	require.Equal(t, []logproto.Volume{
-		{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90},
-		{Name: `{log_stream="worker"}`, Value: "", Volume: 70},
-	}, volumes.Volumes)
+	t.Run("matching a single label", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90},
+			{Name: `{log_stream="worker"}`, Value: "", Volume: 70},
+		}, volumes.Volumes)
+	})
+
+	t.Run("matching multiple labels, exact", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker", host="agent"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", log_stream="dispatcher"}`, Value: "", Volume: 90},
+			{Name: `{host="agent", log_stream="worker"}`, Value: "", Volume: 70},
+		}, volumes.Volumes)
+	})
+
+	t.Run("matching multiple labels, regex", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker", host=~".+"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", log_stream="dispatcher"}`, Value: "", Volume: 90},
+			{Name: `{host="agent", log_stream="worker"}`, Value: "", Volume: 70},
+		}, volumes.Volumes)
+	})
 }
 
 type ingesterClient struct {
