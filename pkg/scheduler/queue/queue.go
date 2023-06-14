@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -283,7 +284,12 @@ func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request
 		return nil, nil
 	}
 
-	return q.stream.Publish(ctx, "query", nil)
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return q.stream.Publish(ctx, "query", b)
 }
 
 func (q *RequestQueue) stopping(_ error) error {
