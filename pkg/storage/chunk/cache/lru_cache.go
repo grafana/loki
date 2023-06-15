@@ -68,7 +68,6 @@ type LRUCache struct {
 	added       *prometheus.CounterVec
 	current     *prometheus.GaugeVec
 	bytesInUse  prometheus.Gauge
-	overflow    *prometheus.CounterVec
 }
 
 func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (*LRUCache, error) {
@@ -86,7 +85,7 @@ func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, log
 	}
 
 	c.totalMisses = promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Namespace:   "querier",
+		Namespace:   "loki",
 		Subsystem:   "cache",
 		Name:        "misses_total",
 		Help:        "The total number of Get calls that had no valid entry",
@@ -94,7 +93,7 @@ func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, log
 	})
 
 	c.bytesInUse = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Namespace:   "querier",
+		Namespace:   "loki",
 		Subsystem:   "cache",
 		Name:        "memory_bytes",
 		Help:        "The current cache size in bytes",
@@ -102,39 +101,43 @@ func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, log
 	})
 
 	c.evicted = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_index_cache_items_evicted_total",
-		Help:      "Total number of items that were evicted from the index cache.",
+		Namespace:   "loki",
+		Subsystem:   "cache",
+		Name:        "evicted_total",
+		Help:        "Total number of items that were evicted.",
+		ConstLabels: prometheus.Labels{"cache": name},
 	}, []string{})
 
 	c.added = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_index_cache_items_added_total",
-		Help:      "Total number of items that were added to the index cache.",
+		Namespace:   "loki",
+		Subsystem:   "cache",
+		Name:        "added_total",
+		Help:        "Total number of items that were added to the cache.",
+		ConstLabels: prometheus.Labels{"cache": name},
 	}, []string{})
 
 	c.requests = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_index_cache_requests_total",
-		Help:      "Total number of requests to the cache.",
-	}, []string{})
-
-	c.overflow = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_index_cache_items_overflowed_total",
-		Help:      "Total number of items that could not be added to the cache due to being too big.",
+		Namespace:   "loki",
+		Subsystem:   "cache",
+		Name:        "gets_total",
+		Help:        "Total number of requests to the cache.",
+		ConstLabels: prometheus.Labels{"cache": name},
 	}, []string{})
 
 	c.hits = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_index_cache_hits_total",
-		Help:      "Total number of requests to the cache that were a hit.",
+		Namespace:   "loki",
+		Subsystem:   "cache",
+		Name:        "hits_total",
+		Help:        "Total number of requests to the cache that were a hit.",
+		ConstLabels: prometheus.Labels{"cache": name},
 	}, []string{})
 
 	c.current = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_index_cache_items",
-		Help:      "Current number of items in the index cache.",
+		Namespace:   "loki",
+		Subsystem:   "cache",
+		Name:        "entries",
+		Help:        "Current number of items in the cache.",
+		ConstLabels: prometheus.Labels{"cache": name},
 	}, []string{})
 
 	// Initialize LRU cache with a high size limit since we will manage evictions ourselves
@@ -146,10 +149,7 @@ func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, log
 	c.lru = l
 
 	level.Info(logger).Log(
-		"msg", "created in-memory index cache",
-		"maxItemSizeBytes", c.maxItemSizeBytes,
-		"maxSizeBytes", c.maxSizeBytes,
-		"maxItems", "maxInt",
+		"msg", "created in-memory LRU cache",
 	)
 
 	return c, nil

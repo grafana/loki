@@ -3,7 +3,7 @@
 // Provenance-includes-license: Apache-2.0
 // Provenance-includes-copyright: The Thanos Authors.
 
-// Tests out the LRU index cache implementation.
+// Tests out the LRU cache implementation.
 package cache
 
 import (
