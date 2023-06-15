@@ -256,7 +256,11 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	distinctUsers := make(map[string]struct{})
 
 	defer func() {
-		level.Info(tm.logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
+		ids := make([]string, 0, len(distinctUsers))
+		for k := range distinctUsers {
+			ids = append(ids, k)
+		}
+		level.Info(tm.logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers), "distinct_users", strings.Join(ids, ","))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
