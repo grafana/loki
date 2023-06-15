@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/nats-io/nats.go"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -482,49 +481,48 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	// Make sure to cancel request at the end to cleanup resources.
 	defer s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID)
 
-	url, err := url.Parse(req.request.Url)
-	if err != nil {
-		return err
-	}
-
-	var isAsync bool
-	queryParams := url.Query()
-	async := queryParams.Get("async")
-	if async != "" {
-		isAsync, err = strconv.ParseBool(async)
-		if err != nil {
-			return err
-		}
-	}
-
-	if isAsync {
-		ack, err := s.requestQueue.PublishAsyncQueryRequest(req.ctx, fmt.Sprintf("%d", req.queryID), req)
-		if err != nil {
-			return err
-		}
-
-		s.forwardAsyncAckToFronend(req.ctx, req, ack)
-
-		return nil
-	}
-
 	// Handle the stream sending & receiving on a goroutine so we can
 	// monitoring the contexts in a select and cancel things appropriately.
 	errCh := make(chan error, 1)
 	go func() {
-		err := querier.Send(&schedulerpb.SchedulerToQuerier{
-			UserID:          req.tenantID,
-			QueryID:         req.queryID,
-			FrontendAddress: req.frontendAddress,
-			HttpRequest:     req.request,
-			StatsEnabled:    req.statsEnabled,
-		})
+		var err error
+
+		url, err := url.Parse(req.request.Url)
 		if err != nil {
 			errCh <- err
 			return
 		}
 
-		_, err = querier.Recv()
+		var isAsync bool
+		queryParams := url.Query()
+		async := queryParams.Get("async")
+		if async != "" {
+			isAsync, err = strconv.ParseBool(async)
+			if err != nil {
+				errCh <- err
+				return
+			}
+		}
+
+		switch {
+		case isAsync:
+			err = s.publishAsyncQueryRequest(req)
+		default:
+			err = querier.Send(&schedulerpb.SchedulerToQuerier{
+				UserID:          req.tenantID,
+				QueryID:         req.queryID,
+				FrontendAddress: req.frontendAddress,
+				HttpRequest:     req.request,
+				StatsEnabled:    req.statsEnabled,
+			})
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			_, err = querier.Recv()
+		}
+
 		errCh <- err
 	}()
 
@@ -546,7 +544,20 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	}
 }
 
-func (s *Scheduler) forwardAsyncAckToFronend(ctx context.Context, req *schedulerRequest, ack *nats.PubAck) {
+func (s *Scheduler) publishAsyncQueryRequest(req *schedulerRequest) error {
+	stream := s.requestQueue.GetJetStream()
+	b, err := json.Marshal(req.request)
+	if err != nil {
+		return err
+	}
+
+	subj := fmt.Sprintf("query.%s", req.tenantID)
+
+	ack, err := stream.Publish(subj, b)
+	if err != nil {
+		return err
+	}
+
 	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
@@ -554,28 +565,28 @@ func (s *Scheduler) forwardAsyncAckToFronend(ctx context.Context, req *scheduler
 		nil)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report async ack", "frontend", req.frontendAddress, "err", err, "ack", ack)
-		return
+		return err
 	}
 
-	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
+	conn, err := grpc.DialContext(req.ctx, req.frontendAddress, opts...)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "ack", ack)
-		return
+		return err
 	}
 
 	defer func() {
 		_ = conn.Close()
 	}()
 
-	b, err := json.Marshal(ack)
+	b, err = json.Marshal(ack)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to marshal async ack to JSON", "frontend", req.frontendAddress, "err", err, "ack", ack)
-		return
+		return err
 	}
 
 	client := frontendv2pb.NewFrontendForQuerierClient(conn)
 
-	userCtx := user.InjectOrgID(ctx, req.tenantID)
+	userCtx := user.InjectOrgID(req.ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
 		HttpResponse: &httpgrpc.HTTPResponse{
@@ -586,8 +597,10 @@ func (s *Scheduler) forwardAsyncAckToFronend(ctx context.Context, req *scheduler
 
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to forward async ack to frontend", "frontend", req.frontendAddress, "err", err, "ack", ack)
-		return
+		return err
 	}
+
+	return nil
 }
 
 func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRequest, requestErr error) {

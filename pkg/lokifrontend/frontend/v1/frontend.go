@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -231,68 +232,54 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			continue
 		}
 
-		url, err := url.Parse(req.request.Url)
-		if err != nil {
-			return err
-		}
-
-		var isAsync bool
-		queryParams := url.Query()
-		async := queryParams.Get("async")
-		if async != "" {
-			isAsync, err = strconv.ParseBool(async)
-			if err != nil {
-				return err
-			}
-		}
-
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
 		resps := make(chan *frontendv1pb.ClientToFrontend, 1)
 		errs := make(chan error, 1)
 		go func() {
-			if isAsync {
-				ack, err := f.requestQueue.PublishAsyncQueryRequest(req.originalCtx, querierID, req)
-				if err != nil {
-					errs <- err
-					return
-				}
-
-				b, err := json.Marshal(ack)
-				if err != nil {
-					errs <- err
-					return
-				}
-
-				level.Info(f.log).Log("msg", "received ack from jetstream publish action", "ack", string(b))
-
-				// Build a fake response for returning the jetstream ack here
-				resp := &frontendv1pb.ClientToFrontend{
-					HttpResponse: &httpgrpc.HTTPResponse{
-						Code: http.StatusAccepted,
-						Body: b,
-					},
-				}
-
-				resps <- resp
-
-				return
-			}
-
-			err = server.Send(&frontendv1pb.FrontendToClient{
-				Type:         frontendv1pb.HTTP_REQUEST,
-				HttpRequest:  req.request,
-				StatsEnabled: stats.IsEnabled(req.originalCtx),
-			})
+			url, err := url.Parse(req.request.Url)
 			if err != nil {
 				errs <- err
 				return
 			}
 
-			resp, err := server.Recv()
-			if err != nil {
-				errs <- err
-				return
+			var isAsync bool
+			queryParams := url.Query()
+			async := queryParams.Get("async")
+
+			if async != "" {
+				isAsync, err = strconv.ParseBool(async)
+				if err != nil {
+					errs <- err
+					return
+				}
+			}
+
+			var resp *frontendv1pb.ClientToFrontend
+
+			switch {
+			case isAsync:
+				resp, err = f.PublishAsyncQueryRequest(req)
+				if err != nil {
+					errs <- err
+					return
+				}
+			default:
+				err = server.Send(&frontendv1pb.FrontendToClient{
+					Type:         frontendv1pb.HTTP_REQUEST,
+					HttpRequest:  req.request,
+					StatsEnabled: stats.IsEnabled(req.originalCtx),
+				})
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				resp, err = server.Recv()
+				if err != nil {
+					errs <- err
+					return
+				}
 			}
 
 			resps <- resp
@@ -321,6 +308,46 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			req.response <- resp.HttpResponse
 		}
 	}
+}
+
+func (f *Frontend) PublishAsyncQueryRequest(req *request) (*frontendv1pb.ClientToFrontend, error) {
+	stream := f.requestQueue.GetJetStream()
+	if stream == nil {
+		return nil, nil
+	}
+
+	b, err := json.Marshal(req.request)
+	if err != nil {
+		return nil, err
+	}
+
+	tenantIDs, err := tenant.TenantIDs(req.originalCtx)
+	if err != nil {
+		return nil, err
+	}
+	joinedTenantIDs := strings.Join(tenantIDs, "_")
+
+	subj := fmt.Sprintf("query.%s", joinedTenantIDs)
+
+	ack, err := stream.Publish(subj, b)
+	if err != nil {
+		return nil, err
+	}
+
+	b, err = json.Marshal(ack)
+	if err != nil {
+		return nil, err
+	}
+
+	level.Info(f.log).Log("msg", "received ack from jetstream publish action", "ack", string(b))
+
+	// Build a fake response for returning the jetstream ack here
+	return &frontendv1pb.ClientToFrontend{
+		HttpResponse: &httpgrpc.HTTPResponse{
+			Code: http.StatusAccepted,
+			Body: b,
+		},
+	}, nil
 }
 
 func (f *Frontend) NotifyClientShutdown(_ context.Context, req *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {

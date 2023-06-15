@@ -2,7 +2,6 @@ package queue
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -327,18 +326,7 @@ func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string
 	return stream, nil
 }
 
-func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, id string, req Request) (*nats.PubAck, error) {
-	if q.stream == nil {
-		return nil, nil
-	}
-
-	b, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return q.stream.Publish(fmt.Sprintf("query.%s", id), b)
-}
+func (q *RequestQueue) GetJetStream() nats.JetStreamContext { return q.stream }
 
 func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
