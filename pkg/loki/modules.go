@@ -173,7 +173,7 @@ func (t *Loki) initServer() (services.Service, error) {
 }
 
 func (t *Loki) initNATS() (services.Service, error) {
-	t.Cfg.NATS.Cluster = !t.isModuleActive(All)
+	t.Cfg.NATS.Cluster = t.Cfg.isModuleEnabled(NATS)
 	return nats.NewServer(t.Cfg.NATS)
 }
 
