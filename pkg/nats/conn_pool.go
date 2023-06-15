@@ -90,9 +90,5 @@ func (f *ConnProvider) GetConn() (*nats.Conn, error) {
 		servers += fmt.Sprintf("nats://%s:%d,", strings.Split(instance.Addr, ":")[0], f.cfg.ClientPort)
 	}
 
-	// // Optionally set ReconnectWait and MaxReconnect attempts.
-	// // This example means 10 seconds total per backend.
-	// nc, err = nats.Connect(servers, nats.MaxReconnects(5), nats.ReconnectWait(2 * time.Second))
-
-	return nats.Connect(servers)
+	return nats.Connect(servers, nats.MaxReconnects(1000), nats.ReconnectWait(2*time.Second))
 }
