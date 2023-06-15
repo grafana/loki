@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -250,6 +251,7 @@ func (tm *tableManager) cleanupCache() error {
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
+	level.Info(tm.logger).Log("msg", "query readiness setup started")
 	start := time.Now()
 	distinctUsers := make(map[string]struct{})
 
@@ -284,6 +286,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	level.Info(tm.logger).Log("msg", "listing tables", "tables", strings.Join(tables, ","))
 
 	for _, tableName := range tables {
 		if tableName == deletion.DeleteRequestsTableName {
@@ -323,6 +326,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		level.Debug(tm.logger).Log("msg", "table manager owns tenants", "tenants", strings.Join(usersToBeQueryReadyFor, ","))
 
 		// continue if both user index and common index is not required to be downloaded for query readiness
 		if len(usersToBeQueryReadyFor) == 0 && activeTableNumber-tableNumber > int64(tm.cfg.QueryReadyNumDays) {
