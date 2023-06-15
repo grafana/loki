@@ -86,17 +86,15 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, nat
 		metrics:                 metrics,
 	}
 
-	if natsCfg.Cluster {
-		natsConn, err := loki_nats.NewConnProvider(natsCfg)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create NATS connection provider")
-		}
-		q.natsConnProvider = natsConn
+	natsConn, err := loki_nats.NewConnProvider(natsCfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create NATS connection provider")
+	}
+	q.natsConnProvider = natsConn
 
-		q.subservices, err = services.NewManager(q.natsConnProvider)
-		if err != nil {
-			return nil, err
-		}
+	q.subservices, err = services.NewManager(q.natsConnProvider)
+	if err != nil {
+		return nil, err
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
