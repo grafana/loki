@@ -24,7 +24,7 @@ Grafana provides a way to pose queries against the logs stored in Loki and visua
 
 The test environment uses Docker compose to instantiate these parts, each in its own container: 
 
-- One [single scalable deployment]({{<relref "../get-started/deployment-modes">}}) mode **Loki** instance has:
+- One [single scalable deployment]({{< relref "../get-started/deployment-modes" >}}) mode **Loki** instance has:
     - One Loki read component
     - One Loki write component
     - **Minio** is Loki's storage back end in the test environment.
@@ -99,7 +99,7 @@ To see every log line other than those that contain the value 401:
 {container="evaluate-loki-flog-1"} != "401"
 ```
 
-Refer to [query examples]({{<relref "../query/query_examples">}}) for more examples.
+Refer to [query examples]({{< relref "../query/query_examples/" > }}) for more examples.
 
 ## Stop and clean up the test environment
 
