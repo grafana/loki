@@ -302,6 +302,7 @@ func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
+
 	streamOpts := &nats.StreamConfig{
 		Name:      name,
 		Subjects:  []string{sb},
@@ -310,6 +311,7 @@ func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string
 		Retention: nats.LimitsPolicy,
 		Discard:   nats.DiscardOld,
 	}
+
 	_, err = stream.UpdateStream(streamOpts)
 	if err != nil {
 		if err == nats.ErrStreamNotFound {
@@ -323,25 +325,9 @@ func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string
 	}
 
 	return stream, nil
-	// js, err := jetstream.New(q.conn)
-	// if err != nil {
-	//	return nil, errors.Wrap(err, "failed to get jetstream context")
-	// }
-
-	// // Create a stream
-	// _, _ = js.CreateStream(ctx, jetstream.StreamConfig{
-	//	Name:      "queries",
-	//	Subjects:  []string{"query"},
-	//	Replicas:  3,
-	//	MaxAge:    4 * time.Hour,
-	//	Retention: jetstream.LimitsPolicy,
-	//	Discard:   jetstream.DiscardOld,
-	// })
-
-	// return js, nil
 }
 
-func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request) (*nats.PubAck, error) {
+func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, id string, req Request) (*nats.PubAck, error) {
 	if q.stream == nil {
 		return nil, nil
 	}
@@ -351,7 +337,7 @@ func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request
 		return nil, err
 	}
 
-	return q.stream.Publish("query", b)
+	return q.stream.Publish(fmt.Sprintf("query.%s", id), b)
 }
 
 func (q *RequestQueue) stopping(_ error) error {

@@ -252,7 +252,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		errs := make(chan error, 1)
 		go func() {
 			if isAsync {
-				ack, err := f.requestQueue.PublishAsyncQueryRequest(req.originalCtx, req)
+				ack, err := f.requestQueue.PublishAsyncQueryRequest(req.originalCtx, querierID, req)
 				if err != nil {
 					errs <- err
 					return

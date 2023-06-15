@@ -498,7 +498,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	}
 
 	if isAsync {
-		ack, err := s.requestQueue.PublishAsyncQueryRequest(req.ctx, req)
+		ack, err := s.requestQueue.PublishAsyncQueryRequest(req.ctx, fmt.Sprintf("%d", req.queryID), req)
 		if err != nil {
 			return err
 		}
