@@ -648,11 +648,13 @@ the result will be
 
 The `| keep` expression will keep only the specified labels in the pipeline and drop all the other labels.
 
-**NOTE**: keep stage will not drop __error__ or __error_details__ labels added by Loki at query time. To drop these labels, please refer to [drop](#drop-labels-expression) stage.
+{{% admonition type="note" %}}
+The keep stage will not drop the  __error__ or __error_details__ labels added by Loki at query time. To drop these labels, refer to [drop](#drop-labels-expression) stage.
+{{% /admonition %}}
 
 Query examples:
 
-For the query `{job="varlogs"}|json|keep level, method="GET"`, with below log line
+For the query `{job="varlogs"}|json|keep level, method="GET"`, with the following log lines:
 
 ```
 {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
@@ -666,7 +668,7 @@ the result will be
 {level="info"} {"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
-For the query `{job="varlogs"}|json|keep level, tenant, app=~"some-api.*"`, with below log lines
+For the query `{job="varlogs"}|json|keep level, tenant, app=~"some-api.*"`, with the following log lines:
 
 ```
 {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
