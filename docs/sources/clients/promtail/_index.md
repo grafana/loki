@@ -94,12 +94,11 @@ Important details are:
   of your compressed file Loki will rate-limit your ingestion. In that case you
   might configure Promtail's [`limits` stage](/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
   [ingestion limits on Loki](/docs/loki/latest/configuration/#limits_config).
-* Log rotations on compressed files **aren't supported as of now** (log rotation is fully supported for normal files), mostly because it requires us modifying Promtail to
-  rely on file inodes instead of file names. If you'd like to see support for it, please create a new
+* Log rotations on compressed files **are not supported as of now** (log rotation is fully supported for normal files), mostly because it requires us modifying Promtail to
+  rely on file inodes instead of file names. If you'd like to see support for it, create a new
   issue on Github asking for it and explaining your use case.
 * If you compress a file under a folder being scraped, Promtail might try to ingest your file before you finish compressing it. To avoid it, pick a `initial_delay` that is enough to avoid it.
-* If you would like to see support for a compression protocol that isn't listed here, please
-  create a new issue on Github asking for it and explaining your use case.
+* If you would like to see support for a compression protocol that isn't listed here, create a new issue on Github asking for it and explaining your use case.
 
 
 ## Loki Push API

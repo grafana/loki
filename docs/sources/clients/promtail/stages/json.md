@@ -33,7 +33,11 @@ This stage uses the Go JSON unmarshaler, which means non-string types like
 numbers or booleans will be unmarshaled into those types. The extracted data
 can hold non-string values and this stage does not do any type conversions;
 downstream stages will need to perform correct type conversion of these values
+<<<<<<< HEAD
 as necessary. Please refer to the [the `template` stage]({{< relref "./template" >}}) for how
+=======
+as necessary. Refer to the [the `template` stage]({{<relref "template">}}) for how
+>>>>>>> f4300bec9 (Removing 'please' from the docs.)
 to do this.
 
 If the value extracted is a complex type, such as an array or a JSON object, it

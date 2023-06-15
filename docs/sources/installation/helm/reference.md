@@ -17,7 +17,7 @@ This is the generated reference for the Loki Helm Chart values.
 
 > **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
 > If you are using the `grafana/loki-stack` Helm chart from the community repo,
-> please refer to the `values.yaml` of the respective Github repository
+> refer to the `values.yaml` of the respective Github repository
 > [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts/loki-stack).
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
@@ -1774,7 +1774,7 @@ See values.yaml
 		<tr>
 			<td>loki.configStorageType</td>
 			<td>string</td>
-			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
+			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret, see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
 			<td><pre lang="json">
 "ConfigMap"
 </pre>

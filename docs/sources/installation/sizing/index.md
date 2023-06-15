@@ -70,7 +70,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     </span>
     <span v-else-if="help === 'node'">
     Defines the node type of the Kubernetes cluster. Is a vendor or type
-    missing? If so, please add it to <code>pkg/sizing/node.go</code>.
+    missing? If so, add it to <code>pkg/sizing/node.go</code>.
     </span>
     <span v-else-if="help === 'retention'">
     Defines how long the ingested logs should be kept.

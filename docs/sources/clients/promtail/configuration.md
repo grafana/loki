@@ -1225,7 +1225,7 @@ To keep discovered labels to your logs use the [relabel_configs](#relabel_config
 
 The `gelf` block configures a GELF UDP listener allowing users to push
 logs to Promtail with the [GELF](https://docs.graylog.org/docs/gelf) protocol.
-Currently only UDP is supported, please submit a feature request if you're interested into TCP support.
+Currently only UDP is supported, submit a feature request if you're interested into TCP support.
 
 > GELF messages can be sent uncompressed or compressed with either GZIP or ZLIB.
 
@@ -1930,7 +1930,7 @@ service discovery should run on each node in a distributed setup. The containers
 either the [json-file](https://docs.docker.com/config/containers/logging/json-file/)
 or [journald](https://docs.docker.com/config/containers/logging/journald/) logging driver.
 
-Please note that the discovery will not pick up finished containers. That means
+Note that the discovery will not pick up finished containers. That means
 Promtail will not scrape the remaining logs from finished containers after a restart.
 
 The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
@@ -2233,7 +2233,7 @@ scrape_configs:
       pushserver: push1
 ```
 
-Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
+Note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
 
 A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the Promtail `server` config section (unless it's disabled)
 

@@ -1685,7 +1685,7 @@ bigtable:
   # CLI flag: -bigtable.project
   [project: <string> | default = ""]
 
-  # Bigtable instance ID. Please refer to
+  # Bigtable instance ID. Refer to
   # https://cloud.google.com/docs/authentication/production for more information
   # about how to configure authentication.
   # CLI flag: -bigtable.instance
@@ -2128,7 +2128,7 @@ The `compactor` block configures the compactor component, which compacts index s
 [delete_max_interval: <duration> | default = 0s]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
-# please make sure compactor has enough disk space allocated to be able to store
+# make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
 # CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
@@ -4322,7 +4322,7 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 &nbsp;
 
 ```yaml
-# Name of GCS bucket. Please refer to
+# Name of GCS bucket. Refer to
 # https://cloud.google.com/docs/authentication/production for more information
 # about how to configure authentication.
 # CLI flag: -<prefix>.gcs.bucketname
