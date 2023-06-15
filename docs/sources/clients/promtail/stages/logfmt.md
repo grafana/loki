@@ -25,11 +25,7 @@ This stage uses the [go-logfmt](https://github.com/go-logfmt/logfmt) unmarshaler
 numbers or booleans will be unmarshaled into those types. The extracted data
 can hold non-string values, and this stage does not do any type conversions;
 downstream stages will need to perform correct type conversion of these values
-<<<<<<< HEAD
 as necessary. Please refer to the [`template` stage]({{< relref "./template" >}}) for how
-=======
-as necessary. Refer to the [`template` stage]({{<relref "template">}}) for how
->>>>>>> f4300bec9 (Removing 'please' from the docs.)
 to do this.
 
 If the value extracted is a complex type, its value is extracted as a string.
