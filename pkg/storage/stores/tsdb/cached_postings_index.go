@@ -41,7 +41,7 @@ type cachedPostingsClient struct {
 
 func (c *cachedPostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
-	if postings, got := c.fetchPostings(key); got {
+	if postings, got := c.fetchPostings(ctx, key); got {
 		return fn(postings)
 	}
 
@@ -123,8 +123,8 @@ func (c *cachedPostingsClient) storePostings(ctx context.Context, postings index
 	return c.cacheClient.Store(ctx, []string{canonicalMatchers}, [][]byte{dataToCache})
 }
 
-func (c *cachedPostingsClient) fetchPostings(key string) (index.Postings, bool) {
-	found, bufs, _, err := c.cacheClient.Fetch(context.TODO(), []string{key})
+func (c *cachedPostingsClient) fetchPostings(ctx context.Context, key string) (index.Postings, bool) {
+	found, bufs, _, err := c.cacheClient.Fetch(ctx, []string{key})
 
 	if err != nil {
 		level.Error(c.log).Log("msg", "error on fetching postings", "err", err, "matchers", key)
