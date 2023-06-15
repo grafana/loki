@@ -8,6 +8,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
@@ -41,13 +42,13 @@ type AsyncStoreCfg struct {
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	Store
+	stores.Store
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(cfg AsyncStoreCfg, store Store, scfg config.SchemaConfig) *AsyncStore {
+func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConfig) *AsyncStore {
 	return &AsyncStore{
 		Store:                store,
 		scfg:                 scfg,
