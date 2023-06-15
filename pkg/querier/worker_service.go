@@ -14,6 +14,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -46,6 +47,7 @@ type WorkerServiceConfig struct {
 //     as a http.Handler to the frontend worker.
 func InitWorkerService(
 	cfg WorkerServiceConfig,
+	natsCfg loki_nats.Config,
 	reg prometheus.Registerer,
 	queryRoutesToHandlers map[string]http.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
@@ -105,6 +107,7 @@ func InitWorkerService(
 			*(cfg.QuerierWorkerConfig),
 			cfg.SchedulerRing,
 			httpgrpc_server.NewServer(externalHandler),
+			natsCfg,
 			util_log.Logger,
 			reg,
 		)
@@ -141,6 +144,7 @@ func InitWorkerService(
 		*(cfg.QuerierWorkerConfig),
 		cfg.SchedulerRing,
 		httpgrpc_server.NewServer(internalHandler),
+		natsCfg,
 		util_log.Logger,
 		reg,
 	)

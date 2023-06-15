@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/nats-io/nats.go"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
@@ -73,6 +75,25 @@ func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, c
 
 		backoff.Reset()
 	}
+}
+
+func (fp *frontendProcessor) processAsyncRequest(conn *nats.Conn, subject string, req *httpgrpc.HTTPRequest) {
+	fp.runRequest(context.Background(), req, false, func(response *httpgrpc.HTTPResponse, _ *querier_stats.Stats) error {
+		if response == nil {
+			return nil
+		}
+
+		data, err := json.Marshal(response)
+		if err != nil {
+			return err
+		}
+
+		if err := conn.Publish(subject, data); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // process loops processing requests on an established stream.

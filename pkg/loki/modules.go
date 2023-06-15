@@ -454,6 +454,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
+		t.Cfg.NATS,
 		prometheus.DefaultRegisterer,
 		queryHandlers,
 		alwaysExternalHandlers,

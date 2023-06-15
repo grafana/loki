@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -12,11 +14,13 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
@@ -74,6 +78,8 @@ type processor interface {
 	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
 	// shutting down.
 	notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string)
+
+	processAsyncRequest(conn *nats.Conn, sub string, req *httpgrpc.HTTPRequest)
 }
 
 type querierWorker struct {
@@ -84,6 +90,11 @@ type querierWorker struct {
 
 	processor processor
 
+	natsConnProvider *loki_nats.ConnProvider
+	conn             *nats.Conn
+	subscription     *nats.Subscription
+	stream           nats.JetStreamContext
+
 	subservices *services.Manager
 
 	mu sync.Mutex
@@ -93,7 +104,7 @@ type querierWorker struct {
 	metrics *Metrics
 }
 
-func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer) (services.Service, error) {
+func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, natsCfg loki_nats.Config, logger log.Logger, reg prometheus.Registerer) (services.Service, error) {
 	if cfg.QuerierID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -111,6 +122,7 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 	case rng != nil:
 		level.Info(logger).Log("msg", "Starting querier worker using query-scheduler and scheduler ring for addresses")
 		processor, servs = newSchedulerProcessor(cfg, handler, logger, metrics)
+
 	case cfg.SchedulerAddress != "":
 		level.Info(logger).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
 
@@ -126,10 +138,10 @@ func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, log
 		return nil, errors.New("unable to start the querier worker, need to configure one of frontend_address, scheduler_address, or a ring config in the query_scheduler config block")
 	}
 
-	return newQuerierWorkerWithProcessor(cfg, metrics, logger, processor, address, rng, servs)
+	return newQuerierWorkerWithProcessor(cfg, natsCfg, metrics, logger, processor, address, rng, servs)
 }
 
-func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
+func newQuerierWorkerWithProcessor(cfg Config, natsCfg loki_nats.Config, metrics *Metrics, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
 	f := &querierWorker{
 		cfg:       cfg,
 		logger:    logger,
@@ -156,6 +168,14 @@ func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logg
 		servs = append(servs, w)
 	}
 
+	// TODO(@periklis) Make this subservice optional
+	natsConn, err := loki_nats.NewConnProvider(natsCfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create NATS connection provider")
+	}
+	f.natsConnProvider = natsConn
+	servs = append(servs, f.natsConnProvider)
+
 	if len(servs) > 0 {
 		subservices, err := services.NewManager(servs...)
 		if err != nil {
@@ -173,7 +193,35 @@ func (w *querierWorker) starting(ctx context.Context) error {
 	if w.subservices == nil {
 		return nil
 	}
-	return services.StartManagerAndAwaitHealthy(ctx, w.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, w.subservices); err != nil {
+		return errors.Wrap(err, "unable to start querier worker subservices")
+	}
+
+	conn, err := w.natsConnProvider.GetConn()
+	if err != nil {
+		return err
+	}
+	w.conn = conn
+
+	var sub *nats.Subscription
+	for {
+		sub, err = conn.Subscribe("query.>", w.subscribeHandler)
+		if err != nil {
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+		break
+	}
+
+	w.subscription = sub
+
+	return nil
 }
 
 func (w *querierWorker) stopping(_ error) error {
@@ -191,6 +239,25 @@ func (w *querierWorker) stopping(_ error) error {
 
 	// Stop DNS watcher and services used by processor.
 	return services.StopManagerAndAwaitStopped(context.Background(), w.subservices)
+}
+
+func (w *querierWorker) subscribeHandler(msg *nats.Msg) {
+	msg.InProgress()
+
+	req := &httpgrpc.HTTPRequest{}
+
+	err := json.Unmarshal(msg.Data, req)
+	if err != nil {
+		msg.Nak()
+
+		return
+	}
+
+	respSub := fmt.Sprintf("%s.processed", msg.Subject)
+
+	w.processor.processAsyncRequest(w.conn, respSub, req)
+
+	msg.Ack()
 }
 
 func (w *querierWorker) AddressAdded(address string) {

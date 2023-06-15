@@ -85,6 +85,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, nat
 		metrics:                 metrics,
 	}
 
+	// TODO(@periklis) Make this subservice optional
 	natsConn, err := loki_nats.NewConnProvider(natsCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create NATS connection provider")
@@ -276,9 +277,9 @@ func (q *RequestQueue) starting(ctx context.Context) (err error) {
 
 	var stream nats.JetStreamContext
 	for {
-		stream, err = q.createOrUpdateStream(ctx, "query", "query.*")
+		stream, err = q.createOrUpdateStream(ctx, "query", []string{"query.*", "query.*.processed"})
 		if err != nil {
-			level.Error(q.log).Log("msg", "failed to create or update stream query for subjects query.*", "err", err.Error())
+			level.Error(q.log).Log("msg", "failed to create or update stream query for subjects query.*.*", "err", err.Error())
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -296,7 +297,7 @@ func (q *RequestQueue) starting(ctx context.Context) (err error) {
 	return nil
 }
 
-func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string) (nats.JetStreamContext, error) {
+func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name string, subjects []string) (nats.JetStreamContext, error) {
 	stream, err := q.conn.JetStream()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get jetstream context")
@@ -304,7 +305,7 @@ func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string
 
 	streamOpts := &nats.StreamConfig{
 		Name:      name,
-		Subjects:  []string{sb},
+		Subjects:  subjects,
 		Replicas:  3,
 		MaxAge:    4 * time.Hour,
 		Retention: nats.LimitsPolicy,
