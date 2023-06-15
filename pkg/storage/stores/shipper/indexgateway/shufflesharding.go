@@ -88,6 +88,10 @@ func GetShuffleShardingSubring(ring ring.ReadRing, tenantID string, limits Limit
 	return ring.ShuffleShard(tenantID, shardSize)
 }
 
+// MatchAllStrategy is an implementation of the ShardingStrategy that does not
+// filter anything.
+// This is used when the index gateway runs in simple mode or when the index
+// gateway runs in ring mode, but the ring manager runs in client mode.
 type MatchAllStrategy struct{}
 
 func NewMatchAllStrategy() *MatchAllStrategy {
