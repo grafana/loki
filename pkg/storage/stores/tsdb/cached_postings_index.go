@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"encoding/binary"
 	"sort"
 	"strings"
 
@@ -61,6 +62,7 @@ func (c *cachedPostingsClient) ForPostings(ctx context.Context, matchers []*labe
 // Length argument is expected number of postings, used for preallocating buffer.
 func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
 	buf := encoding.Encbuf{}
+	buf.PutUvarint64(uint64(length))
 
 	// This encoding uses around ~1 bytes per posting, but let's use
 	// conservative 1.25 bytes per posting to avoid extra allocations.
@@ -69,6 +71,7 @@ func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
 	}
 
 	prev := storage.SeriesRef(0)
+	var total uint64 = 0
 	for p.Next() {
 		v := p.At()
 
@@ -80,20 +83,26 @@ func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
 		// This is the 'diff' part -- compute difference from previous value.
 		buf.PutUvarint64(uint64(v - prev))
 		prev = v
+		total += 1
 	}
 	if p.Err() != nil {
 		return nil, p.Err()
 	}
 
-	return buf.B, nil
+	// add number of postings at the beginning of the buffer, used when decoding.
+	lenBuf := make([]byte, binary.MaxVarintLen64+len(buf.B))
+	binary.PutUvarint(lenBuf, total)
+
+	return append(lenBuf, buf.B...), nil
 }
 
 func decodeToPostings(b []byte) index.Postings {
 	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
-
-	refs := []storage.SeriesRef{}
+	postingsLen := storage.SeriesRef(decoder.Uvarint64())
+	refs := make([]storage.SeriesRef, postingsLen)
 	prev := storage.SeriesRef(0)
-	for i := 0; i < decoder.Len(); i++ {
+
+	for i := 0; i < int(postingsLen); i++ {
 		v := storage.SeriesRef(decoder.Uvarint64())
 		refs = append(refs, v+prev)
 		prev = v
