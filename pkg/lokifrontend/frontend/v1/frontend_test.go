@@ -127,8 +127,9 @@ func TestFrontendCheckReady(t *testing.T) {
 		{"no url, no clients is not ready", 0, "not ready: number of queriers connected to query-frontend is 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			logger := log.NewNopLogger()
 			qm := queue.NewMetrics("query_frontend", nil)
-			q, _ := queue.NewRequestQueue(5, 0, loki_nats.Config{}, qm)
+			q, _ := queue.NewRequestQueue(5, 0, loki_nats.Config{}, logger, qm)
 			f := &Frontend{
 				log:          log.NewNopLogger(),
 				requestQueue: q,

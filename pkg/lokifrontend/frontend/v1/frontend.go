@@ -99,7 +99,7 @@ func New(cfg Config, natsCfg loki_nats.Config, limits Limits, log log.Logger, re
 		}),
 	}
 
-	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, queueMetrics)
+	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, log, queueMetrics)
 	if err != nil {
 		return nil, err
 	}

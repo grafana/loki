@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -53,12 +54,13 @@ func enqueueRequestsForActor(t testing.TB, actor []string, useActor bool, queue 
 }
 
 func BenchmarkQueryFairness(t *testing.B) {
+	logger := log.NewNopLogger()
 	numSubRequestsActorA, numSubRequestsActorB := 123, 45
 	total := int64((numSubRequestsActorA + numSubRequestsActorA + numSubRequestsActorB) * numRequestsPerActor)
 
 	for _, useActor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("use hierarchical queues = %v", useActor), func(t *testing.B) {
-			requestQueue, _ := NewRequestQueue(1024, 0, loki_nats.Config{}, NewMetrics("query_scheduler", nil))
+			requestQueue, _ := NewRequestQueue(1024, 0, loki_nats.Config{}, logger, NewMetrics("query_scheduler", nil))
 			enqueueRequestsForActor(t, []string{}, useActor, requestQueue, numSubRequestsActorA, 50*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"a"}, useActor, requestQueue, numSubRequestsActorA, 100*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"b"}, useActor, requestQueue, numSubRequestsActorB, 50*time.Millisecond)
@@ -132,8 +134,8 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 			  123: [200]
 			  456: [210]
 	**/
-
-	requestQueue, _ := NewRequestQueue(1024, 0, loki_nats.Config{}, NewMetrics("query_scheduler", nil))
+	logger := log.NewNopLogger()
+	requestQueue, _ := NewRequestQueue(1024, 0, loki_nats.Config{}, logger, NewMetrics("query_scheduler", nil))
 	_ = requestQueue.Enqueue("tenant1", []string{}, r(0), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{}, r(1), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{}, r(2), 0, nil)

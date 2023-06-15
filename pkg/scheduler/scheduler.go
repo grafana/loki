@@ -130,7 +130,7 @@ func NewScheduler(cfg Config, natsCfg loki_nats.Config, limits Limits, log log.L
 
 	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
 
-	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, queueMetrics)
+	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, log, queueMetrics)
 	if err != nil {
 		return nil, err
 	}

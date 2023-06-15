@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
@@ -55,6 +57,8 @@ type RequestChannel chan Request
 type RequestQueue struct {
 	services.Service
 
+	log log.Logger
+
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -74,8 +78,9 @@ type RequestQueue struct {
 	metrics *Metrics
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, natsCfg loki_nats.Config, metrics *Metrics) (*RequestQueue, error) {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, natsCfg loki_nats.Config, l log.Logger, metrics *Metrics) (*RequestQueue, error) {
 	q := &RequestQueue{
+		log:                     l,
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		metrics:                 metrics,
@@ -237,7 +242,17 @@ func (q *RequestQueue) running(ctx context.Context) error {
 	}
 }
 
-func (q *RequestQueue) starting(ctx context.Context) error {
+func (q *RequestQueue) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err == nil || q.subservices == nil {
+			return
+		}
+
+		if stopErr := services.StopManagerAndAwaitStopped(context.Background(), q.subservices); stopErr != nil {
+			level.Error(q.log).Log("msg", "failed to gracefully stop scheduler dependencies", "err", stopErr)
+		}
+	}()
+
 	q.subservicesWatcher = services.NewFailureWatcher()
 
 	if q.subservices == nil {
@@ -251,20 +266,25 @@ func (q *RequestQueue) starting(ctx context.Context) error {
 
 	// Skip stream creation if no NATS module available
 	if q.natsConnProvider == nil {
+		level.Info(q.log).Log("msg", "no nats connection provider given, skipping stream creation")
 		return nil
 	}
 
 	conn, err := q.natsConnProvider.GetConn()
 	if err != nil {
+		level.Error(q.log).Log("msg", "failed to get connection to nats server", "err", err.Error())
 		return err
 	}
 	q.conn = conn
 
 	stream, err := q.createOrUpdateStream(ctx, "query", "query.*")
 	if err != nil {
+		level.Error(q.log).Log("msg", "failed to create stream query for subjects query.*", "err", err.Error())
 		return err
 	}
 	q.stream = stream
+
+	level.Info(q.log).Log("msg", "successfully created jet stream")
 
 	return nil
 }
@@ -340,7 +360,11 @@ func (q *RequestQueue) stopping(_ error) error {
 	// If there are still goroutines in GetNextRequestForQuerier method, they get notified.
 	q.cond.Broadcast()
 
-	return nil
+	if q.subservices == nil {
+		return nil
+	}
+
+	return services.StopManagerAndAwaitStopped(context.Background(), q.subservices)
 }
 
 func (q *RequestQueue) RegisterQuerierConnection(querier string) {
