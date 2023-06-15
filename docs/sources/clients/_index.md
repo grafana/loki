@@ -65,7 +65,7 @@ This is a good choice if you're looking to try out Loki in a low-footprint way o
 
 ## Unofficial clients
 
-Please note that the Loki API is not stable yet, so breaking changes might occur
+Note that the Loki API is not stable yet, so breaking changes might occur
 when using or writing a third-party client.
 
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
