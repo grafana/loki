@@ -24,10 +24,6 @@ const (
 	codecHeaderSnappyWithMatchers codec = "dm"  // As in "dvs+matchers"
 )
 
-var DefaultLRUCacheConfig = LRUCacheConfig{
-	MaxSizeBytes: "250MB",
-}
-
 const maxInt = int(^uint(0) >> 1)
 
 const (
@@ -45,7 +41,7 @@ type LRUCacheConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *LRUCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "500MB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
+	f.StringVar(&cfg.MaxSizeBytes, prefix+"lrucache.max-size-bytes", "500MB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
 }
 
 func (cfg *LRUCacheConfig) Validate() error {
