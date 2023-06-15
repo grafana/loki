@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dennwc/varint"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,25 +22,26 @@ type PostingsClient interface {
 
 var sharedCacheClient cache.Cache
 
-func NewCachedPostingsClient(reader IndexReader, logger log.Logger, cacheClient cache.Cache) PostingsClient {
-	return &cachedPostingsClient{
-		reader:      reader,
-		cacheClient: cacheClient,
-		log:         logger,
+type CachedTSDBIndex struct {
+	Index
+	PostingsClient
+	cache  cache.Cache
+	log    log.Logger
+	reader IndexReader
+}
+
+func NewCachedTSDBIndex(tsdbIdx *TSDBIndex, logger log.Logger, cacheClient cache.Cache) *CachedTSDBIndex {
+	return &CachedTSDBIndex{
+		Index:  tsdbIdx,
+		cache:  cacheClient,
+		log:    logger,
+		reader: tsdbIdx.reader,
 	}
 }
 
-type cachedPostingsClient struct {
-	reader IndexReader
-
-	cacheClient cache.Cache
-
-	log log.Logger
-}
-
-func (c *cachedPostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+func (c *CachedTSDBIndex) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
-	if postings, got := c.fetchPostings(key); got {
+	if postings, got := c.fetchPostings(ctx, key); got {
 		return fn(postings)
 	}
 
@@ -102,29 +102,17 @@ func decodeToPostings(b []byte) index.Postings {
 	return index.NewListPostings(refs)
 }
 
-func encodedMatchersLen(matchers []*labels.Matcher) int {
-	matchersLen := varint.UvarintSize(uint64(len(matchers)))
-	for _, m := range matchers {
-		matchersLen += varint.UvarintSize(uint64(len(m.Name)))
-		matchersLen += len(m.Name)
-		matchersLen++ // 1 byte for the type
-		matchersLen += varint.UvarintSize(uint64(len(m.Value)))
-		matchersLen += len(m.Value)
-	}
-	return matchersLen
-}
-
-func (c *cachedPostingsClient) storePostings(ctx context.Context, postings index.Postings, canonicalMatchers string) error {
+func (c *CachedTSDBIndex) storePostings(ctx context.Context, postings index.Postings, canonicalMatchers string) error {
 	dataToCache, err := diffVarintEncodeNoHeader(postings, 0)
 	if err != nil {
 		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
 	}
 
-	return c.cacheClient.Store(ctx, []string{canonicalMatchers}, [][]byte{dataToCache})
+	return c.cache.Store(ctx, []string{canonicalMatchers}, [][]byte{dataToCache})
 }
 
-func (c *cachedPostingsClient) fetchPostings(key string) (index.Postings, bool) {
-	found, bufs, _, err := c.cacheClient.Fetch(context.TODO(), []string{key})
+func (c *CachedTSDBIndex) fetchPostings(ctx context.Context, key string) (index.Postings, bool) {
+	found, bufs, _, err := c.cache.Fetch(ctx, []string{key})
 
 	if err != nil {
 		level.Error(c.log).Log("msg", "error on fetching postings", "err", err, "matchers", key)

@@ -129,48 +129,33 @@ func NewTSDBIndexFromFile(location string) (Index, GetRawFileReaderFunc, error) 
 		return nil, nil, err
 	}
 
-	tsdbIdx := NewTSDBIndex(reader, getPostingsClient(reader))
+	var idx Index
+	tsdbIdx := NewTSDBIndex(reader)
+	idx = tsdbIdx
 
-	return tsdbIdx, func() (io.ReadSeeker, error) {
+	if shouldCachePostings && sharedCacheClient != nil {
+		idx = NewCachedTSDBIndex(tsdbIdx, util_log.Logger, sharedCacheClient)
+	}
+
+	return idx, func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
 
-func getPostingsClient(reader IndexReader) PostingsClient {
-	var postingsClient PostingsClient
-
-	if shouldCachePostings && sharedCacheClient != nil {
-		postingsClient = NewCachedPostingsClient(reader, util_log.Logger, sharedCacheClient)
-	}
-
-	if postingsClient == nil {
-		postingsClient = DefaultPostingsClient(reader)
-	}
-
-	return postingsClient
-}
-
-func DefaultPostingsClient(reader IndexReader) PostingsClient {
-	return &simplePostingsClient{reader: reader}
-}
-
-type simplePostingsClient struct {
-	reader IndexReader
-}
-
-func (s *simplePostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
-	p, err := PostingsForMatchers(s.reader, nil, matchers...)
+func (i *TSDBIndex) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+	p, err := PostingsForMatchers(i.reader, nil, matchers...)
 	if err != nil {
 		return err
 	}
 	return fn(p)
 }
 
-func NewTSDBIndex(reader IndexReader, postingsClient PostingsClient) *TSDBIndex {
-	return &TSDBIndex{
-		reader:         reader,
-		postingsClient: postingsClient,
+func NewTSDBIndex(reader IndexReader) *TSDBIndex {
+	idx := &TSDBIndex{
+		reader: reader,
 	}
+	idx.postingsClient = idx
+	return idx
 }
 
 func (i *TSDBIndex) Close() error {
