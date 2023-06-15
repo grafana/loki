@@ -50,7 +50,7 @@ func (c *cachedPostingsClient) ForPostings(ctx context.Context, matchers []*labe
 		return err
 	}
 
-	if err := c.storePostings(p, matchers); err != nil {
+	if err := c.storePostings(p, key); err != nil {
 		level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
 	}
 	return fn(p)
@@ -114,13 +114,13 @@ func encodedMatchersLen(matchers []*labels.Matcher) int {
 	return matchersLen
 }
 
-func (c *cachedPostingsClient) storePostings(postings index.Postings, matchers []*labels.Matcher) error {
+func (c *cachedPostingsClient) storePostings(postings index.Postings, canonicalMatchers string) error {
 	dataToCache, err := diffVarintEncodeNoHeader(postings, 0)
 	if err != nil {
-		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", CanonicalLabelMatchersKey(matchers))
+		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
 	}
 
-	return c.cacheClient.Store(context.TODO(), []string{CanonicalLabelMatchersKey(matchers)}, [][]byte{dataToCache})
+	return c.cacheClient.Store(context.Background(), []string{canonicalMatchers}, [][]byte{dataToCache})
 }
 
 func (c *cachedPostingsClient) fetchPostings(key string) (index.Postings, bool) {
