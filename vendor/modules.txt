@@ -1103,7 +1103,6 @@ github.com/nats-io/nats-server/v2/server/sysmem
 github.com/nats-io/nats.go
 github.com/nats-io/nats.go/encoders/builtin
 github.com/nats-io/nats.go/internal/parser
-github.com/nats-io/nats.go/jetstream
 github.com/nats-io/nats.go/util
 # github.com/nats-io/nkeys v0.4.4
 ## explicit; go 1.19

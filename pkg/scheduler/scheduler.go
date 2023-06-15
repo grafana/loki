@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/nats-io/nats.go/jetstream"
+	"github.com/nats-io/nats.go"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -34,7 +34,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/nats"
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
@@ -119,7 +119,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, natsCfg nats.Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, natsCfg loki_nats.Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
@@ -546,7 +546,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	}
 }
 
-func (s *Scheduler) forwardAsyncAckToFronend(ctx context.Context, req *schedulerRequest, ack *jetstream.PubAck) {
+func (s *Scheduler) forwardAsyncAckToFronend(ctx context.Context, req *schedulerRequest, ack *nats.PubAck) {
 	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,

@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/dskit/services"
 	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
@@ -63,7 +62,7 @@ type RequestQueue struct {
 	// Nats
 	natsConnProvider *loki_nats.ConnProvider
 	conn             *nats.Conn
-	stream           jetstream.JetStream
+	stream           nats.JetStreamContext
 
 	connectedQuerierWorkers *atomic.Int32
 
@@ -261,7 +260,7 @@ func (q *RequestQueue) starting(ctx context.Context) error {
 	}
 	q.conn = conn
 
-	stream, err := q.createJetStream(ctx, "query", "query.*")
+	stream, err := q.createOrUpdateStream(ctx, "query", "query.*")
 	if err != nil {
 		return err
 	}
@@ -270,26 +269,51 @@ func (q *RequestQueue) starting(ctx context.Context) error {
 	return nil
 }
 
-func (q *RequestQueue) createJetStream(ctx context.Context, name, sb string) (jetstream.JetStream, error) {
-	js, err := jetstream.New(q.conn)
+func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name, sb string) (nats.JetStreamContext, error) {
+	stream, err := q.conn.JetStream()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
-
-	// Create a stream
-	_, _ = js.CreateStream(ctx, jetstream.StreamConfig{
-		Name:      "queries",
-		Subjects:  []string{"query"},
+	streamOpts := &nats.StreamConfig{
+		Name:      name,
+		Subjects:  []string{sb},
 		Replicas:  3,
 		MaxAge:    4 * time.Hour,
-		Retention: jetstream.LimitsPolicy,
-		Discard:   jetstream.DiscardOld,
-	})
+		Retention: nats.LimitsPolicy,
+		Discard:   nats.DiscardOld,
+	}
+	_, err = stream.UpdateStream(streamOpts)
+	if err != nil {
+		if err == nats.ErrStreamNotFound {
+			_, err = stream.AddStream(streamOpts)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to add stream")
+			}
+			return stream, nil
+		}
+		return nil, errors.Wrap(err, "failed to update stream")
+	}
 
-	return js, nil
+	return stream, nil
+	// js, err := jetstream.New(q.conn)
+	// if err != nil {
+	//	return nil, errors.Wrap(err, "failed to get jetstream context")
+	// }
+
+	// // Create a stream
+	// _, _ = js.CreateStream(ctx, jetstream.StreamConfig{
+	//	Name:      "queries",
+	//	Subjects:  []string{"query"},
+	//	Replicas:  3,
+	//	MaxAge:    4 * time.Hour,
+	//	Retention: jetstream.LimitsPolicy,
+	//	Discard:   jetstream.DiscardOld,
+	// })
+
+	// return js, nil
 }
 
-func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request) (*jetstream.PubAck, error) {
+func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request) (*nats.PubAck, error) {
 	if q.stream == nil {
 		return nil, nil
 	}
@@ -299,7 +323,7 @@ func (q *RequestQueue) PublishAsyncQueryRequest(ctx context.Context, req Request
 		return nil, err
 	}
 
-	return q.stream.Publish(ctx, "query", b)
+	return q.stream.Publish("query", b)
 }
 
 func (q *RequestQueue) stopping(_ error) error {
