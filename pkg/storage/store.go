@@ -170,6 +170,10 @@ func (s *store) init() error {
 		s.composite.AddStore(p.From.Time, f, idx, w, stop)
 	}
 
+	if s.cfg.EnableAsyncStore {
+		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
+	}
+
 	return nil
 }
 
