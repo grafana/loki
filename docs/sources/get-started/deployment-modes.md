@@ -1,9 +1,13 @@
 ---
-title: Deployment modes
-description: Deployment modes
-weight: 20
+menuTitle: Deployment modes
+title: Loki deployment modes
+description: Describes the different ways to deploy Loki.
+weight: 400
+aliases:
+    - /docs/loki/latest/fundamentals/architecture/deployment-modes
+    - /docs/loki/latest/get-started/deployment-modes/
 ---
-# Deployment modes
+# Loki deployment modes
 
 As an application, 
 Loki is built out of many component microservices,
@@ -36,7 +40,7 @@ as well as for small read/write volumes of up to approximately 100GB per day.
 
 Horizontally scale up a monolithic mode deployment to more instances
 by using a shared object store, and by configuring the
-[`ring` section]({{< relref "../../../configuration#common" >}})
+[`ring` section]({{< relref "../configuration#common" >}})
 to share state between all instances.
 
 High availability can be configured by running two Loki instances
@@ -59,7 +63,7 @@ Consider the microservices mode approach for very large Loki installations.
 
 In this mode the component microservices of Loki are bundled into two targets:
 `-target=read` and `-target=write`.
-The BoltDB [compactor]({{< relref "../../../operations/storage/boltdb-shipper#compactor" >}}) 
+The BoltDB [compactor]({{< relref "../operations/storage/boltdb-shipper#compactor" >}}) 
 service will run as part of the read target.
 
 There are advantages to separating the read and write paths:
