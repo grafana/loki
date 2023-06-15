@@ -99,7 +99,7 @@ To see every log line other than those that contain the value 401:
 {container="evaluate-loki-flog-1"} != "401"
 ```
 
-Refer to [query examples]({{< relref "../query/query_examples/" >}}) for more examples.
+Refer to [query examples]({{< relref "../query/query_examples" >}}) for more examples.
 
 ## Stop and clean up the test environment
 
