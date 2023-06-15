@@ -275,11 +275,21 @@ func (q *RequestQueue) starting(ctx context.Context) (err error) {
 	}
 	q.conn = conn
 
-	stream, err := q.createOrUpdateStream(ctx, "query", "query.*")
-	if err != nil {
-		level.Error(q.log).Log("msg", "failed to create stream query for subjects query.*", "err", err.Error())
-		return err
+	var stream nats.JetStreamContext
+	for {
+		stream, err = q.createOrUpdateStream(ctx, "query", "query.*")
+		if err != nil {
+			level.Error(q.log).Log("msg", "failed to create or update stream query for subjects query.*", "err", err.Error())
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+		break
 	}
+
 	q.stream = stream
 
 	level.Info(q.log).Log("msg", "successfully created jet stream")
