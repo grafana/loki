@@ -638,6 +638,10 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
+	case *VolumeResponse:
+		if err := marshal.WriteSeriesVolumeResponseJSON(response.Response, &buf); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}

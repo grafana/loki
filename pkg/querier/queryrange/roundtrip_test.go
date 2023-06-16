@@ -132,7 +132,7 @@ var (
 
 	seriesVolume = logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: `{foo="bar"}`, Value: "", Volume: 1024}, //nanoseconds
+			{Name: `{foo="bar"}`, Value: "", Volume: 1024},
 			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
 		},
 		From:    model.TimeFromUnix(testTime.Add(-4 * time.Hour).Unix()),

@@ -865,21 +865,25 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	}
 
 	t.Run("label volumes", func(t *testing.T) {
+		from := model.TimeFromUnixNano(start.UnixNano())
+		through := model.TimeFromUnixNano(end.UnixNano())
+
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 38},
-						{Name: "bar", Value: "baz", Volume: 28},
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{bar="baz"}`, Value: "", Volume: 28},
 					},
-					Limit: 2},
+					From:    from,
+					Through: through,
+					Limit:   2},
 				Headers: nil,
 			}, nil
 		})
 		split := setup(next)
-		through := model.TimeFromUnixNano(end.UnixNano())
 		req := &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
+			From:     from,
 			Through:  through,
 			Matchers: "{}",
 			Limit:    2,
@@ -888,37 +892,40 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
-		response := res.(*queryrangebase.PrometheusResponse)
+		response := res.(*LokiPromResponse)
 
-		require.Len(t, response.Data.Result, 2)
-		require.Contains(t, response.Data.Result, queryrangebase.SampleStream{
+		require.Len(t, response.Response.Data.Result, 2)
+		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
 			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []logproto.LegacySample{{TimestampMs: 1e3, Value: 76}},
+			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 76}},
 		})
-		require.Contains(t, response.Data.Result, queryrangebase.SampleStream{
+		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
 			Labels:  []logproto.LabelAdapter{{Name: "bar", Value: "baz"}},
-			Samples: []logproto.LegacySample{{TimestampMs: 1e3, Value: 56}},
+			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 56}},
 		})
 	})
 
 	t.Run("label volumes with limits", func(t *testing.T) {
+		from := model.TimeFromUnixNano(start.UnixNano())
+		through := model.TimeFromUnixNano(end.UnixNano())
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 38},
-						{Name: "bar", Value: "baz", Volume: 28},
-						{Name: "foo", Value: "bar", Volume: 38},
-						{Name: "fizz", Value: "buzz", Volume: 28},
+            {Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{bar="baz"}`, Value: "", Volume: 28},
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{fizz="buzz"}`, Value: "", Volume: 28},
 					},
-					Limit: 1},
+					From:    from,
+					Through: through,
+					Limit:   1},
 				Headers: nil,
 			}, nil
 		})
 		split := setup(next)
-		through := model.TimeFromUnixNano(end.UnixNano())
 		req := &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
+			From:     from,
 			Through:  through,
 			Matchers: "{}",
 			Limit:    1,
@@ -927,9 +934,13 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
-		response := res.(*queryrangebase.PrometheusResponse)
+		response := res.(*LokiPromResponse)
 
-		require.Len(t, response.Data.Result, 1)
+		require.Len(t, response.Response.Data.Result, 1)
+		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 152}},
+		})
 	})
 }
 

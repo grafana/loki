@@ -206,7 +206,7 @@ func TestSeriesVolumeHandler(t *testing.T) {
 	t.Run("it returns label volumes from the querier", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: "foo", Value: "bar", Volume: 38},
+				{Name: `{foo="bar"}`, Value: "", Volume: 38},
 			},
 			From:    t1,
 			Through: t2,
@@ -236,7 +236,7 @@ func TestSeriesVolumeHandler(t *testing.T) {
 		require.Equal(
 			t,
 			fmt.Sprintf(
-				`{"volumes":[{"name":"foo","value":"bar","volume":38}],"from":%s,"through":%s}`,
+				`{"volumes":[{"name":"{foo=\"bar\"}","value":"","volume":38}],"from":%s,"through":%s}`,
 				t1, t2,
 			),
 			strings.TrimSpace(w.Body.String()),

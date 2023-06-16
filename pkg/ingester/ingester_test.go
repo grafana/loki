@@ -1122,7 +1122,6 @@ func TestSeriesVolume(t *testing.T) {
 			{Name: `{host="agent", log_stream="worker"}`, Value: "", Volume: 70},
 		}, volumes.Volumes)
 	})
-	require.NoError(t, err)
 
 	t.Run("matching multiple labels, regex", func(t *testing.T) {
 		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
