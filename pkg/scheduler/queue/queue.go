@@ -343,6 +343,11 @@ func (q *RequestQueue) stopping(_ error) error {
 	// If there are still goroutines in GetNextRequestForQuerier method, they get notified.
 	q.cond.Broadcast()
 
+	if err := q.conn.Drain(); err != nil {
+		return err
+	}
+	q.conn.Close()
+
 	if q.subservices == nil {
 		return nil
 	}

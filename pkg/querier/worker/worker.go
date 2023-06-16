@@ -79,7 +79,7 @@ type processor interface {
 	// shutting down.
 	notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string)
 
-	processAsyncRequest(conn *nats.Conn, sub string, req *httpgrpc.HTTPRequest)
+	processAsyncRequest(conn *nats.Conn, subject string, req *httpgrpc.HTTPRequest)
 }
 
 type querierWorker struct {
@@ -206,7 +206,7 @@ func (w *querierWorker) starting(ctx context.Context) error {
 
 	var sub *nats.Subscription
 	for {
-		sub, err = conn.Subscribe("query.>", w.subscribeHandler)
+		sub, err = conn.QueueSubscribe("query.*", "queriers", w.subscribeHandler)
 		if err != nil {
 
 			select {
@@ -216,6 +216,7 @@ func (w *querierWorker) starting(ctx context.Context) error {
 			}
 			continue
 		}
+		conn.Flush()
 		break
 	}
 
@@ -225,6 +226,12 @@ func (w *querierWorker) starting(ctx context.Context) error {
 }
 
 func (w *querierWorker) stopping(_ error) error {
+	if err := w.conn.Drain(); err != nil {
+		return err
+	}
+
+	w.conn.Close()
+
 	// Stop all goroutines fetching queries. Note that in Stopping state,
 	// worker no longer creates new managers in AddressAdded method.
 	w.mu.Lock()
@@ -242,22 +249,30 @@ func (w *querierWorker) stopping(_ error) error {
 }
 
 func (w *querierWorker) subscribeHandler(msg *nats.Msg) {
-	msg.InProgress()
+	if err := msg.InProgress(); err != nil {
+		level.Error(w.logger).Log("msg", "failed to set received nats message to state IN_PROGRESS")
+		return
+	}
 
 	req := &httpgrpc.HTTPRequest{}
-
 	err := json.Unmarshal(msg.Data, req)
 	if err != nil {
-		msg.Nak()
+		if err := msg.Nak(); err != nil {
+			level.Error(w.logger).Log("msg", "failed to set nack nats message")
+		}
 
 		return
 	}
+
+	level.Info(w.logger).Log("msg", "received nats msg", "subject", msg.Subject, "reply", msg.Reply, "size", msg.Size(), "data", msg.Data)
 
 	respSub := fmt.Sprintf("%s.processed", msg.Subject)
 
 	w.processor.processAsyncRequest(w.conn, respSub, req)
 
-	msg.Ack()
+	if err := msg.Ack(); err != nil {
+		level.Error(w.logger).Log("msg", "failed to set ack nats message")
+	}
 }
 
 func (w *querierWorker) AddressAdded(address string) {

@@ -8,10 +8,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/util/test"
 )
 
@@ -68,7 +71,7 @@ func TestResetConcurrency(t *testing.T) {
 				MaxConcurrentRequests: tt.maxConcurrent,
 			}
 
-			w, err := newQuerierWorkerWithProcessor(cfg, NewMetrics(cfg, nil), log.NewNopLogger(), &mockProcessor{}, "", nil, nil)
+			w, err := newQuerierWorkerWithProcessor(cfg, loki_nats.Config{}, NewMetrics(cfg, nil), log.NewNopLogger(), &mockProcessor{}, "", nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), w))
 
@@ -105,5 +108,7 @@ type mockProcessor struct{}
 func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc.ClientConn, _ string) {
 	<-ctx.Done()
 }
+
+func (m mockProcessor) processAsyncRequest(_ *nats.Conn, _ string, _ *httpgrpc.HTTPRequest) {}
 
 func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}
