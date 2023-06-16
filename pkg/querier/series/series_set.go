@@ -24,8 +24,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
-	"github.com/grafana/loki/pkg/prom1/storage/metric"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -183,45 +181,6 @@ func (errIterator) AtT() (t int64) {
 
 func (e errIterator) Err() error {
 	return e.err
-}
-
-// MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
-// Series will be sorted by labels.
-func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
-	series := make([]storage.Series, 0, len(m))
-	for _, ss := range m {
-		series = append(series, &ConcreteSeries{
-			labels:  MetricToLabels(ss.Metric),
-			samples: ss.Values,
-		})
-	}
-	return NewConcreteSeriesSet(series)
-}
-
-// MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
-func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
-	series := make([]storage.Series, 0, len(ms))
-	for _, m := range ms {
-		series = append(series, &ConcreteSeries{
-			labels:  MetricToLabels(m.Metric),
-			samples: nil,
-		})
-	}
-	return NewConcreteSeriesSet(series)
-}
-
-func MetricToLabels(m model.Metric) labels.Labels {
-	ls := make(labels.Labels, 0, len(m))
-	for k, v := range m {
-		ls = append(ls, labels.Label{
-			Name:  string(k),
-			Value: string(v),
-		})
-	}
-	// PromQL expects all labels to be sorted! In general, anyone constructing
-	// a labels.Labels list is responsible for sorting it during construction time.
-	sort.Sort(ls)
-	return ls
 }
 
 type byLabels []storage.Series
